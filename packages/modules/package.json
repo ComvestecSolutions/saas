@@ -1,0 +1,21 @@
+{
+  "name": "@comvestec/modules",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@comvestec/config": "workspace:*",
+    "@comvestec/contracts": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "effect": "^3.21.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo modules lint pending",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

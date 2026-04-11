@@ -1,0 +1,133 @@
+:root {
+  color-scheme: light;
+  --page-bg: linear-gradient(165deg, #eff2f8 0%, #ebf0eb 45%, #fff1e2 100%);
+  --panel-bg: rgba(255, 255, 255, 0.88);
+  --panel-border: rgba(39, 54, 78, 0.14);
+  --text-strong: #1f2937;
+  --text-muted: #637083;
+  --accent: #2557b8;
+  --accent-soft: rgba(37, 87, 184, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--text-strong);
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+.app-shell {
+  width: min(1160px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.hero-panel,
+.card {
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  background: var(--panel-bg);
+  box-shadow: 0 20px 42px rgba(22, 29, 39, 0.08);
+}
+
+.hero-panel {
+  padding: 2rem;
+}
+
+.hero-panel h1,
+.card h2,
+.card p,
+.lede,
+.eyebrow {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hero-panel h1 {
+  margin-top: 0.8rem;
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  line-height: 1;
+}
+
+.lede {
+  margin-top: 1rem;
+  max-width: 56rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.card {
+  padding: 1.25rem;
+}
+
+.card h2 {
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card p {
+  margin-top: 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.featured-card {
+  background: linear-gradient(
+    135deg,
+    rgba(37, 87, 184, 0.14),
+    rgba(255, 255, 255, 0.92)
+  );
+}
+
+.list-card ul {
+  margin: 1rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.list-card li::marker {
+  color: var(--accent);
+}
+
+.list-card strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.list-card span {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    width: min(100% - 1rem, 1160px);
+    padding-top: 1rem;
+  }
+}

@@ -1,0 +1,122 @@
+:root {
+  color-scheme: light;
+  --page-bg: linear-gradient(160deg, #f7f4ea 0%, #eef5f2 52%, #d8e7f1 100%);
+  --panel-bg: rgba(255, 255, 255, 0.86);
+  --panel-border: rgba(20, 43, 57, 0.14);
+  --text-strong: #132833;
+  --text-muted: #49626f;
+  --accent: #0b7d6b;
+  --accent-soft: rgba(11, 125, 107, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--text-strong);
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+.app-shell {
+  width: min(1100px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.hero-panel,
+.card {
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  background: var(--panel-bg);
+  box-shadow: 0 18px 40px rgba(19, 40, 51, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.hero-panel {
+  padding: 2rem;
+}
+
+.hero-panel h1,
+.card h2,
+.card p,
+.lede,
+.eyebrow {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero-panel h1 {
+  margin-top: 0.75rem;
+  font-size: clamp(2.6rem, 7vw, 4.8rem);
+  line-height: 0.95;
+}
+
+.lede {
+  margin-top: 1rem;
+  max-width: 56rem;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.card {
+  padding: 1.25rem;
+}
+
+.card h2 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.card p {
+  margin-top: 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.list-card {
+  margin-top: 1rem;
+}
+
+.list-card ul {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.list-card li::marker {
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    width: min(100% - 1rem, 1100px);
+    padding-top: 1rem;
+  }
+
+  .hero-panel,
+  .card {
+    border-radius: 18px;
+  }
+}

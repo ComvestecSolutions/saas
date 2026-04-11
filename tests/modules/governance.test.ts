@@ -1,0 +1,342 @@
+import { Effect } from "effect";
+import {
+  runtimeConfigAuditAction,
+  supportOperationsAuditAction,
+  permissionScope,
+  platformModuleId,
+  platformScope,
+  runtimeChangeProposalAction,
+  runtimeResolutionSource,
+} from "@comvestec/contracts";
+import {
+  tenantBrandingConfigKey,
+  tenantBrandingFeatureFlag,
+} from "@comvestec/config";
+import {
+  makeAuditLogModule,
+  makeRuntimeConfigModule,
+  makeSupportOperationsModule,
+} from "@comvestec/modules";
+import { organizationRequestContext, supportRequestContext } from "./_fixtures";
+
+describe("modules governance", () => {
+  it("captures audit events and exposes requirements", async () => {
+    const auditLog = await Effect.runPromise(makeAuditLogModule());
+
+    const event = await Effect.runPromise(
+      auditLog.append({
+        requestContext: supportRequestContext,
+        moduleId: platformModuleId.supportOperations,
+        action: supportOperationsAuditAction.breakGlassStarted,
+        target: "org_1",
+        reason: "Investigate elevated support issue",
+      }),
+    );
+    const events = await Effect.runPromise(
+      auditLog.queryByModule(platformModuleId.supportOperations),
+    );
+
+    expect(event.moduleId).toBe(platformModuleId.supportOperations);
+    expect(events).toHaveLength(1);
+    await expect(Effect.runPromise(auditLog.requirements)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: platformModuleId.runtimeConfig,
+          action: runtimeConfigAuditAction.overrideChanged,
+        }),
+      ]),
+    );
+  });
+
+  it("resolves runtime config and builds change proposals", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+
+    const resolution = await Effect.runPromise(
+      runtimeConfig.resolveConfigValue({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        overrides: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            key: tenantBrandingConfigKey.companyName,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            value: "Acme Organization",
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_admin_1",
+            changedAt: new Date().toISOString(),
+          },
+        ],
+        entitlements: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            active: true,
+            grantedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    const proposals = await Effect.runPromise(
+      runtimeConfig.buildChangeProposals({
+        moduleId: platformModuleId.tenantBranding,
+        overrides: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            key: "tenant-branding.legacyTheme",
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            value: "legacy",
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_admin_1",
+            changedAt: new Date().toISOString(),
+          },
+          {
+            moduleId: platformModuleId.runtimeConfig,
+            key: `${platformModuleId.runtimeConfig}.staleKey`,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            value: "ignore-me",
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_admin_1",
+            changedAt: new Date().toISOString(),
+          },
+        ],
+        renameMap: {
+          "tenant-branding.legacyTheme": tenantBrandingConfigKey.themePrimary,
+        },
+      }),
+    );
+
+    expect(resolution.effectiveValue).toBe("Acme Organization");
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      action: runtimeChangeProposalAction.rename,
+      artifactPath: expect.stringContaining("runtime-config-proposals"),
+    });
+  });
+
+  it("grants break-glass access with audit context", async () => {
+    const supportOperations = await Effect.runPromise(
+      makeSupportOperationsModule(),
+    );
+
+    const grant = await Effect.runPromise(
+      supportOperations.grantBreakGlassAccess({
+        requestContext: supportRequestContext,
+        approvedBy: "usr_platform_admin_1",
+        reason: "Investigate regulated-sensitive access issue",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    expect(grant.grantedRequestContext.breakGlass?.approvedBy).toBe(
+      "usr_platform_admin_1",
+    );
+    expect(grant.auditEvent.action).toBe(
+      supportOperationsAuditAction.breakGlassStarted,
+    );
+  });
+
+  it("rejects unauthenticated break-glass grants with a typed error", async () => {
+    const supportOperations = await Effect.runPromise(
+      makeSupportOperationsModule(),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        supportOperations.grantBreakGlassAccess({
+          requestContext: {
+            actorType: supportRequestContext.actorType,
+            sessionId: supportRequestContext.sessionId,
+            correlationId: supportRequestContext.correlationId,
+            tenant: supportRequestContext.tenant,
+          },
+          approvedBy: "usr_platform_admin_1",
+          reason: "Investigate regulated-sensitive access issue",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        }),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      throw new Error("Expected unauthenticated break-glass grant to fail.");
+    }
+    expect(result.left).toMatchObject({
+      _tag: "UnauthenticatedBreakGlassActorError",
+    });
+  });
+
+  it("rejects unsupported and expired break-glass grants with typed errors", async () => {
+    const supportOperations = await Effect.runPromise(
+      makeSupportOperationsModule(),
+    );
+
+    const unsupportedResult = await Effect.runPromise(
+      Effect.either(
+        supportOperations.grantBreakGlassAccess({
+          requestContext: organizationRequestContext,
+          approvedBy: "usr_platform_admin_1",
+          reason: "Attempt unsupported escalation",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        }),
+      ),
+    );
+
+    expect(unsupportedResult._tag).toBe("Left");
+    if (unsupportedResult._tag !== "Left") {
+      throw new Error("Expected unsupported break-glass grant to fail.");
+    }
+    expect(unsupportedResult.left).toMatchObject({
+      _tag: "UnsupportedSupportActorError",
+      actorType: organizationRequestContext.actorType,
+    });
+
+    const expiredResult = await Effect.runPromise(
+      Effect.either(
+        supportOperations.grantBreakGlassAccess({
+          requestContext: supportRequestContext,
+          approvedBy: "usr_platform_admin_1",
+          reason: "Attempt expired escalation",
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        }),
+      ),
+    );
+
+    expect(expiredResult._tag).toBe("Left");
+    if (expiredResult._tag !== "Left") {
+      throw new Error("Expected expired break-glass grant to fail.");
+    }
+    expect(expiredResult.left).toMatchObject({
+      _tag: "InvalidBreakGlassExpiryError",
+    });
+  });
+
+  it("validates escalation for privileged actor types", async () => {
+    const supportOperations = await Effect.runPromise(
+      makeSupportOperationsModule(),
+    );
+
+    const allowed = await Effect.runPromise(
+      supportOperations.validateEscalation(supportRequestContext),
+    );
+    const denied = await Effect.runPromise(
+      supportOperations.validateEscalation(organizationRequestContext),
+    );
+
+    expect(allowed.allowed).toBe(true);
+    expect(denied.allowed).toBe(false);
+  });
+
+  it("returns typed unknown-config-key failures", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+    const unknownConfigKey = `${platformModuleId.tenantBranding}.unknownKey`;
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        runtimeConfig.resolveConfigValue({
+          requestContext: organizationRequestContext,
+          moduleId: platformModuleId.tenantBranding,
+          key: unknownConfigKey,
+          overrides: [],
+          entitlements: [],
+        }),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      throw new Error("Expected unknown config key resolution to fail.");
+    }
+    expect(result.left).toMatchObject({
+      _tag: "UnknownConfigKeyError",
+      key: unknownConfigKey,
+    });
+  });
+
+  it("returns unentitled default when config key is billable and unentitled", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+
+    const resolution = await Effect.runPromise(
+      runtimeConfig.resolveConfigValue({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        overrides: [],
+        entitlements: [],
+      }),
+    );
+
+    expect(resolution.source).toBe(runtimeResolutionSource.unentitledDefault);
+    expect(resolution.entitled).toBe(false);
+  });
+
+  it("resolves feature flag with entitlement gate", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+
+    const unentitled = await Effect.runPromise(
+      runtimeConfig.resolveFeatureFlag({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        flag: {
+          key: tenantBrandingFeatureFlag.enabled,
+          description: "Enable tenant-specific branding.",
+          owner: platformModuleId.tenantBranding,
+          purpose: "Gate branding.",
+          defaultEnabled: true,
+          billable: true,
+          allowedScopes: [
+            platformScope.platform,
+            platformScope.enterprise,
+            platformScope.organization,
+          ],
+          retirementPlan: "None.",
+        },
+        overrides: [],
+        entitlements: [],
+      }),
+    );
+
+    expect(unentitled.effectiveValue).toBe(false);
+    expect(unentitled.entitled).toBe(false);
+
+    const entitled = await Effect.runPromise(
+      runtimeConfig.resolveFeatureFlag({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        flag: {
+          key: tenantBrandingFeatureFlag.enabled,
+          description: "Enable tenant-specific branding.",
+          owner: platformModuleId.tenantBranding,
+          purpose: "Gate branding.",
+          defaultEnabled: true,
+          billable: true,
+          allowedScopes: [
+            platformScope.platform,
+            platformScope.enterprise,
+            platformScope.organization,
+          ],
+          retirementPlan: "None.",
+        },
+        overrides: [],
+        entitlements: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            active: true,
+            grantedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+
+    expect(entitled.effectiveValue).toBe(true);
+    expect(entitled.entitled).toBe(true);
+  });
+});

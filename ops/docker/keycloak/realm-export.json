@@ -1,0 +1,40 @@
+{
+  "realm": "comvestec",
+  "enabled": true,
+  "displayName": "Comvestec SaaS Foundation",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "clients": [
+    {
+      "clientId": "saas-platform",
+      "name": "Comvestec SaaS Platform",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "change-me",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3002/*",
+        "http://localhost:3004/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:3002",
+        "http://localhost:3004"
+      ],
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": true
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "platform-admin" },
+      { "name": "support-operator" },
+      { "name": "tenant-admin" }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@comvestec/platform",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@comvestec/config": "workspace:*",
+    "@comvestec/contracts": "workspace:*",
+    "effect": "^3.21.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo platform lint pending",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

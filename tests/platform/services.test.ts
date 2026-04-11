@@ -1,0 +1,185 @@
+import { Effect } from "effect";
+import {
+  actorType,
+  platformModuleId,
+  platformScope,
+} from "@comvestec/contracts";
+import { platformHost, findModuleManifest } from "@comvestec/config";
+import {
+  makeRuntimeEnvironment,
+  makePlatformEnvironmentLayer,
+  getPublicWebSnapshot,
+  getProductAppSnapshot,
+  getAdminAppSnapshot,
+  getPublicWebSnapshotForRequest,
+  getProductAppSnapshotForRequest,
+  getAdminAppSnapshotForRequest,
+} from "@comvestec/platform";
+
+describe("platform services", () => {
+  it("creates a runtime environment with redacted secrets", async () => {
+    const runtimeEnvironment = await Effect.runPromise(
+      makeRuntimeEnvironment({
+        nodeEnv: "development",
+        appBaseUrl: "http://localhost:3000",
+        convexUrl: "http://127.0.0.1:3210",
+        convexSiteUrl: "http://127.0.0.1:3211",
+        convexAdminKey: "admin-key",
+        postgresUrl: "postgresql://user:pass@localhost:5432/db",
+        keycloakBaseUrl: "http://localhost:8080",
+        keycloakRealm: "comvestec",
+        keycloakClientId: "saas-platform",
+        keycloakClientSecret: "secret",
+        otelEndpoint: "http://localhost:4318",
+        grafanaBaseUrl: "http://localhost:3001",
+        valkeyUrl: "redis://localhost:6379",
+        unleashUrl: "http://localhost:4242",
+        unleashApiKey: "default:development.unleash-insecure-api-token",
+        ketoReadUrl: "http://localhost:4466",
+        ketoWriteUrl: "http://localhost:4467",
+        errorTrackingDsn: "https://glitchtip.local/api/1/store/",
+        posthogApiKey: "phc_test",
+        posthogHost: "http://localhost:8000",
+        novuApiKey: "novu-api-key",
+        novuApiUrl: "http://localhost:3100",
+        meilisearchUrl: "http://localhost:7700",
+        meilisearchApiKey: "meili-master-key",
+        polarApiKey: "polar-api-key",
+        polarApiUrl: "http://localhost:8888",
+        openmeterUrl: "http://localhost:8889",
+        openmeterApiKey: "openmeter-api-key",
+        postalApiUrl: "http://localhost:5000",
+        postalApiKey: "postal-api-key",
+      }),
+    );
+
+    expect(runtimeEnvironment.keycloakRealm).toBe("comvestec");
+    expect(makePlatformEnvironmentLayer).toBeDefined();
+  });
+
+  it("builds effect-backed app snapshots", async () => {
+    await expect(
+      Effect.runPromise(getPublicWebSnapshot),
+    ).resolves.toMatchObject({
+      application: "Public web",
+      platformRuntime: "effect",
+      branding: { moduleId: platformModuleId.tenantBranding },
+      requestContext: {
+        actorType: actorType.anonymous,
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+      },
+    });
+    await expect(
+      Effect.runPromise(getProductAppSnapshot),
+    ).resolves.toMatchObject({
+      application: "Product app",
+      manifest: { moduleId: platformModuleId.tenantManagement },
+      brandingManifest: { moduleId: platformModuleId.tenantBranding },
+      requestContext: {
+        actorType: actorType.organizationMember,
+        tenant: { scope: platformScope.organization, scopeId: "org_demo" },
+      },
+    });
+    await expect(Effect.runPromise(getAdminAppSnapshot)).resolves.toMatchObject(
+      {
+        application: "Admin app",
+        manifest: { moduleId: platformModuleId.runtimeConfig },
+        brandingManifest: { moduleId: platformModuleId.tenantBranding },
+        requestContext: {
+          actorType: actorType.platformOperator,
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      },
+    );
+  });
+
+  it("builds public web snapshot for a custom request context", async () => {
+    const snapshot = await Effect.runPromise(
+      getPublicWebSnapshotForRequest({
+        actorType: actorType.anonymous,
+        correlationId: "public-web.custom",
+        host: platformHost.localDevelopment,
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+      }),
+    );
+
+    expect(snapshot.application).toBe("Public web");
+    expect(snapshot.requestContext.correlationId).toBe("public-web.custom");
+    expect(snapshot.branding.moduleId).toBe(platformModuleId.tenantBranding);
+  });
+
+  it("builds product app snapshot for a custom request context", async () => {
+    const snapshot = await Effect.runPromise(
+      getProductAppSnapshotForRequest({
+        actorType: actorType.organizationMember,
+        actorId: "usr_custom_member",
+        sessionId: "sess_custom",
+        correlationId: "product-app.custom",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_custom",
+          enterpriseId: "ent_custom",
+          organizationId: "org_custom",
+          individualId: "usr_custom_member",
+        },
+      }),
+    );
+
+    expect(snapshot.application).toBe("Product app");
+    expect(snapshot.requestContext.actorId).toBe("usr_custom_member");
+    expect(snapshot.manifest.moduleId).toBe(platformModuleId.tenantManagement);
+  });
+
+  it("builds admin app snapshot for a custom request context", async () => {
+    const snapshot = await Effect.runPromise(
+      getAdminAppSnapshotForRequest({
+        actorType: actorType.platformOperator,
+        actorId: "usr_custom_admin",
+        sessionId: "sess_custom_admin",
+        correlationId: "admin-app.custom",
+        reason: "Custom admin inspection",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+      }),
+    );
+
+    expect(snapshot.application).toBe("Admin app");
+    expect(snapshot.requestContext.actorId).toBe("usr_custom_admin");
+    expect(snapshot.manifest.moduleId).toBe(platformModuleId.runtimeConfig);
+  });
+
+  it("returns MissingModuleManifestError for unknown module", async () => {
+    const getRequiredModuleManifest = (moduleId: string) =>
+      Effect.fromNullable(
+        findModuleManifest(
+          moduleId as typeof platformModuleId.tenantManagement,
+        ),
+      ).pipe(
+        Effect.mapError(() => ({
+          _tag: "MissingModuleManifestError" as const,
+          moduleId,
+        })),
+      );
+
+    const validResult = await Effect.runPromiseExit(
+      getRequiredModuleManifest(platformModuleId.tenantManagement),
+    );
+    expect(validResult._tag).toBe("Success");
+
+    const invalidResult = await Effect.runPromiseExit(
+      getRequiredModuleManifest("nonexistent-module"),
+    );
+    expect(invalidResult._tag).toBe("Failure");
+  });
+});
