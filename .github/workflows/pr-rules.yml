@@ -1,0 +1,33 @@
+name: Pull Request Rules
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-pr-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out base repository rules
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate branch name
+        env:
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        run: node tooling/scripts/validate-branch-name.mjs "$BRANCH_NAME"
+
+      - name: Validate pull request body template
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node tooling/scripts/validate-pr-body.mjs

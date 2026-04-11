@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/ComvestecSolutions/saas/security/policy
+    about: Report vulnerabilities through the security policy instead of public issues.
+  - name: Contribution guide
+    url: https://github.com/ComvestecSolutions/saas/blob/main/CONTRIBUTING.md
+    about: Review the contribution workflow, branch naming rules, and commit policy.
+  - name: Support guide
+    url: https://github.com/ComvestecSolutions/saas/blob/main/SUPPORT.md
+    about: Use the support guide for general usage and contribution questions.

@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a focused improvement for the SaaS foundation.
+title: "feat(repo): "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the proposed change.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: Explain what this change improves.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Describe the intended behavior, workflow, or design direction.
+    validations:
+      required: true
+  - type: textarea
+    id: affected-surfaces
+    attributes:
+      label: Affected surfaces
+      description: List impacted modules, packages, apps, specs, or ops surfaces.
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Describe how the change should be validated.
