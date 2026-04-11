@@ -1,0 +1,12 @@
+node_modules/
+.turbo/
+dist/
+.output/
+.nitro/
+.data/
+coverage/
+playwright-report/
+test-results/
+vendor/
+bun.lock
+**/routeTree.gen.ts

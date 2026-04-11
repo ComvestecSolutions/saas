@@ -1,0 +1,13 @@
+.git/
+node_modules/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+dist/
+.output/
+.nitro/
+.data/
+.env
+.env.*
+vendor/
