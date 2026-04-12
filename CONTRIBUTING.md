@@ -103,7 +103,8 @@ Examples:
 4. Fill out the pull request template fully.
 5. Make sure the PR body begins with `# Pull Request` and keeps these headings intact: `## What Does This PR Do?`, `## Why Is This Needed?`, `## What Changed?`, `## Testing Notes`, `## Screenshots/Demo (If Applicable)`, `## Review Notes`, and `## Checklist`.
 6. Do not add placeholder linked-work-item fields or manual affected-surface sections; GitHub applies path-based labels automatically from changed paths.
-7. Do not leave placeholder text, unchecked assumptions, or unrelated commits in the branch history.
+7. GitHub auto-assigns the PR author when the author is assignable in the repository; reassign only when ownership truly changes.
+8. Do not leave placeholder text, unchecked assumptions, or unrelated commits in the branch history.
 
 ## Required Validation
 

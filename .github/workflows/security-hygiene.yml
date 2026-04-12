@@ -1,5 +1,9 @@
 name: Security Hygiene
 
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.69.3
+  TRIVY_CACHE_DIR: .trivy-cache
+
 permissions:
   contents: read
 
@@ -39,31 +43,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Pull Latest Trivy Container
+        run: docker pull "$TRIVY_IMAGE"
+
       - name: Trivy Filesystem Scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          scan-type: fs
-          scan-ref: .
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          format: table
-          exit-code: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$TRIVY_CACHE_DIR"
+
+          docker run --rm \
+            -v "${PWD}:/workspace" \
+            -v "${PWD}/${TRIVY_CACHE_DIR}:/root/.cache/" \
+            --workdir /workspace \
+            "$TRIVY_IMAGE" fs \
+            --scanners vuln \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --format table \
+            --exit-code 1 \
+            --no-progress \
+            /workspace
 
       - name: Trivy Configuration Scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
-        with:
-          scan-type: config
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          format: table
-          exit-code: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$TRIVY_CACHE_DIR"
+
+          docker run --rm \
+            -v "${PWD}:/workspace" \
+            -v "${PWD}/${TRIVY_CACHE_DIR}:/root/.cache/" \
+            --workdir /workspace \
+            "$TRIVY_IMAGE" config \
+            --severity CRITICAL,HIGH \
+            --format table \
+            --exit-code 1 \
+            --no-progress \
+            /workspace
 
   infrastructure-image-review:
     name: Infrastructure Image CVE Review
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Pull Latest Trivy Container
+        run: docker pull "$TRIVY_IMAGE"
 
       - name: Collect Compose Images
         run: docker compose -f ops/docker/compose.yml config --images | sort -u > trivy-images.txt
@@ -73,16 +103,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          trivy_image="aquasec/trivy:0.68.2"
-          trivy_cache_dir="${PWD}/.trivy-cache"
+          trivy_cache_dir="${PWD}/${TRIVY_CACHE_DIR}"
 
           mkdir -p "$trivy_cache_dir"
-          docker pull "$trivy_image"
 
           {
             echo "## Infrastructure Image CVE Review"
             echo
-            echo "Reviewed pinned images from ops/docker/compose.yml. High and critical findings are advisory and attached as a workflow artifact so upstream vendor CVEs do not block repository changes."
+            echo "Reviewed pinned images from ops/docker/compose.yml. High and critical findings fail this job, and the full report is attached as a workflow artifact for triage."
             echo
             echo "Images scanned:"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -101,18 +129,19 @@ jobs:
               echo "=== $image ==="
               docker run --rm \
                 -v "$trivy_cache_dir:/root/.cache/" \
-                "$trivy_image" image \
+                "$TRIVY_IMAGE" image \
                 --severity CRITICAL,HIGH \
                 --ignore-unfixed \
                 --format table \
-                --exit-code 0 \
+                --exit-code 1 \
                 --no-progress \
                 "$image"
             } | tee -a trivy-image-review.log
           done < trivy-images.txt
 
       - name: Upload Infrastructure Image Review
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: trivy-image-review
           path: trivy-image-review.log
