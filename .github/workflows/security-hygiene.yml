@@ -65,7 +65,7 @@ jobs:
             --ignore-unfixed \
             --format table \
             --exit-code 1 \
-            --no-progress \
+            --quiet \
             /workspace
 
       - name: Trivy Configuration Scan
@@ -83,7 +83,7 @@ jobs:
             --severity CRITICAL,HIGH \
             --format table \
             --exit-code 1 \
-            --no-progress \
+            --quiet \
             /workspace
 
   infrastructure-image-review:
@@ -104,6 +104,7 @@ jobs:
           set -euo pipefail
 
           trivy_cache_dir="${PWD}/${TRIVY_CACHE_DIR}"
+          scan_failed=0
 
           mkdir -p "$trivy_cache_dir"
 
@@ -124,20 +125,33 @@ jobs:
 
             echo "- $image" >> "$GITHUB_STEP_SUMMARY"
 
+            image_log="$(mktemp)"
+
+            if docker run --rm \
+              -v "$trivy_cache_dir:/root/.cache/" \
+              "$TRIVY_IMAGE" image \
+              --scanners vuln \
+              --severity CRITICAL,HIGH \
+              --ignore-unfixed \
+              --format table \
+              --exit-code 1 \
+              --quiet \
+              "$image" >"$image_log" 2>&1; then
+              :
+            else
+              scan_failed=1
+            fi
+
             {
               echo
               echo "=== $image ==="
-              docker run --rm \
-                -v "$trivy_cache_dir:/root/.cache/" \
-                "$TRIVY_IMAGE" image \
-                --severity CRITICAL,HIGH \
-                --ignore-unfixed \
-                --format table \
-                --exit-code 1 \
-                --no-progress \
-                "$image"
+              cat "$image_log"
             } | tee -a trivy-image-review.log
+
+            rm -f "$image_log"
           done < trivy-images.txt
+
+          exit "$scan_failed"
 
       - name: Upload Infrastructure Image Review
         if: always()
