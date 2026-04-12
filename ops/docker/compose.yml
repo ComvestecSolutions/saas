@@ -154,7 +154,7 @@ services:
       - tempo_data:/var/tempo
 
   ory-keto:
-    image: oryd/keto:v0.13.0
+    image: oryd/keto:v0.14.0
     command: ["serve", "--config", "/etc/keto/config.yaml"]
     environment:
       DSN: ${KETO_DSN:-postgres://comvestec:comvestec@postgres:5432/comvestec?sslmode=disable}
