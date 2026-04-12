@@ -1,0 +1,102 @@
+"area:admin-app":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/admin-app/**"
+          - "specs/02-apps/admin-app/**"
+
+"area:product-app":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/product-app/**"
+          - "specs/02-apps/product-app/**"
+
+"area:public-web":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/public-web/**"
+          - "specs/02-apps/public-web/**"
+
+"area:config":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/config/**"
+
+"area:contracts":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/contracts/**"
+
+"area:modules":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/modules/**"
+          - "specs/02-modules/**"
+
+"area:platform":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/platform/**"
+          - "specs/01-platform/**"
+
+"area:e2e":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/e2e/**"
+
+"area:tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+
+"area:ops":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "ops/**"
+          - "specs/04-ops/**"
+
+"area:specs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "specs/**"
+
+"area:docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "CONTRIBUTING.md"
+          - "CODE_OF_CONDUCT.md"
+          - "SECURITY.md"
+          - "SUPPORT.md"
+          - ".github/pull_request_template.md"
+          - ".github/copilot-instructions.md"
+          - ".github/instructions/**"
+          - ".github/skills/**"
+          - "apps/**/README.md"
+          - "packages/**/README.md"
+          - "tooling/README.md"
+
+"area:ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/dependabot.yml"
+          - ".githooks/**"
+          - "commitlint.config.cjs"
+          - "lint-staged.config.mjs"
+          - "tooling/scripts/**"
+
+"area:repo":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "package.json"
+          - "bun.lock"
+          - "tsconfig*.json"
+          - "turbo.json"
+          - "jest.config.cjs"
+          - ".prettierrc.json"
+          - ".prettierignore"
+          - ".gitattributes"
+          - ".dockerignore"
+          - "patches/**"
+          - "tooling/**"
+          - "vendor/**"
