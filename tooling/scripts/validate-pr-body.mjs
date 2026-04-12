@@ -2,10 +2,12 @@ const body = process.env.PR_BODY ?? "";
 const trimmed = body.replace(/^\s+/, "");
 const requiredHeadings = [
   "# Pull Request",
-  "## Summary",
-  "## Related",
-  "## Testing",
-  "## Risks",
+  "## What Does This PR Do?",
+  "## Why Is This Needed?",
+  "## What Changed?",
+  "## Testing Notes",
+  "## Screenshots/Demo (If Applicable)",
+  "## Review Notes",
   "## Checklist",
 ];
 
