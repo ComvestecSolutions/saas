@@ -1,0 +1,102 @@
+"admin-app":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/admin-app/**"
+          - "specs/02-apps/admin-app/**"
+
+"product-app":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/product-app/**"
+          - "specs/02-apps/product-app/**"
+
+"public-web":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/public-web/**"
+          - "specs/02-apps/public-web/**"
+
+"config":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/config/**"
+
+"contracts":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/contracts/**"
+
+"modules":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/modules/**"
+          - "specs/02-modules/**"
+
+"platform":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/platform/**"
+          - "specs/01-platform/**"
+
+"e2e":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "e2e/**"
+
+"tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+
+"ops":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "ops/**"
+          - "specs/04-ops/**"
+
+"specs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "specs/**"
+
+"docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "CONTRIBUTING.md"
+          - "CODE_OF_CONDUCT.md"
+          - "SECURITY.md"
+          - "SUPPORT.md"
+          - ".github/pull_request_template.md"
+          - ".github/copilot-instructions.md"
+          - ".github/instructions/**"
+          - ".github/skills/**"
+          - "apps/**/README.md"
+          - "packages/**/README.md"
+          - "tooling/README.md"
+
+"ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/dependabot.yml"
+          - ".githooks/**"
+          - "commitlint.config.cjs"
+          - "lint-staged.config.mjs"
+          - "tooling/scripts/**"
+
+"repo":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "package.json"
+          - "bun.lock"
+          - "tsconfig*.json"
+          - "turbo.json"
+          - "jest.config.cjs"
+          - ".prettierrc.json"
+          - ".prettierignore"
+          - ".gitattributes"
+          - ".dockerignore"
+          - "patches/**"
+          - "tooling/**"
+          - "vendor/**"

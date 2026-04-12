@@ -1,0 +1,24 @@
+name: Pull Request Labels
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  apply-path-labels:
+    name: Apply Path-based Labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply Pull Request Labels
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: true

@@ -1,0 +1,346 @@
+import {
+  configSchemaType,
+  dataClassification,
+  defineDataClassificationDeclarations,
+  defineModuleFields,
+  defineProjectionDescriptors,
+  permissionScope,
+  platformModuleId,
+  platformScope,
+  projectionProfile,
+} from "@comvestec/contracts";
+import {
+  configDefaultValue,
+  defineModuleConfigKeys,
+  defineModuleFeatureFlags,
+  defineModuleManifest,
+  defineModuleRuntimeValueKeys,
+} from "../../manifest-helpers";
+
+export const tenantBrandingConfigKey = defineModuleConfigKeys(
+  platformModuleId.tenantBranding,
+  {
+    companyName: "companyName",
+    logoAssetId: "logoAssetId",
+    faviconAssetId: "faviconAssetId",
+    themePrimary: "theme.primary",
+    themeSecondary: "theme.secondary",
+    themeAccent: "theme.accent",
+    fontHeading: "font.heading",
+    fontBody: "font.body",
+    supportEmail: "supportEmail",
+    replyToEmail: "replyToEmail",
+    customDomainHost: "customDomain.host",
+  },
+);
+
+export const tenantBrandingFeatureFlag = defineModuleFeatureFlags(
+  platformModuleId.tenantBranding,
+  {
+    enabled: "enabled",
+    customDomain: "customDomain",
+    brandedEmails: "brandedEmails",
+  },
+);
+
+export const tenantBrandingRuntimeValueKey = defineModuleRuntimeValueKeys(
+  platformModuleId.tenantBranding,
+  {
+    customDomainStatus: "customDomain.status",
+  },
+);
+
+export const tenantBrandingFields = defineModuleFields({
+  companyName: "companyName",
+  logoAssetId: "logoAssetId",
+  faviconAssetId: "faviconAssetId",
+  theme: "theme",
+  supportEmail: "supportEmail",
+  replyToEmail: "replyToEmail",
+  customDomainHost: "customDomain.host",
+  customDomainStatus: "customDomain.status",
+  scope: "scope",
+  changedBy: "changedBy",
+  changedAt: "changedAt",
+});
+
+export const tenantBrandingFieldClassifications =
+  defineDataClassificationDeclarations(tenantBrandingFields, [
+    {
+      field: tenantBrandingFields.companyName,
+      classification: dataClassification.public,
+    },
+    {
+      field: tenantBrandingFields.logoAssetId,
+      classification: dataClassification.public,
+    },
+    {
+      field: tenantBrandingFields.faviconAssetId,
+      classification: dataClassification.public,
+    },
+    {
+      field: tenantBrandingFields.theme,
+      classification: dataClassification.public,
+    },
+    {
+      field: tenantBrandingFields.supportEmail,
+      classification: dataClassification.public,
+    },
+    {
+      field: tenantBrandingFields.replyToEmail,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantBrandingFields.customDomainHost,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantBrandingFields.customDomainStatus,
+      classification: dataClassification.internal,
+    },
+    {
+      field: tenantBrandingFields.scope,
+      classification: dataClassification.internal,
+    },
+    {
+      field: tenantBrandingFields.changedBy,
+      classification: dataClassification.internal,
+    },
+    {
+      field: tenantBrandingFields.changedAt,
+      classification: dataClassification.internal,
+    },
+  ]);
+
+export const tenantBrandingManifest = defineModuleManifest({
+  moduleId: platformModuleId.tenantBranding,
+  configKeys: [
+    {
+      key: tenantBrandingConfigKey.companyName,
+      description: "Public display name for the tenant.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.logoAssetId,
+      description: "File reference for the published tenant logo.",
+      schema: configSchemaType.stringOrNull,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.faviconAssetId,
+      description: "File reference for the published tenant favicon.",
+      schema: configSchemaType.stringOrNull,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.themePrimary,
+      description: "Approved primary color token.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.themeSecondary,
+      description: "Approved secondary color token.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.themeAccent,
+      description: "Approved accent color token.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.fontHeading,
+      description: "Approved heading font token.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.fontBody,
+      description: "Approved body font token.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.supportEmail,
+      description: "Public support contact shown in branded surfaces.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.replyToEmail,
+      description: "Reply-to identity for branded email surfaces.",
+      schema: configSchemaType.string,
+      defaultValue: configDefaultValue.inherit,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantBranding,
+    },
+    {
+      key: tenantBrandingConfigKey.customDomainHost,
+      description: "Requested customer-owned hostname for public entry.",
+      schema: configSchemaType.stringOrNull,
+      defaultValue: null,
+      billable: true,
+      allowedScopes: [platformScope.enterprise, platformScope.organization],
+      owner: platformModuleId.tenantBranding,
+    },
+  ],
+  featureFlags: [
+    {
+      key: tenantBrandingFeatureFlag.enabled,
+      description: "Enable tenant-specific branding beyond platform defaults.",
+      owner: platformModuleId.tenantBranding,
+      purpose: "Gate tenant-specific branding across app surfaces.",
+      defaultEnabled: false,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      retirementPlan: "None — premium capability.",
+    },
+    {
+      key: tenantBrandingFeatureFlag.customDomain,
+      description: "Allow tenant custom-domain requests and activation.",
+      owner: platformModuleId.tenantBranding,
+      purpose: "Gate custom-domain configuration and activation.",
+      defaultEnabled: false,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      retirementPlan: "Retire only with a domain migration plan.",
+    },
+    {
+      key: tenantBrandingFeatureFlag.brandedEmails,
+      description: "Apply tenant sender identity and branded email chrome.",
+      owner: platformModuleId.tenantBranding,
+      purpose: "Gate branded transactional email delivery.",
+      defaultEnabled: false,
+      billable: true,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      retirementPlan: "Retire only with a fallback to platform email branding.",
+    },
+  ],
+  permissionScopes: [permissionScope.brandingManage],
+  fieldClassifications: tenantBrandingFieldClassifications,
+  projectionProfiles: defineProjectionDescriptors(tenantBrandingFields, [
+    {
+      profile: projectionProfile.summary,
+      visibleFields: [
+        tenantBrandingFields.companyName,
+        tenantBrandingFields.logoAssetId,
+        tenantBrandingFields.faviconAssetId,
+        tenantBrandingFields.theme,
+        tenantBrandingFields.supportEmail,
+      ],
+      auditedFields: [],
+    },
+    {
+      profile: projectionProfile.admin,
+      visibleFields: [
+        tenantBrandingFields.companyName,
+        tenantBrandingFields.logoAssetId,
+        tenantBrandingFields.faviconAssetId,
+        tenantBrandingFields.theme,
+        tenantBrandingFields.supportEmail,
+        tenantBrandingFields.replyToEmail,
+        tenantBrandingFields.customDomainHost,
+        tenantBrandingFields.customDomainStatus,
+        tenantBrandingFields.scope,
+        tenantBrandingFields.changedBy,
+      ],
+      auditedFields: [
+        tenantBrandingFields.replyToEmail,
+        tenantBrandingFields.customDomainHost,
+      ],
+    },
+    {
+      profile: projectionProfile.supportSafe,
+      visibleFields: [
+        tenantBrandingFields.companyName,
+        tenantBrandingFields.customDomainStatus,
+        tenantBrandingFields.scope,
+        tenantBrandingFields.changedAt,
+      ],
+      auditedFields: [tenantBrandingFields.customDomainStatus],
+    },
+  ]),
+});

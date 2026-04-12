@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible defect in the SaaS foundation.
+title: "bug(repo): "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible defects. For vulnerabilities, use the security policy instead of public issues.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the problem and impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide exact steps or commands.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation evidence
+      description: Include `bun run typecheck`, `bun run test`, logs, or screenshots where relevant.
+  - type: input
+    id: area
+    attributes:
+      label: Affected area
+      placeholder: platform, modules, config, contracts, admin-app, product-app, public-web, ops
+    validations:
+      required: true

@@ -1,0 +1,161 @@
+name: Security Hygiene
+
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.69.3
+  TRIVY_CACHE_DIR: .trivy-cache
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+      - name: Run Bun Audit
+        run: bun audit
+
+  compose-validation:
+    name: Docker Compose Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate Compose Configuration
+        run: docker compose -f ops/docker/compose.yml config
+
+  trivy-repository-scan:
+    name: Trivy Repository Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pull Latest Trivy Container
+        run: docker pull "$TRIVY_IMAGE"
+
+      - name: Trivy Filesystem Scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$TRIVY_CACHE_DIR"
+
+          docker run --rm \
+            -v "${PWD}:/workspace" \
+            -v "${PWD}/${TRIVY_CACHE_DIR}:/root/.cache/" \
+            --workdir /workspace \
+            "$TRIVY_IMAGE" fs \
+            --scanners vuln \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --format table \
+            --exit-code 1 \
+            --quiet \
+            /workspace
+
+      - name: Trivy Configuration Scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$TRIVY_CACHE_DIR"
+
+          docker run --rm \
+            -v "${PWD}:/workspace" \
+            -v "${PWD}/${TRIVY_CACHE_DIR}:/root/.cache/" \
+            --workdir /workspace \
+            "$TRIVY_IMAGE" config \
+            --severity CRITICAL,HIGH \
+            --format table \
+            --exit-code 1 \
+            --quiet \
+            /workspace
+
+  infrastructure-image-review:
+    name: Infrastructure Image CVE Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pull Latest Trivy Container
+        run: docker pull "$TRIVY_IMAGE"
+
+      - name: Collect Compose Images
+        run: docker compose -f ops/docker/compose.yml config --images | sort -u > trivy-images.txt
+
+      - name: Review Infrastructure Images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          trivy_cache_dir="${PWD}/${TRIVY_CACHE_DIR}"
+          scan_failed=0
+
+          mkdir -p "$trivy_cache_dir"
+
+          {
+            echo "## Infrastructure Image CVE Review"
+            echo
+            echo "Reviewed pinned images from ops/docker/compose.yml. High and critical findings fail this job, and the full report is attached as a workflow artifact for triage."
+            echo
+            echo "Images scanned:"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          : > trivy-image-review.log
+
+          while IFS= read -r image; do
+            if [ -z "$image" ]; then
+              continue
+            fi
+
+            echo "- $image" >> "$GITHUB_STEP_SUMMARY"
+
+            image_log="$(mktemp)"
+
+            if docker run --rm \
+              -v "$trivy_cache_dir:/root/.cache/" \
+              "$TRIVY_IMAGE" image \
+              --scanners vuln \
+              --severity CRITICAL,HIGH \
+              --ignore-unfixed \
+              --format table \
+              --exit-code 1 \
+              --quiet \
+              "$image" >"$image_log" 2>&1; then
+              :
+            else
+              scan_failed=1
+            fi
+
+            {
+              echo
+              echo "=== $image ==="
+              cat "$image_log"
+            } | tee -a trivy-image-review.log
+
+            rm -f "$image_log"
+          done < trivy-images.txt
+
+          exit "$scan_failed"
+
+      - name: Upload Infrastructure Image Review
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: trivy-image-review
+          path: trivy-image-review.log
