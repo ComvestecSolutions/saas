@@ -24,7 +24,7 @@ services:
       start_period: 10s
 
   valkey:
-    image: valkey/valkey:9.0.3-alpine3.23
+    image: valkey/valkey:9.0.3-trixie
     command: ["valkey-server", "--save", "", "--appendonly", "no"]
     ports:
       - ${VALKEY_PORT:-6379}:6379
