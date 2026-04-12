@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           scan-type: fs
           scan-ref: .
@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           scan-type: config
           scan-ref: .
@@ -85,7 +85,7 @@ jobs:
           - glitchtip/glitchtip:6
     steps:
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           scan-type: image
           image-ref: ${{ matrix.image }}
