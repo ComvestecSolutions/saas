@@ -10,6 +10,16 @@ This repository is the reusable SaaS foundation for Comvestec Solutions. Every c
 2. Add or update ADRs when a non-trivial technology or architecture decision changes.
 3. Implement code only after the relevant spec exists and is accepted.
 
+## Repository Workflow
+
+1. Follow `CONTRIBUTING.md` as the source of truth for branch, commit, and pull request workflow.
+2. Use only `main`, `dev`, or `<type>/<scope>-<slug>` branch names. Branch scopes are `repo`, `contracts`, `config`, `modules`, `platform`, `apps`, `admin-app`, `product-app`, `public-web`, `ops`, `specs`, `tests`, `e2e`, `security`, `deps`, and `tooling`.
+3. Keep each commit focused on one primary change area. Companion `repo`, `docs`, and `tests` changes are acceptable only when they directly support that same area.
+4. Commit messages use Conventional Commits with a required scope. Commit scopes use the branch scope list and may additionally use `docs` and `ci` for repository documentation or workflow automation changes.
+5. Open pull requests into `dev`.
+6. Pull request bodies must begin with `# Pull Request` and include `## What Does This PR Do?`, `## Why Is This Needed?`, `## What Changed?`, `## Testing Notes`, `## Screenshots/Demo (If Applicable)`, `## Review Notes`, and `## Checklist`.
+7. GitHub applies `area:*` labels automatically from changed paths, so do not rely on manual affected-surface checklists or linked-work-item placeholders in PR bodies.
+
 ## Hard Rules
 
 1. Preserve the modular monolith architecture. Do not introduce microservices, per-module deployments, or direct cross-module persistence writes.

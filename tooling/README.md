@@ -2,6 +2,14 @@
 
 This directory is reserved for repository automation, validation scripts, spec checks, and generation tools.
 
+## Current Workflow Automation
+
+1. `tooling/scripts/setup-hooks.mjs` configures `.githooks` as the local hook path.
+2. `tooling/scripts/validate-branch-name.mjs` enforces `main`, `dev`, or `<type>/<scope>-<slug>` branch names.
+3. `tooling/scripts/validate-staged-groups.mjs` enforces one primary change area per commit, with `repo`, `docs`, and `tests` treated as companion groups.
+4. `tooling/scripts/validate-pr-body.mjs` enforces the required pull request template headings.
+5. `commitlint.config.cjs` and `lint-staged.config.mjs` enforce commit-message structure and staged-file formatting.
+
 Planned tooling includes:
 
 1. spec validation
