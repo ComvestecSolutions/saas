@@ -19,6 +19,7 @@
     "lint": "turbo run lint",
     "prepare": "bun run hooks:install",
     "branch:check": "node tooling/scripts/validate-branch-name.mjs",
+    "push:check": "node tooling/scripts/validate-pre-push.mjs",
     "staged:check": "node tooling/scripts/validate-staged-groups.mjs",
     "commit:check": "bunx commitlint --edit",
     "test": "bunx jest --config jest.config.cjs --runInBand",
