@@ -65,12 +65,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
-        with:
-          version: v0.68.2
-          cache: true
-
       - name: Collect Compose Images
         run: docker compose -f ops/docker/compose.yml config --images | sort -u > trivy-images.txt
 
@@ -78,6 +72,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          trivy_image="aquasec/trivy:0.68.2"
+          trivy_cache_dir="${PWD}/.trivy-cache"
+
+          mkdir -p "$trivy_cache_dir"
+          docker pull "$trivy_image"
 
           {
             echo "## Infrastructure Image CVE Review"
@@ -99,7 +99,9 @@ jobs:
             {
               echo
               echo "=== $image ==="
-              trivy image \
+              docker run --rm \
+                -v "$trivy_cache_dir:/root/.cache/" \
+                "$trivy_image" image \
                 --severity CRITICAL,HIGH \
                 --ignore-unfixed \
                 --format table \
