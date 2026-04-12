@@ -1,0 +1,83 @@
+- name: admin-app
+  color: dd686f
+  description: Changes affect the admin app surface.
+  aliases:
+    - area:admin-app
+
+- name: product-app
+  color: f08c2e
+  description: Changes affect the product app surface.
+  aliases:
+    - area:product-app
+
+- name: public-web
+  color: 2a9d8f
+  description: Changes affect the public web surface.
+  aliases:
+    - area:public-web
+
+- name: config
+  color: 7b61ff
+  description: Changes affect shared config manifests or helpers.
+  aliases:
+    - area:config
+
+- name: contracts
+  color: 1d9bf0
+  description: Changes affect shared contracts or schemas.
+  aliases:
+    - area:contracts
+
+- name: modules
+  color: 2fb344
+  description: Changes affect backend modules or module specs.
+  aliases:
+    - area:modules
+
+- name: platform
+  color: 0f766e
+  description: Changes affect platform adapters or services.
+  aliases:
+    - area:platform
+
+- name: e2e
+  color: c026d3
+  description: Changes affect end-to-end test coverage or tooling.
+  aliases:
+    - area:e2e
+
+- name: tests
+  color: 4f46e5
+  description: Changes affect Jest or shared test fixtures.
+  aliases:
+    - area:tests
+
+- name: ops
+  color: d97706
+  description: Changes affect ops assets or runbooks.
+  aliases:
+    - area:ops
+
+- name: specs
+  color: 64748b
+  description: Changes affect product, module, or platform specifications.
+  aliases:
+    - area:specs
+
+- name: docs
+  color: 0891b2
+  description: Changes affect contributor or product documentation.
+  aliases:
+    - area:docs
+
+- name: ci
+  color: 9333ea
+  description: Changes affect workflows, hooks, or repository validators.
+  aliases:
+    - area:ci
+
+- name: repo
+  color: 65a30d
+  description: Changes affect repository-wide tooling or configuration.
+  aliases:
+    - area:repo

@@ -1,4 +1,4 @@
-name: Pull Request Rules
+name: Pull Request Governance
 
 on:
   pull_request_target:
@@ -15,19 +15,29 @@ permissions:
 
 jobs:
   validate-pr-rules:
+    name: Pull Request Validation
     runs-on: ubuntu-latest
     steps:
-      - name: Check out base repository rules
-        uses: actions/checkout@v4
+      - name: Check Out Base Repository Rules
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 1
 
-      - name: Validate branch name
+      - name: Fetch Pull Request Commit Range
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/base-target"
+          git fetch --no-tags --depth=250 origin "pull/${{ github.event.pull_request.number }}/head:refs/remotes/origin/pull/${{ github.event.pull_request.number }}/head"
+
+      - name: Validate Published Branch Name
         env:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
         run: node tooling/scripts/validate-branch-name.mjs "$BRANCH_NAME"
 
-      - name: Validate pull request body template
+      - name: Validate Commit History
+        run: node tooling/scripts/validate-commit-range.mjs refs/remotes/origin/base-target refs/remotes/origin/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Validate Pull Request Body
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: node tooling/scripts/validate-pr-body.mjs

@@ -1,65 +1,65 @@
-"area:admin-app":
+"admin-app":
   - changed-files:
       - any-glob-to-any-file:
           - "apps/admin-app/**"
           - "specs/02-apps/admin-app/**"
 
-"area:product-app":
+"product-app":
   - changed-files:
       - any-glob-to-any-file:
           - "apps/product-app/**"
           - "specs/02-apps/product-app/**"
 
-"area:public-web":
+"public-web":
   - changed-files:
       - any-glob-to-any-file:
           - "apps/public-web/**"
           - "specs/02-apps/public-web/**"
 
-"area:config":
+"config":
   - changed-files:
       - any-glob-to-any-file:
           - "packages/config/**"
 
-"area:contracts":
+"contracts":
   - changed-files:
       - any-glob-to-any-file:
           - "packages/contracts/**"
 
-"area:modules":
+"modules":
   - changed-files:
       - any-glob-to-any-file:
           - "packages/modules/**"
           - "specs/02-modules/**"
 
-"area:platform":
+"platform":
   - changed-files:
       - any-glob-to-any-file:
           - "packages/platform/**"
           - "specs/01-platform/**"
 
-"area:e2e":
+"e2e":
   - changed-files:
       - any-glob-to-any-file:
-          - "packages/e2e/**"
+          - "e2e/**"
 
-"area:tests":
+"tests":
   - changed-files:
       - any-glob-to-any-file:
           - "tests/**"
 
-"area:ops":
+"ops":
   - changed-files:
       - any-glob-to-any-file:
           - "ops/**"
           - "specs/04-ops/**"
 
-"area:specs":
+"specs":
   - changed-files:
       - any-glob-to-any-file:
           - "specs/**"
 
-"area:docs":
+"docs":
   - changed-files:
       - any-glob-to-any-file:
           - "README.md"
@@ -75,7 +75,7 @@
           - "packages/**/README.md"
           - "tooling/README.md"
 
-"area:ci":
+"ci":
   - changed-files:
       - any-glob-to-any-file:
           - ".github/workflows/**"
@@ -85,7 +85,7 @@
           - "lint-staged.config.mjs"
           - "tooling/scripts/**"
 
-"area:repo":
+"repo":
   - changed-files:
       - any-glob-to-any-file:
           - "package.json"

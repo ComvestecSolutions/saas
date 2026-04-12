@@ -102,7 +102,7 @@ Examples:
 3. Keep PRs focused on one area of responsibility.
 4. Fill out the pull request template fully.
 5. Make sure the PR body begins with `# Pull Request` and keeps these headings intact: `## What Does This PR Do?`, `## Why Is This Needed?`, `## What Changed?`, `## Testing Notes`, `## Screenshots/Demo (If Applicable)`, `## Review Notes`, and `## Checklist`.
-6. Do not add placeholder linked-work-item fields or manual affected-surface sections; GitHub applies `area:*` labels automatically from changed paths.
+6. Do not add placeholder linked-work-item fields or manual affected-surface sections; GitHub applies path-based labels automatically from changed paths.
 7. Do not leave placeholder text, unchecked assumptions, or unrelated commits in the branch history.
 
 ## Required Validation
@@ -120,7 +120,7 @@ Before merge:
 2. Commits are grouped logically.
 3. PR targets `dev`.
 4. Security-sensitive changes have explicit tests.
-5. Branch-name and PR-body validation workflows are green.
+5. Branch-name, commit-history, label, and PR-body validation workflows are green.
 
 ## Security Reports
 

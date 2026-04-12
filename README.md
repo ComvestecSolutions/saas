@@ -15,7 +15,7 @@ This repository contains the reusable SaaS foundation for Comvestec Solutions.
 1. Use `main`, `dev`, or a branch named as `<type>/<scope>-<short-slug>`.
 2. Keep one primary change area per commit and use Conventional Commits with a required scope.
 3. Open pull requests into `dev` and keep the PR body aligned with the required headings in `.github/pull_request_template.md`.
-4. GitHub applies `area:*` labels automatically from changed paths, so PRs do not need manual affected-surface checklists.
+4. GitHub applies path-based labels automatically from changed paths, so PRs do not need manual affected-surface checklists.
 5. Local hooks and GitHub workflows validate branch names, grouped staged changes, commit messages, formatting, and PR body headings.
 
 ## Current State

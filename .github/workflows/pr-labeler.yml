@@ -13,11 +13,12 @@ permissions:
   pull-requests: write
 
 jobs:
-  apply-area-labels:
+  apply-path-labels:
+    name: Apply Path-based Labels
     runs-on: ubuntu-latest
     steps:
-      - name: Apply path-based labels
+      - name: Apply Pull Request Labels
         uses: actions/labeler@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          sync-labels: false
+          sync-labels: true

@@ -18,7 +18,7 @@ This repository is the reusable SaaS foundation for Comvestec Solutions. Every c
 4. Commit messages use Conventional Commits with a required scope. Commit scopes use the branch scope list and may additionally use `docs` and `ci` for repository documentation or workflow automation changes.
 5. Open pull requests into `dev`.
 6. Pull request bodies must begin with `# Pull Request` and include `## What Does This PR Do?`, `## Why Is This Needed?`, `## What Changed?`, `## Testing Notes`, `## Screenshots/Demo (If Applicable)`, `## Review Notes`, and `## Checklist`.
-7. GitHub applies `area:*` labels automatically from changed paths, so do not rely on manual affected-surface checklists or linked-work-item placeholders in PR bodies.
+7. GitHub applies path-based labels automatically from changed paths, so do not rely on manual affected-surface checklists or linked-work-item placeholders in PR bodies.
 
 ## Hard Rules
 
