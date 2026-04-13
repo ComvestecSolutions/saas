@@ -1,4 +1,9 @@
 import { Schema } from "effect";
+import {
+  DeclaredModuleConfigKeySchema,
+  DeclaredModuleFeatureFlagKeySchema,
+  moduleFeatureFlagDefaults,
+} from "./key-factories";
 import { PermissionScopeSchema } from "../access/permission-scopes";
 import { PlatformScopeSchema } from "../access/platform-scopes";
 import { ConfigSchemaTypeSchema } from "../data/config-schema-types";
@@ -81,14 +86,16 @@ export type PlatformModuleId = Schema.Schema.Type<
   typeof PlatformModuleIdSchema
 >;
 
-export type ModuleEnabledFeatureFlagKey = `${PlatformModuleId}.enabled`;
+export type ModuleEnabledFeatureFlagKey =
+  `${PlatformModuleId}.${typeof moduleFeatureFlagDefaults.enabled}`;
 
 export const getModuleEnabledFeatureFlagKey = (
   moduleId: PlatformModuleId,
-): ModuleEnabledFeatureFlagKey => `${moduleId}.enabled`;
+): ModuleEnabledFeatureFlagKey =>
+  `${moduleId}.${moduleFeatureFlagDefaults.enabled}`;
 
 export const ConfigKeyDeclarationSchema = Schema.Struct({
-  key: Schema.NonEmptyString,
+  key: DeclaredModuleConfigKeySchema,
   description: Schema.NonEmptyString,
   schema: ConfigSchemaTypeSchema,
   defaultValue: Schema.Any,
@@ -102,7 +109,7 @@ export type ConfigKeyDeclaration = Schema.Schema.Type<
 >;
 
 export const FeatureFlagDeclarationSchema = Schema.Struct({
-  key: Schema.NonEmptyString,
+  key: DeclaredModuleFeatureFlagKeySchema,
   description: Schema.NonEmptyString,
   owner: PlatformModuleIdSchema,
   purpose: Schema.NonEmptyString,

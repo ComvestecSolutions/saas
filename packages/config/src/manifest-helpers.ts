@@ -1,26 +1,23 @@
 import { Schema } from "effect";
-import type {
-  ConfigSchemaType,
-  DataClassificationDeclaration,
-  PermissionScope,
-  PlatformScope,
-  ProjectionDescriptor,
+import {
+  defineModuleConfigKeys,
+  defineModuleFeatureFlags,
+  defineModuleRuntimeValueKeys,
+  type ConfigSchemaType,
+  type DataClassificationDeclaration,
+  type ModuleConfigKey,
+  type ModuleEntitlementFeatureKey,
+  type ModuleFeatureFlagKey,
+  type ModuleMeterKey,
+  type ModuleRuntimeValueKey,
+  type PermissionScope,
+  type PlatformScope,
+  type ProjectionDescriptor,
 } from "@comvestec/contracts";
 import {
   PlatformModuleManifestSchema,
   type PlatformModuleId,
 } from "./module-types";
-
-type ModuleScopedKey<TModule extends PlatformModuleId> = `${TModule}.${string}`;
-
-export type ModuleConfigKey<TModule extends PlatformModuleId> =
-  ModuleScopedKey<TModule>;
-
-export type ModuleFeatureFlagKey<TModule extends PlatformModuleId> =
-  ModuleScopedKey<TModule>;
-
-export type ModuleRuntimeValueKey<TModule extends PlatformModuleId> =
-  ModuleScopedKey<TModule>;
 
 type ModuleConfigDeclarationSeed<TModule extends PlatformModuleId> = {
   key: ModuleConfigKey<TModule>;
@@ -52,52 +49,18 @@ type ModuleManifestSeed<TModule extends PlatformModuleId> = {
   projectionProfiles: readonly ProjectionDescriptor[];
 };
 
-export const defineModuleConfigKeys = <
-  const TModule extends PlatformModuleId,
-  const TSuffixes extends Record<string, string>,
->(
-  moduleId: TModule,
-  suffixes: TSuffixes,
-): {
-  readonly [K in keyof TSuffixes]: `${TModule}.${TSuffixes[K] & string}`;
-} => {
-  const result: Record<string, string> = {};
-  for (const [k, v] of Object.entries(suffixes)) {
-    result[k] = `${moduleId}.${v}`;
-  }
-  return result as never;
+export {
+  defineModuleConfigKeys,
+  defineModuleFeatureFlags,
+  defineModuleRuntimeValueKeys,
 };
 
-export const defineModuleFeatureFlags = <
-  const TModule extends PlatformModuleId,
-  const TSuffixes extends Record<string, string>,
->(
-  moduleId: TModule,
-  suffixes: TSuffixes,
-): {
-  readonly [K in keyof TSuffixes]: `${TModule}.${TSuffixes[K] & string}`;
-} => {
-  const result: Record<string, string> = {};
-  for (const [k, v] of Object.entries(suffixes)) {
-    result[k] = `${moduleId}.${v}`;
-  }
-  return result as never;
-};
-
-export const defineModuleRuntimeValueKeys = <
-  const TModule extends PlatformModuleId,
-  const TSuffixes extends Record<string, string>,
->(
-  moduleId: TModule,
-  suffixes: TSuffixes,
-): {
-  readonly [K in keyof TSuffixes]: `${TModule}.${TSuffixes[K] & string}`;
-} => {
-  const result: Record<string, string> = {};
-  for (const [k, v] of Object.entries(suffixes)) {
-    result[k] = `${moduleId}.${v}`;
-  }
-  return result as never;
+export type {
+  ModuleConfigKey,
+  ModuleEntitlementFeatureKey,
+  ModuleFeatureFlagKey,
+  ModuleMeterKey,
+  ModuleRuntimeValueKey,
 };
 
 export const defineModuleManifest = <const TModule extends PlatformModuleId>(

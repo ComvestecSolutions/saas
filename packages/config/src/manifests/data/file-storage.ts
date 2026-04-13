@@ -1,28 +1,12 @@
 import {
   configSchemaType,
+  fileStorageConfigKey,
+  fileStorageFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const fileStorageConfigKey = defineModuleConfigKeys(
-  platformModuleId.fileStorage,
-  {
-    maxUploadSizeMb: "maxUploadSizeMb",
-  },
-);
-
-export const fileStorageFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.fileStorage,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const fileStorageManifest = defineModuleManifest({
   moduleId: platformModuleId.fileStorage,

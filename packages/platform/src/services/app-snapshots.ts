@@ -110,10 +110,20 @@ const defaultAdminAppRequestContext = Schema.validateSync(RequestContextSchema)(
   } satisfies RequestContext,
 );
 
-const PublicWebSnapshotSchema = Schema.Struct({
-  application: Schema.Literal("Public web"),
+const AppSnapshotBaseFields = {
   focus: Schema.NonEmptyString,
   requestContext: RequestContextSchema,
+};
+
+const ManifestAppSnapshotBaseFields = {
+  ...AppSnapshotBaseFields,
+  manifest: PlatformModuleManifestSchema,
+  brandingManifest: PlatformModuleManifestSchema,
+};
+
+const PublicWebSnapshotSchema = Schema.Struct({
+  application: Schema.Literal("Public web"),
+  ...AppSnapshotBaseFields,
   platformRuntime: Schema.Literal("effect"),
   storage: PlatformStorageSchema,
   tenancyScopes: Schema.Array(PlatformScopeSchema),
@@ -127,10 +137,7 @@ export type PublicWebSnapshot = Schema.Schema.Type<
 
 const ProductAppSnapshotSchema = Schema.Struct({
   application: Schema.Literal("Product app"),
-  focus: Schema.NonEmptyString,
-  requestContext: RequestContextSchema,
-  manifest: PlatformModuleManifestSchema,
-  brandingManifest: PlatformModuleManifestSchema,
+  ...ManifestAppSnapshotBaseFields,
   permissionDescriptors: PermissionDescriptorListSchema,
   platformProjectionDescriptors: ProjectionDescriptorListSchema,
   tenancyScopes: Schema.Array(PlatformScopeSchema),
@@ -142,10 +149,7 @@ export type ProductAppSnapshot = Schema.Schema.Type<
 
 const AdminAppSnapshotSchema = Schema.Struct({
   application: Schema.Literal("Admin app"),
-  focus: Schema.NonEmptyString,
-  requestContext: RequestContextSchema,
-  manifest: PlatformModuleManifestSchema,
-  brandingManifest: PlatformModuleManifestSchema,
+  ...ManifestAppSnapshotBaseFields,
   permissions: PermissionDescriptorListSchema,
 });
 

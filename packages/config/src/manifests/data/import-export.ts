@@ -1,28 +1,12 @@
 import {
   configSchemaType,
+  importExportConfigKey,
+  importExportFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const importExportConfigKey = defineModuleConfigKeys(
-  platformModuleId.importExport,
-  {
-    maxRowsPerImport: "maxRowsPerImport",
-  },
-);
-
-export const importExportFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.importExport,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const importExportManifest = defineModuleManifest({
   moduleId: platformModuleId.importExport,

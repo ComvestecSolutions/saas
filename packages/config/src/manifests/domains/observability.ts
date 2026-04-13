@@ -1,31 +1,12 @@
 import {
   configSchemaType,
+  observabilityConfigKey,
+  observabilityFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const observabilityConfigKey = defineModuleConfigKeys(
-  platformModuleId.observability,
-  {
-    tracesSampleRate: "tracesSampleRate",
-    sloErrorBudgetAlertWindowMinutes: "slo.errorBudgetAlertWindowMinutes",
-  },
-);
-
-export const observabilityFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.observability,
-  {
-    enabled: "enabled",
-    errorTrackingEnabled: "errorTrackingEnabled",
-    sloDashboards: "sloDashboards",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const observabilityManifest = defineModuleManifest({
   moduleId: platformModuleId.observability,

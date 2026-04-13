@@ -338,5 +338,125 @@ describe("modules governance", () => {
 
     expect(entitled.effectiveValue).toBe(true);
     expect(entitled.entitled).toBe(true);
+    expect(entitled.source).toBe(runtimeResolutionSource.entitlement);
+  });
+
+  it("treats module enable overrides as module entitlement for billable config", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+
+    const resolution = await Effect.runPromise(
+      runtimeConfig.resolveConfigValue({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        overrides: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            key: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            value: true,
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_admin_1",
+            changedAt: new Date().toISOString(),
+          },
+        ],
+        entitlements: [],
+      }),
+    );
+
+    expect(resolution.effectiveValue).toBe("inherit");
+    expect(resolution.source).toBe(runtimeResolutionSource.codeDefault);
+    expect(resolution.entitled).toBe(true);
+  });
+
+  it("does not treat module enablement as blanket entitlement for premium subfeatures", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+
+    const resolution = await Effect.runPromise(
+      runtimeConfig.resolveFeatureFlag({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        flag: {
+          key: tenantBrandingFeatureFlag.customDomain,
+          description: "Allow tenant custom domains.",
+          owner: platformModuleId.tenantBranding,
+          purpose: "Gate custom-domain configuration and activation.",
+          defaultEnabled: false,
+          billable: true,
+          allowedScopes: [
+            platformScope.platform,
+            platformScope.enterprise,
+            platformScope.organization,
+          ],
+          retirementPlan: "Retire only with a domain migration plan.",
+        },
+        overrides: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            key: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            value: true,
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_admin_1",
+            changedAt: new Date().toISOString(),
+          },
+        ],
+        entitlements: [],
+      }),
+    );
+
+    expect(resolution.effectiveValue).toBe(false);
+    expect(resolution.entitled).toBe(false);
+  });
+
+  it("activates billable feature flags from direct feature entitlements", async () => {
+    const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
+
+    const now = new Date().toISOString();
+    const resolution = await Effect.runPromise(
+      runtimeConfig.resolveFeatureFlag({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        flag: {
+          key: tenantBrandingFeatureFlag.customDomain,
+          description: "Allow tenant custom domains.",
+          owner: platformModuleId.tenantBranding,
+          purpose: "Gate custom-domain configuration and activation.",
+          defaultEnabled: false,
+          billable: true,
+          allowedScopes: [
+            platformScope.platform,
+            platformScope.enterprise,
+            platformScope.organization,
+          ],
+          retirementPlan: "Retire only with a domain migration plan.",
+        },
+        overrides: [],
+        entitlements: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            active: true,
+            grantedAt: now,
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.customDomain,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            active: true,
+            grantedAt: now,
+          },
+        ],
+      }),
+    );
+
+    expect(resolution.effectiveValue).toBe(true);
+    expect(resolution.entitled).toBe(true);
+    expect(resolution.source).toBe(runtimeResolutionSource.entitlement);
   });
 });

@@ -1,28 +1,12 @@
 import {
   configSchemaType,
+  emailDeliveryConfigKey,
+  emailDeliveryFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const emailDeliveryConfigKey = defineModuleConfigKeys(
-  platformModuleId.emailDelivery,
-  {
-    rateLimitPerMinute: "rateLimitPerMinute",
-  },
-);
-
-export const emailDeliveryFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.emailDelivery,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const emailDeliveryManifest = defineModuleManifest({
   moduleId: platformModuleId.emailDelivery,

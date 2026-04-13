@@ -6,28 +6,10 @@ import {
   permissionScope,
   platformModuleId,
   platformScope,
+  supportOperationsConfigKey,
+  supportOperationsFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const supportOperationsConfigKey = defineModuleConfigKeys(
-  platformModuleId.supportOperations,
-  {
-    impersonationMaxDurationMinutes: "impersonation.maxDurationMinutes",
-    breakGlassMaxDurationMinutes: "breakGlass.maxDurationMinutes",
-  },
-);
-
-export const supportOperationsFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.supportOperations,
-  {
-    enabled: "enabled",
-    breakGlassEnabled: "breakGlassEnabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const supportOperationsFields = defineModuleFields({
   companyName: "companyName",

@@ -1,28 +1,12 @@
 import {
+  authorizationConfigKey,
+  authorizationFeatureFlag,
   configSchemaType,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const authorizationConfigKey = defineModuleConfigKeys(
-  platformModuleId.authorization,
-  {
-    cacheTtlSeconds: "cache.ttlSeconds",
-  },
-);
-
-export const authorizationFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.authorization,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const authorizationManifest = defineModuleManifest({
   moduleId: platformModuleId.authorization,

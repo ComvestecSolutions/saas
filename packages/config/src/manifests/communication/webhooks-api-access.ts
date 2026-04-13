@@ -3,26 +3,10 @@ import {
   permissionScope,
   platformModuleId,
   platformScope,
+  webhooksApiAccessConfigKey,
+  webhooksApiAccessFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const webhooksApiAccessConfigKey = defineModuleConfigKeys(
-  platformModuleId.webhooksApiAccess,
-  {
-    deliveryMaxRetries: "delivery.maxRetries",
-  },
-);
-
-export const webhooksApiAccessFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.webhooksApiAccess,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const webhooksApiAccessManifest = defineModuleManifest({
   moduleId: platformModuleId.webhooksApiAccess,

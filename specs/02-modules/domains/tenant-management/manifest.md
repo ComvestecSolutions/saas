@@ -4,7 +4,7 @@ Status: accepted
 
 ## Technology Boundary
 
-Keycloak for identity federation. Convex for tenant data and membership state. PostgreSQL for audit records related to membership changes.
+Keycloak for identity federation. Convex for tenant data and membership state. PostgreSQL for onboarding runs, provisioning receipts, and audit records related to membership changes.
 
 ## Responsibilities
 
@@ -13,6 +13,13 @@ Keycloak for identity federation. Convex for tenant data and membership state. P
 3. Tenant context resolution for applications and workflows.
 4. Standalone individual support — individuals without enterprise or organization affiliation.
 5. Guided onboarding workflow and activation checklist for new tenants.
+6. Tenant, owner-membership, and onboarding-run provisioning after validated authentication.
+
+## First Backend-Ready Slice
+
+1. Provision tenant identity, primary owner membership, and default onboarding state immediately after validated auth completion.
+2. Support pending-to-active progression as billing entitlements become active.
+3. Keep onboarding progress durable and recoverable when downstream billing, notification, or branding steps retry.
 
 ## Permission Scopes
 
@@ -61,3 +68,5 @@ Keycloak for identity federation. Convex for tenant data and membership state. P
 3. Membership changes must be auditable.
 4. Standalone individuals are first-class tenants with their own config and entitlement resolution.
 5. Onboarding progress is tenant-scoped operational state, not a substitute for permission or entitlement checks.
+6. Tenant provisioning must be safe to retry when auth callback or billing events are delivered more than once.
+7. Initial tenant creation must not require frontend-owned orchestration.

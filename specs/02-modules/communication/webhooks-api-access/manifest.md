@@ -4,14 +4,21 @@ Status: accepted
 
 ## Technology Boundary
 
-In-process Effect services for webhook registration and delivery. PostgreSQL for webhook subscription storage and delivery logs. Valkey for delivery rate limiting.
+In-process Effect services for inbound provider webhook intake plus outbound webhook registration and delivery. PostgreSQL for webhook subscription storage, receipt logs, idempotency records, and delivery logs. Valkey for delivery rate limiting.
 
 ## Responsibilities
 
 1. Webhook subscription management.
 2. Event-to-webhook dispatch with retry and backoff.
-3. API key lifecycle for external integrations.
-4. Delivery logging and failure visibility.
+3. Inbound provider webhook verification, normalization, and replay.
+4. API key lifecycle for external integrations.
+5. Delivery and receipt logging with failure visibility.
+
+## First Backend-Ready Slice
+
+1. Accept billing-provider webhooks for checkout completion, renewal, cancellation, payment failure, and entitlement sync.
+2. Verify webhook authenticity, store receipt metadata, and enforce idempotent processing before mutating billing or access state.
+3. Expose replay or retry surfaces for operators after processing failures.
 
 ## Permission Scopes
 
@@ -52,3 +59,5 @@ In-process Effect services for webhook registration and delivery. PostgreSQL for
 1. Webhook payloads must honor field-security projections.
 2. API keys must be rotatable and auditable.
 3. Failed deliveries must be retried with exponential backoff and visible in admin.
+4. Inbound provider webhooks must be authenticated, idempotent, and auditable before any billing or entitlement mutation runs.
+5. Return-url handlers must not bypass webhook verification as the source of truth for payment outcomes.

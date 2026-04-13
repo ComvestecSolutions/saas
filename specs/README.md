@@ -6,7 +6,7 @@ This directory is the source of truth for the Comvestec Solutions reusable SaaS 
 
 ## Structure
 
-- `00-governance`: delivery tracker and spec-process governance artifacts.
+- `00-governance`: delivery tracker, backend-readiness roadmap, and spec-process governance artifacts.
 - `01-platform`: cross-cutting architecture, security, data, performance, and governance specs, organized into `architecture/`, `access/`, `security/`, `runtime/`, and `domains/`.
 - `02-apps`: behavior and responsibilities for public web, product app, and admin app.
 - `02-modules`: module manifests for reusable platform capabilities, organized into `access/`, `governance/`, `domains/`, `communication/`, and `data/`.
@@ -31,10 +31,11 @@ Use one of these statuses at the top of every future spec:
 
 ## Progress Tracking
 
-Implementation status is tracked in [00-governance/implementation-tracker.md](00-governance/implementation-tracker.md).
+Implementation status is tracked in [00-governance/implementation-tracker.md](00-governance/implementation-tracker.md). Backend-ready slice priorities are tracked in [00-governance/backend-readiness-roadmap.md](00-governance/backend-readiness-roadmap.md).
 
 1. Update the tracker in the same change when a spec area moves from documented to scaffolded, implemented, validated, or blocked.
-2. Link tracker rows to both the governing spec and the evidence that justifies the status.
+2. Update the roadmap in the same change when the first backend-ready slice changes scope, work order, or acceptance criteria.
+3. Link tracker rows to both the governing spec and the evidence that justifies the status.
 
 ## Initial Scope
 

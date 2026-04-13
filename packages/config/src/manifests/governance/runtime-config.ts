@@ -8,28 +8,10 @@ import {
   platformModuleId,
   platformScope,
   projectionProfile,
+  runtimeConfigConfigKey,
+  runtimeConfigFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const runtimeConfigConfigKey = defineModuleConfigKeys(
-  platformModuleId.runtimeConfig,
-  {
-    syncStrategy: "sync.strategy",
-    approvalsEnabled: "approvals.enabled",
-  },
-);
-
-export const runtimeConfigFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.runtimeConfig,
-  {
-    enabled: "enabled",
-    inlineDiffViewer: "inlineDiffViewer",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const runtimeConfigFields = defineModuleFields({
   moduleId: "moduleId",

@@ -8,7 +8,14 @@ Status: accepted
 2. Tenant-aware navigation and context switching.
 3. Product-grade data loading with route ownership and selective real-time behavior.
 4. Account, billing, notification, and user settings entry points.
-5. Effective tenant-branding tokens applied to authenticated shell chrome and shared documents.
+5. Auth callback completion, entitled access bootstrap, and post-purchase billing status entry points.
+6. Effective tenant-branding tokens applied to authenticated shell chrome and shared documents.
+
+## First Backend-Ready Slice
+
+1. Product-app owns auth callback completion, session-bound request bootstrap, entitled access bootstrap, and initial billing status responses.
+2. The first milestone stays API-first, so thin server routes and loaders may exist before richer product screens.
+3. Product access after checkout must resolve from persisted entitlements and validated session state, not from frontend assumptions or return query parameters.
 
 ## Rules
 
@@ -17,3 +24,5 @@ Status: accepted
 3. Convex subscriptions are opt-in for views that benefit from live updates.
 4. Branding must arrive through route-owned server data or shared platform snapshots, not through a client-only theme store.
 5. Product surfaces must fall back to platform branding when tenant branding is unavailable or unentitled.
+6. Auth callback and access bootstrap must derive request context from validated backend session state.
+7. Billing visibility and module access must come from backend entitlement resolution, not from checkout return parameters or client cache.

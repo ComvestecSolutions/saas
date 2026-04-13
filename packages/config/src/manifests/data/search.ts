@@ -3,23 +3,10 @@ import {
   permissionScope,
   platformModuleId,
   platformScope,
+  searchConfigKey,
+  searchFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const searchConfigKey = defineModuleConfigKeys(platformModuleId.search, {
-  indexMaxDocuments: "index.maxDocuments",
-});
-
-export const searchFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.search,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const searchManifest = defineModuleManifest({
   moduleId: platformModuleId.search,

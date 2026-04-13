@@ -1,28 +1,12 @@
 import {
   configSchemaType,
+  fieldSecurityConfigKey,
+  fieldSecurityFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const fieldSecurityConfigKey = defineModuleConfigKeys(
-  platformModuleId.fieldSecurity,
-  {
-    sensitiveReadAudit: "sensitiveReadAudit",
-  },
-);
-
-export const fieldSecurityFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.fieldSecurity,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const fieldSecurityManifest = defineModuleManifest({
   moduleId: platformModuleId.fieldSecurity,

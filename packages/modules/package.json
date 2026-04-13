@@ -9,6 +9,7 @@
   "dependencies": {
     "@comvestec/config": "workspace:*",
     "@comvestec/contracts": "workspace:*",
+    "@comvestec/platform": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "effect": "^3.21.0"
   },

@@ -23,10 +23,14 @@ export type {
   AuthorizationRelation,
 } from "@comvestec/contracts";
 
-export const AuthorizationTupleSchema = Schema.Struct({
+const AuthorizationTargetFields = {
   namespace: AuthorizationNamespaceSchema,
   object: Schema.NonEmptyString,
   relation: AuthorizationRelationSchema,
+};
+
+export const AuthorizationTupleSchema = Schema.Struct({
+  ...AuthorizationTargetFields,
   subject: Schema.NonEmptyString,
   tenantScope: PlatformScopeSchema,
   tenantScopeId: Schema.NonEmptyString,
@@ -40,9 +44,7 @@ const AuthorizationTupleListSchema = Schema.Array(AuthorizationTupleSchema);
 
 export const AuthorizationCheckInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
-  namespace: AuthorizationNamespaceSchema,
-  object: Schema.NonEmptyString,
-  relation: AuthorizationRelationSchema,
+  ...AuthorizationTargetFields,
   permissionScope: Schema.optional(PermissionScopeSchema),
 });
 

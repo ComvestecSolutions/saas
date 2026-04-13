@@ -84,8 +84,8 @@ flowchart LR
 | Area               | What is already in place                                                                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Apps               | TanStack Start shells for the public web, product app, and admin app                                                                                                                                    |
-| Shared backend     | Effect-based contracts, runtime services, typed config helpers, and 18 module manifests                                                                                                                 |
-| Governance         | Core specs, 15 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync                                                                                                      |
+| Shared backend     | Effect-based contracts, runtime services, typed config helpers, and 19 module manifests                                                                                                                 |
+| Governance         | Core specs, backend-readiness roadmap, 15 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync                                                                           |
 | Platform adapters  | 14 adapters across identity, storage, messaging, observability, search, and billing or metering concerns                                                                                                |
 | Local ops baseline | Pinned Compose services for PostgreSQL, Keycloak, Convex, Valkey, Ory Keto, Unleash, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, Prometheus, Loki, Tempo, Grafana, and the OpenTelemetry Collector |
 | Validation         | Jest through Bun, Playwright scaffold, path-based labels, PR auto-assignment, and Trivy-backed security hygiene                                                                                         |
@@ -140,6 +140,7 @@ docker compose --env-file .env -f ops/docker/compose.yml up -d
 - [LICENSE](LICENSE)
 - [specs/README.md](specs/README.md)
 - [specs/00-governance/implementation-tracker.md](specs/00-governance/implementation-tracker.md)
+- [specs/00-governance/backend-readiness-roadmap.md](specs/00-governance/backend-readiness-roadmap.md)
 - [.github/copilot-instructions.md](.github/copilot-instructions.md)
 
 ## Local Platform Endpoints

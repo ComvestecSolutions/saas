@@ -1,10 +1,16 @@
 import { Schema } from "effect";
+import {
+  DeclaredModuleConfigKeySchema,
+  DeclaredRuntimeGovernedKeySchema,
+  GovernanceEntitlementFeatureKeySchema,
+} from "../module-registry/key-factories";
 import { PlatformModuleIdSchema } from "../module-registry/modules";
 import { PlatformScopeSchema } from "../access/platform-scopes";
 import { AuditActionSchema } from "./audit-actions";
 
 const RuntimeResolutionSourceConstantSchema = Schema.Struct({
   codeDefault: Schema.Literal("code-default"),
+  entitlement: Schema.Literal("entitlement"),
   runtimeOverride: Schema.Literal("runtime-override"),
   unentitledDefault: Schema.Literal("unentitled-default"),
 });
@@ -13,6 +19,7 @@ export const runtimeResolutionSource = Schema.validateSync(
   RuntimeResolutionSourceConstantSchema,
 )({
   codeDefault: "code-default",
+  entitlement: "entitlement",
   runtimeOverride: "runtime-override",
   unentitledDefault: "unentitled-default",
 } satisfies Schema.Schema.Type<typeof RuntimeResolutionSourceConstantSchema>);
@@ -37,6 +44,7 @@ export type PersistedConfigSource = Schema.Schema.Type<
 
 export const runtimeResolutionSources = [
   runtimeResolutionSource.codeDefault,
+  runtimeResolutionSource.entitlement,
   runtimeResolutionSource.runtimeOverride,
   runtimeResolutionSource.unentitledDefault,
 ] as const;
@@ -82,11 +90,22 @@ export type RuntimeChangeProposalAction = Schema.Schema.Type<
   typeof RuntimeChangeProposalActionSchema
 >;
 
-export const ConfigOverrideSchema = Schema.Struct({
-  moduleId: PlatformModuleIdSchema,
-  key: Schema.NonEmptyString,
+const ScopedTargetFields = {
   scope: PlatformScopeSchema,
   scopeId: Schema.NonEmptyString,
+};
+
+const RuntimeEventMetadataFields = {
+  eventId: Schema.NonEmptyString,
+  timestamp: Schema.NonEmptyString,
+  actorId: Schema.NonEmptyString,
+  moduleId: PlatformModuleIdSchema,
+};
+
+export const ConfigOverrideSchema = Schema.Struct({
+  moduleId: PlatformModuleIdSchema,
+  key: DeclaredRuntimeGovernedKeySchema,
+  ...ScopedTargetFields,
   value: Schema.Unknown,
   source: PersistedConfigSourceSchema,
   changedBy: Schema.NonEmptyString,
@@ -97,9 +116,8 @@ export type ConfigOverride = Schema.Schema.Type<typeof ConfigOverrideSchema>;
 
 export const EntitlementSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,
-  featureKey: Schema.NonEmptyString,
-  scope: PlatformScopeSchema,
-  scopeId: Schema.NonEmptyString,
+  featureKey: GovernanceEntitlementFeatureKeySchema,
+  ...ScopedTargetFields,
   active: Schema.Boolean,
   grantedAt: Schema.NonEmptyString,
   expiresAt: Schema.optional(Schema.NonEmptyString),
@@ -108,12 +126,9 @@ export const EntitlementSchema = Schema.Struct({
 export type Entitlement = Schema.Schema.Type<typeof EntitlementSchema>;
 
 export const AuditEventSchema = Schema.Struct({
-  eventId: Schema.NonEmptyString,
-  timestamp: Schema.NonEmptyString,
-  actorId: Schema.NonEmptyString,
+  ...RuntimeEventMetadataFields,
   tenantScope: PlatformScopeSchema,
   tenantScopeId: Schema.NonEmptyString,
-  moduleId: PlatformModuleIdSchema,
   action: AuditActionSchema,
   target: Schema.NonEmptyString,
   reason: Schema.optional(Schema.NonEmptyString),
@@ -123,13 +138,9 @@ export const AuditEventSchema = Schema.Struct({
 export type AuditEvent = Schema.Schema.Type<typeof AuditEventSchema>;
 
 export const ConfigChangeEventSchema = Schema.Struct({
-  eventId: Schema.NonEmptyString,
-  timestamp: Schema.NonEmptyString,
-  actorId: Schema.NonEmptyString,
-  moduleId: PlatformModuleIdSchema,
-  key: Schema.NonEmptyString,
-  scope: PlatformScopeSchema,
-  scopeId: Schema.NonEmptyString,
+  ...RuntimeEventMetadataFields,
+  key: DeclaredRuntimeGovernedKeySchema,
+  ...ScopedTargetFields,
   previousValue: Schema.Unknown,
   newValue: Schema.Unknown,
   source: PersistedConfigSourceSchema,

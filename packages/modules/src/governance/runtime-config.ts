@@ -1,6 +1,10 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import { findModuleManifest } from "@comvestec/config";
 import {
+  type DeclaredModuleConfigKey,
+  DeclaredModuleConfigKeySchema,
+  type DeclaredRuntimeGovernedKey,
+  DeclaredRuntimeGovernedKeySchema,
   ConfigOverrideSchema,
   EntitlementSchema,
   FeatureFlagDeclarationSchema,
@@ -15,25 +19,26 @@ import {
   RuntimeResolutionSourceSchema,
 } from "@comvestec/contracts";
 
-const RuntimeConfigResolutionRequestSchema = Schema.Struct({
+const RuntimeResolutionRequestBaseFields = {
   requestContext: RequestContextSchema,
   moduleId: PlatformModuleIdSchema,
-  key: Schema.NonEmptyString,
   overrides: Schema.Array(ConfigOverrideSchema),
   entitlements: Schema.Array(EntitlementSchema),
+};
+
+const RuntimeConfigResolutionRequestSchema = Schema.Struct({
+  ...RuntimeResolutionRequestBaseFields,
+  key: DeclaredModuleConfigKeySchema,
 });
 
 const RuntimeFlagResolutionRequestSchema = Schema.Struct({
-  requestContext: RequestContextSchema,
-  moduleId: PlatformModuleIdSchema,
+  ...RuntimeResolutionRequestBaseFields,
   flag: FeatureFlagDeclarationSchema,
-  overrides: Schema.Array(ConfigOverrideSchema),
-  entitlements: Schema.Array(EntitlementSchema),
 });
 
 export const RuntimeResolutionResultSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,
-  key: Schema.NonEmptyString,
+  key: DeclaredRuntimeGovernedKeySchema,
   effectiveValue: Schema.Any,
   source: RuntimeResolutionSourceSchema,
   entitled: Schema.Boolean,
@@ -52,7 +57,7 @@ const decodeRuntimeResolutionResult = Schema.decodeUnknown(
 export const RuntimeChangeProposalSchema = Schema.Struct({
   proposalId: Schema.NonEmptyString,
   moduleId: PlatformModuleIdSchema,
-  key: Schema.NonEmptyString,
+  key: DeclaredRuntimeGovernedKeySchema,
   action: RuntimeChangeProposalActionSchema,
   artifactPath: Schema.NonEmptyString,
   reason: Schema.NonEmptyString,
@@ -76,8 +81,8 @@ const RuntimeChangeProposalRequestSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,
   overrides: Schema.Array(ConfigOverrideSchema),
   renameMap: Schema.Record({
-    key: Schema.NonEmptyString,
-    value: Schema.NonEmptyString,
+    key: DeclaredRuntimeGovernedKeySchema,
+    value: DeclaredRuntimeGovernedKeySchema,
   }),
 });
 
@@ -118,9 +123,9 @@ const resolveCascadeCandidates = (
   return candidates;
 };
 
-const hasEntitlement = (
+const hasDirectEntitlement = (
   moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
-  key: string,
+  key: Schema.Schema.Type<typeof FeatureFlagDeclarationSchema>["key"],
   requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
   entitlements: readonly Schema.Schema.Type<typeof EntitlementSchema>[],
 ) =>
@@ -128,15 +133,125 @@ const hasEntitlement = (
     (entitlement) =>
       entitlement.moduleId === moduleId &&
       entitlement.active &&
-      (entitlement.featureKey === key ||
-        entitlement.featureKey === getModuleEnabledFeatureFlagKey(moduleId)) &&
+      entitlement.featureKey === key &&
       entitlement.scope === requestContext.tenant.scope &&
       entitlement.scopeId === requestContext.tenant.scopeId,
   );
 
+const findFeatureFlagDeclaration = (
+  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
+  key: Schema.Schema.Type<typeof FeatureFlagDeclarationSchema>["key"],
+) =>
+  findModuleManifest(moduleId)?.featureFlags.find((flag) => flag.key === key);
+
+const findMatchedOverride = (
+  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
+  key: DeclaredRuntimeGovernedKey,
+  allowedScopes: readonly Schema.Schema.Type<typeof PlatformScopeSchema>[],
+  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
+  overrides: readonly Schema.Schema.Type<typeof ConfigOverrideSchema>[],
+) =>
+  resolveCascadeCandidates(requestContext)
+    .flatMap((candidate) =>
+      overrides.filter(
+        (override) =>
+          override.moduleId === moduleId &&
+          override.key === key &&
+          override.scope === candidate.scope &&
+          override.scopeId === candidate.scopeId &&
+          allowedScopes.includes(candidate.scope),
+      ),
+    )
+    .at(0);
+
+type FeatureFlagRuntimeResolution = Pick<
+  RuntimeResolutionResult,
+  "effectiveValue" | "source" | "entitled" | "resolvedScope" | "resolvedScopeId"
+>;
+
+const resolveFeatureFlagState = (
+  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
+  flag: Schema.Schema.Type<typeof FeatureFlagDeclarationSchema>,
+  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
+  overrides: readonly Schema.Schema.Type<typeof ConfigOverrideSchema>[],
+  entitlements: readonly Schema.Schema.Type<typeof EntitlementSchema>[],
+): FeatureFlagRuntimeResolution => {
+  const matchedOverride = findMatchedOverride(
+    moduleId,
+    flag.key,
+    flag.allowedScopes,
+    requestContext,
+    overrides,
+  );
+
+  if (matchedOverride !== undefined) {
+    const effectiveValue = Boolean(matchedOverride.value);
+
+    return {
+      effectiveValue,
+      source: runtimeResolutionSource.runtimeOverride,
+      entitled: effectiveValue,
+      resolvedScope: matchedOverride.scope,
+      resolvedScopeId: matchedOverride.scopeId,
+    };
+  }
+
+  if (hasDirectEntitlement(moduleId, flag.key, requestContext, entitlements)) {
+    return {
+      effectiveValue: true,
+      source: runtimeResolutionSource.entitlement,
+      entitled: true,
+    };
+  }
+
+  if (flag.defaultEnabled) {
+    return {
+      effectiveValue: true,
+      source: runtimeResolutionSource.codeDefault,
+      entitled: true,
+    };
+  }
+
+  return {
+    effectiveValue: false,
+    source: flag.billable
+      ? runtimeResolutionSource.unentitledDefault
+      : runtimeResolutionSource.codeDefault,
+    entitled: false,
+  };
+};
+
+const resolveModuleEnabledState = (
+  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
+  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
+  overrides: readonly Schema.Schema.Type<typeof ConfigOverrideSchema>[],
+  entitlements: readonly Schema.Schema.Type<typeof EntitlementSchema>[],
+): FeatureFlagRuntimeResolution => {
+  const enabledFlag = findFeatureFlagDeclaration(
+    moduleId,
+    getModuleEnabledFeatureFlagKey(moduleId),
+  );
+
+  if (enabledFlag === undefined) {
+    return {
+      effectiveValue: true,
+      source: runtimeResolutionSource.codeDefault,
+      entitled: true,
+    };
+  }
+
+  return resolveFeatureFlagState(
+    moduleId,
+    enabledFlag,
+    requestContext,
+    overrides,
+    entitlements,
+  );
+};
+
 const findDeclaration = (
   moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
-  key: string,
+  key: DeclaredModuleConfigKey,
 ) =>
   findModuleManifest(moduleId)?.configKeys.find(
     (configKey) => configKey.key === key,
@@ -188,12 +303,12 @@ export const makeRuntimeConfigModule = () =>
 
             const entitled =
               !declaration.billable ||
-              hasEntitlement(
+              resolveModuleEnabledState(
                 request.moduleId,
-                request.key,
                 request.requestContext,
+                request.overrides,
                 request.entitlements,
-              );
+              ).effectiveValue;
 
             if (!entitled) {
               return decodeRuntimeResolutionResult({
@@ -205,21 +320,13 @@ export const makeRuntimeConfigModule = () =>
               } satisfies RuntimeResolutionResult);
             }
 
-            const cascadeCandidates = resolveCascadeCandidates(
+            const matchedOverride = findMatchedOverride(
+              request.moduleId,
+              request.key,
+              declaration.allowedScopes,
               request.requestContext,
+              request.overrides,
             );
-            const matchedOverride = cascadeCandidates
-              .flatMap((candidate) =>
-                request.overrides.filter(
-                  (override) =>
-                    override.moduleId === request.moduleId &&
-                    override.key === request.key &&
-                    override.scope === candidate.scope &&
-                    override.scopeId === candidate.scopeId &&
-                    declaration.allowedScopes.includes(candidate.scope),
-                ),
-              )
-              .at(0);
 
             return decodeRuntimeResolutionResult(
               (matchedOverride === undefined
@@ -246,67 +353,66 @@ export const makeRuntimeConfigModule = () =>
     resolveFeatureFlag: (input: unknown) =>
       Schema.decodeUnknown(RuntimeFlagResolutionRequestSchema)(input).pipe(
         Effect.flatMap((request) => {
-          const entitled =
-            !request.flag.billable ||
-            hasEntitlement(
-              request.moduleId,
-              request.flag.key,
-              request.requestContext,
-              request.entitlements,
-            );
+          const moduleEnabledKey = getModuleEnabledFeatureFlagKey(
+            request.moduleId,
+          );
+          const moduleState = resolveModuleEnabledState(
+            request.moduleId,
+            request.requestContext,
+            request.overrides,
+            request.entitlements,
+          );
 
-          if (!entitled) {
+          if (
+            request.flag.key !== moduleEnabledKey &&
+            !moduleState.effectiveValue
+          ) {
             return decodeRuntimeResolutionResult({
               moduleId: request.moduleId,
               key: request.flag.key,
               effectiveValue: false,
-              source: runtimeResolutionSource.unentitledDefault,
+              source: moduleState.source,
               entitled: false,
+              ...(moduleState.resolvedScope !== undefined
+                ? { resolvedScope: moduleState.resolvedScope }
+                : {}),
+              ...(moduleState.resolvedScopeId !== undefined
+                ? { resolvedScopeId: moduleState.resolvedScopeId }
+                : {}),
             } satisfies RuntimeResolutionResult);
           }
 
-          const cascadeCandidates = resolveCascadeCandidates(
-            request.requestContext,
-          );
-          const matchedOverride = cascadeCandidates
-            .flatMap((candidate) =>
-              request.overrides.filter(
-                (override) =>
-                  override.moduleId === request.moduleId &&
-                  override.key === request.flag.key &&
-                  override.scope === candidate.scope &&
-                  override.scopeId === candidate.scopeId &&
-                  request.flag.allowedScopes.includes(candidate.scope),
-              ),
-            )
-            .at(0);
+          const resolution =
+            request.flag.key === moduleEnabledKey
+              ? moduleState
+              : resolveFeatureFlagState(
+                  request.moduleId,
+                  request.flag,
+                  request.requestContext,
+                  request.overrides,
+                  request.entitlements,
+                );
 
-          return decodeRuntimeResolutionResult(
-            (matchedOverride === undefined
-              ? {
-                  moduleId: request.moduleId,
-                  key: request.flag.key,
-                  effectiveValue: request.flag.defaultEnabled,
-                  source: runtimeResolutionSource.codeDefault,
-                  entitled: true,
-                }
-              : {
-                  moduleId: request.moduleId,
-                  key: request.flag.key,
-                  effectiveValue: Boolean(matchedOverride.value),
-                  source: runtimeResolutionSource.runtimeOverride,
-                  entitled: true,
-                  resolvedScope: matchedOverride.scope,
-                  resolvedScopeId: matchedOverride.scopeId,
-                }) satisfies RuntimeResolutionResult,
-          );
+          return decodeRuntimeResolutionResult({
+            moduleId: request.moduleId,
+            key: request.flag.key,
+            effectiveValue: resolution.effectiveValue,
+            source: resolution.source,
+            entitled: resolution.entitled,
+            ...(resolution.resolvedScope !== undefined
+              ? { resolvedScope: resolution.resolvedScope }
+              : {}),
+            ...(resolution.resolvedScopeId !== undefined
+              ? { resolvedScopeId: resolution.resolvedScopeId }
+              : {}),
+          } satisfies RuntimeResolutionResult);
         }),
       ),
     buildChangeProposals: (input: unknown) =>
       Schema.decodeUnknown(RuntimeChangeProposalRequestSchema)(input).pipe(
         Effect.flatMap((request) => {
           const moduleManifest = findModuleManifest(request.moduleId);
-          const declaredKeys = new Set(
+          const declaredKeys = new Set<string>(
             moduleManifest?.configKeys.map((configKey) => configKey.key) ?? [],
           );
 

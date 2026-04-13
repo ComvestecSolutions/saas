@@ -1,19 +1,10 @@
 import {
+  featureFlagsFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const featureFlagsFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.featureFlags,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const featureFlagsManifest = defineModuleManifest({
   moduleId: platformModuleId.featureFlags,

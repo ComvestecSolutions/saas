@@ -2,12 +2,23 @@ import "../type-assertions";
 
 import { Schema } from "effect";
 import {
+  billingAndMeteringFeatureFlag,
+  billingEnforcementMode,
+  BillingPlanSchema,
+  BillingWebhookReconciliationSchema,
+  billingMeteringMode,
+  billingPlanInterval,
+  billingSubscriptionStatus,
+  billingWebhookEventType,
+  billingWebhookReconciliationAction,
   permissionScope,
   PermissionScopeSchema,
+  platformModuleId,
   RequestContextSchema,
   TenantContextSchema,
+  tenantManagementFeatureFlag,
+  usageQuotaPeriod,
 } from "@comvestec/contracts";
-
 describe("contract schemas", () => {
   it("decodes a tenant context", () => {
     const tenantContext = Schema.decodeUnknownSync(TenantContextSchema)({
@@ -116,5 +127,112 @@ describe("contract schemas", () => {
     )(permissionScope.brandingManage);
 
     expect(decodedPermissionScope).toBe(permissionScope.brandingManage);
+  });
+
+  it("decodes flexible billing plans with mixed non-metered and rate-limited entitlements", () => {
+    const plan = Schema.decodeUnknownSync(BillingPlanSchema)({
+      planId: "plan_growth",
+      planKey: "growth",
+      displayName: "Growth",
+      active: true,
+      prices: [
+        {
+          priceId: "price_growth_month",
+          interval: billingPlanInterval.month,
+          currency: "USD",
+          amountMinor: 2900,
+          active: true,
+          providerPriceId: "polar_price_month",
+        },
+        {
+          priceId: "price_growth_year",
+          interval: billingPlanInterval.year,
+          currency: "USD",
+          amountMinor: 29000,
+          active: true,
+          providerPriceId: "polar_price_year",
+        },
+      ],
+      entitlements: [
+        {
+          moduleId: platformModuleId.tenantManagement,
+          featureKey: tenantManagementFeatureFlag.enabled,
+          included: true,
+          meteringMode: billingMeteringMode.none,
+          enforcementMode: billingEnforcementMode.none,
+        },
+        {
+          moduleId: platformModuleId.billingAndMetering,
+          featureKey: billingAndMeteringFeatureFlag.apiRequests,
+          included: true,
+          meteringMode: billingMeteringMode.rateLimit,
+          meterKey: billingAndMeteringFeatureFlag.apiRequests,
+          unit: "request",
+          quotaLimit: 120,
+          quotaPeriod: usageQuotaPeriod.minute,
+          enforcementMode: billingEnforcementMode.rateLimit,
+        },
+      ],
+    });
+
+    expect(plan.prices.map((price) => price.interval)).toEqual(
+      expect.arrayContaining([
+        billingPlanInterval.month,
+        billingPlanInterval.year,
+      ]),
+    );
+    expect(plan.entitlements[0]?.meteringMode).toBe(billingMeteringMode.none);
+    expect(plan.entitlements[1]?.enforcementMode).toBe(
+      billingEnforcementMode.rateLimit,
+    );
+  });
+
+  it("decodes normalized billing webhook reconciliation payloads", () => {
+    const reconciliation = Schema.decodeUnknownSync(
+      BillingWebhookReconciliationSchema,
+    )({
+      action: billingWebhookReconciliationAction.activate,
+      event: {
+        provider: "polar",
+        deliveryId: "wh_1",
+        eventId: "evt_1",
+        eventType: billingWebhookEventType.checkoutCompleted,
+        occurredAt: new Date().toISOString(),
+        subscriptionId: "sub_1",
+        tenantScope: "organization",
+        tenantScopeId: "org_1",
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        customerId: "cus_1",
+      },
+      subscription: {
+        subscriptionId: "sub_1",
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        interval: billingPlanInterval.month,
+        currentPeriodEnd: new Date(Date.now() + 86_400_000).toISOString(),
+        entitlements: [
+          {
+            moduleId: platformModuleId.tenantManagement,
+            featureKey: tenantManagementFeatureFlag.enabled,
+            included: true,
+            meteringMode: billingMeteringMode.none,
+            enforcementMode: billingEnforcementMode.none,
+          },
+        ],
+      },
+      entitlementsActive: true,
+    });
+
+    expect(reconciliation.action).toBe(
+      billingWebhookReconciliationAction.activate,
+    );
+    expect(reconciliation.subscription.status).toBe(
+      billingSubscriptionStatus.active,
+    );
+    expect(reconciliation.event.eventType).toBe(
+      billingWebhookEventType.checkoutCompleted,
+    );
   });
 });

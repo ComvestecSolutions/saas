@@ -28,14 +28,18 @@ const BrandingResolutionInputSchema = Schema.Struct({
   values: Schema.Record({ key: Schema.NonEmptyString, value: Schema.Any }),
 });
 
-const PublicBrandingProjectionSchema = Schema.Struct({
+const BrandingProjectionBaseFields = {
   companyName: Schema.NonEmptyString,
   logoAssetId: Schema.optional(Schema.NonEmptyString),
   faviconAssetId: Schema.optional(Schema.NonEmptyString),
   supportEmail: Schema.optional(Schema.NonEmptyString),
-  themeTokens: ThemeTokenSchema,
   effectiveScope: PlatformScopeSchema,
   entitled: Schema.Boolean,
+};
+
+const PublicBrandingProjectionSchema = Schema.Struct({
+  ...BrandingProjectionBaseFields,
+  themeTokens: ThemeTokenSchema,
 });
 
 export type PublicBrandingProjection = Schema.Schema.Type<
@@ -43,15 +47,10 @@ export type PublicBrandingProjection = Schema.Schema.Type<
 >;
 
 const AdminBrandingProjectionSchema = Schema.Struct({
-  companyName: Schema.NonEmptyString,
-  logoAssetId: Schema.optional(Schema.NonEmptyString),
-  faviconAssetId: Schema.optional(Schema.NonEmptyString),
-  supportEmail: Schema.optional(Schema.NonEmptyString),
+  ...BrandingProjectionBaseFields,
   replyToEmail: Schema.optional(Schema.NonEmptyString),
   customDomainHost: Schema.optional(Schema.NonEmptyString),
   customDomainStatus: CustomDomainLifecycleStateSchema,
-  effectiveScope: PlatformScopeSchema,
-  entitled: Schema.Boolean,
 });
 
 const BrandingResolutionResultSchema = Schema.Struct({

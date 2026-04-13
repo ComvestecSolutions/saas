@@ -8,47 +8,14 @@ import {
   platformModuleId,
   platformScope,
   projectionProfile,
+  tenantBrandingConfigKey,
+  tenantBrandingFeatureFlag,
+  tenantBrandingRuntimeValueKey,
 } from "@comvestec/contracts";
 import {
   configDefaultValue,
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
   defineModuleManifest,
-  defineModuleRuntimeValueKeys,
 } from "../../manifest-helpers";
-
-export const tenantBrandingConfigKey = defineModuleConfigKeys(
-  platformModuleId.tenantBranding,
-  {
-    companyName: "companyName",
-    logoAssetId: "logoAssetId",
-    faviconAssetId: "faviconAssetId",
-    themePrimary: "theme.primary",
-    themeSecondary: "theme.secondary",
-    themeAccent: "theme.accent",
-    fontHeading: "font.heading",
-    fontBody: "font.body",
-    supportEmail: "supportEmail",
-    replyToEmail: "replyToEmail",
-    customDomainHost: "customDomain.host",
-  },
-);
-
-export const tenantBrandingFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.tenantBranding,
-  {
-    enabled: "enabled",
-    customDomain: "customDomain",
-    brandedEmails: "brandedEmails",
-  },
-);
-
-export const tenantBrandingRuntimeValueKey = defineModuleRuntimeValueKeys(
-  platformModuleId.tenantBranding,
-  {
-    customDomainStatus: "customDomain.status",
-  },
-);
 
 export const tenantBrandingFields = defineModuleFields({
   companyName: "companyName",

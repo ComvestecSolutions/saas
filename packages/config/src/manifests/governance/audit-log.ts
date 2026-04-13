@@ -1,29 +1,12 @@
 import {
+  auditLogConfigKey,
+  auditLogFeatureFlag,
   configSchemaType,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const auditLogConfigKey = defineModuleConfigKeys(
-  platformModuleId.auditLog,
-  {
-    retentionDays: "retentionDays",
-    sensitiveReadCapture: "sensitiveReadCapture",
-  },
-);
-
-export const auditLogFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.auditLog,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const auditLogManifest = defineModuleManifest({
   moduleId: platformModuleId.auditLog,

@@ -9,16 +9,20 @@ import {
   TelemetryKindSchema,
 } from "@comvestec/contracts";
 
-export const TelemetryEnvelopeSchema = Schema.Struct({
+const TelemetryEmissionFields = {
   moduleId: PlatformModuleIdSchema,
   kind: TelemetryKindSchema,
+  permissionScope: Schema.optional(PermissionScopeSchema),
+  deploymentVersion: Schema.NonEmptyString,
+  configVersion: Schema.NonEmptyString,
+};
+
+export const TelemetryEnvelopeSchema = Schema.Struct({
+  ...TelemetryEmissionFields,
   correlationId: Schema.NonEmptyString,
   actorId: Schema.optional(Schema.NonEmptyString),
   tenantScope: PlatformScopeSchema,
   tenantScopeId: Schema.NonEmptyString,
-  permissionScope: Schema.optional(PermissionScopeSchema),
-  deploymentVersion: Schema.NonEmptyString,
-  configVersion: Schema.NonEmptyString,
 });
 
 export type TelemetryEnvelope = Schema.Schema.Type<
@@ -97,11 +101,7 @@ const healthIndicators = Schema.validateSync(
 
 const BuildTelemetryEnvelopeInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
-  moduleId: PlatformModuleIdSchema,
-  kind: TelemetryKindSchema,
-  permissionScope: Schema.optional(PermissionScopeSchema),
-  deploymentVersion: Schema.NonEmptyString,
-  configVersion: Schema.NonEmptyString,
+  ...TelemetryEmissionFields,
 });
 
 export type ObservabilityModuleService = {

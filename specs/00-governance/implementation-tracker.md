@@ -32,13 +32,16 @@ Status: accepted
 
 ## Snapshot
 
-Last updated: 2026-04-11
+Last updated: 2026-04-13
+
+Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 ### Current Pattern Priorities To Reach 10/10
 
-1. Move runtime governance flows from in-memory scaffolds to PostgreSQL-backed system-of-record patterns.
-2. Finish the adapter-to-module-to-operator workflow chain for authorization, observability, notifications, metering, and search.
-3. Add integration validation once external-service wiring exists so platform adapters are more than typed stubs.
+1. Close the anonymous-to-entitled backend slice first: plan listing to auth start to auth callback to hosted checkout to webhook reconciliation to entitled product bootstrap.
+2. Move runtime governance flows from in-memory scaffolds to PostgreSQL-backed system-of-record patterns.
+3. Finish the adapter-to-module-to-operator workflow chain for authorization, observability, notifications, metering, and search.
+4. Add integration validation once external-service wiring exists so platform adapters are more than typed stubs.
 
 ### Cross-Cutting Platform
 
@@ -53,7 +56,7 @@ Last updated: 2026-04-11
 
 - Governing spec: [006](../01-platform/access/006-config-permission-and-feature-governance.md), [Runtime Config Manifest](../02-modules/governance/config-runtime/manifest.md), [ADR-007](../03-adr/runtime/ADR-007-no-redeploy-runtime-config-sync.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/governance/runtime-config.ts](../../packages/modules/src/governance/runtime-config.ts), [packages/modules/src/persistence/postgres-schema.ts](../../packages/modules/src/persistence/postgres-schema.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
+- Evidence: [packages/modules/src/governance/runtime-config.ts](../../packages/modules/src/governance/runtime-config.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
 - Cleanup: runtime change proposals now ignore overrides owned by other modules so generated drift artifacts stay module-scoped and reviewable.
 - Next gap: Replace in-memory proposal generation with PostgreSQL-backed sync history and approvals.
 
@@ -116,11 +119,26 @@ Last updated: 2026-04-11
 
 ### Applications
 
-| Application | Governing spec                                     | Status     | Evidence                                                                             | Next gap                                                                 |
-| ----------- | -------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| Public web  | [Public Web Spec](../02-apps/public-web/spec.md)   | scaffolded | [apps/public-web/src/routes/index.tsx](../../apps/public-web/src/routes/index.tsx)   | Replace placeholder snapshot with real trust, pricing, and docs data     |
-| Product app | [Product App Spec](../02-apps/product-app/spec.md) | scaffolded | [apps/product-app/src/routes/index.tsx](../../apps/product-app/src/routes/index.tsx) | Implement tenant-aware product workflows beyond the shell snapshot       |
-| Admin app   | [Admin App Spec](../02-apps/admin-app/spec.md)     | scaffolded | [apps/admin-app/src/routes/index.tsx](../../apps/admin-app/src/routes/index.tsx)     | Implement config sync, drift review, approvals, and audit mutation flows |
+#### Public web
+
+- Governing spec: [Public Web Spec](../02-apps/public-web/spec.md)
+- Status: scaffolded
+- Evidence: [apps/public-web/src/routes/index.tsx](../../apps/public-web/src/routes/index.tsx)
+- Next gap: Replace the placeholder snapshot with public-safe plan listing, auth start, and hosted checkout handoff.
+
+#### Product app
+
+- Governing spec: [Product App Spec](../02-apps/product-app/spec.md)
+- Status: scaffolded
+- Evidence: [apps/product-app/src/routes/index.tsx](../../apps/product-app/src/routes/index.tsx)
+- Next gap: Implement auth callback, entitlement bootstrap, and billing status endpoints beyond the shell snapshot.
+
+#### Admin app
+
+- Governing spec: [Admin App Spec](../02-apps/admin-app/spec.md)
+- Status: scaffolded
+- Evidence: [apps/admin-app/src/routes/index.tsx](../../apps/admin-app/src/routes/index.tsx)
+- Next gap: Implement config sync, drift review, approvals, and audit mutation flows.
 
 ### Modules
 
@@ -129,13 +147,13 @@ Last updated: 2026-04-11
 - Governing manifest: [Manifest](../02-modules/domains/tenant-management/manifest.md)
 - Status: scaffolded
 - Evidence: [packages/modules/src/domains/tenant-management.ts](../../packages/modules/src/domains/tenant-management.ts), [tests/modules/domains.test.ts](../../tests/modules/domains.test.ts)
-- Next gap: Replace onboarding and isolation scaffolds with Convex-backed tenant workflows.
+- Next gap: Replace onboarding and isolation scaffolds with durable tenant provisioning and onboarding state for the signup-to-entitled-access slice.
 
 #### Runtime config
 
 - Governing manifest: [Manifest](../02-modules/governance/config-runtime/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/governance/runtime-config.ts](../../packages/modules/src/governance/runtime-config.ts), [packages/modules/src/persistence/postgres-schema.ts](../../packages/modules/src/persistence/postgres-schema.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
+- Evidence: [packages/modules/src/governance/runtime-config.ts](../../packages/modules/src/governance/runtime-config.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
 - Next gap: Implement PostgreSQL-backed bidirectional sync.
 
 #### Authorization
@@ -158,7 +176,7 @@ Last updated: 2026-04-11
 
 - Governing manifest: [Manifest](../02-modules/governance/audit-log/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/governance/audit-log.ts](../../packages/modules/src/governance/audit-log.ts), [packages/modules/src/persistence/postgres-schema.ts](../../packages/modules/src/persistence/postgres-schema.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
+- Evidence: [packages/modules/src/governance/audit-log.ts](../../packages/modules/src/governance/audit-log.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
 - Cleanup: `AuditEventSchema.action` now uses the shared module-scoped audit action constants from contracts, and audit builders and requirements use Effect-safe runtime decoding instead of live-path `Schema.validateSync` calls.
 - Next gap: Implement append-only PostgreSQL storage and admin review surfaces.
 
@@ -173,7 +191,7 @@ Last updated: 2026-04-11
 
 - Governing manifest: [Manifest](../02-modules/domains/tenant-branding/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/domains/tenant-branding.ts](../../packages/modules/src/domains/tenant-branding.ts), [packages/modules/src/persistence/postgres-schema.ts](../../packages/modules/src/persistence/postgres-schema.ts), [tests/modules/domains.test.ts](../../tests/modules/domains.test.ts)
+- Evidence: [packages/modules/src/domains/tenant-branding.ts](../../packages/modules/src/domains/tenant-branding.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/domains.test.ts](../../tests/modules/domains.test.ts)
 - Next gap: Implement persistent runtime overrides, asset publication workflows, and custom-domain verification.
 
 #### Observability
@@ -187,8 +205,8 @@ Last updated: 2026-04-11
 
 - Governing manifest: [Manifest](../02-modules/domains/billing-and-metering/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/domains/billing-metering.ts](../../packages/modules/src/domains/billing-metering.ts), [packages/modules/src/persistence/postgres-schema.ts](../../packages/modules/src/persistence/postgres-schema.ts), [tests/modules/domains.test.ts](../../tests/modules/domains.test.ts)
-- Next gap: Replace in-memory quota and cost scaffolds with real entitlement and meter ingestion.
+- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts)
+- Next gap: Wire plan listing, checkout start, webhook intake, and replay through app-owned server boundaries and live PostgreSQL infrastructure instead of module-only scaffolds.
 
 #### Notification center
 
@@ -208,8 +226,8 @@ Last updated: 2026-04-11
 
 - Governing manifest: [Manifest](../02-modules/access/identity-session/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/platform/src/adapters/identity/keycloak.ts](../../packages/platform/src/adapters/identity/keycloak.ts), [packages/modules/src/persistence/postgres-schema.ts](../../packages/modules/src/persistence/postgres-schema.ts), [tests/platform/adapters.test.ts](../../tests/platform/adapters.test.ts)
-- Next gap: Implement session lifecycle and cache.
+- Evidence: [packages/platform/src/adapters/identity/keycloak.ts](../../packages/platform/src/adapters/identity/keycloak.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/platform/adapters.test.ts](../../tests/platform/adapters.test.ts)
+- Next gap: Implement auth start and auth callback handling, session lifecycle, and cache.
 
 #### Search
 
@@ -237,7 +255,7 @@ Last updated: 2026-04-11
 - Governing manifest: [Manifest](../02-modules/communication/webhooks-api-access/manifest.md)
 - Status: scaffolded
 - Evidence: [packages/config/src/manifests/communication/webhooks-api-access.ts](../../packages/config/src/manifests/communication/webhooks-api-access.ts)
-- Next gap: Implement webhook subscription and dispatch.
+- Next gap: Implement inbound provider webhook verification, idempotent processing, replay, and outbound webhook dispatch.
 
 #### Import export
 
@@ -264,7 +282,7 @@ Last updated: 2026-04-11
 ### Validation Baseline
 
 1. Repository validation for `validated` work currently means `bun run typecheck` and `bun run test` are green.
-2. The current snapshot reflects those commands running green on 2026-04-10.
-3. Test suite: 47 tests across 9 suites (contracts, modules access/domains/governance, platform services/adapters).
+2. The current snapshot reflects those commands running green on 2026-04-13.
+3. Test suite: 61 tests across 10 suites.
 4. All source modules and test files use shared constants instead of raw vocabulary strings.
 5. Security invariants (break-glass expiry, regulated-sensitive redaction, tenant isolation, cache eviction) all have explicit test coverage.

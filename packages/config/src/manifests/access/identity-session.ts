@@ -3,31 +3,13 @@ import {
   dataClassification,
   defineDataClassificationDeclarations,
   defineModuleFields,
+  identitySessionConfigKey,
+  identitySessionFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const identitySessionConfigKey = defineModuleConfigKeys(
-  platformModuleId.identitySession,
-  {
-    sessionIdleTimeoutMinutes: "session.idleTimeoutMinutes",
-    sessionAbsoluteTimeoutHours: "session.absoluteTimeoutHours",
-  },
-);
-
-export const identitySessionFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.identitySession,
-  {
-    enabled: "enabled",
-    mfaEnforced: "mfaEnforced",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const identitySessionFields = defineModuleFields({
   companyName: "companyName",

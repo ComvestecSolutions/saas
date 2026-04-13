@@ -3,26 +3,10 @@ import {
   permissionScope,
   platformModuleId,
   platformScope,
+  workflowJobsConfigKey,
+  workflowJobsFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const workflowJobsConfigKey = defineModuleConfigKeys(
-  platformModuleId.workflowJobs,
-  {
-    retryMaxAttempts: "retry.maxAttempts",
-  },
-);
-
-export const workflowJobsFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.workflowJobs,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const workflowJobsManifest = defineModuleManifest({
   moduleId: platformModuleId.workflowJobs,

@@ -2,6 +2,11 @@ import { Effect } from "effect";
 import {
   authorizationNamespace,
   authorizationRelation,
+  billingPlanInterval,
+  billingSubscriptionStatus,
+  billingWebhookEventType,
+  billingWebhookReconciliationAction,
+  platformModuleId,
   telemetryKind,
 } from "@comvestec/contracts";
 import {
@@ -207,6 +212,34 @@ describe("platform adapters", () => {
     await expect(Effect.runPromise(polar.healthcheck)).resolves.toMatchObject({
       healthy: true,
     });
+    await expect(Effect.runPromise(polar.listPlans)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          planId: "plan_starter",
+          prices: expect.arrayContaining([
+            expect.objectContaining({ interval: billingPlanInterval.month }),
+            expect.objectContaining({ interval: billingPlanInterval.year }),
+          ]),
+        }),
+      ]),
+    );
+    await expect(
+      Effect.runPromise(
+        polar.createCheckoutSession({
+          planId: "plan_starter",
+          priceId: "price_starter_year",
+          successUrl: "http://localhost:3002/billing/success",
+          cancelUrl: "http://localhost:3002/billing/cancel",
+          tenantScope: "organization",
+          tenantScopeId: "org_1",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      planId: "plan_starter",
+      priceId: "price_starter_year",
+      interval: billingPlanInterval.year,
+      provider: "polar",
+    });
     await expect(
       Effect.runPromise(openmeter.healthcheck),
     ).resolves.toMatchObject({ healthy: true });
@@ -222,6 +255,147 @@ describe("platform adapters", () => {
     ).resolves.toMatchObject({ eventName: "custom-domain.created" });
     await expect(Effect.runPromise(postal.healthcheck)).resolves.toMatchObject({
       healthy: true,
+    });
+  });
+
+  it("creates checkout sessions for configured backend plan catalogs", async () => {
+    const polar = await Effect.runPromise(
+      makePolarAdapter({
+        apiKey: "polar-key",
+        apiUrl: "http://localhost:8888",
+        plans: [
+          {
+            planId: "plan_growth",
+            planKey: "growth",
+            displayName: "Growth",
+            active: true,
+            prices: [
+              {
+                priceId: "price_growth_month",
+                interval: billingPlanInterval.month,
+                currency: "USD",
+                amountMinor: 2900,
+                active: true,
+                providerPriceId: "polar_price_growth_month",
+              },
+              {
+                priceId: "price_growth_year",
+                interval: billingPlanInterval.year,
+                currency: "USD",
+                amountMinor: 29000,
+                active: true,
+                providerPriceId: "polar_price_growth_year",
+              },
+            ],
+            entitlements: [
+              {
+                moduleId: platformModuleId.tenantManagement,
+                included: true,
+                meteringMode: "none",
+                enforcementMode: "none",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await expect(Effect.runPromise(polar.listPlans)).resolves.toEqual([
+      expect.objectContaining({
+        planId: "plan_growth",
+        prices: expect.arrayContaining([
+          expect.objectContaining({ priceId: "price_growth_month" }),
+          expect.objectContaining({ priceId: "price_growth_year" }),
+        ]),
+      }),
+    ]);
+    await expect(
+      Effect.runPromise(
+        polar.createCheckoutSession({
+          planId: "plan_growth",
+          priceId: "price_growth_month",
+          successUrl: "http://localhost:3002/billing/success",
+          cancelUrl: "http://localhost:3002/billing/cancel",
+          tenantScope: "organization",
+          tenantScopeId: "org_growth",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      checkoutSessionId: expect.stringContaining("org_growth"),
+      priceId: "price_growth_month",
+      interval: billingPlanInterval.month,
+    });
+  });
+
+  it("normalizes verified polar webhook deliveries into billing reconciliation", async () => {
+    const polar = await Effect.runPromise(
+      makePolarAdapter({
+        apiKey: "polar-key",
+        apiUrl: "http://localhost:8888",
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        polar.reconcileWebhookEvent({
+          provider: platformAdapterServiceName.polar,
+          deliveryId: "wh_1",
+          eventId: "evt_1",
+          eventType: billingWebhookEventType.checkoutCompleted,
+          occurredAt: new Date().toISOString(),
+          verifiedSignature: true,
+          subscriptionId: "sub_1",
+          tenantScope: "organization",
+          tenantScopeId: "org_1",
+          planId: "plan_starter",
+          priceId: "price_starter_month",
+          customerId: "cus_1",
+          currentPeriodEnd: new Date(Date.now() + 86_400_000).toISOString(),
+        }),
+      ),
+    ).resolves.toMatchObject({
+      action: billingWebhookReconciliationAction.activate,
+      event: {
+        eventType: billingWebhookEventType.checkoutCompleted,
+        planId: "plan_starter",
+      },
+      subscription: {
+        status: billingSubscriptionStatus.active,
+        interval: billingPlanInterval.month,
+      },
+      entitlementsActive: true,
+    });
+  });
+
+  it("rejects unverified polar webhook deliveries", async () => {
+    const polar = await Effect.runPromise(
+      makePolarAdapter({
+        apiKey: "polar-key",
+        apiUrl: "http://localhost:8888",
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          polar.reconcileWebhookEvent({
+            provider: platformAdapterServiceName.polar,
+            deliveryId: "wh_unverified",
+            eventId: "evt_unverified",
+            eventType: billingWebhookEventType.paymentFailed,
+            occurredAt: new Date().toISOString(),
+            verifiedSignature: false,
+            subscriptionId: "sub_2",
+            tenantScope: "organization",
+            tenantScopeId: "org_1",
+            planId: "plan_starter",
+            priceId: "price_starter_year",
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "PolarWebhookSignatureError",
+      deliveryId: "wh_unverified",
     });
   });
 

@@ -3,26 +3,10 @@ import {
   permissionScope,
   platformModuleId,
   platformScope,
+  retentionLegalHoldConfigKey,
+  retentionLegalHoldFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const retentionLegalHoldConfigKey = defineModuleConfigKeys(
-  platformModuleId.retentionLegalHold,
-  {
-    defaultRetentionDays: "defaultRetentionDays",
-  },
-);
-
-export const retentionLegalHoldFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.retentionLegalHold,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const retentionLegalHoldManifest = defineModuleManifest({
   moduleId: platformModuleId.retentionLegalHold,

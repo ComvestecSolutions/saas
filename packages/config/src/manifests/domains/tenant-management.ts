@@ -8,29 +8,10 @@ import {
   platformModuleId,
   platformScope,
   projectionProfile,
+  tenantManagementConfigKey,
+  tenantManagementFeatureFlag,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const tenantManagementConfigKey = defineModuleConfigKeys(
-  platformModuleId.tenantManagement,
-  {
-    membershipInviteExpiryHours: "membership.inviteExpiryHours",
-    onboardingReminderDays: "onboarding.reminderDays",
-  },
-);
-
-export const tenantManagementFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.tenantManagement,
-  {
-    enabled: "enabled",
-    enterpriseHierarchy: "enterpriseHierarchy",
-    guidedOnboarding: "guidedOnboarding",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const tenantManagementFields = defineModuleFields({
   id: "id",

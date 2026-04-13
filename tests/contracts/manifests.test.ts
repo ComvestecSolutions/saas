@@ -1,10 +1,14 @@
 import { Schema } from "effect";
 import {
+  billingEnforcementMode,
   ModuleConfigManifestSchema,
   permissionScope,
   platformModuleId,
+  projectionProfile,
 } from "@comvestec/contracts";
 import {
+  billingAndMeteringConfigKey,
+  billingAndMeteringFeatureFlag,
   platformModuleManifests,
   tenantBrandingFieldClassifications,
   tenantBrandingFeatureFlag,
@@ -100,5 +104,37 @@ describe("contract manifests", () => {
       tenantManagementConfigKey.membershipInviteExpiryHours,
     );
     expect(manifest.featureFlags[0]!.billable).toBe(true);
+  });
+
+  it("keeps the billing manifest aligned with flexible plan composition defaults", () => {
+    const manifest = platformModuleManifests.find(
+      (candidate) => candidate.moduleId === platformModuleId.billingAndMetering,
+    );
+
+    expect(manifest).toBeDefined();
+    expect(manifest?.configKeys).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: billingAndMeteringConfigKey.usageEnforcementMode,
+          defaultValue: billingEnforcementMode.observe,
+        }),
+      ]),
+    );
+    expect(
+      manifest?.projectionProfiles.map((profile) => profile.profile),
+    ).toEqual(
+      expect.arrayContaining([
+        projectionProfile.billing,
+        projectionProfile.admin,
+        projectionProfile.summary,
+      ]),
+    );
+    expect(manifest?.featureFlags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: billingAndMeteringFeatureFlag.apiRequests,
+        }),
+      ]),
+    );
   });
 });

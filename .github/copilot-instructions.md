@@ -68,7 +68,7 @@ This repository is the reusable SaaS foundation for Comvestec Solutions. Every c
 ## Test Discipline
 
 1. Test fixtures and expectations must use shared constants (`platformModuleId.*`, `actorType.*`, `permissionScope.*`, `platformScope.*`, `dataClassification.*`, `projectionProfile.*`, `configSchemaType.*`) instead of raw strings. The only exception is raw strings used as decode inputs to explicitly test `Schema.decodeUnknown` boundary behavior.
-2. Tests are organized under `tests/` with `contracts/`, `modules/`, and `platform/` subfolders. Shared fixtures live in module-scoped `_fixtures.ts` files. Compile-time type assertions live in `tests/type-assertions.ts`.
+2. Tests are organized under `tests/` with `contracts/`, `modules/`, and `platform/` subfolders. Shared fixtures live in module-scoped `_fixtures.ts` files. Compile-time type assertions route through `tests/type-assertions.ts`, with grouped assertion files under `tests/type-assertions/` when the root entrypoint would otherwise grow too large.
 3. Every security-sensitive path (break-glass expiry, regulated-sensitive redaction, tenant isolation, cache eviction) must have explicit test coverage.
 4. Run `bun run typecheck` and `bun run test` before considering any change complete.
 

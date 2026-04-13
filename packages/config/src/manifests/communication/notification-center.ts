@@ -1,28 +1,12 @@
 import {
   configSchemaType,
+  notificationCenterConfigKey,
+  notificationCenterFeatureFlag,
   permissionScope,
   platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import {
-  defineModuleConfigKeys,
-  defineModuleFeatureFlags,
-  defineModuleManifest,
-} from "../../manifest-helpers";
-
-export const notificationCenterConfigKey = defineModuleConfigKeys(
-  platformModuleId.notificationCenter,
-  {
-    digestIntervalMinutes: "digest.intervalMinutes",
-  },
-);
-
-export const notificationCenterFeatureFlag = defineModuleFeatureFlags(
-  platformModuleId.notificationCenter,
-  {
-    enabled: "enabled",
-  },
-);
+import { defineModuleManifest } from "../../manifest-helpers";
 
 export const notificationCenterManifest = defineModuleManifest({
   moduleId: platformModuleId.notificationCenter,
