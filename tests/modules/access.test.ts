@@ -6,6 +6,7 @@ import {
   defineModuleFields,
   defineProjectionDescriptors,
   moduleCapability,
+  onboardingStepStatus,
   permissionScope,
   platformModuleId,
   platformScope,
@@ -18,10 +19,102 @@ import {
 import {
   canModuleRequestCapability,
   getModuleCapabilityContracts,
+  identitySessionLifecycleEventType,
+  identitySessionRunIdPrefix,
   makeAuthorizationModule,
   makeFieldSecurityModule,
+  makeIdentitySessionModule,
+  makeIdentitySessionPostgresRepository,
+  makeTenantManagementModule,
+  makeTenantOnboardingPostgresRepository,
+  identitySessionAuditTable,
+  tenantOnboardingRunsTable,
+  tenantOnboardingStepsTable,
+  tenantOnboardingRunStatus,
+  type PostgresDatabase,
+  type PostgresInsertBuilder,
+  IdentitySessionPostgresRepository,
+  TenantManagementModule,
+  TenantOnboardingPostgresRepository,
 } from "@comvestec/modules";
+import {
+  KeycloakAdapter,
+  makeKeycloakAdapter,
+  makeValkeyAdapter,
+  platformAdapterServiceName,
+  ValkeyAdapter,
+} from "@comvestec/platform";
 import { organizationRequestContext, supportRequestContext } from "./_fixtures";
+import {
+  createKeycloakTestOptions,
+  createValkeyTestClient,
+} from "../platform-adapter-doubles";
+
+const createIdentitySessionTestDatabase = () => {
+  type PersistedTable = Parameters<PostgresDatabase["insert"]>[0];
+  type PersistedValues = Parameters<
+    PostgresInsertBuilder<PersistedTable>["values"]
+  >[0];
+  const identitySessionEvents = new Map<
+    string,
+    typeof identitySessionAuditTable.$inferInsert
+  >();
+  const onboardingRuns = new Map<
+    string,
+    typeof tenantOnboardingRunsTable.$inferInsert
+  >();
+  const onboardingSteps = new Map<
+    string,
+    typeof tenantOnboardingStepsTable.$inferInsert
+  >();
+
+  const persistRows = (table: PersistedTable, values: PersistedValues) => {
+    const rows = Array.isArray(values) ? values : [values];
+
+    for (const row of rows) {
+      if (table === identitySessionAuditTable) {
+        const event = row as typeof identitySessionAuditTable.$inferInsert;
+        identitySessionEvents.set(event.eventId, event);
+        continue;
+      }
+
+      if (table === tenantOnboardingRunsTable) {
+        const run = row as typeof tenantOnboardingRunsTable.$inferInsert;
+        onboardingRuns.set(run.runId, run);
+        continue;
+      }
+
+      if (table === tenantOnboardingStepsTable) {
+        const step = row as typeof tenantOnboardingStepsTable.$inferInsert;
+        onboardingSteps.set(`${step.runId}:${step.stepId}`, step);
+      }
+    }
+  };
+
+  const transaction = {
+    insert: (table: PersistedTable) => ({
+      values: (values: PersistedValues) => ({
+        onConflictDoUpdate: () => ({
+          execute: async () => {
+            persistRows(table, values);
+          },
+        }),
+      }),
+    }),
+  };
+
+  const database: PostgresDatabase = {
+    ...transaction,
+    transaction: async (callback) => callback(transaction),
+  };
+
+  return {
+    database,
+    identitySessionEvents,
+    onboardingRuns,
+    onboardingSteps,
+  };
+};
 
 const fieldSecurityTestProjections = defineProjectionDescriptors(
   defineModuleFields({
@@ -288,5 +381,149 @@ describe("modules access", () => {
         }),
       ]),
     );
+  });
+
+  it("starts auth and completes callback into durable lifecycle and onboarding state", async () => {
+    const database = createIdentitySessionTestDatabase();
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter(createKeycloakTestOptions()),
+    );
+    const tenantManagement = await Effect.runPromise(
+      makeTenantManagementModule(),
+    );
+    const valkey = await Effect.runPromise(
+      makeValkeyAdapter({
+        url: "redis://localhost:6379",
+        client: createValkeyTestClient(),
+      }),
+    );
+    const identityRepository = await Effect.runPromise(
+      makeIdentitySessionPostgresRepository(database.database),
+    );
+    const onboardingRepository = await Effect.runPromise(
+      makeTenantOnboardingPostgresRepository(database.database),
+    );
+    const identitySession = await Effect.runPromise(
+      makeIdentitySessionModule().pipe(
+        Effect.provideService(KeycloakAdapter, keycloak),
+        Effect.provideService(ValkeyAdapter, valkey),
+        Effect.provideService(TenantManagementModule, tenantManagement),
+        Effect.provideService(
+          IdentitySessionPostgresRepository,
+          identityRepository,
+        ),
+        Effect.provideService(
+          TenantOnboardingPostgresRepository,
+          onboardingRepository,
+        ),
+      ),
+    );
+
+    const authStart = await Effect.runPromise(
+      identitySession.startAuthentication({
+        requestContext: {
+          actorType: actorType.anonymous,
+          correlationId: "corr_auth_start",
+          host: "product.example.com",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+        tenantHint: "org_1",
+        returnHost: "product.example.com",
+      }),
+    );
+
+    const completion = await Effect.runPromise(
+      identitySession.completeAuthentication({
+        session: {
+          authenticated: true,
+          sessionId: "sess_auth_1",
+          actorId: "usr_owner_1",
+          realm: "comvestec",
+          tenantHint: "org_1",
+        },
+        correlationId: "corr_auth_start",
+        host: "product.example.com",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_1",
+          enterpriseId: "ent_1",
+          organizationId: "org_1",
+          individualId: "usr_owner_1",
+        },
+        enabledModules: [
+          platformModuleId.tenantManagement,
+          platformModuleId.identitySession,
+          platformModuleId.billingAndMetering,
+        ],
+      }),
+    );
+
+    expect(authStart.redirect.realm).toBe("comvestec");
+    expect(authStart.redirect.tenantHint).toBe("org_1");
+    expect(authStart.correlationId).toBe("corr_auth_start");
+    expect(completion.requestContext.actorType).toBe(
+      actorType.organizationAdmin,
+    );
+    expect(completion.requestContext.actorId).toBe("usr_owner_1");
+    expect(completion.requestContext.sessionId).toBe("sess_auth_1");
+    expect(completion.lifecycleEvent.eventType).toBe(
+      identitySessionLifecycleEventType.authCallbackCompleted,
+    );
+    expect(
+      database.identitySessionEvents.get(
+        [
+          platformAdapterServiceName.keycloak,
+          "sess_auth_1",
+          "corr_auth_start",
+          identitySessionLifecycleEventType.authCallbackCompleted,
+        ].join(":"),
+      ),
+    ).toMatchObject({
+      actorId: "usr_owner_1",
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_1",
+      provider: platformAdapterServiceName.keycloak,
+    });
+    expect(
+      database.onboardingRuns.get(
+        [
+          identitySessionRunIdPrefix.tenantOnboarding,
+          platformScope.organization,
+          "org_1",
+        ].join(":"),
+      ),
+    ).toMatchObject({
+      triggeredBy: "usr_owner_1",
+      status: tenantOnboardingRunStatus.inProgress,
+      correlationId: "corr_auth_start",
+    });
+    await expect(
+      Effect.runPromise(
+        identitySession.resolveRequestContext({ sessionId: "sess_auth_1" }),
+      ),
+    ).resolves.toMatchObject({
+      actorId: "usr_owner_1",
+      sessionId: "sess_auth_1",
+      tenant: {
+        scope: platformScope.organization,
+        scopeId: "org_1",
+      },
+    });
+    expect(
+      database.onboardingSteps.get(
+        [
+          identitySessionRunIdPrefix.tenantOnboarding,
+          platformScope.organization,
+          "org_1",
+          "billing",
+        ].join(":"),
+      ),
+    ).toMatchObject({
+      requiredModuleId: platformModuleId.billingAndMetering,
+      status: onboardingStepStatus.notStarted,
+    });
   });
 });

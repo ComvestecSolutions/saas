@@ -13,8 +13,8 @@ Status: accepted
 
 ## First Backend-Ready Slice
 
-1. Product-app owns auth callback completion, session-bound request bootstrap, entitled access bootstrap, and initial billing status responses.
-2. The first milestone stays API-first, so thin server routes and loaders may exist before richer product screens.
+1. Product-app consumes backend-owned auth callback completion, session-bound request bootstrap, entitled access bootstrap, and initial billing status responses.
+2. The first milestone stays API-first, so thin loaders, actions, or proxy routes may exist before richer product screens, but backend logic stays in shared platform services.
 3. Product access after checkout must resolve from persisted entitlements and validated session state, not from frontend assumptions or return query parameters.
 
 ## Rules

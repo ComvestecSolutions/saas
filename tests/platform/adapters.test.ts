@@ -1,12 +1,16 @@
 import { Effect } from "effect";
 import {
+  actorType,
   authorizationNamespace,
   authorizationRelation,
+  billingEnforcementMode,
+  billingMeteringMode,
   billingPlanInterval,
   billingSubscriptionStatus,
   billingWebhookEventType,
   billingWebhookReconciliationAction,
   platformModuleId,
+  platformScope,
   telemetryKind,
 } from "@comvestec/contracts";
 import {
@@ -15,24 +19,29 @@ import {
   makeKeycloakAdapter,
   makeMeilisearchAdapter,
   makeNovuAdapter,
+  makeOpenPanelAdapter,
   makeObservabilityAdapter,
   makeOpenmeterAdapter,
   makeOryKetoAdapter,
   makePolarAdapter,
+  makePostgresAdapter,
+  makePostgresAdapterFromEnvironment,
   makePostalAdapter,
-  makePosthogAdapter,
   makeUnleashAdapter,
   makeValkeyAdapter,
   platformAdapterServiceName,
 } from "@comvestec/platform";
+import {
+  createKeycloakTestOptions,
+  createOryKetoTestOptions,
+  createPolarTestOptions,
+  createValkeyTestClient,
+} from "../platform-adapter-doubles";
 
 describe("platform adapters", () => {
   it("creates healthy service adapters", async () => {
     const keycloak = await Effect.runPromise(
-      makeKeycloakAdapter({
-        baseUrl: "http://localhost:8080",
-        realm: "comvestec",
-      }),
+      makeKeycloakAdapter(createKeycloakTestOptions()),
     );
     const convex = await Effect.runPromise(
       makeConvexAdapter({
@@ -62,6 +71,15 @@ describe("platform adapters", () => {
       realm: "comvestec",
       tenantHint: "org_demo",
     });
+    await expect(
+      Effect.runPromise(
+        keycloak.validateSession({ accessToken: "access-token" }),
+      ),
+    ).resolves.toMatchObject({
+      actorId: "usr_token",
+      sessionId: "sess_token",
+      realm: "comvestec",
+    });
     await expect(Effect.runPromise(convex.healthcheck)).resolves.toEqual({
       healthy: true,
       service: platformAdapterServiceName.convex,
@@ -76,13 +94,13 @@ describe("platform adapters", () => {
 
   it("creates healthy adapters for all new services", async () => {
     const valkey = await Effect.runPromise(
-      makeValkeyAdapter({ url: "redis://localhost:6379" }),
+      makeValkeyAdapter({
+        url: "redis://localhost:6379",
+        client: createValkeyTestClient(),
+      }),
     );
     const keto = await Effect.runPromise(
-      makeOryKetoAdapter({
-        readUrl: "http://localhost:4466",
-        writeUrl: "http://localhost:4467",
-      }),
+      makeOryKetoAdapter(createOryKetoTestOptions()),
     );
     const unleash = await Effect.runPromise(
       makeUnleashAdapter({
@@ -99,10 +117,10 @@ describe("platform adapters", () => {
         grafanaBaseUrl: "http://localhost:3001",
       }),
     );
-    const posthog = await Effect.runPromise(
-      makePosthogAdapter({
-        apiKey: "phc_test",
-        host: "http://localhost:8000",
+    const openpanel = await Effect.runPromise(
+      makeOpenPanelAdapter({
+        clientId: "client_demo",
+        apiUrl: "http://localhost:3005/api",
       }),
     );
     const novu = await Effect.runPromise(
@@ -118,10 +136,7 @@ describe("platform adapters", () => {
       }),
     );
     const polar = await Effect.runPromise(
-      makePolarAdapter({
-        apiKey: "polar-key",
-        apiUrl: "http://localhost:8888",
-      }),
+      makePolarAdapter(createPolarTestOptions()),
     );
     const openmeter = await Effect.runPromise(
       makeOpenmeterAdapter({
@@ -144,6 +159,34 @@ describe("platform adapters", () => {
         valkey.incrementCounter({ key: "quota:org_1", incrementBy: 1 }),
       ),
     ).resolves.toMatchObject({ key: "quota:org_1", value: 1 });
+    await expect(
+      Effect.runPromise(
+        valkey.writeSession({
+          sessionId: "sess_1",
+          requestContext: {
+            actorType: actorType.organizationMember,
+            actorId: "usr_1",
+            sessionId: "sess_1",
+            correlationId: "corr_1",
+            tenant: {
+              scope: platformScope.organization,
+              scopeId: "org_1",
+              enterpriseId: "ent_1",
+              organizationId: "org_1",
+              individualId: "usr_1",
+            },
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ sessionId: "sess_1" });
+    await expect(
+      Effect.runPromise(valkey.readSession({ sessionId: "sess_1" })),
+    ).resolves.toMatchObject({
+      requestContext: {
+        actorId: "usr_1",
+        tenant: { scopeId: "org_1" },
+      },
+    });
     await expect(
       Effect.runPromise(
         keto.writeTuple({
@@ -176,9 +219,9 @@ describe("platform adapters", () => {
     await expect(
       Effect.runPromise(glitchtip.healthcheck),
     ).resolves.toMatchObject({ healthy: true });
-    await expect(Effect.runPromise(posthog.healthcheck)).resolves.toMatchObject(
-      { healthy: true },
-    );
+    await expect(
+      Effect.runPromise(openpanel.healthcheck),
+    ).resolves.toMatchObject({ healthy: true });
     await expect(
       Effect.runPromise(
         observability.emit({
@@ -230,7 +273,7 @@ describe("platform adapters", () => {
           priceId: "price_starter_year",
           successUrl: "http://localhost:3002/billing/success",
           cancelUrl: "http://localhost:3002/billing/cancel",
-          tenantScope: "organization",
+          tenantScope: platformScope.organization,
           tenantScopeId: "org_1",
         }),
       ),
@@ -238,7 +281,7 @@ describe("platform adapters", () => {
       planId: "plan_starter",
       priceId: "price_starter_year",
       interval: billingPlanInterval.year,
-      provider: "polar",
+      provider: platformAdapterServiceName.polar,
     });
     await expect(
       Effect.runPromise(openmeter.healthcheck),
@@ -258,46 +301,73 @@ describe("platform adapters", () => {
     });
   });
 
+  it("creates a postgres adapter with an explicit runtime connection seam", async () => {
+    const postgres = await Effect.runPromise(
+      makePostgresAdapter({
+        connectionString:
+          "postgresql://postgres:postgres@127.0.0.1:1/comvestec",
+        connectionTimeoutMs: 50,
+      }),
+    );
+
+    expect(postgres.serviceName).toBe(platformAdapterServiceName.postgres);
+    expect(postgres.connectionStringName).toBe("POSTGRES_URL");
+    await expect(
+      Effect.runPromiseExit(postgres.healthcheck),
+    ).resolves.toMatchObject({
+      _tag: "Failure",
+    });
+    await expect(Effect.runPromise(postgres.close)).resolves.toBeUndefined();
+  });
+
+  it("requires POSTGRES_URL when creating a postgres adapter from environment", async () => {
+    await expect(
+      Effect.runPromiseExit(makePostgresAdapterFromEnvironment({})),
+    ).resolves.toMatchObject({
+      _tag: "Failure",
+    });
+  });
+
   it("creates checkout sessions for configured backend plan catalogs", async () => {
     const polar = await Effect.runPromise(
-      makePolarAdapter({
-        apiKey: "polar-key",
-        apiUrl: "http://localhost:8888",
-        plans: [
-          {
-            planId: "plan_growth",
-            planKey: "growth",
-            displayName: "Growth",
-            active: true,
-            prices: [
-              {
-                priceId: "price_growth_month",
-                interval: billingPlanInterval.month,
-                currency: "USD",
-                amountMinor: 2900,
-                active: true,
-                providerPriceId: "polar_price_growth_month",
-              },
-              {
-                priceId: "price_growth_year",
-                interval: billingPlanInterval.year,
-                currency: "USD",
-                amountMinor: 29000,
-                active: true,
-                providerPriceId: "polar_price_growth_year",
-              },
-            ],
-            entitlements: [
-              {
-                moduleId: platformModuleId.tenantManagement,
-                included: true,
-                meteringMode: "none",
-                enforcementMode: "none",
-              },
-            ],
-          },
-        ],
-      }),
+      makePolarAdapter(
+        createPolarTestOptions({
+          plans: [
+            {
+              planId: "plan_growth",
+              planKey: "growth",
+              displayName: "Growth",
+              active: true,
+              prices: [
+                {
+                  priceId: "price_growth_month",
+                  interval: billingPlanInterval.month,
+                  currency: "USD",
+                  amountMinor: 2900,
+                  active: true,
+                  providerPriceId: "polar_price_growth_month",
+                },
+                {
+                  priceId: "price_growth_year",
+                  interval: billingPlanInterval.year,
+                  currency: "USD",
+                  amountMinor: 29000,
+                  active: true,
+                  providerPriceId: "polar_price_growth_year",
+                },
+              ],
+              entitlements: [
+                {
+                  moduleId: platformModuleId.tenantManagement,
+                  included: true,
+                  meteringMode: billingMeteringMode.none,
+                  enforcementMode: billingEnforcementMode.none,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
     );
 
     await expect(Effect.runPromise(polar.listPlans)).resolves.toEqual([
@@ -316,12 +386,12 @@ describe("platform adapters", () => {
           priceId: "price_growth_month",
           successUrl: "http://localhost:3002/billing/success",
           cancelUrl: "http://localhost:3002/billing/cancel",
-          tenantScope: "organization",
+          tenantScope: platformScope.organization,
           tenantScopeId: "org_growth",
         }),
       ),
     ).resolves.toMatchObject({
-      checkoutSessionId: expect.stringContaining("org_growth"),
+      checkoutSessionId: "checkout:plan_growth:price_growth_month",
       priceId: "price_growth_month",
       interval: billingPlanInterval.month,
     });
@@ -329,10 +399,7 @@ describe("platform adapters", () => {
 
   it("normalizes verified polar webhook deliveries into billing reconciliation", async () => {
     const polar = await Effect.runPromise(
-      makePolarAdapter({
-        apiKey: "polar-key",
-        apiUrl: "http://localhost:8888",
-      }),
+      makePolarAdapter(createPolarTestOptions()),
     );
 
     await expect(
@@ -345,7 +412,7 @@ describe("platform adapters", () => {
           occurredAt: new Date().toISOString(),
           verifiedSignature: true,
           subscriptionId: "sub_1",
-          tenantScope: "organization",
+          tenantScope: platformScope.organization,
           tenantScopeId: "org_1",
           planId: "plan_starter",
           priceId: "price_starter_month",
@@ -369,10 +436,7 @@ describe("platform adapters", () => {
 
   it("rejects unverified polar webhook deliveries", async () => {
     const polar = await Effect.runPromise(
-      makePolarAdapter({
-        apiKey: "polar-key",
-        apiUrl: "http://localhost:8888",
-      }),
+      makePolarAdapter(createPolarTestOptions()),
     );
 
     await expect(
@@ -386,7 +450,7 @@ describe("platform adapters", () => {
             occurredAt: new Date().toISOString(),
             verifiedSignature: false,
             subscriptionId: "sub_2",
-            tenantScope: "organization",
+            tenantScope: platformScope.organization,
             tenantScopeId: "org_1",
             planId: "plan_starter",
             priceId: "price_starter_year",
@@ -399,9 +463,12 @@ describe("platform adapters", () => {
     });
   });
 
-  it("bounds the valkey in-memory counter cache", async () => {
+  it("supports counter and session operations through the valkey client seam", async () => {
     const valkey = await Effect.runPromise(
-      makeValkeyAdapter({ url: "redis://localhost:6379", maxCacheSize: 1 }),
+      makeValkeyAdapter({
+        url: "redis://localhost:6379",
+        client: createValkeyTestClient(),
+      }),
     );
 
     await Effect.runPromise(
@@ -415,16 +482,55 @@ describe("platform adapters", () => {
       Effect.runPromise(
         valkey.incrementCounter({ key: "quota:org_1", incrementBy: 1 }),
       ),
-    ).resolves.toMatchObject({ key: "quota:org_1", value: 1 });
+    ).resolves.toMatchObject({ key: "quota:org_1", value: 2 });
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_old",
+        requestContext: {
+          actorType: actorType.organizationMember,
+          actorId: "usr_old",
+          sessionId: "sess_old",
+          correlationId: "corr_old",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_old",
+            enterpriseId: "ent_old",
+            organizationId: "org_old",
+            individualId: "usr_old",
+          },
+        },
+      }),
+    );
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_new",
+        requestContext: {
+          actorType: actorType.organizationMember,
+          actorId: "usr_new",
+          sessionId: "sess_new",
+          correlationId: "corr_new",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_new",
+            enterpriseId: "ent_new",
+            organizationId: "org_new",
+            individualId: "usr_new",
+          },
+        },
+      }),
+    );
+    await expect(
+      Effect.runPromise(valkey.readSession({ sessionId: "sess_old" })),
+    ).resolves.toMatchObject({ sessionId: "sess_old" });
+    await expect(
+      Effect.runPromise(valkey.readSession({ sessionId: "sess_new" })),
+    ).resolves.toMatchObject({ sessionId: "sess_new" });
+    await expect(Effect.runPromise(valkey.close)).resolves.toBeUndefined();
   });
 
-  it("bounds the ory keto in-memory tuple cache", async () => {
+  it("checks permissions through the ory keto HTTP seam", async () => {
     const keto = await Effect.runPromise(
-      makeOryKetoAdapter({
-        readUrl: "http://localhost:4466",
-        writeUrl: "http://localhost:4467",
-        maxCacheSize: 1,
-      }),
+      makeOryKetoAdapter(createOryKetoTestOptions()),
     );
 
     await Effect.runPromise(
@@ -453,17 +559,17 @@ describe("platform adapters", () => {
           subject: "usr_1",
         }),
       ),
-    ).resolves.toMatchObject({ allowed: false });
+    ).resolves.toMatchObject({ allowed: true });
     await expect(
       Effect.runPromise(
         keto.check({
           namespace: authorizationNamespace.tenant,
-          object: "org_2",
+          object: "org_missing",
           relation: authorizationRelation.viewer,
-          subject: "usr_2",
+          subject: "usr_missing",
         }),
       ),
-    ).resolves.toMatchObject({ allowed: true });
+    ).resolves.toMatchObject({ allowed: false });
   });
 
   it("rejects empty runtime configuration at adapter boundaries", async () => {
@@ -472,6 +578,8 @@ describe("platform adapters", () => {
         makeKeycloakAdapter({
           baseUrl: "",
           realm: "comvestec",
+          clientId: "saas-platform",
+          clientSecret: "change-me",
         }),
       ),
     );

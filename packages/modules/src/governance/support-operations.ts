@@ -4,6 +4,7 @@ import {
   AuditEventSchema,
   platformModuleId,
   RequestContextSchema,
+  type RequestContext,
 } from "@comvestec/contracts";
 import {
   actorSupportsPrivilegedSupportEscalation,
@@ -17,6 +18,10 @@ const BreakGlassRequestSchema = Schema.Struct({
   reason: Schema.NonEmptyString,
   expiresAt: Schema.NonEmptyString,
 });
+
+export type BreakGlassRequest = Schema.Schema.Type<
+  typeof BreakGlassRequestSchema
+>;
 
 export const BreakGlassGrantSchema = Schema.Struct({
   grantedRequestContext: RequestContextSchema,
@@ -41,14 +46,12 @@ export type UnauthenticatedBreakGlassActorError = {
 
 export type UnsupportedSupportActorError = {
   readonly _tag: "UnsupportedSupportActorError";
-  readonly actorType: Schema.Schema.Type<
-    typeof RequestContextSchema
-  >["actorType"];
+  readonly actorType: RequestContext["actorType"];
 };
 
 export type InvalidBreakGlassExpiryError = {
   readonly _tag: "InvalidBreakGlassExpiryError";
-  readonly expiresAt: string;
+  readonly expiresAt: BreakGlassGrant["expiresAt"];
 };
 
 export type SupportOperationsModuleError =
@@ -59,10 +62,10 @@ export type SupportOperationsModuleError =
 
 export type SupportOperationsModuleService = {
   readonly grantBreakGlassAccess: (
-    input: unknown,
+    input: BreakGlassRequest,
   ) => Effect.Effect<BreakGlassGrant, SupportOperationsModuleError>;
   readonly validateEscalation: (
-    requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
+    requestContext: RequestContext,
   ) => Effect.Effect<SupportEscalationDecision, ParseResult.ParseError>;
 };
 
@@ -72,7 +75,7 @@ export class SupportOperationsModule extends Context.Tag(
 
 export const makeSupportOperationsModule = () =>
   Effect.succeed<SupportOperationsModuleService>({
-    grantBreakGlassAccess: (input: unknown) =>
+    grantBreakGlassAccess: (input: BreakGlassRequest) =>
       Schema.decodeUnknown(BreakGlassRequestSchema)(input).pipe(
         Effect.flatMap(
           (

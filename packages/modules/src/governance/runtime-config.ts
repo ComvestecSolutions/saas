@@ -1,18 +1,24 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import { findModuleManifest } from "@comvestec/config";
 import {
+  type ConfigOverride,
   type DeclaredModuleConfigKey,
   DeclaredModuleConfigKeySchema,
   type DeclaredRuntimeGovernedKey,
   DeclaredRuntimeGovernedKeySchema,
   ConfigOverrideSchema,
+  type Entitlement,
   EntitlementSchema,
+  type FeatureFlagDeclaration,
   FeatureFlagDeclarationSchema,
   getModuleEnabledFeatureFlagKey,
+  type PlatformModuleId,
   PlatformModuleIdSchema,
   platformScope,
   PlatformScopeSchema,
   RequestContextSchema,
+  type PlatformScope,
+  type RequestContext,
   runtimeChangeProposalAction,
   runtimeResolutionSource,
   RuntimeChangeProposalActionSchema,
@@ -31,10 +37,18 @@ const RuntimeConfigResolutionRequestSchema = Schema.Struct({
   key: DeclaredModuleConfigKeySchema,
 });
 
+export type RuntimeConfigResolutionRequest = Schema.Schema.Type<
+  typeof RuntimeConfigResolutionRequestSchema
+>;
+
 const RuntimeFlagResolutionRequestSchema = Schema.Struct({
   ...RuntimeResolutionRequestBaseFields,
   flag: FeatureFlagDeclarationSchema,
 });
+
+export type RuntimeFlagResolutionRequest = Schema.Schema.Type<
+  typeof RuntimeFlagResolutionRequestSchema
+>;
 
 export const RuntimeResolutionResultSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,
@@ -86,11 +100,13 @@ const RuntimeChangeProposalRequestSchema = Schema.Struct({
   }),
 });
 
-const resolveCascadeCandidates = (
-  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
-) => {
+export type RuntimeChangeProposalRequest = Schema.Schema.Type<
+  typeof RuntimeChangeProposalRequestSchema
+>;
+
+const resolveCascadeCandidates = (requestContext: RequestContext) => {
   const candidates: Array<{
-    scope: Schema.Schema.Type<typeof PlatformScopeSchema>;
+    scope: PlatformScope;
     scopeId: string;
   }> = [];
 
@@ -124,10 +140,10 @@ const resolveCascadeCandidates = (
 };
 
 const hasDirectEntitlement = (
-  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
-  key: Schema.Schema.Type<typeof FeatureFlagDeclarationSchema>["key"],
-  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
-  entitlements: readonly Schema.Schema.Type<typeof EntitlementSchema>[],
+  moduleId: PlatformModuleId,
+  key: FeatureFlagDeclaration["key"],
+  requestContext: RequestContext,
+  entitlements: readonly Entitlement[],
 ) =>
   entitlements.some(
     (entitlement) =>
@@ -139,17 +155,17 @@ const hasDirectEntitlement = (
   );
 
 const findFeatureFlagDeclaration = (
-  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
-  key: Schema.Schema.Type<typeof FeatureFlagDeclarationSchema>["key"],
+  moduleId: PlatformModuleId,
+  key: FeatureFlagDeclaration["key"],
 ) =>
   findModuleManifest(moduleId)?.featureFlags.find((flag) => flag.key === key);
 
 const findMatchedOverride = (
-  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
+  moduleId: PlatformModuleId,
   key: DeclaredRuntimeGovernedKey,
-  allowedScopes: readonly Schema.Schema.Type<typeof PlatformScopeSchema>[],
-  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
-  overrides: readonly Schema.Schema.Type<typeof ConfigOverrideSchema>[],
+  allowedScopes: readonly PlatformScope[],
+  requestContext: RequestContext,
+  overrides: readonly ConfigOverride[],
 ) =>
   resolveCascadeCandidates(requestContext)
     .flatMap((candidate) =>
@@ -170,11 +186,11 @@ type FeatureFlagRuntimeResolution = Pick<
 >;
 
 const resolveFeatureFlagState = (
-  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
-  flag: Schema.Schema.Type<typeof FeatureFlagDeclarationSchema>,
-  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
-  overrides: readonly Schema.Schema.Type<typeof ConfigOverrideSchema>[],
-  entitlements: readonly Schema.Schema.Type<typeof EntitlementSchema>[],
+  moduleId: PlatformModuleId,
+  flag: FeatureFlagDeclaration,
+  requestContext: RequestContext,
+  overrides: readonly ConfigOverride[],
+  entitlements: readonly Entitlement[],
 ): FeatureFlagRuntimeResolution => {
   const matchedOverride = findMatchedOverride(
     moduleId,
@@ -222,10 +238,10 @@ const resolveFeatureFlagState = (
 };
 
 const resolveModuleEnabledState = (
-  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
-  requestContext: Schema.Schema.Type<typeof RequestContextSchema>,
-  overrides: readonly Schema.Schema.Type<typeof ConfigOverrideSchema>[],
-  entitlements: readonly Schema.Schema.Type<typeof EntitlementSchema>[],
+  moduleId: PlatformModuleId,
+  requestContext: RequestContext,
+  overrides: readonly ConfigOverride[],
+  entitlements: readonly Entitlement[],
 ): FeatureFlagRuntimeResolution => {
   const enabledFlag = findFeatureFlagDeclaration(
     moduleId,
@@ -250,7 +266,7 @@ const resolveModuleEnabledState = (
 };
 
 const findDeclaration = (
-  moduleId: Schema.Schema.Type<typeof PlatformModuleIdSchema>,
+  moduleId: PlatformModuleId,
   key: DeclaredModuleConfigKey,
 ) =>
   findModuleManifest(moduleId)?.configKeys.find(
@@ -259,21 +275,21 @@ const findDeclaration = (
 
 export type UnknownConfigKeyError = {
   readonly _tag: "UnknownConfigKeyError";
-  readonly key: string;
+  readonly key: DeclaredModuleConfigKey;
 };
 
 export type RuntimeConfigModuleService = {
   readonly resolveConfigValue: (
-    input: unknown,
+    input: RuntimeConfigResolutionRequest,
   ) => Effect.Effect<
     RuntimeResolutionResult,
     ParseResult.ParseError | UnknownConfigKeyError
   >;
   readonly resolveFeatureFlag: (
-    input: unknown,
+    input: RuntimeFlagResolutionRequest,
   ) => Effect.Effect<RuntimeResolutionResult, ParseResult.ParseError>;
   readonly buildChangeProposals: (
-    input: unknown,
+    input: RuntimeChangeProposalRequest,
   ) => Effect.Effect<readonly RuntimeChangeProposal[], ParseResult.ParseError>;
 };
 
@@ -284,7 +300,7 @@ export class RuntimeConfigModule extends Context.Tag("RuntimeConfigModule")<
 
 export const makeRuntimeConfigModule = () =>
   Effect.succeed<RuntimeConfigModuleService>({
-    resolveConfigValue: (input: unknown) =>
+    resolveConfigValue: (input: RuntimeConfigResolutionRequest) =>
       Schema.decodeUnknown(RuntimeConfigResolutionRequestSchema)(input).pipe(
         Effect.flatMap(
           (
@@ -350,7 +366,7 @@ export const makeRuntimeConfigModule = () =>
           },
         ),
       ),
-    resolveFeatureFlag: (input: unknown) =>
+    resolveFeatureFlag: (input: RuntimeFlagResolutionRequest) =>
       Schema.decodeUnknown(RuntimeFlagResolutionRequestSchema)(input).pipe(
         Effect.flatMap((request) => {
           const moduleEnabledKey = getModuleEnabledFeatureFlagKey(
@@ -408,7 +424,7 @@ export const makeRuntimeConfigModule = () =>
           } satisfies RuntimeResolutionResult);
         }),
       ),
-    buildChangeProposals: (input: unknown) =>
+    buildChangeProposals: (input: RuntimeChangeProposalRequest) =>
       Schema.decodeUnknown(RuntimeChangeProposalRequestSchema)(input).pipe(
         Effect.flatMap((request) => {
           const moduleManifest = findModuleManifest(request.moduleId);

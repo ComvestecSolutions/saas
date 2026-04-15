@@ -11,7 +11,12 @@ import {
   runtimeConfigAuditAction,
   supportOperationsAuditAction,
   tenantManagementAuditAction,
+  type AuditEvent,
 } from "@comvestec/contracts";
+import {
+  AuditLogPostgresRepository,
+  type AuditLogPostgresRepositoryError,
+} from "../persistence/postgres/audit-log-repository";
 
 export const AuditEventRequirementSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,
@@ -83,16 +88,17 @@ export type BuildAuditEventInput = Schema.Schema.Type<
 
 export type AuditLogParseError = ParseResult.ParseError;
 
+export type AuditLogModuleError =
+  | AuditLogParseError
+  | AuditLogPostgresRepositoryError;
+
 export type AuditLogModuleService = {
   readonly append: (
-    input: unknown,
-  ) => Effect.Effect<
-    Schema.Schema.Type<typeof AuditEventSchema>,
-    AuditLogParseError
-  >;
+    input: BuildAuditEventInput,
+  ) => Effect.Effect<AuditEvent, AuditLogModuleError>;
   readonly queryByModule: (
     moduleId: BuildAuditEventInput["moduleId"],
-  ) => Effect.Effect<readonly Schema.Schema.Type<typeof AuditEventSchema>[]>;
+  ) => Effect.Effect<readonly AuditEvent[]>;
   readonly requirements: Effect.Effect<readonly AuditEventRequirement[]>;
 };
 
@@ -101,7 +107,7 @@ export class AuditLogModule extends Context.Tag("AuditLogModule")<
   AuditLogModuleService
 >() {}
 
-export const buildAuditEvent = (input: unknown) =>
+export const buildAuditEvent = (input: BuildAuditEventInput) =>
   Schema.decodeUnknown(BuildAuditEventInputSchema)(input).pipe(
     Effect.flatMap((decodedInput) =>
       Schema.decodeUnknown(AuditEventSchema)({
@@ -121,26 +127,20 @@ export const buildAuditEvent = (input: unknown) =>
     ),
   );
 
-export const makeAuditLogModule = () =>
-  Effect.sync<AuditLogModuleService>(() => {
-    const events: Schema.Schema.Type<typeof AuditEventSchema>[] = [];
-
-    return {
-      append: (input: unknown) =>
-        buildAuditEvent(input).pipe(
-          Effect.tap((event) =>
-            Effect.sync(() => {
-              events.push(event);
-            }),
-          ),
-        ),
-      queryByModule: (moduleId) =>
-        Effect.succeed(events.filter((event) => event.moduleId === moduleId)),
-      requirements: Effect.succeed([...defaultAuditEventRequirements]),
-    };
+export const makeAuditLogModule = (
+  repository: AuditLogPostgresRepository["Type"],
+) =>
+  Effect.succeed<AuditLogModuleService>({
+    append: (input: BuildAuditEventInput) =>
+      buildAuditEvent(input).pipe(
+        Effect.flatMap((event) => repository.insertAuditEvent(event)),
+      ),
+    queryByModule: (moduleId) =>
+      repository.queryByModule(moduleId).pipe(Effect.orElseSucceed(() => [])),
+    requirements: Effect.succeed([...defaultAuditEventRequirements]),
   });
 
 export const AuditLogModuleLive = Layer.effect(
   AuditLogModule,
-  makeAuditLogModule(),
+  AuditLogPostgresRepository.pipe(Effect.flatMap(makeAuditLogModule)),
 );

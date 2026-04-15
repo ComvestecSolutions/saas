@@ -9,6 +9,10 @@ const ConvexAdapterOptionsSchema = Schema.Struct({
   siteUrl: Schema.NonEmptyString,
 });
 
+export type ConvexAdapterOptions = Schema.Schema.Type<
+  typeof ConvexAdapterOptionsSchema
+>;
+
 const ConvexHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.convex,
 );
@@ -29,7 +33,7 @@ export class ConvexAdapter extends Context.Tag("ConvexAdapter")<
   ConvexAdapterService
 >() {}
 
-export const makeConvexAdapter = (input: unknown) =>
+export const makeConvexAdapter = (input: ConvexAdapterOptions) =>
   Schema.decodeUnknown(ConvexAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): ConvexAdapterService => ({
@@ -44,5 +48,5 @@ export const makeConvexAdapter = (input: unknown) =>
     ),
   );
 
-export const makeConvexAdapterLayer = (options: unknown) =>
+export const makeConvexAdapterLayer = (options: ConvexAdapterOptions) =>
   Layer.effect(ConvexAdapter, makeConvexAdapter(options));

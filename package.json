@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "backend:subscriber-journey": "bun run tooling/scripts/run-subscriber-journey-api.ts",
     "build": "turbo run build",
     "check": "turbo run check && bun run typecheck:tests",
     "dev": "turbo run dev --parallel",

@@ -21,6 +21,7 @@ import {
   billingPaymentEventsTable,
   billingSubscriptionsTable,
   type BillingWebhookPostgresDatabase,
+  type PostgresInsertBuilder,
   makeBillingMeteringModule,
   makeBillingWebhookPostgresRepository,
   makeBillingWebhookService,
@@ -31,10 +32,15 @@ import {
   platformAdapterServiceName,
   PolarAdapter,
 } from "@comvestec/platform";
+import { createPolarTestOptions } from "../platform-adapter-doubles";
 
 const tenantManagementModuleAccessKey = tenantManagementFeatureFlag.enabled;
 
 const createBillingWebhookTestDatabase = () => {
+  type PersistedTable = Parameters<BillingWebhookPostgresDatabase["insert"]>[0];
+  type PersistedValues = Parameters<
+    PostgresInsertBuilder<PersistedTable>["values"]
+  >[0];
   const receipts = new Map<string, typeof webhookReceiptsTable.$inferInsert>();
   const subscriptions = new Map<
     string,
@@ -49,7 +55,7 @@ const createBillingWebhookTestDatabase = () => {
     typeof billingEntitlementsTable.$inferInsert
   >();
 
-  const persistRows = (table: unknown, values: unknown) => {
+  const persistRows = (table: PersistedTable, values: PersistedValues) => {
     const rows = Array.isArray(values) ? values : [values];
 
     for (const row of rows) {
@@ -95,8 +101,8 @@ const createBillingWebhookTestDatabase = () => {
   };
 
   const transaction = {
-    insert: (table: unknown) => ({
-      values: (values: unknown) => ({
+    insert: (table: PersistedTable) => ({
+      values: (values: PersistedValues) => ({
         onConflictDoUpdate: () => ({
           execute: async () => {
             persistRows(table, values);
@@ -131,10 +137,7 @@ describe("billing webhook processing", () => {
       makeBillingWebhookPostgresRepository(database.database),
     );
     const polar = await Effect.runPromise(
-      makePolarAdapter({
-        apiKey: "polar-key",
-        apiUrl: "http://localhost:8888",
-      }),
+      makePolarAdapter(createPolarTestOptions()),
     );
     const billingWebhookService = await Effect.runPromise(
       makeBillingWebhookService().pipe(
@@ -241,6 +244,7 @@ describe("billing webhook processing", () => {
             subscriptionId: "sub_projection",
             planId: "plan_starter",
             priceId: "price_starter_year",
+            occurredAt,
             action: billingWebhookReconciliationAction.flagPastDue,
             entitlementsActive: false,
             customerId: "cus_2",

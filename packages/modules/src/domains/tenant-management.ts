@@ -34,10 +34,18 @@ const BuildOnboardingPlanInputSchema = Schema.Struct({
   enabledModules: Schema.Array(PlatformModuleIdSchema),
 });
 
+export type BuildOnboardingPlanInput = Schema.Schema.Type<
+  typeof BuildOnboardingPlanInputSchema
+>;
+
 const IsolationAssertionInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   resourceTenant: TenantContextSchema,
 });
+
+export type IsolationAssertionInput = Schema.Schema.Type<
+  typeof IsolationAssertionInputSchema
+>;
 
 export const IsolationAssertionResultSchema = Schema.Struct({
   allowed: Schema.Boolean,
@@ -50,10 +58,10 @@ export type IsolationAssertionResult = Schema.Schema.Type<
 
 export type TenantManagementModuleService = {
   readonly buildOnboardingPlan: (
-    input: unknown,
+    input: BuildOnboardingPlanInput,
   ) => Effect.Effect<TenantOnboardingPlan, ParseResult.ParseError>;
   readonly assertTenantIsolation: (
-    input: unknown,
+    input: IsolationAssertionInput,
   ) => Effect.Effect<IsolationAssertionResult, ParseResult.ParseError>;
 };
 
@@ -63,7 +71,7 @@ export class TenantManagementModule extends Context.Tag(
 
 export const makeTenantManagementModule = () =>
   Effect.succeed<TenantManagementModuleService>({
-    buildOnboardingPlan: (input: unknown) =>
+    buildOnboardingPlan: (input: BuildOnboardingPlanInput) =>
       Schema.decodeUnknown(BuildOnboardingPlanInputSchema)(input).pipe(
         Effect.flatMap((request) => {
           const steps: OnboardingStep[] = [
@@ -115,7 +123,7 @@ export const makeTenantManagementModule = () =>
           });
         }),
       ),
-    assertTenantIsolation: (input: unknown) =>
+    assertTenantIsolation: (input: IsolationAssertionInput) =>
       Schema.decodeUnknown(IsolationAssertionInputSchema)(input).pipe(
         Effect.flatMap((request) => {
           const sameTenant =

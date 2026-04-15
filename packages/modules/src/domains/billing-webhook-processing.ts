@@ -1,6 +1,11 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
-import { BillingWebhookReconciliationSchema } from "@comvestec/contracts";
+import {
+  BillingWebhookReconciliationSchema,
+  type BillingProviderWebhookInput,
+} from "@comvestec/contracts";
 import type {
+  PolarAdapterRequestError,
+  PolarCatalogMetadataError,
   PolarPlanNotFoundError,
   PolarPriceNotFoundError,
   PolarWebhookSignatureError,
@@ -26,6 +31,8 @@ export type BillingWebhookProcessingResult = Schema.Schema.Type<
 
 export type BillingWebhookProcessingError =
   | ParseResult.ParseError
+  | PolarAdapterRequestError
+  | PolarCatalogMetadataError
   | PolarWebhookSignatureError
   | PolarPlanNotFoundError
   | PolarPriceNotFoundError
@@ -33,7 +40,7 @@ export type BillingWebhookProcessingError =
 
 export type BillingWebhookServiceApi = {
   readonly processPolarWebhook: (
-    input: unknown,
+    input: BillingProviderWebhookInput,
   ) => Effect.Effect<
     BillingWebhookProcessingResult,
     BillingWebhookProcessingError
@@ -52,7 +59,7 @@ export const makeBillingWebhookService = () =>
     const repository = yield* BillingWebhookPostgresRepository;
 
     return {
-      processPolarWebhook: (input: unknown) =>
+      processPolarWebhook: (input: BillingProviderWebhookInput) =>
         Effect.gen(function* () {
           const reconciliation = yield* polar.reconcileWebhookEvent(input);
           const projection =

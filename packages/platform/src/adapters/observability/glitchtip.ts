@@ -8,6 +8,10 @@ const GlitchtipAdapterOptionsSchema = Schema.Struct({
   dsn: Schema.NonEmptyString,
 });
 
+export type GlitchtipAdapterOptions = Schema.Schema.Type<
+  typeof GlitchtipAdapterOptionsSchema
+>;
+
 const GlitchtipHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.glitchtip,
 );
@@ -27,7 +31,7 @@ export class GlitchtipAdapter extends Context.Tag("GlitchtipAdapter")<
   GlitchtipAdapterService
 >() {}
 
-export const makeGlitchtipAdapter = (input: unknown) =>
+export const makeGlitchtipAdapter = (input: GlitchtipAdapterOptions) =>
   Schema.decodeUnknown(GlitchtipAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): GlitchtipAdapterService => ({
@@ -41,5 +45,5 @@ export const makeGlitchtipAdapter = (input: unknown) =>
     ),
   );
 
-export const makeGlitchtipAdapterLayer = (options: unknown) =>
+export const makeGlitchtipAdapterLayer = (options: GlitchtipAdapterOptions) =>
   Layer.effect(GlitchtipAdapter, makeGlitchtipAdapter(options));

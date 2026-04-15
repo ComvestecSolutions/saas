@@ -6,6 +6,7 @@ import {
 } from "@comvestec/contracts";
 import { platformHost, findModuleManifest } from "@comvestec/config";
 import {
+  extractSubscriberJourneySessionId,
   makeRuntimeEnvironment,
   makePlatformEnvironmentLayer,
   getPublicWebSnapshot,
@@ -14,6 +15,7 @@ import {
   getPublicWebSnapshotForRequest,
   getProductAppSnapshotForRequest,
   getAdminAppSnapshotForRequest,
+  resolveSubscriberJourneyRuntimeOptionsFromEnvironment,
 } from "@comvestec/platform";
 
 describe("platform services", () => {
@@ -38,14 +40,15 @@ describe("platform services", () => {
         ketoReadUrl: "http://localhost:4466",
         ketoWriteUrl: "http://localhost:4467",
         errorTrackingDsn: "https://glitchtip.local/api/1/store/",
-        posthogApiKey: "phc_test",
-        posthogHost: "http://localhost:8000",
+        openpanelClientId: "client_demo",
+        openpanelApiUrl: "http://localhost:3005/api",
         novuApiKey: "novu-api-key",
         novuApiUrl: "http://localhost:3100",
         meilisearchUrl: "http://localhost:7700",
         meilisearchApiKey: "meili-master-key",
         polarApiKey: "polar-api-key",
         polarApiUrl: "http://localhost:8888",
+        polarWebhookSecret: "polar-webhook-secret",
         openmeterUrl: "http://localhost:8889",
         openmeterApiKey: "openmeter-api-key",
         postalApiUrl: "http://localhost:5000",
@@ -55,6 +58,98 @@ describe("platform services", () => {
 
     expect(runtimeEnvironment.keycloakRealm).toBe("comvestec");
     expect(makePlatformEnvironmentLayer).toBeDefined();
+  });
+
+  it("resolves subscriber journey runtime options from required environment", async () => {
+    await expect(
+      Effect.runPromise(
+        resolveSubscriberJourneyRuntimeOptionsFromEnvironment({
+          POSTGRES_URL:
+            "postgresql://comvestec:comvestec@127.0.0.1:5432/comvestec",
+          KEYCLOAK_BASE_URL: "http://127.0.0.1:8080",
+          KEYCLOAK_REALM: "comvestec",
+          KEYCLOAK_CLIENT_ID: "saas-platform",
+          KEYCLOAK_CLIENT_SECRET: "change-me",
+          POLAR_API_KEY: "polar-api-key",
+          POLAR_API_URL: "http://127.0.0.1:8888",
+          VALKEY_URL: "redis://127.0.0.1:6379",
+        }),
+      ),
+    ).resolves.toEqual({
+      postgresUrl: "postgresql://comvestec:comvestec@127.0.0.1:5432/comvestec",
+      keycloakBaseUrl: "http://127.0.0.1:8080",
+      keycloakRealm: "comvestec",
+      keycloakClientId: "saas-platform",
+      keycloakClientSecret: "change-me",
+      polarApiKey: "polar-api-key",
+      polarApiUrl: "http://127.0.0.1:8888",
+      valkeyUrl: "redis://127.0.0.1:6379",
+    });
+  });
+
+  it("fails subscriber journey runtime option resolution when required env is missing", async () => {
+    const exit = await Effect.runPromiseExit(
+      resolveSubscriberJourneyRuntimeOptionsFromEnvironment({}),
+    );
+
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("fails subscriber journey runtime option resolution for empty required env values", async () => {
+    const exit = await Effect.runPromiseExit(
+      resolveSubscriberJourneyRuntimeOptionsFromEnvironment({
+        POSTGRES_URL: "",
+        KEYCLOAK_BASE_URL: "http://127.0.0.1:8080",
+        KEYCLOAK_REALM: "comvestec",
+        KEYCLOAK_CLIENT_ID: "saas-platform",
+        KEYCLOAK_CLIENT_SECRET: "change-me",
+        POLAR_API_KEY: "polar-api-key",
+        POLAR_API_URL: "http://127.0.0.1:8888",
+        VALKEY_URL: "redis://127.0.0.1:6379",
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("extracts subscriber journey session ids from header or cookie", async () => {
+    await expect(
+      Effect.runPromise(
+        extractSubscriberJourneySessionId(
+          new Request("http://localhost:3000", {
+            headers: {
+              "x-comvestec-session-id": "  sess_header  ",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBe("sess_header");
+
+    await expect(
+      Effect.runPromise(
+        extractSubscriberJourneySessionId(
+          new Request("http://localhost:3000", {
+            headers: {
+              cookie: "other=value; comvestec_session=sess%3Acookie",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBe("sess:cookie");
+  });
+
+  it("falls back to the raw subscriber journey session cookie when decoding fails", async () => {
+    await expect(
+      Effect.runPromise(
+        extractSubscriberJourneySessionId(
+          new Request("http://localhost:3000", {
+            headers: {
+              cookie: "comvestec_session=%E0%A4%A",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBe("%E0%A4%A");
   });
 
   it("builds effect-backed app snapshots", async () => {

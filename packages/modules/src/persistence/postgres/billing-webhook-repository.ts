@@ -10,34 +10,15 @@ import {
   billingSubscriptionsTable,
   webhookReceiptsTable,
 } from "./billing";
+import type {
+  PostgresDatabase as BillingWebhookPostgresDatabase,
+  PostgresTransaction as BillingWebhookPostgresTransaction,
+} from "./database";
 
-type BillingWebhookPostgresConflictTarget = unknown | readonly unknown[];
-
-type BillingWebhookPostgresInsertCommand = {
-  readonly execute: () => Promise<unknown>;
+export type {
+  BillingWebhookPostgresDatabase,
+  BillingWebhookPostgresTransaction,
 };
-
-type BillingWebhookPostgresValuesBuilder = {
-  readonly onConflictDoUpdate: (options: {
-    readonly target: BillingWebhookPostgresConflictTarget;
-    readonly set: Record<string, unknown>;
-  }) => BillingWebhookPostgresInsertCommand;
-};
-
-type BillingWebhookPostgresInsertBuilder = {
-  readonly values: (values: unknown) => BillingWebhookPostgresValuesBuilder;
-};
-
-export type BillingWebhookPostgresTransaction = {
-  readonly insert: (table: unknown) => BillingWebhookPostgresInsertBuilder;
-};
-
-export type BillingWebhookPostgresDatabase =
-  BillingWebhookPostgresTransaction & {
-    readonly transaction: <T>(
-      callback: (tx: BillingWebhookPostgresTransaction) => Promise<T>,
-    ) => Promise<T>;
-  };
 
 export type BillingWebhookPostgresUpsertSet = {
   readonly webhookReceipt: typeof webhookReceiptsTable.$inferInsert;
@@ -75,7 +56,9 @@ const resolveCustomerAccountId = (
       ].join(":");
 };
 
-export const buildBillingWebhookPostgresUpsertSet = (input: unknown) =>
+export const buildBillingWebhookPostgresUpsertSet = (
+  input: BillingWebhookPersistenceProjection,
+) =>
   Schema.decodeUnknown(BillingWebhookPersistenceProjectionSchema)(input).pipe(
     Effect.map(
       (projection): BillingWebhookPostgresUpsertSet => ({
@@ -158,7 +141,7 @@ export const buildBillingWebhookPostgresUpsertSet = (input: unknown) =>
 
 export type BillingWebhookPostgresRepositoryService = {
   readonly persistWebhookProjection: (
-    input: unknown,
+    input: BillingWebhookPersistenceProjection,
   ) => Effect.Effect<
     BillingWebhookPersistenceProjection,
     BillingWebhookPostgresRepositoryError
@@ -176,7 +159,7 @@ export const makeBillingWebhookPostgresRepository = (
   database: BillingWebhookPostgresDatabase,
 ) =>
   Effect.succeed<BillingWebhookPostgresRepositoryService>({
-    persistWebhookProjection: (input: unknown) =>
+    persistWebhookProjection: (input: BillingWebhookPersistenceProjection) =>
       Schema.decodeUnknown(BillingWebhookPersistenceProjectionSchema)(
         input,
       ).pipe(

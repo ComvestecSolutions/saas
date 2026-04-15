@@ -16,7 +16,7 @@ Deliver one backend-ready subscriber journey before expanding frontend scope. Fo
 
 The backend-ready milestone is reached only when the platform supports the following without operator hand-editing of runtime state:
 
-1. Anonymous plan discovery from public-web through backend-owned routes.
+1. Anonymous plan discovery through backend-owned HTTP routes, with public-web acting only as an optional shell consumer.
 2. Keycloak-backed auth start and callback handling with auditable session activation.
 3. Tenant provisioning and owner membership creation after validated authentication.
 4. Polar hosted checkout session creation and return or cancel handling.
@@ -30,7 +30,7 @@ The backend-ready milestone is reached only when the platform supports the follo
 1. Update governing specs, manifests, and the implementation tracker so the first slice is explicit and reviewable.
 2. Add durable PostgreSQL-backed state for customer account mapping, subscription lifecycle, webhook receipts, onboarding runs, and billing event history.
 3. Extend shared contracts and module services around plan catalog, checkout, tenant provisioning, entitlement activation, and access bootstrap.
-4. Replace snapshot-only public-web and product-app boundaries with thin server-owned handlers for plan listing, auth start, auth callback, checkout start, return or cancel, and billing webhook intake.
+4. Expose plan listing, auth start, auth callback, checkout start, and billing webhook intake through backend-owned HTTP handlers independent of public-web and product-app runtimes; app routes may later consume or proxy those handlers as thin framework edges.
 5. Replace caller-supplied demo entitlement inputs with persisted entitlement lookup in runtime config and feature-flag resolution.
 6. Enforce authorized product bootstrap through request-context resolution, authorization, and field-security before exposing product data.
 7. Wire metering, quota enforcement, audit persistence, replay, and operator recovery flows.

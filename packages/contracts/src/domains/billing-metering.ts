@@ -4,6 +4,8 @@ import { RequestContextSchema } from "../access/request-context";
 import {
   DeclaredModuleMeterKeySchema,
   GovernanceEntitlementFeatureKeySchema,
+  type DeclaredModuleMeterKey,
+  type GovernanceEntitlementFeatureKey,
 } from "../module-registry/key-factories";
 import { PlatformModuleIdSchema } from "../module-registry/modules";
 
@@ -122,13 +124,11 @@ export type UsageQuotaPeriod = Schema.Schema.Type<
 
 export const BillingFeatureKeySchema = GovernanceEntitlementFeatureKeySchema;
 
-export type BillingFeatureKey = Schema.Schema.Type<
-  typeof BillingFeatureKeySchema
->;
+export type BillingFeatureKey = GovernanceEntitlementFeatureKey;
 
 export const BillingMeterKeySchema = DeclaredModuleMeterKeySchema;
 
-export type BillingMeterKey = Schema.Schema.Type<typeof BillingMeterKeySchema>;
+export type BillingMeterKey = DeclaredModuleMeterKey;
 
 export const BillingPlanPriceSchema = Schema.Struct({
   priceId: Schema.NonEmptyString,

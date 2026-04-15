@@ -9,6 +9,10 @@ const OpenmeterAdapterOptionsSchema = Schema.Struct({
   apiKey: Schema.NonEmptyString,
 });
 
+export type OpenmeterAdapterOptions = Schema.Schema.Type<
+  typeof OpenmeterAdapterOptionsSchema
+>;
+
 export const OpenmeterUsageEventSchema = Schema.Struct({
   subject: Schema.NonEmptyString,
   eventName: Schema.NonEmptyString,
@@ -33,7 +37,7 @@ export type OpenmeterAdapterService = {
   readonly url: string;
   readonly healthcheck: Effect.Effect<OpenmeterHealthcheck>;
   readonly ingestUsage: (
-    input: unknown,
+    input: OpenmeterUsageEvent,
   ) => Effect.Effect<OpenmeterUsageEvent, ParseResult.ParseError>;
 };
 
@@ -42,7 +46,7 @@ export class OpenmeterAdapter extends Context.Tag("OpenmeterAdapter")<
   OpenmeterAdapterService
 >() {}
 
-export const makeOpenmeterAdapter = (input: unknown) =>
+export const makeOpenmeterAdapter = (input: OpenmeterAdapterOptions) =>
   Schema.decodeUnknown(OpenmeterAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): OpenmeterAdapterService => ({
@@ -52,11 +56,11 @@ export const makeOpenmeterAdapter = (input: unknown) =>
           healthy: true,
           service: platformAdapterServiceName.openmeter,
         }),
-        ingestUsage: (usageInput: unknown) =>
+        ingestUsage: (usageInput: OpenmeterUsageEvent) =>
           Schema.decodeUnknown(OpenmeterUsageEventSchema)(usageInput),
       }),
     ),
   );
 
-export const makeOpenmeterAdapterLayer = (options: unknown) =>
+export const makeOpenmeterAdapterLayer = (options: OpenmeterAdapterOptions) =>
   Layer.effect(OpenmeterAdapter, makeOpenmeterAdapter(options));

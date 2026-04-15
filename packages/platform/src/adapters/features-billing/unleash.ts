@@ -9,6 +9,10 @@ const UnleashAdapterOptionsSchema = Schema.Struct({
   apiKey: Schema.NonEmptyString,
 });
 
+export type UnleashAdapterOptions = Schema.Schema.Type<
+  typeof UnleashAdapterOptionsSchema
+>;
+
 const UnleashHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.unleash,
 );
@@ -28,7 +32,7 @@ export class UnleashAdapter extends Context.Tag("UnleashAdapter")<
   UnleashAdapterService
 >() {}
 
-export const makeUnleashAdapter = (input: unknown) =>
+export const makeUnleashAdapter = (input: UnleashAdapterOptions) =>
   Schema.decodeUnknown(UnleashAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): UnleashAdapterService => ({
@@ -42,5 +46,5 @@ export const makeUnleashAdapter = (input: unknown) =>
     ),
   );
 
-export const makeUnleashAdapterLayer = (options: unknown) =>
+export const makeUnleashAdapterLayer = (options: UnleashAdapterOptions) =>
   Layer.effect(UnleashAdapter, makeUnleashAdapter(options));

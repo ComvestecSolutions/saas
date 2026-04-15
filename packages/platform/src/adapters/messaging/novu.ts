@@ -9,6 +9,10 @@ const NovuAdapterOptionsSchema = Schema.Struct({
   apiUrl: Schema.NonEmptyString,
 });
 
+export type NovuAdapterOptions = Schema.Schema.Type<
+  typeof NovuAdapterOptionsSchema
+>;
+
 const NovuHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.novu,
 );
@@ -26,7 +30,7 @@ export class NovuAdapter extends Context.Tag("NovuAdapter")<
   NovuAdapterService
 >() {}
 
-export const makeNovuAdapter = (input: unknown) =>
+export const makeNovuAdapter = (input: NovuAdapterOptions) =>
   Schema.decodeUnknown(NovuAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): NovuAdapterService => ({
@@ -40,5 +44,5 @@ export const makeNovuAdapter = (input: unknown) =>
     ),
   );
 
-export const makeNovuAdapterLayer = (options: unknown) =>
+export const makeNovuAdapterLayer = (options: NovuAdapterOptions) =>
   Layer.effect(NovuAdapter, makeNovuAdapter(options));

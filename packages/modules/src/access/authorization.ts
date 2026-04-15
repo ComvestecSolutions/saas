@@ -140,7 +140,7 @@ const AuthorizationModuleOptionsSchema = Schema.Struct({
   maxCacheSize: Schema.optional(Schema.Number),
 });
 
-type AuthorizationModuleOptions = Schema.Schema.Type<
+export type AuthorizationModuleOptions = Schema.Schema.Type<
   typeof AuthorizationModuleOptionsSchema
 >;
 
@@ -185,10 +185,10 @@ const mappingAllowsRequest = (input: AuthorizationCheckInput) =>
 export type AuthorizationModuleService = {
   readonly listTuples: Effect.Effect<readonly AuthorizationTuple[]>;
   readonly check: (
-    input: unknown,
+    input: AuthorizationCheckInput,
   ) => Effect.Effect<AuthorizationDecision, ParseResult.ParseError>;
   readonly explain: (
-    input: unknown,
+    input: AuthorizationCheckInput,
   ) => Effect.Effect<AuthorizationExplanation, ParseResult.ParseError>;
 };
 
@@ -197,7 +197,7 @@ export class AuthorizationModule extends Context.Tag("AuthorizationModule")<
   AuthorizationModuleService
 >() {}
 
-export const makeAuthorizationModule = (input: unknown) =>
+export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
   Schema.decodeUnknown(AuthorizationModuleOptionsSchema)(input).pipe(
     Effect.map((options): AuthorizationModuleService => {
       const cache = new Map<
@@ -217,7 +217,7 @@ export const makeAuthorizationModule = (input: unknown) =>
 
       const tuples = [...options.tuples];
 
-      const check = (checkInput: unknown) =>
+      const check = (checkInput: AuthorizationCheckInput) =>
         Schema.decodeUnknown(AuthorizationCheckInputSchema)(checkInput).pipe(
           Effect.flatMap((decodedInput) => {
             const cacheKey = buildCacheKey(decodedInput);
@@ -305,7 +305,7 @@ export const makeAuthorizationModule = (input: unknown) =>
           }),
         );
 
-      const explain = (checkInput: unknown) =>
+      const explain = (checkInput: AuthorizationCheckInput) =>
         Schema.decodeUnknown(AuthorizationCheckInputSchema)(checkInput).pipe(
           Effect.flatMap((decodedInput) => {
             const subjectCandidates = buildSubjectCandidates(decodedInput);
@@ -342,5 +342,6 @@ export const makeAuthorizationModule = (input: unknown) =>
     }),
   );
 
-export const makeAuthorizationModuleLayer = (input: unknown) =>
-  Layer.effect(AuthorizationModule, makeAuthorizationModule(input));
+export const makeAuthorizationModuleLayer = (
+  input: AuthorizationModuleOptions,
+) => Layer.effect(AuthorizationModule, makeAuthorizationModule(input));

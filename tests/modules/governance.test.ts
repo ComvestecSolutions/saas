@@ -7,6 +7,8 @@ import {
   platformScope,
   runtimeChangeProposalAction,
   runtimeResolutionSource,
+  type AuditEvent,
+  type PlatformModuleId,
 } from "@comvestec/contracts";
 import {
   tenantBrandingConfigKey,
@@ -16,12 +18,34 @@ import {
   makeAuditLogModule,
   makeRuntimeConfigModule,
   makeSupportOperationsModule,
+  type AuditLogPostgresRepositoryService,
 } from "@comvestec/modules";
 import { organizationRequestContext, supportRequestContext } from "./_fixtures";
 
+const makeInMemoryAuditLogRepository =
+  (): AuditLogPostgresRepositoryService => {
+    const maxEvents = 500;
+    const events: AuditEvent[] = [];
+
+    return {
+      insertAuditEvent: (event) =>
+        Effect.sync(() => {
+          if (events.length >= maxEvents) {
+            events.shift();
+          }
+          events.push(event);
+          return event;
+        }),
+      queryByModule: (moduleId: PlatformModuleId) =>
+        Effect.succeed(events.filter((e) => e.moduleId === moduleId)),
+    };
+  };
+
 describe("modules governance", () => {
   it("captures audit events and exposes requirements", async () => {
-    const auditLog = await Effect.runPromise(makeAuditLogModule());
+    const auditLog = await Effect.runPromise(
+      makeAuditLogModule(makeInMemoryAuditLogRepository()),
+    );
 
     const event = await Effect.runPromise(
       auditLog.append({
@@ -234,7 +258,8 @@ describe("modules governance", () => {
 
   it("returns typed unknown-config-key failures", async () => {
     const runtimeConfig = await Effect.runPromise(makeRuntimeConfigModule());
-    const unknownConfigKey = `${platformModuleId.tenantBranding}.unknownKey`;
+    const unknownConfigKey =
+      `${platformModuleId.tenantBranding}.unknownKey` as const;
 
     const result = await Effect.runPromise(
       Effect.either(

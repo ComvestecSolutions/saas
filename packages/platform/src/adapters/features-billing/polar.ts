@@ -1,25 +1,29 @@
+import { HTTPClient, Polar } from "@polar-sh/sdk";
+import {
+  validateEvent,
+  WebhookVerificationError,
+} from "@polar-sh/sdk/webhooks";
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
-  billingAndMeteringFeatureFlag,
-  billingEnforcementMode,
-  billingMeteringMode,
   BillingCheckoutSessionInputSchema,
   BillingCheckoutSessionSchema,
+  BillingEntitlementItemSchema,
+  billingPlanIntervals,
   BillingPlanSchema,
   billingSubscriptionStatus,
   billingWebhookEventType,
   billingWebhookReconciliationAction,
   BillingProviderWebhookInputSchema,
   BillingWebhookReconciliationSchema,
-  identitySessionFeatureFlag,
-  platformModuleId,
+  PlatformScopeSchema,
   PublicBillingPlanCatalogSchema,
-  tenantManagementFeatureFlag,
-  usageQuotaPeriod,
 } from "@comvestec/contracts";
 import type {
   BillingCheckoutSession,
+  BillingCheckoutSessionInput,
   BillingPlan,
+  BillingPlanInterval,
+  BillingProviderWebhookInput,
   BillingSubscriptionStatus,
   BillingWebhookEventType,
   BillingWebhookReconciliation,
@@ -29,86 +33,738 @@ import {
   createPlatformAdapterHealthcheckSchema,
   platformAdapterServiceName,
 } from "../service-names";
+import {
+  buildPolarCheckoutMetadata,
+  polarMetadataKey,
+  polarWebhookMetadataField,
+  type PolarCatalogMetadataField,
+  type PolarCatalogProductMetadataLookup,
+  type PolarCheckoutMetadata,
+  type PolarCheckoutMetadataLookup,
+  type PolarMetadataKey,
+} from "./polar-metadata";
 
-const PolarAdapterOptionsSchema = Schema.Struct({
+const PolarAdapterRuntimeOptionsSchema = Schema.Struct({
   apiKey: Schema.NonEmptyString,
   apiUrl: Schema.NonEmptyString,
-  plans: Schema.optional(Schema.Array(BillingPlanSchema)),
-  checkoutSessionTtlMinutes: Schema.optional(Schema.Number),
 });
 
-const DefaultPolarPlansSchema = Schema.Array(BillingPlanSchema);
+type PolarAdapterRuntimeOptions = Schema.Schema.Type<
+  typeof PolarAdapterRuntimeOptionsSchema
+>;
 
-const defaultPolarPlans = Schema.validateSync(DefaultPolarPlansSchema)([
-  {
-    planId: "plan_starter",
-    planKey: "starter",
-    displayName: "Starter",
-    description: "Monthly or yearly access with non-metered core modules.",
-    active: true,
-    prices: [
+export type PolarAdapterOptions = PolarAdapterRuntimeOptions & {
+  readonly fetch?: typeof fetch;
+  readonly sdkClient?: PolarAdapterSdkClient;
+};
+
+type PolarSdkPrice = {
+  readonly id: string;
+  readonly priceCurrency?: string;
+  readonly priceAmount?: number;
+  readonly recurringInterval?: string | null;
+  readonly isArchived: boolean;
+};
+
+type PolarSdkProduct = {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly recurringInterval?: string | null;
+  readonly isArchived: boolean;
+  readonly metadata?: PolarCatalogProductMetadataLookup;
+  readonly prices: readonly PolarSdkPrice[];
+};
+
+type PolarSdkProductListPage = {
+  readonly result: {
+    readonly items: readonly PolarSdkProduct[];
+  };
+};
+
+type PolarSdkCheckout = {
+  readonly id: string;
+  readonly url: string;
+  readonly expiresAt: Date | string;
+};
+
+type PolarSdkProductVisibility = "draft" | "private" | "public";
+
+type PolarSdkListProductsRequest = {
+  readonly isArchived?: boolean | null;
+  readonly isRecurring?: boolean | null;
+  readonly visibility?: PolarSdkProductVisibility[] | null;
+  readonly limit?: number;
+};
+
+type PolarSdkCreateCheckoutRequest = {
+  readonly products: string[];
+  readonly successUrl?: string | null;
+  readonly returnUrl?: string | null;
+  readonly externalCustomerId?: string | null;
+  readonly metadata?: PolarCheckoutMetadata;
+};
+
+type PolarSdkProductListResult = AsyncIterable<PolarSdkProductListPage>;
+
+export type PolarAdapterSdkClient = {
+  readonly products: {
+    readonly list: (
+      request: PolarSdkListProductsRequest,
+    ) => Promise<PolarSdkProductListResult>;
+  };
+  readonly checkouts: {
+    readonly create: (
+      request: PolarSdkCreateCheckoutRequest,
+    ) => Promise<PolarSdkCheckout>;
+  };
+};
+
+export type PolarAdapterRequestError = {
+  readonly _tag: "PolarAdapterRequestError";
+  readonly operation:
+    | "healthcheck"
+    | "listPlans"
+    | "createCheckoutSession"
+    | "reconcileWebhookEvent";
+  readonly cause: unknown;
+  readonly status?: number;
+  readonly body?: string;
+};
+
+export type PolarCatalogMetadataError = {
+  readonly _tag: "PolarCatalogMetadataError";
+  readonly productId: BillingPlan["planId"];
+  readonly field: PolarCatalogMetadataField;
+  readonly cause: unknown;
+};
+
+export type PolarAdapterError =
+  | ParseResult.ParseError
+  | PolarAdapterRequestError
+  | PolarCatalogMetadataError
+  | PolarPlanNotFoundError
+  | PolarPriceNotFoundError
+  | PolarWebhookSignatureError;
+
+export type PolarCatalogError =
+  | ParseResult.ParseError
+  | PolarAdapterRequestError
+  | PolarCatalogMetadataError;
+
+export type PolarCheckoutSessionError =
+  | PolarCatalogError
+  | PolarPlanNotFoundError
+  | PolarPriceNotFoundError;
+
+export type PolarWebhookReconciliationError =
+  | PolarCatalogError
+  | PolarWebhookSignatureError
+  | PolarPlanNotFoundError
+  | PolarPriceNotFoundError;
+
+type PolarRequestFailure = {
+  readonly cause: unknown;
+  readonly status?: number;
+  readonly body?: string;
+};
+
+const decodeBillingPlan = Schema.decodeUnknown(BillingPlanSchema);
+
+const decodePublicBillingPlanCatalog = Schema.decodeUnknown(
+  PublicBillingPlanCatalogSchema,
+);
+
+const decodeBillingEntitlements = Schema.decodeUnknown(
+  Schema.Array(BillingEntitlementItemSchema),
+);
+
+const buildPolarRequestError = (
+  operation: PolarAdapterRequestError["operation"],
+  failure: PolarRequestFailure,
+): PolarAdapterRequestError => ({
+  _tag: "PolarAdapterRequestError",
+  operation,
+  cause: failure.cause,
+  ...(failure.status !== undefined ? { status: failure.status } : {}),
+  ...(failure.body !== undefined ? { body: failure.body } : {}),
+});
+
+const buildPolarRequestFailure = (cause: unknown): PolarRequestFailure => {
+  if (typeof cause !== "object" || cause === null) {
+    return { cause };
+  }
+
+  const status =
+    "statusCode" in cause && typeof cause.statusCode === "number"
+      ? cause.statusCode
+      : "status" in cause && typeof cause.status === "number"
+        ? cause.status
+        : undefined;
+
+  const body =
+    "body" in cause && typeof cause.body === "string" ? cause.body : undefined;
+
+  return {
+    cause,
+    ...(status !== undefined ? { status } : {}),
+    ...(body !== undefined ? { body } : {}),
+  };
+};
+
+const createPolarSdkClient = (
+  options: PolarAdapterRuntimeOptions,
+  input: PolarAdapterOptions,
+): PolarAdapterSdkClient => {
+  if (input.sdkClient !== undefined) {
+    return input.sdkClient;
+  }
+
+  const sdk = new Polar({
+    accessToken: options.apiKey,
+    serverURL: options.apiUrl,
+    ...(input.fetch !== undefined
+      ? {
+          httpClient: new HTTPClient({
+            fetcher: input.fetch,
+          }),
+        }
+      : {}),
+  });
+
+  return {
+    products: {
+      list: (request) => sdk.products.list(request),
+    },
+    checkouts: {
+      create: (request) => sdk.checkouts.create(request),
+    },
+  };
+};
+
+const normalizeDescription = (description: unknown) =>
+  typeof description === "string" && description.length > 0
+    ? description
+    : undefined;
+
+const isBillingPlanInterval = (value: unknown): value is BillingPlanInterval =>
+  typeof value === "string" &&
+  billingPlanIntervals.includes(value as BillingPlanInterval);
+
+const buildPolarCatalogMetadataError = (
+  productId: BillingPlan["planId"],
+  field: PolarCatalogMetadataError["field"],
+  cause: unknown,
+): PolarCatalogMetadataError => ({
+  _tag: "PolarCatalogMetadataError",
+  productId,
+  field,
+  cause,
+});
+
+const resolvePriceInterval = (
+  product: PolarSdkProduct,
+  price: PolarSdkPrice,
+): BillingPlanInterval | undefined => {
+  if (isBillingPlanInterval(price.recurringInterval)) {
+    return price.recurringInterval;
+  }
+
+  if (isBillingPlanInterval(product.recurringInterval)) {
+    return product.recurringInterval;
+  }
+
+  return undefined;
+};
+
+const buildBillingPlanPrices = (product: PolarSdkProduct) =>
+  product.prices.flatMap((price) => {
+    const interval = resolvePriceInterval(product, price);
+
+    if (
+      price.isArchived ||
+      interval === undefined ||
+      typeof price.priceCurrency !== "string" ||
+      typeof price.priceAmount !== "number"
+    ) {
+      return [];
+    }
+
+    return [
       {
-        priceId: "price_starter_month",
-        interval: "month",
-        currency: "USD",
-        amountMinor: 1900,
+        priceId: price.id,
+        interval,
+        currency: price.priceCurrency.toUpperCase(),
+        amountMinor: price.priceAmount,
         active: true,
-        providerPriceId: "polar_price_starter_month",
+        providerPriceId: price.id,
       },
-      {
-        priceId: "price_starter_year",
-        interval: "year",
-        currency: "USD",
-        amountMinor: 19000,
-        active: true,
-        providerPriceId: "polar_price_starter_year",
-      },
-    ],
-    entitlements: [
-      {
-        moduleId: platformModuleId.tenantManagement,
-        featureKey: tenantManagementFeatureFlag.enabled,
-        included: true,
-        meteringMode: billingMeteringMode.none,
-        enforcementMode: billingEnforcementMode.none,
-      },
-      {
-        moduleId: platformModuleId.identitySession,
-        featureKey: identitySessionFeatureFlag.enabled,
-        included: true,
-        meteringMode: billingMeteringMode.none,
-        enforcementMode: billingEnforcementMode.none,
-      },
-      {
-        moduleId: platformModuleId.billingAndMetering,
-        featureKey: billingAndMeteringFeatureFlag.apiRequests,
-        included: true,
-        meteringMode: billingMeteringMode.rateLimit,
-        meterKey: billingAndMeteringFeatureFlag.apiRequests,
-        unit: "request",
-        quotaLimit: 60,
-        quotaPeriod: usageQuotaPeriod.minute,
-        enforcementMode: billingEnforcementMode.rateLimit,
-      },
-    ],
-  },
-] satisfies readonly BillingPlan[]);
+    ];
+  });
+
+const parsePolarEntitlements = (
+  productId: BillingPlan["planId"],
+  serializedEntitlements: string,
+) =>
+  Effect.try({
+    try: () => JSON.parse(serializedEntitlements),
+    catch: (cause) =>
+      buildPolarCatalogMetadataError(
+        productId,
+        polarMetadataKey.entitlements,
+        cause,
+      ),
+  }).pipe(Effect.flatMap(decodeBillingEntitlements));
+
+const buildBillingPlanFromProduct = (product: PolarSdkProduct) => {
+  const metadata: PolarCatalogProductMetadataLookup = product.metadata ?? {};
+  const planKeyValue = metadata[polarMetadataKey.planKey];
+  const entitlementsValue = metadata[polarMetadataKey.entitlements];
+
+  if (typeof planKeyValue !== "string" || planKeyValue.length === 0) {
+    return Effect.fail(
+      buildPolarCatalogMetadataError(
+        product.id,
+        polarMetadataKey.planKey,
+        planKeyValue,
+      ),
+    );
+  }
+
+  if (typeof entitlementsValue !== "string" || entitlementsValue.length === 0) {
+    return Effect.fail(
+      buildPolarCatalogMetadataError(
+        product.id,
+        polarMetadataKey.entitlements,
+        entitlementsValue,
+      ),
+    );
+  }
+
+  return parsePolarEntitlements(product.id, entitlementsValue).pipe(
+    Effect.flatMap((entitlements) =>
+      decodeBillingPlan({
+        planId: product.id,
+        planKey: planKeyValue,
+        displayName: product.name,
+        ...(normalizeDescription(product.description) !== undefined
+          ? { description: normalizeDescription(product.description) }
+          : {}),
+        active: !product.isArchived,
+        prices: buildBillingPlanPrices(product),
+        entitlements,
+      }),
+    ),
+  );
+};
 
 export type PolarPlanNotFoundError = {
   readonly _tag: "PolarPlanNotFoundError";
-  readonly planId: string;
+  readonly planId: BillingPlan["planId"];
 };
 
 export type PolarPriceNotFoundError = {
   readonly _tag: "PolarPriceNotFoundError";
-  readonly planId: string;
-  readonly priceId: string;
+  readonly planId: BillingPlan["planId"];
+  readonly priceId: BillingPlan["prices"][number]["priceId"];
 };
 
 export type PolarWebhookSignatureError = {
   readonly _tag: "PolarWebhookSignatureError";
-  readonly deliveryId: string;
+  readonly deliveryId: BillingProviderWebhookInput["deliveryId"];
 };
+
+export type PolarWebhookPayloadMappingError = {
+  readonly _tag: "PolarWebhookPayloadMappingError";
+  readonly deliveryId: string;
+  readonly eventType: string;
+  readonly field: string;
+  readonly cause: unknown;
+};
+
+type PolarWebhookMetadata = PolarCheckoutMetadataLookup;
+
+type PolarWebhookCustomer = {
+  readonly externalId?: string | null;
+};
+
+type PolarWebhookOrderSubscription = {
+  readonly id: string;
+  readonly currentPeriodEnd: Date;
+  readonly endsAt: Date | null;
+  readonly canceledAt: Date | null;
+};
+
+type PolarWebhookOrderItem = {
+  readonly productPriceId: string | null;
+};
+
+export type PolarWebhookOrderPaidPayload = {
+  readonly type: "order.paid";
+  readonly timestamp: Date;
+  readonly data: {
+    readonly id: string;
+    readonly billingReason: string;
+    readonly subscriptionId: string | null;
+    readonly productId: string | null;
+    readonly customerId: string;
+    readonly metadata: PolarWebhookMetadata;
+    readonly customer: PolarWebhookCustomer;
+    readonly subscription: PolarWebhookOrderSubscription | null;
+    readonly items: readonly PolarWebhookOrderItem[];
+  };
+};
+
+type PolarWebhookSubscriptionPrice = {
+  readonly id: string;
+  readonly isArchived?: boolean;
+};
+
+export type PolarWebhookSubscriptionPayload = {
+  readonly type:
+    | "subscription.active"
+    | "subscription.canceled"
+    | "subscription.past_due"
+    | "subscription.revoked"
+    | "subscription.uncanceled"
+    | "subscription.updated";
+  readonly timestamp: Date;
+  readonly data: {
+    readonly id: string;
+    readonly productId: string;
+    readonly customerId: string;
+    readonly currentPeriodEnd: Date;
+    readonly endsAt: Date | null;
+    readonly canceledAt: Date | null;
+    readonly metadata: PolarWebhookMetadata;
+    readonly customer: PolarWebhookCustomer;
+    readonly prices: readonly PolarWebhookSubscriptionPrice[];
+  };
+};
+
+export type PolarWebhookPayload =
+  | PolarWebhookOrderPaidPayload
+  | PolarWebhookSubscriptionPayload
+  | {
+      readonly type: string;
+      readonly timestamp: Date;
+      readonly data: {
+        readonly metadata?: PolarWebhookMetadata;
+      };
+    };
+
+export type PolarWebhookValidationError =
+  | ParseResult.ParseError
+  | PolarWebhookSignatureError
+  | PolarWebhookPayloadMappingError;
+
+const isOrderPaidWebhookPayload = (
+  payload: PolarWebhookPayload,
+): payload is PolarWebhookOrderPaidPayload => payload.type === "order.paid";
+
+const isSubscriptionWebhookPayload = (
+  payload: PolarWebhookPayload,
+): payload is PolarWebhookSubscriptionPayload => {
+  switch (payload.type) {
+    case "subscription.active":
+    case "subscription.canceled":
+    case "subscription.past_due":
+    case "subscription.revoked":
+    case "subscription.uncanceled":
+    case "subscription.updated":
+      return true;
+    default:
+      return false;
+  }
+};
+
+const decodePlatformScope = Schema.decodeUnknown(PlatformScopeSchema);
+
+const buildPolarWebhookPayloadMappingError = (
+  deliveryId: string,
+  eventType: string,
+  field: string,
+  cause: unknown,
+): PolarWebhookPayloadMappingError => ({
+  _tag: "PolarWebhookPayloadMappingError",
+  deliveryId,
+  eventType,
+  field,
+  cause,
+});
+
+const getWebhookMetadataString = (
+  metadata: PolarWebhookMetadata,
+  key: PolarMetadataKey,
+) => {
+  const value = metadata[key];
+
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+};
+
+const requireWebhookField = (
+  value: string | undefined,
+  deliveryId: string,
+  eventType: string,
+  field: string,
+) =>
+  value !== undefined
+    ? Effect.succeed(value)
+    : Effect.fail(
+        buildPolarWebhookPayloadMappingError(
+          deliveryId,
+          eventType,
+          field,
+          "Missing or empty webhook field.",
+        ),
+      );
+
+const buildSubscriptionWebhookEventId = (
+  eventType: string,
+  subscriptionId: string,
+  timestamp: Date,
+) => `${eventType}:${subscriptionId}:${timestamp.toISOString()}`;
+
+const resolveOrderWebhookEventType = (
+  billingReason: string,
+): BillingWebhookEventType | null => {
+  switch (billingReason) {
+    case "subscription_create":
+      return billingWebhookEventType.checkoutCompleted;
+    case "subscription_cycle":
+      return billingWebhookEventType.subscriptionRenewed;
+    case "subscription_update":
+      return billingWebhookEventType.entitlementUpdated;
+    default:
+      return null;
+  }
+};
+
+const resolveSubscriptionWebhookEventType = (
+  eventType: PolarWebhookSubscriptionPayload["type"],
+): BillingWebhookEventType => {
+  switch (eventType) {
+    case "subscription.canceled":
+    case "subscription.revoked":
+      return billingWebhookEventType.subscriptionCanceled;
+    case "subscription.past_due":
+      return billingWebhookEventType.paymentFailed;
+    case "subscription.active":
+    case "subscription.uncanceled":
+    case "subscription.updated":
+      return billingWebhookEventType.entitlementUpdated;
+  }
+};
+
+const resolveOrderWebhookPriceId = (payload: PolarWebhookOrderPaidPayload) =>
+  getWebhookMetadataString(payload.data.metadata, polarMetadataKey.priceId) ??
+  payload.data.items.find(
+    (item) =>
+      typeof item.productPriceId === "string" && item.productPriceId.length > 0,
+  )?.productPriceId ??
+  undefined;
+
+const resolveSubscriptionWebhookPriceId = (
+  payload: PolarWebhookSubscriptionPayload,
+) =>
+  getWebhookMetadataString(payload.data.metadata, polarMetadataKey.priceId) ??
+  payload.data.prices.find((price) => !price.isArchived)?.id ??
+  payload.data.prices[0]?.id ??
+  undefined;
+
+export const normalizeValidatedPolarWebhookPayload = (
+  payload: PolarWebhookPayload,
+  deliveryId: string,
+) =>
+  Effect.gen(function* () {
+    if (isOrderPaidWebhookPayload(payload)) {
+      const internalEventType = resolveOrderWebhookEventType(
+        payload.data.billingReason,
+      );
+
+      if (internalEventType === null) {
+        return null;
+      }
+
+      const tenantScope = yield* requireWebhookField(
+        getWebhookMetadataString(
+          payload.data.metadata,
+          polarMetadataKey.tenantScope,
+        ),
+        deliveryId,
+        payload.type,
+        polarWebhookMetadataField.tenantScope,
+      ).pipe(Effect.flatMap(decodePlatformScope));
+      const tenantScopeId = yield* requireWebhookField(
+        getWebhookMetadataString(
+          payload.data.metadata,
+          polarMetadataKey.tenantScopeId,
+        ) ??
+          payload.data.customer.externalId ??
+          undefined,
+        deliveryId,
+        payload.type,
+        polarWebhookMetadataField.tenantScopeId,
+      );
+      const subscriptionId = yield* requireWebhookField(
+        payload.data.subscriptionId ??
+          payload.data.subscription?.id ??
+          undefined,
+        deliveryId,
+        payload.type,
+        "data.subscriptionId",
+      );
+      const planId = yield* requireWebhookField(
+        getWebhookMetadataString(
+          payload.data.metadata,
+          polarMetadataKey.planId,
+        ) ??
+          payload.data.productId ??
+          undefined,
+        deliveryId,
+        payload.type,
+        "data.productId",
+      );
+      const priceId = yield* requireWebhookField(
+        resolveOrderWebhookPriceId(payload),
+        deliveryId,
+        payload.type,
+        "data.items[].productPriceId",
+      );
+
+      return yield* Schema.decodeUnknown(BillingProviderWebhookInputSchema)({
+        provider: platformAdapterServiceName.polar,
+        deliveryId,
+        eventId: payload.data.id,
+        eventType: internalEventType,
+        occurredAt: payload.timestamp.toISOString(),
+        verifiedSignature: true,
+        subscriptionId,
+        tenantScope,
+        tenantScopeId,
+        planId,
+        priceId,
+        customerId: payload.data.customerId,
+        ...(payload.data.subscription !== null
+          ? {
+              currentPeriodEnd:
+                payload.data.subscription.currentPeriodEnd.toISOString(),
+            }
+          : {}),
+        ...(payload.data.subscription?.endsAt !== null &&
+        payload.data.subscription?.endsAt !== undefined
+          ? { cancelAt: payload.data.subscription.endsAt.toISOString() }
+          : {}),
+      });
+    }
+
+    if (isSubscriptionWebhookPayload(payload)) {
+      const tenantScope = yield* requireWebhookField(
+        getWebhookMetadataString(
+          payload.data.metadata,
+          polarMetadataKey.tenantScope,
+        ),
+        deliveryId,
+        payload.type,
+        polarWebhookMetadataField.tenantScope,
+      ).pipe(Effect.flatMap(decodePlatformScope));
+      const tenantScopeId = yield* requireWebhookField(
+        getWebhookMetadataString(
+          payload.data.metadata,
+          polarMetadataKey.tenantScopeId,
+        ) ??
+          payload.data.customer.externalId ??
+          undefined,
+        deliveryId,
+        payload.type,
+        polarWebhookMetadataField.tenantScopeId,
+      );
+      const planId = yield* requireWebhookField(
+        getWebhookMetadataString(
+          payload.data.metadata,
+          polarMetadataKey.planId,
+        ) ?? payload.data.productId,
+        deliveryId,
+        payload.type,
+        "data.productId",
+      );
+      const priceId = yield* requireWebhookField(
+        resolveSubscriptionWebhookPriceId(payload),
+        deliveryId,
+        payload.type,
+        "data.prices[].id",
+      );
+
+      return yield* Schema.decodeUnknown(BillingProviderWebhookInputSchema)({
+        provider: platformAdapterServiceName.polar,
+        deliveryId,
+        eventId: buildSubscriptionWebhookEventId(
+          payload.type,
+          payload.data.id,
+          payload.timestamp,
+        ),
+        eventType: resolveSubscriptionWebhookEventType(payload.type),
+        occurredAt: payload.timestamp.toISOString(),
+        verifiedSignature: true,
+        subscriptionId: payload.data.id,
+        tenantScope,
+        tenantScopeId,
+        planId,
+        priceId,
+        customerId: payload.data.customerId,
+        currentPeriodEnd: payload.data.currentPeriodEnd.toISOString(),
+        ...((payload.data.endsAt ?? payload.data.canceledAt) !== null &&
+        (payload.data.endsAt ?? payload.data.canceledAt) !== undefined
+          ? {
+              cancelAt: (payload.data.endsAt ??
+                payload.data.canceledAt)!.toISOString(),
+            }
+          : {}),
+      });
+    }
+
+    return null;
+  });
+
+export const validateAndNormalizePolarWebhookRequest = (input: {
+  readonly request: Request;
+  readonly secret: string;
+}) =>
+  Effect.tryPromise({
+    try: async () => {
+      const body = await input.request.text();
+      const headers = Object.fromEntries(input.request.headers.entries());
+      const deliveryId = input.request.headers.get("webhook-id") ?? "unknown";
+      const payload = validateEvent(
+        body,
+        headers,
+        input.secret,
+      ) as PolarWebhookPayload;
+
+      return { payload, deliveryId };
+    },
+    catch: (cause) => {
+      const deliveryId = input.request.headers.get("webhook-id") ?? "unknown";
+
+      if (cause instanceof WebhookVerificationError) {
+        return {
+          _tag: "PolarWebhookSignatureError",
+          deliveryId,
+        } satisfies PolarWebhookSignatureError;
+      }
+
+      return buildPolarWebhookPayloadMappingError(
+        deliveryId,
+        "unknown",
+        "request.body",
+        cause,
+      );
+    },
+  }).pipe(
+    Effect.flatMap(({ payload, deliveryId }) =>
+      normalizeValidatedPolarWebhookPayload(payload, deliveryId),
+    ),
+  );
 
 const PolarHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.polar,
@@ -118,25 +774,27 @@ export type PolarHealthcheck = Schema.Schema.Type<
   typeof PolarHealthcheckSchema
 >;
 
+const decodePolarHealthcheck = Schema.decodeUnknown(PolarHealthcheckSchema);
+
 export type PolarAdapterService = {
   readonly serviceName: typeof platformAdapterServiceName.polar;
   readonly apiUrl: string;
-  readonly healthcheck: Effect.Effect<PolarHealthcheck>;
-  readonly listPlans: Effect.Effect<PublicBillingPlanCatalog>;
-  readonly createCheckoutSession: (
-    input: unknown,
-  ) => Effect.Effect<
-    BillingCheckoutSession,
-    ParseResult.ParseError | PolarPlanNotFoundError | PolarPriceNotFoundError
+  readonly healthcheck: Effect.Effect<
+    PolarHealthcheck,
+    ParseResult.ParseError | PolarAdapterRequestError
   >;
+  readonly listPlans: Effect.Effect<
+    PublicBillingPlanCatalog,
+    PolarCatalogError
+  >;
+  readonly createCheckoutSession: (
+    input: BillingCheckoutSessionInput,
+  ) => Effect.Effect<BillingCheckoutSession, PolarCheckoutSessionError>;
   readonly reconcileWebhookEvent: (
-    input: unknown,
+    input: BillingProviderWebhookInput,
   ) => Effect.Effect<
     BillingWebhookReconciliation,
-    | ParseResult.ParseError
-    | PolarWebhookSignatureError
-    | PolarPlanNotFoundError
-    | PolarPriceNotFoundError
+    PolarWebhookReconciliationError
   >;
 };
 
@@ -145,18 +803,56 @@ export class PolarAdapter extends Context.Tag("PolarAdapter")<
   PolarAdapterService
 >() {}
 
-export const makePolarAdapter = (input: unknown) =>
-  Schema.decodeUnknown(PolarAdapterOptionsSchema)(input).pipe(
+export const makePolarAdapter = (input: PolarAdapterOptions) =>
+  Schema.decodeUnknown(PolarAdapterRuntimeOptionsSchema)(input).pipe(
     Effect.map((options): PolarAdapterService => {
-      const plans = options.plans ?? defaultPolarPlans;
-      const findActivePlan = (planId: string) =>
+      const sdkClient = createPolarSdkClient(options, input);
+
+      const listCatalogPlans = (
+        operation: PolarAdapterRequestError["operation"],
+      ) =>
+        Effect.tryPromise({
+          try: async () => {
+            const pages = await sdkClient.products.list({
+              isArchived: false,
+              isRecurring: true,
+              visibility: ["public"],
+              limit: 100,
+            });
+            const products: PolarSdkProduct[] = [];
+
+            for await (const page of pages) {
+              products.push(
+                ...page.result.items.filter((product) => !product.isArchived),
+              );
+            }
+
+            return products;
+          },
+          catch: (cause) =>
+            buildPolarRequestError(operation, buildPolarRequestFailure(cause)),
+        }).pipe(
+          Effect.flatMap((response) =>
+            Effect.forEach(response, buildBillingPlanFromProduct),
+          ),
+        );
+
+      const findActivePlan = (
+        plans: readonly BillingPlan[],
+        planId: BillingPlan["planId"],
+      ) =>
         plans.find(
           (candidate) => candidate.planId === planId && candidate.active,
         );
-      const findActivePrice = (plan: BillingPlan, priceId: string) =>
+
+      const findActivePrice = (
+        plan: BillingPlan,
+        priceId: BillingPlan["prices"][number]["priceId"],
+      ) =>
         plan.prices.find(
           (candidate) => candidate.priceId === priceId && candidate.active,
         );
+
       const toSubscriptionStatus = (
         eventType: BillingWebhookEventType,
       ): BillingSubscriptionStatus => {
@@ -171,179 +867,210 @@ export const makePolarAdapter = (input: unknown) =>
             return billingSubscriptionStatus.pastDue;
         }
       };
-      const publicPlanCatalog = Schema.validateSync(
-        PublicBillingPlanCatalogSchema,
-      )(
-        plans
-          .filter((plan) => plan.active)
-          .map((plan) => ({
-            planId: plan.planId,
-            planKey: plan.planKey,
-            displayName: plan.displayName,
-            description: plan.description,
-            active: plan.active,
-            prices: plan.prices.filter((price) => price.active),
-          })),
-      );
-
-      const createCheckoutSession: PolarAdapterService["createCheckoutSession"] =
-        (checkoutInput: unknown) =>
-          Schema.decodeUnknown(BillingCheckoutSessionInputSchema)(
-            checkoutInput,
-          ).pipe(
-            Effect.flatMap(
-              (
-                decodedInput,
-              ): Effect.Effect<
-                BillingCheckoutSession,
-                | ParseResult.ParseError
-                | PolarPlanNotFoundError
-                | PolarPriceNotFoundError
-              > => {
-                const plan = findActivePlan(decodedInput.planId);
-
-                if (plan === undefined) {
-                  return Effect.fail({
-                    _tag: "PolarPlanNotFoundError",
-                    planId: decodedInput.planId,
-                  } satisfies PolarPlanNotFoundError);
-                }
-
-                const price = findActivePrice(plan, decodedInput.priceId);
-
-                if (price === undefined) {
-                  return Effect.fail({
-                    _tag: "PolarPriceNotFoundError",
-                    planId: plan.planId,
-                    priceId: decodedInput.priceId,
-                  } satisfies PolarPriceNotFoundError);
-                }
-
-                const checkoutSessionId = [
-                  platformAdapterServiceName.polar,
-                  decodedInput.tenantScopeId,
-                  plan.planKey,
-                  price.priceId,
-                ].join(":");
-
-                return Schema.decodeUnknown(BillingCheckoutSessionSchema)({
-                  checkoutSessionId,
-                  checkoutUrl:
-                    `${options.apiUrl}/checkout/${encodeURIComponent(checkoutSessionId)}` +
-                    `?success_url=${encodeURIComponent(decodedInput.successUrl)}` +
-                    `&cancel_url=${encodeURIComponent(decodedInput.cancelUrl)}`,
-                  planId: plan.planId,
-                  priceId: price.priceId,
-                  interval: price.interval,
-                  provider: platformAdapterServiceName.polar,
-                  expiresAt: new Date(
-                    Date.now() +
-                      (options.checkoutSessionTtlMinutes ?? 30) * 60_000,
-                  ).toISOString(),
-                });
-              },
-            ),
-          );
-
-      const reconcileWebhookEvent: PolarAdapterService["reconcileWebhookEvent"] =
-        (webhookInput: unknown) =>
-          Effect.gen(function* () {
-            const decodedInput = yield* Schema.decodeUnknown(
-              BillingProviderWebhookInputSchema,
-            )(webhookInput);
-
-            if (!decodedInput.verifiedSignature) {
-              yield* Effect.fail({
-                _tag: "PolarWebhookSignatureError",
-                deliveryId: decodedInput.deliveryId,
-              } satisfies PolarWebhookSignatureError);
-            }
-
-            const plan = yield* Effect.fromNullable(
-              findActivePlan(decodedInput.planId),
-            ).pipe(
-              Effect.mapError(
-                () =>
-                  ({
-                    _tag: "PolarPlanNotFoundError",
-                    planId: decodedInput.planId,
-                  }) satisfies PolarPlanNotFoundError,
-              ),
-            );
-
-            const price = yield* Effect.fromNullable(
-              findActivePrice(plan, decodedInput.priceId),
-            ).pipe(
-              Effect.mapError(
-                () =>
-                  ({
-                    _tag: "PolarPriceNotFoundError",
-                    planId: plan.planId,
-                    priceId: decodedInput.priceId,
-                  }) satisfies PolarPriceNotFoundError,
-              ),
-            );
-
-            const status = toSubscriptionStatus(decodedInput.eventType);
-            const action =
-              decodedInput.eventType ===
-              billingWebhookEventType.checkoutCompleted
-                ? billingWebhookReconciliationAction.activate
-                : decodedInput.eventType ===
-                    billingWebhookEventType.subscriptionRenewed
-                  ? billingWebhookReconciliationAction.renew
-                  : decodedInput.eventType ===
-                      billingWebhookEventType.subscriptionCanceled
-                    ? billingWebhookReconciliationAction.deactivate
-                    : decodedInput.eventType ===
-                        billingWebhookEventType.paymentFailed
-                      ? billingWebhookReconciliationAction.flagPastDue
-                      : billingWebhookReconciliationAction.sync;
-
-            return yield* Schema.decodeUnknown(
-              BillingWebhookReconciliationSchema,
-            )({
-              action,
-              event: {
-                provider: decodedInput.provider,
-                deliveryId: decodedInput.deliveryId,
-                eventId: decodedInput.eventId,
-                eventType: decodedInput.eventType,
-                occurredAt: decodedInput.occurredAt,
-                subscriptionId: decodedInput.subscriptionId,
-                tenantScope: decodedInput.tenantScope,
-                tenantScopeId: decodedInput.tenantScopeId,
-                planId: decodedInput.planId,
-                priceId: decodedInput.priceId,
-                customerId: decodedInput.customerId,
-              },
-              subscription: {
-                subscriptionId: decodedInput.subscriptionId,
-                planId: plan.planId,
-                priceId: price.priceId,
-                status,
-                interval: price.interval,
-                currentPeriodEnd: decodedInput.currentPeriodEnd,
-                cancelAt: decodedInput.cancelAt,
-                entitlements: plan.entitlements,
-              },
-              entitlementsActive: status === billingSubscriptionStatus.active,
-            });
-          });
 
       return {
         serviceName: platformAdapterServiceName.polar,
         apiUrl: options.apiUrl,
-        healthcheck: Effect.succeed({
-          healthy: true,
-          service: platformAdapterServiceName.polar,
-        }),
-        listPlans: Effect.succeed(publicPlanCatalog),
-        createCheckoutSession,
-        reconcileWebhookEvent,
+        healthcheck: Effect.tryPromise({
+          try: async () => {
+            const pages = await sdkClient.products.list({ limit: 1 });
+
+            for await (const _page of pages) {
+              break;
+            }
+          },
+          catch: (cause) =>
+            buildPolarRequestError(
+              "healthcheck",
+              buildPolarRequestFailure(cause),
+            ),
+        }).pipe(
+          Effect.flatMap(() =>
+            decodePolarHealthcheck({
+              healthy: true,
+              service: platformAdapterServiceName.polar,
+            }),
+          ),
+        ),
+        listPlans: listCatalogPlans("listPlans").pipe(
+          Effect.flatMap((plans) =>
+            decodePublicBillingPlanCatalog(
+              plans
+                .filter((plan) => plan.active)
+                .map((plan) => ({
+                  planId: plan.planId,
+                  planKey: plan.planKey,
+                  displayName: plan.displayName,
+                  ...(plan.description !== undefined
+                    ? { description: plan.description }
+                    : {}),
+                  active: plan.active,
+                  prices: plan.prices.filter((price) => price.active),
+                })),
+            ),
+          ),
+        ),
+        createCheckoutSession: (checkoutInput: BillingCheckoutSessionInput) =>
+          Schema.decodeUnknown(BillingCheckoutSessionInputSchema)(
+            checkoutInput,
+          ).pipe(
+            Effect.flatMap((decodedInput) =>
+              listCatalogPlans("createCheckoutSession").pipe(
+                Effect.flatMap(
+                  (
+                    plans,
+                  ): Effect.Effect<
+                    BillingCheckoutSession,
+                    PolarCheckoutSessionError
+                  > => {
+                    const plan = findActivePlan(plans, decodedInput.planId);
+
+                    if (plan === undefined) {
+                      return Effect.fail({
+                        _tag: "PolarPlanNotFoundError",
+                        planId: decodedInput.planId,
+                      } satisfies PolarPlanNotFoundError);
+                    }
+
+                    const price = findActivePrice(plan, decodedInput.priceId);
+
+                    if (price === undefined) {
+                      return Effect.fail({
+                        _tag: "PolarPriceNotFoundError",
+                        planId: plan.planId,
+                        priceId: decodedInput.priceId,
+                      } satisfies PolarPriceNotFoundError);
+                    }
+
+                    return Effect.tryPromise({
+                      try: () =>
+                        sdkClient.checkouts.create({
+                          products: [plan.planId],
+                          successUrl: decodedInput.successUrl,
+                          returnUrl: decodedInput.cancelUrl,
+                          externalCustomerId: decodedInput.tenantScopeId,
+                          metadata: buildPolarCheckoutMetadata({
+                            tenantScope: decodedInput.tenantScope,
+                            tenantScopeId: decodedInput.tenantScopeId,
+                            planId: plan.planId,
+                            priceId: price.priceId,
+                          }),
+                        }),
+                      catch: (cause) =>
+                        buildPolarRequestError(
+                          "createCheckoutSession",
+                          buildPolarRequestFailure(cause),
+                        ),
+                    }).pipe(
+                      Effect.flatMap((checkout) =>
+                        Schema.decodeUnknown(BillingCheckoutSessionSchema)({
+                          checkoutSessionId: checkout.id,
+                          checkoutUrl: checkout.url,
+                          planId: plan.planId,
+                          priceId: price.priceId,
+                          interval: price.interval,
+                          provider: platformAdapterServiceName.polar,
+                          expiresAt:
+                            checkout.expiresAt instanceof Date
+                              ? checkout.expiresAt.toISOString()
+                              : checkout.expiresAt,
+                        }),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        reconcileWebhookEvent: (webhookInput: BillingProviderWebhookInput) =>
+          Schema.decodeUnknown(BillingProviderWebhookInputSchema)(
+            webhookInput,
+          ).pipe(
+            Effect.flatMap((decodedInput) =>
+              Effect.gen(function* () {
+                if (!decodedInput.verifiedSignature) {
+                  return yield* Effect.fail({
+                    _tag: "PolarWebhookSignatureError",
+                    deliveryId: decodedInput.deliveryId,
+                  } satisfies PolarWebhookSignatureError);
+                }
+
+                const plans = yield* listCatalogPlans("reconcileWebhookEvent");
+                const plan = yield* Effect.fromNullable(
+                  findActivePlan(plans, decodedInput.planId),
+                ).pipe(
+                  Effect.mapError(
+                    () =>
+                      ({
+                        _tag: "PolarPlanNotFoundError",
+                        planId: decodedInput.planId,
+                      }) satisfies PolarPlanNotFoundError,
+                  ),
+                );
+                const price = yield* Effect.fromNullable(
+                  findActivePrice(plan, decodedInput.priceId),
+                ).pipe(
+                  Effect.mapError(
+                    () =>
+                      ({
+                        _tag: "PolarPriceNotFoundError",
+                        planId: plan.planId,
+                        priceId: decodedInput.priceId,
+                      }) satisfies PolarPriceNotFoundError,
+                  ),
+                );
+                const status = toSubscriptionStatus(decodedInput.eventType);
+                const action =
+                  decodedInput.eventType ===
+                  billingWebhookEventType.checkoutCompleted
+                    ? billingWebhookReconciliationAction.activate
+                    : decodedInput.eventType ===
+                        billingWebhookEventType.subscriptionRenewed
+                      ? billingWebhookReconciliationAction.renew
+                      : decodedInput.eventType ===
+                          billingWebhookEventType.subscriptionCanceled
+                        ? billingWebhookReconciliationAction.deactivate
+                        : decodedInput.eventType ===
+                            billingWebhookEventType.paymentFailed
+                          ? billingWebhookReconciliationAction.flagPastDue
+                          : billingWebhookReconciliationAction.sync;
+
+                return yield* Schema.decodeUnknown(
+                  BillingWebhookReconciliationSchema,
+                )({
+                  action,
+                  event: {
+                    provider: decodedInput.provider,
+                    deliveryId: decodedInput.deliveryId,
+                    eventId: decodedInput.eventId,
+                    eventType: decodedInput.eventType,
+                    occurredAt: decodedInput.occurredAt,
+                    subscriptionId: decodedInput.subscriptionId,
+                    tenantScope: decodedInput.tenantScope,
+                    tenantScopeId: decodedInput.tenantScopeId,
+                    planId: decodedInput.planId,
+                    priceId: decodedInput.priceId,
+                    customerId: decodedInput.customerId,
+                  },
+                  subscription: {
+                    subscriptionId: decodedInput.subscriptionId,
+                    planId: plan.planId,
+                    priceId: price.priceId,
+                    status,
+                    interval: price.interval,
+                    currentPeriodEnd: decodedInput.currentPeriodEnd,
+                    cancelAt: decodedInput.cancelAt,
+                    entitlements: plan.entitlements,
+                  },
+                  entitlementsActive:
+                    status === billingSubscriptionStatus.active,
+                });
+              }),
+            ),
+          ),
       };
     }),
   );
 
-export const makePolarAdapterLayer = (options: unknown) =>
+export const makePolarAdapterLayer = (options: PolarAdapterOptions) =>
   Layer.effect(PolarAdapter, makePolarAdapter(options));

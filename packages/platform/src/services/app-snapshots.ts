@@ -220,17 +220,17 @@ const buildAdminAppSnapshot = (requestContext: RequestContext) =>
     });
   });
 
-export const getPublicWebSnapshotForRequest = (input: unknown) =>
+export const getPublicWebSnapshotForRequest = (input: RequestContext) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) => buildPublicWebSnapshot(requestContext)),
   );
 
-export const getProductAppSnapshotForRequest = (input: unknown) =>
+export const getProductAppSnapshotForRequest = (input: RequestContext) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) => buildProductAppSnapshot(requestContext)),
   );
 
-export const getAdminAppSnapshotForRequest = (input: unknown) =>
+export const getAdminAppSnapshotForRequest = (input: RequestContext) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) => buildAdminAppSnapshot(requestContext)),
   );

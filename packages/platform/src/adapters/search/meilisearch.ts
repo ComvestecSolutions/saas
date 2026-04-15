@@ -9,6 +9,10 @@ const MeilisearchAdapterOptionsSchema = Schema.Struct({
   apiKey: Schema.NonEmptyString,
 });
 
+export type MeilisearchAdapterOptions = Schema.Schema.Type<
+  typeof MeilisearchAdapterOptionsSchema
+>;
+
 const MeilisearchHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.meilisearch,
 );
@@ -28,7 +32,7 @@ export class MeilisearchAdapter extends Context.Tag("MeilisearchAdapter")<
   MeilisearchAdapterService
 >() {}
 
-export const makeMeilisearchAdapter = (input: unknown) =>
+export const makeMeilisearchAdapter = (input: MeilisearchAdapterOptions) =>
   Schema.decodeUnknown(MeilisearchAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): MeilisearchAdapterService => ({
@@ -42,5 +46,6 @@ export const makeMeilisearchAdapter = (input: unknown) =>
     ),
   );
 
-export const makeMeilisearchAdapterLayer = (options: unknown) =>
-  Layer.effect(MeilisearchAdapter, makeMeilisearchAdapter(options));
+export const makeMeilisearchAdapterLayer = (
+  options: MeilisearchAdapterOptions,
+) => Layer.effect(MeilisearchAdapter, makeMeilisearchAdapter(options));

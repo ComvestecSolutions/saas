@@ -32,13 +32,13 @@ Status: accepted
 
 ## Snapshot
 
-Last updated: 2026-04-13
+Last updated: 2026-04-15
 
 Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 ### Current Pattern Priorities To Reach 10/10
 
-1. Close the anonymous-to-entitled backend slice first: plan listing to auth start to auth callback to hosted checkout to webhook reconciliation to entitled product bootstrap.
+1. Promote the validated anonymous-to-entitled backend slice from code-level completion to live-environment readiness with webhook replay, smoke coverage, and runbooks.
 2. Move runtime governance flows from in-memory scaffolds to PostgreSQL-backed system-of-record patterns.
 3. Finish the adapter-to-module-to-operator workflow chain for authorization, observability, notifications, metering, and search.
 4. Add integration validation once external-service wiring exists so platform adapters are more than typed stubs.
@@ -64,7 +64,8 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 - Governing spec: [008 Observability and Audit Baseline](../01-platform/security/008-observability-and-audit-baseline.md)
 - Status: scaffolded
-- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [packages/platform/src/adapters/observability/observability.ts](../../packages/platform/src/adapters/observability/observability.ts), [packages/modules/src/domains/observability.ts](../../packages/modules/src/domains/observability.ts)
+- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [ops/docker/observability/compose.yml](../../ops/docker/observability/compose.yml), [ops/docker/analytics/Caddyfile](../../ops/docker/analytics/Caddyfile), [specs/04-ops/runbooks/openpanel-self-hosting.md](../04-ops/runbooks/openpanel-self-hosting.md), [packages/platform/src/adapters/observability/observability.ts](../../packages/platform/src/adapters/observability/observability.ts), [packages/modules/src/domains/observability.ts](../../packages/modules/src/domains/observability.ts)
+- Cleanup: The main compose entrypoint is now broken into included subfiles by concern, and OpenPanel remains available through the repo-managed `analytics` profile without inflating the default baseline.
 - Next gap: Add real telemetry emission and wire error events into GlitchTip.
 
 #### Security and field-level data access
@@ -79,15 +80,16 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 - Governing spec: [010 Deployment Profiles](../01-platform/architecture/010-deployment-profiles.md), [013 Technology Stack](../01-platform/architecture/013-technology-stack.md)
 - Status: scaffolded
-- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml)
-- Next gap: Add environment-specific deployment automation and profile validation.
+- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [ops/docker/observability/compose.yml](../../ops/docker/observability/compose.yml), [ops/docker/identity/compose.yml](../../ops/docker/identity/compose.yml), [ops/docker/feature-flags/compose.yml](../../ops/docker/feature-flags/compose.yml), [ops/docker/search/compose.yml](../../ops/docker/search/compose.yml), [ops/docker/messaging/compose.yml](../../ops/docker/messaging/compose.yml), [ops/docker/metering/compose.yml](../../ops/docker/metering/compose.yml), [ops/docker/analytics/compose.yml](../../ops/docker/analytics/compose.yml), [ops/docker/security/compose.yml](../../ops/docker/security/compose.yml), [ops/docker/README.md](../../ops/docker/README.md), [ops/docker/analytics/Caddyfile](../../ops/docker/analytics/Caddyfile), [ops/docker/analytics/init-db.sh](../../ops/docker/analytics/init-db.sh), [ops/docker/security/kong.yml](../../ops/docker/security/kong.yml), [ops/docker/security/vault.hcl](../../ops/docker/security/vault.hcl), [specs/04-ops/runbooks/openpanel-self-hosting.md](../04-ops/runbooks/openpanel-self-hosting.md), [specs/04-ops/runbooks/kong-vault-bootstrap.md](../04-ops/runbooks/kong-vault-bootstrap.md)
+- Cleanup: The deployment baseline now keeps one repo-managed Compose entrypoint in the root `ops/docker` folder while assigning each included compose file to its own concern folder, colocates Keycloak and observability runtime assets with their owning `identity/` and `observability/` concerns, moves OpenPanel runtime assets into `analytics/`, moves Kong and Vault runtime assets into `security/`, classifies example env values by seeded-local versus bootstrap-generated versus external-provider ownership, and ships operator runbooks for both optional profiles: `analytics` for OpenPanel and `hardened` for Kong plus Vault.
+- Next gap: Add environment-specific deployment automation and profile validation for optional external stacks as well as the default local baseline.
 
 #### Technology catalog
 
 - Governing spec: [013 Technology Stack](../01-platform/architecture/013-technology-stack.md)
 - Status: scaffolded
 - Evidence: [specs/01-platform/architecture/013-technology-stack.md](../01-platform/architecture/013-technology-stack.md), [packages/platform/src/index.ts](../../packages/platform/src/index.ts)
-- Cleanup: platform adapter boundaries now enforce non-empty runtime-facing configuration and identifiers, preserve `ParseResult.ParseError` on decoded runtime inputs, bound the in-memory Valkey counter store and Ory Keto tuple store with `maxCacheSize`, and centralize adapter service names and healthcheck schemas in `packages/platform/src/adapters/service-names.ts`.
+- Cleanup: platform adapter boundaries now enforce non-empty runtime-facing configuration and identifiers, preserve `ParseResult.ParseError` on decoded runtime inputs, expose real Keycloak, Valkey, Ory Keto, and Polar service boundaries, and centralize adapter service names and healthcheck schemas in `packages/platform/src/adapters/service-names.ts`.
 - Next gap: Complete adapter health probes and integration tests.
 
 #### Security hygiene automation
@@ -123,15 +125,15 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 - Governing spec: [Public Web Spec](../02-apps/public-web/spec.md)
 - Status: scaffolded
-- Evidence: [apps/public-web/src/routes/index.tsx](../../apps/public-web/src/routes/index.tsx)
-- Next gap: Replace the placeholder snapshot with public-safe plan listing, auth start, and hosted checkout handoff.
+- Evidence: [apps/public-web/src/routes/index.tsx](../../apps/public-web/src/routes/index.tsx), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/platform/subscriber-journey-http.test.ts](../../tests/platform/subscriber-journey-http.test.ts)
+- Next gap: Connect the public shell to the backend-owned subscriber journey API only after the app spec accepts the operator and customer interaction flow.
 
 #### Product app
 
 - Governing spec: [Product App Spec](../02-apps/product-app/spec.md)
 - Status: scaffolded
-- Evidence: [apps/product-app/src/routes/index.tsx](../../apps/product-app/src/routes/index.tsx)
-- Next gap: Implement auth callback, entitlement bootstrap, and billing status endpoints beyond the shell snapshot.
+- Evidence: [apps/product-app/src/routes/index.tsx](../../apps/product-app/src/routes/index.tsx), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/platform/subscriber-journey-http.test.ts](../../tests/platform/subscriber-journey-http.test.ts)
+- Next gap: Connect the product shell to the backend-owned auth, request-context, and bootstrap endpoints after the app-spec flow is accepted.
 
 #### Admin app
 
@@ -204,9 +206,9 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 #### Billing and metering
 
 - Governing manifest: [Manifest](../02-modules/domains/billing-and-metering/manifest.md)
-- Status: scaffolded
-- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts)
-- Next gap: Wire plan listing, checkout start, webhook intake, and replay through app-owned server boundaries and live PostgreSQL infrastructure instead of module-only scaffolds.
+- Status: implemented
+- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/billing-state-repository.ts](../../packages/modules/src/persistence/postgres/billing-state-repository.ts), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Add authenticated operator replay/audit tooling and live infrastructure smoke coverage.
 
 #### Notification center
 
@@ -225,9 +227,9 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 #### Identity session
 
 - Governing manifest: [Manifest](../02-modules/access/identity-session/manifest.md)
-- Status: scaffolded
-- Evidence: [packages/platform/src/adapters/identity/keycloak.ts](../../packages/platform/src/adapters/identity/keycloak.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/platform/adapters.test.ts](../../tests/platform/adapters.test.ts)
-- Next gap: Implement auth start and auth callback handling, session lifecycle, and cache.
+- Status: implemented
+- Evidence: [packages/platform/src/adapters/identity/keycloak.ts](../../packages/platform/src/adapters/identity/keycloak.ts), [packages/modules/src/access/identity-session.ts](../../packages/modules/src/access/identity-session.ts), [packages/modules/src/persistence/postgres/identity-session-repository.ts](../../packages/modules/src/persistence/postgres/identity-session-repository.ts), [packages/modules/src/persistence/postgres/tenant-onboarding-repository.ts](../../packages/modules/src/persistence/postgres/tenant-onboarding-repository.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Add backend-owned callback-state orchestration and operator audit review surfaces beyond the current direct-call API.
 
 #### Search
 

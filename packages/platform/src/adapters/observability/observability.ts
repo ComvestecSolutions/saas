@@ -10,6 +10,10 @@ const ObservabilityAdapterOptionsSchema = Schema.Struct({
   grafanaBaseUrl: Schema.NonEmptyString,
 });
 
+export type ObservabilityAdapterOptions = Schema.Schema.Type<
+  typeof ObservabilityAdapterOptionsSchema
+>;
+
 const TelemetryEmissionSchema = Schema.Struct({
   kind: TelemetryKindSchema,
   service: Schema.NonEmptyString,
@@ -34,7 +38,7 @@ export type ObservabilityAdapterService = {
   readonly grafanaBaseUrl: string;
   readonly healthcheck: Effect.Effect<ObservabilityHealthcheck>;
   readonly emit: (
-    input: unknown,
+    input: TelemetryEmission,
   ) => Effect.Effect<TelemetryEmission, ParseResult.ParseError>;
 };
 
@@ -43,7 +47,7 @@ export class ObservabilityAdapter extends Context.Tag("ObservabilityAdapter")<
   ObservabilityAdapterService
 >() {}
 
-export const makeObservabilityAdapter = (input: unknown) =>
+export const makeObservabilityAdapter = (input: ObservabilityAdapterOptions) =>
   Schema.decodeUnknown(ObservabilityAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): ObservabilityAdapterService => ({
@@ -54,11 +58,12 @@ export const makeObservabilityAdapter = (input: unknown) =>
           healthy: true,
           service: platformAdapterServiceName.observability,
         }),
-        emit: (emissionInput: unknown) =>
+        emit: (emissionInput: TelemetryEmission) =>
           Schema.decodeUnknown(TelemetryEmissionSchema)(emissionInput),
       }),
     ),
   );
 
-export const makeObservabilityAdapterLayer = (options: unknown) =>
-  Layer.effect(ObservabilityAdapter, makeObservabilityAdapter(options));
+export const makeObservabilityAdapterLayer = (
+  options: ObservabilityAdapterOptions,
+) => Layer.effect(ObservabilityAdapter, makeObservabilityAdapter(options));

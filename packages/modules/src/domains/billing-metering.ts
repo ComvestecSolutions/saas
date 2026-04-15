@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
+import { PlatformAdapterServiceNameSchema } from "@comvestec/platform";
 import {
   billingEnforcementMode,
   BillingMeterKeySchema,
@@ -11,12 +12,14 @@ import {
   BillingPlanPrice,
   BillingSubscriptionStatusSchema,
   BillingWebhookEventType,
+  BillingWebhookReconciliation,
   BillingWebhookEventTypeSchema,
   billingWebhookEventType,
   BillingWebhookReceiptProcessingStateSchema,
   billingWebhookReceiptProcessingState,
   BillingWebhookReconciliationActionSchema,
   BillingWebhookReconciliationSchema,
+  BillingPlan,
   BillingPlanSchema,
   getModuleEnabledFeatureFlagKey,
   InternalCostAllocation,
@@ -66,13 +69,16 @@ const BillingWebhookReceiptPayloadSchema = Schema.Struct({
   eventId: Schema.NonEmptyString,
   subscriptionId: Schema.NonEmptyString,
   ...BillingPlanPriceReferenceFields,
+  occurredAt: Schema.NonEmptyString,
   ...BillingActionCustomerFields,
   entitlementsActive: Schema.Boolean,
+  currentPeriodEnd: Schema.optional(Schema.NonEmptyString),
+  cancelAt: Schema.optional(Schema.NonEmptyString),
 });
 
 const BillingWebhookReceiptRecordSchema = Schema.Struct({
   receiptId: Schema.NonEmptyString,
-  provider: Schema.NonEmptyString,
+  provider: PlatformAdapterServiceNameSchema,
   deliveryId: Schema.NonEmptyString,
   eventType: BillingWebhookEventTypeSchema,
   processingState: BillingWebhookReceiptProcessingStateSchema,
@@ -96,7 +102,7 @@ const BillingSubscriptionMetadataSchema = Schema.Struct({
 
 const BillingSubscriptionRecordSchema = Schema.Struct({
   subscriptionId: Schema.NonEmptyString,
-  provider: Schema.NonEmptyString,
+  provider: PlatformAdapterServiceNameSchema,
   providerSubscriptionId: Schema.NonEmptyString,
   ...BillingScopedFields,
   ...BillingPlanPriceReferenceFields,
@@ -117,7 +123,7 @@ const BillingPaymentEventPayloadSchema = Schema.Struct({
 
 const BillingPaymentEventRecordSchema = Schema.Struct({
   eventId: Schema.NonEmptyString,
-  provider: Schema.NonEmptyString,
+  provider: PlatformAdapterServiceNameSchema,
   providerEventId: Schema.NonEmptyString,
   subscriptionId: Schema.NonEmptyString,
   ...BillingScopedFields,
@@ -190,28 +196,36 @@ const BillingPlanPriceSelectionInputSchema = Schema.Struct({
   interval: Schema.optional(BillingPlanIntervalSchema),
 });
 
+export type BillingPlanPriceSelectionInput = Schema.Schema.Type<
+  typeof BillingPlanPriceSelectionInputSchema
+>;
+
+type UsageQuotaEvaluationRequest = Schema.Schema.Type<
+  typeof UsageQuotaEvaluationRequestSchema
+>;
+
 export type BillingPlanPriceNotFoundError = {
   readonly _tag: "BillingPlanPriceNotFoundError";
-  readonly planId: string;
-  readonly priceId?: string;
+  readonly planId: BillingPlan["planId"];
+  readonly priceId?: BillingPlanPrice["priceId"];
   readonly interval?: BillingPlanInterval;
 };
 
 export type BillingMeteringModuleService = {
   readonly resolvePlanPrice: (
-    input: unknown,
+    input: BillingPlanPriceSelectionInput,
   ) => Effect.Effect<
     BillingPlanPrice,
     ParseResult.ParseError | BillingPlanPriceNotFoundError
   >;
   readonly evaluateQuota: (
-    input: unknown,
+    input: UsageQuotaEvaluationRequest,
   ) => Effect.Effect<UsageQuotaDecision, ParseResult.ParseError>;
   readonly allocateInternalCosts: (
     samples: readonly InternalCostSample[],
   ) => Effect.Effect<readonly InternalCostAllocation[], ParseResult.ParseError>;
   readonly buildWebhookPersistenceProjection: (
-    input: unknown,
+    input: BillingWebhookReconciliation,
   ) => Effect.Effect<
     BillingWebhookPersistenceProjection,
     ParseResult.ParseError
@@ -225,7 +239,7 @@ export class BillingMeteringModule extends Context.Tag("BillingMeteringModule")<
 
 export const makeBillingMeteringModule = () =>
   Effect.succeed<BillingMeteringModuleService>({
-    resolvePlanPrice: (input: unknown) =>
+    resolvePlanPrice: (input: BillingPlanPriceSelectionInput) =>
       Schema.decodeUnknown(BillingPlanPriceSelectionInputSchema)(input).pipe(
         Effect.flatMap((request) => {
           const matchedPrice = request.priceId
@@ -253,7 +267,7 @@ export const makeBillingMeteringModule = () =>
             : Effect.succeed(matchedPrice);
         }),
       ),
-    evaluateQuota: (input: unknown) =>
+    evaluateQuota: (input: UsageQuotaEvaluationRequest) =>
       Schema.decodeUnknown(UsageQuotaEvaluationRequestSchema)(input).pipe(
         Effect.flatMap((request) => {
           const nextConsumed = request.consumed + request.event.quantity;
@@ -290,7 +304,7 @@ export const makeBillingMeteringModule = () =>
           totalCost: sample.quantity * sample.unitCost,
         }),
       ),
-    buildWebhookPersistenceProjection: (input: unknown) =>
+    buildWebhookPersistenceProjection: (input: BillingWebhookReconciliation) =>
       Schema.decodeUnknown(BillingWebhookReconciliationSchema)(input).pipe(
         Effect.flatMap((reconciliation) => {
           const entitlementExpiresAt = reconciliation.entitlementsActive
@@ -331,10 +345,20 @@ export const makeBillingMeteringModule = () =>
                 subscriptionId: reconciliation.event.subscriptionId,
                 planId: reconciliation.event.planId,
                 priceId: reconciliation.event.priceId,
+                occurredAt: reconciliation.event.occurredAt,
                 action: reconciliation.action,
                 entitlementsActive: reconciliation.entitlementsActive,
                 ...(reconciliation.event.customerId !== undefined
                   ? { customerId: reconciliation.event.customerId }
+                  : {}),
+                ...(reconciliation.subscription.currentPeriodEnd !== undefined
+                  ? {
+                      currentPeriodEnd:
+                        reconciliation.subscription.currentPeriodEnd,
+                    }
+                  : {}),
+                ...(reconciliation.subscription.cancelAt !== undefined
+                  ? { cancelAt: reconciliation.subscription.cancelAt }
                   : {}),
               },
               receivedAt: reconciliation.event.occurredAt,

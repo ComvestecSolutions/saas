@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
+  type ModuleHealthIndicator,
   ModuleHealthIndicatorSchema,
   PermissionScopeSchema,
   platformModuleId,
@@ -97,20 +98,24 @@ const healthIndicators = Schema.validateSync(
     details:
       "Quota evaluation and internal cost allocation scaffolds available.",
   },
-] satisfies readonly Schema.Schema.Type<typeof ModuleHealthIndicatorSchema>[]);
+] satisfies readonly ModuleHealthIndicator[]);
 
 const BuildTelemetryEnvelopeInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   ...TelemetryEmissionFields,
 });
 
+export type BuildTelemetryEnvelopeInput = Schema.Schema.Type<
+  typeof BuildTelemetryEnvelopeInputSchema
+>;
+
 export type ObservabilityModuleService = {
   readonly buildTelemetryEnvelope: (
-    input: unknown,
+    input: BuildTelemetryEnvelopeInput,
   ) => Effect.Effect<TelemetryEnvelope, ParseResult.ParseError>;
   readonly listSlos: Effect.Effect<readonly ServiceLevelObjective[]>;
   readonly listHealthIndicators: Effect.Effect<
-    readonly Schema.Schema.Type<typeof ModuleHealthIndicatorSchema>[]
+    readonly ModuleHealthIndicator[]
   >;
 };
 
@@ -121,7 +126,7 @@ export class ObservabilityModule extends Context.Tag("ObservabilityModule")<
 
 export const makeObservabilityModule = () =>
   Effect.succeed<ObservabilityModuleService>({
-    buildTelemetryEnvelope: (input: unknown) =>
+    buildTelemetryEnvelope: (input: BuildTelemetryEnvelopeInput) =>
       Schema.decodeUnknown(BuildTelemetryEnvelopeInputSchema)(input).pipe(
         Effect.flatMap((request) =>
           Schema.decodeUnknown(TelemetryEnvelopeSchema)({

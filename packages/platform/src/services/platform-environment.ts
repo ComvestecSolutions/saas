@@ -20,14 +20,15 @@ export type RuntimeEnvironment = {
   readonly ketoReadUrl: string;
   readonly ketoWriteUrl: string;
   readonly errorTrackingDsn: string;
-  readonly posthogApiKey: Redacted.Redacted<string>;
-  readonly posthogHost: string;
+  readonly openpanelClientId: string;
+  readonly openpanelApiUrl: string;
   readonly novuApiKey: Redacted.Redacted<string>;
   readonly novuApiUrl: string;
   readonly meilisearchUrl: string;
   readonly meilisearchApiKey: Redacted.Redacted<string>;
   readonly polarApiKey: Redacted.Redacted<string>;
   readonly polarApiUrl: string;
+  readonly polarWebhookSecret: Redacted.Redacted<string>;
   readonly openmeterUrl: string;
   readonly openmeterApiKey: Redacted.Redacted<string>;
   readonly postalApiUrl: string;
@@ -60,14 +61,15 @@ export const makeRuntimeEnvironment = (input: unknown) =>
         ketoReadUrl: environment.ketoReadUrl,
         ketoWriteUrl: environment.ketoWriteUrl,
         errorTrackingDsn: environment.errorTrackingDsn,
-        posthogApiKey: Redacted.make(environment.posthogApiKey),
-        posthogHost: environment.posthogHost,
+        openpanelClientId: environment.openpanelClientId,
+        openpanelApiUrl: environment.openpanelApiUrl,
         novuApiKey: Redacted.make(environment.novuApiKey),
         novuApiUrl: environment.novuApiUrl,
         meilisearchUrl: environment.meilisearchUrl,
         meilisearchApiKey: Redacted.make(environment.meilisearchApiKey),
         polarApiKey: Redacted.make(environment.polarApiKey),
         polarApiUrl: environment.polarApiUrl,
+        polarWebhookSecret: Redacted.make(environment.polarWebhookSecret),
         openmeterUrl: environment.openmeterUrl,
         openmeterApiKey: Redacted.make(environment.openmeterApiKey),
         postalApiUrl: environment.postalApiUrl,

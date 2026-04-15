@@ -28,6 +28,10 @@ const BrandingResolutionInputSchema = Schema.Struct({
   values: Schema.Record({ key: Schema.NonEmptyString, value: Schema.Any }),
 });
 
+export type BrandingResolutionInput = Schema.Schema.Type<
+  typeof BrandingResolutionInputSchema
+>;
+
 const BrandingProjectionBaseFields = {
   companyName: Schema.NonEmptyString,
   logoAssetId: Schema.optional(Schema.NonEmptyString),
@@ -68,6 +72,10 @@ const IdentityBrandingHandoffInputSchema = Schema.Struct({
   branding: PublicBrandingProjectionSchema,
 });
 
+export type IdentityBrandingHandoffInput = Schema.Schema.Type<
+  typeof IdentityBrandingHandoffInputSchema
+>;
+
 export const IdentityBrandingHandoffSchema = Schema.Struct({
   mode: IdentityBrandingHandoffModeSchema,
   loginUrl: Schema.NonEmptyString,
@@ -102,10 +110,10 @@ const getCustomDomainStatus = (values: BrandingValueMap) =>
 
 export type TenantBrandingModuleService = {
   readonly resolveBranding: (
-    input: unknown,
+    input: BrandingResolutionInput,
   ) => Effect.Effect<BrandingResolutionResult, ParseResult.ParseError>;
   readonly buildIdentityHandoff: (
-    input: unknown,
+    input: IdentityBrandingHandoffInput,
   ) => Effect.Effect<IdentityBrandingHandoff, ParseResult.ParseError>;
 };
 
@@ -116,7 +124,7 @@ export class TenantBrandingModule extends Context.Tag("TenantBrandingModule")<
 
 export const makeTenantBrandingModule = () =>
   Effect.succeed<TenantBrandingModuleService>({
-    resolveBranding: (input: unknown) =>
+    resolveBranding: (input: BrandingResolutionInput) =>
       Schema.decodeUnknown(BrandingResolutionInputSchema)(input).pipe(
         Effect.flatMap((request) => {
           const companyName = request.entitled
@@ -216,7 +224,7 @@ export const makeTenantBrandingModule = () =>
           );
         }),
       ),
-    buildIdentityHandoff: (input: unknown) =>
+    buildIdentityHandoff: (input: IdentityBrandingHandoffInput) =>
       Schema.decodeUnknown(IdentityBrandingHandoffInputSchema)(input).pipe(
         Effect.flatMap((request) =>
           Schema.decodeUnknown(IdentityBrandingHandoffSchema)({

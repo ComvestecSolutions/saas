@@ -22,11 +22,17 @@ import {
 } from "./tenant-onboarding";
 
 export * from "./audit-log";
+export * from "./audit-log-repository";
+export * from "./database";
 export * from "./billing";
+export * from "./billing-state-repository";
+export * from "./billing-webhook-replay-repository";
 export * from "./billing-webhook-repository";
+export * from "./identity-session-repository";
 export * from "./identity-session";
 export * from "./runtime-config";
 export * from "./tenant-branding";
+export * from "./tenant-onboarding-repository";
 export * from "./tenant-onboarding";
 
 export const postgresRecordTables = {

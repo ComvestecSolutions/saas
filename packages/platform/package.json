@@ -9,7 +9,11 @@
   "dependencies": {
     "@comvestec/config": "workspace:*",
     "@comvestec/contracts": "workspace:*",
-    "effect": "^3.21.0"
+    "@polar-sh/sdk": "^0.47.0",
+    "drizzle-orm": "^0.45.2",
+    "effect": "^3.21.0",
+    "postgres": "^3.4.7",
+    "redis": "^5.12.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

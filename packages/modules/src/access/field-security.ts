@@ -3,6 +3,7 @@ import { findModuleManifest } from "@comvestec/config";
 import {
   actorType as actorTypeConstant,
   dataClassification,
+  type DataClassification,
   ProjectionDescriptorSchema,
   RequestContextSchema,
   PlatformModuleIdSchema,
@@ -75,7 +76,7 @@ const setPathValue = (
 
 const redactValue = (
   actorType: FieldSecurityRequest["requestContext"]["actorType"],
-  classification: string | undefined,
+  classification: DataClassification | undefined,
   value: unknown,
 ) => {
   if (classification === dataClassification.secret) {
@@ -102,7 +103,7 @@ const redactValue = (
 
 export type FieldSecurityModuleService = {
   readonly applyProjection: (
-    input: unknown,
+    input: FieldSecurityRequest,
   ) => Effect.Effect<FieldSecurityResult, ParseResult.ParseError>;
 };
 
@@ -113,7 +114,7 @@ export class FieldSecurityModule extends Context.Tag("FieldSecurityModule")<
 
 export const makeFieldSecurityModule = () =>
   Effect.succeed<FieldSecurityModuleService>({
-    applyProjection: (input: unknown) =>
+    applyProjection: (input: FieldSecurityRequest) =>
       Schema.decodeUnknown(FieldSecurityRequestSchema)(input).pipe(
         Effect.flatMap((request) => {
           const rawRecord =

@@ -9,6 +9,10 @@ const PostalAdapterOptionsSchema = Schema.Struct({
   apiKey: Schema.NonEmptyString,
 });
 
+export type PostalAdapterOptions = Schema.Schema.Type<
+  typeof PostalAdapterOptionsSchema
+>;
+
 const PostalHealthcheckSchema = createPlatformAdapterHealthcheckSchema(
   platformAdapterServiceName.postal,
 );
@@ -28,7 +32,7 @@ export class PostalAdapter extends Context.Tag("PostalAdapter")<
   PostalAdapterService
 >() {}
 
-export const makePostalAdapter = (input: unknown) =>
+export const makePostalAdapter = (input: PostalAdapterOptions) =>
   Schema.decodeUnknown(PostalAdapterOptionsSchema)(input).pipe(
     Effect.map(
       (options): PostalAdapterService => ({
@@ -42,5 +46,5 @@ export const makePostalAdapter = (input: unknown) =>
     ),
   );
 
-export const makePostalAdapterLayer = (options: unknown) =>
+export const makePostalAdapterLayer = (options: PostalAdapterOptions) =>
   Layer.effect(PostalAdapter, makePostalAdapter(options));
