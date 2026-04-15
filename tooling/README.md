@@ -11,6 +11,7 @@ This directory is reserved for repository automation, validation scripts, spec c
 5. `tooling/scripts/validate-staged-groups.mjs` enforces one primary change area per commit, with `repo`, `docs`, and `tests` treated as companion groups.
 6. `tooling/scripts/validate-pr-body.mjs` enforces the required pull request template headings.
 7. `commitlint.config.cjs` and `lint-staged.config.mjs` enforce commit-message structure and staged-file formatting.
+8. `tooling/scripts/run-subscriber-journey-api.ts` starts the backend-owned subscriber journey HTTP surface without relying on any frontend app runtime.
 
 Planned tooling includes:
 

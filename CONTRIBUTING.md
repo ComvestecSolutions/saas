@@ -15,6 +15,14 @@
 3. Keep hooks enabled. `pre-commit` blocks invalid local branch names, and `pre-push` revalidates published branch refs plus outbound commit messages.
 4. Use `bun run format:check`, `bun run typecheck`, and `bun run test` before pushing.
 
+## Type Hygiene
+
+1. Reuse existing named schema types when they already exist. For example, use `RequestContext` instead of repeating `Schema.Schema.Type<typeof RequestContextSchema>` in downstream code.
+2. Introduce `Schema.Schema.Type<typeof SomeSchema>` only at the canonical type alias definition for that schema, or when no named type exists yet.
+3. Treat `unknown` as a boundary-only tool. Keep it for raw undecoded input, external thrown values, arbitrary JSON payloads, or generic-preserving casts that cannot be tightened honestly.
+4. Decode request, transport, and framework payloads at the edge before passing them into typed services.
+5. Decode environment-derived runtime config at the boundary too. Required env values must fail fast when missing or empty; do not hardcode localhost URLs, credentials, or fallback defaults inside runtime code.
+
 ## Branch Naming
 
 Use this format for all working branches except `main` and `dev`:
