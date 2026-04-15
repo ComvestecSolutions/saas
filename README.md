@@ -27,7 +27,7 @@ flowchart LR
     Contracts[Contracts]
     Config[Config Manifests and Defaults]
     Modules[Modules]
-    PlatformServices[Platform Services and App Snapshots]
+    PlatformServices[Platform Services, Snapshots, and HTTP APIs]
     PlatformAdapters[Platform Adapters]
     Specs[Specs and ADRs]
     Tests[Tests and Validators]
@@ -40,7 +40,7 @@ flowchart LR
     Messaging[Novu and Postal]
     Metering[OpenMeter]
     Observe[OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana, and GlitchTip]
-    Deferred[Polar and PostHog adapter seams]
+    ExternalProviders[Polar billing and OpenPanel analytics boundaries]
   end
 
   PublicWeb --> PlatformServices
@@ -60,7 +60,7 @@ flowchart LR
   PlatformAdapters --> Messaging
   PlatformAdapters --> Metering
   PlatformAdapters --> Observe
-  PlatformAdapters --> Deferred
+  PlatformAdapters --> ExternalProviders
 
   Specs --> Contracts
   Specs --> Modules
@@ -84,8 +84,8 @@ flowchart LR
 | Area               | What is already in place                                                                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Apps               | TanStack Start shells for the public web, product app, and admin app                                                                                                                                    |
-| Shared backend     | Effect-based contracts, runtime services, typed config helpers, and 19 module manifests                                                                                                                 |
-| Governance         | Core specs, backend-readiness roadmap, 15 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync                                                                           |
+| Shared backend     | Effect-based contracts, runtime services, backend-owned HTTP APIs, typed config helpers, and 19 module manifests                                                                                        |
+| Governance         | Core specs, backend-readiness roadmap, 16 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync                                                                           |
 | Platform adapters  | 14 adapters across identity, storage, messaging, observability, search, and billing or metering concerns                                                                                                |
 | Local ops baseline | Pinned Compose services for PostgreSQL, Keycloak, Convex, Valkey, Ory Keto, Unleash, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, Prometheus, Loki, Tempo, Grafana, and the OpenTelemetry Collector |
 | Validation         | Jest through Bun, Playwright scaffold, path-based labels, PR auto-assignment, and Trivy-backed security hygiene                                                                                         |
@@ -109,19 +109,27 @@ bun run test
 docker compose --env-file .env -f ops/docker/compose.yml up -d
 ```
 
+Before starting the local stack, copy `.env.example` to `.env` if you have not already done so. The example env file now uses three provenance categories that match the current runtime pattern: seeded locally, generated during bootstrap, and external-provider supplied. Leave the seeded local defaults in place, then replace only the bootstrap-generated or external-provider sentinel values when those services are actually provisioned.
+
+`ops/docker/compose.yml` is the only Compose entrypoint. It includes concern-owned Compose files from `ops/docker/observability/`, `ops/docker/identity/`, `ops/docker/feature-flags/`, `ops/docker/search/`, `ops/docker/messaging/`, `ops/docker/metering/`, `ops/docker/analytics/`, and `ops/docker/security/` while keeping one operator command surface.
+
+OpenPanel analytics is available through the optional `analytics` profile in `ops/docker/compose.yml`. Start it with `docker compose --env-file .env -f ops/docker/compose.yml --profile analytics up -d` when you need the local analytics stack.
+
+Kong and Vault are available through the optional `hardened` profile in the same entrypoint. Start them with `docker compose --env-file .env -f ops/docker/compose.yml --profile hardened up -d` when you need the edge or secrets-management surface.
+
+See [ops/docker/README.md](ops/docker/README.md) for the compose file split, profile ownership, and common operator commands.
+
 ## Workspace Map
 
-| Path                  | Purpose                                                                     |
-| --------------------- | --------------------------------------------------------------------------- |
-| `apps/`               | Application shells and route surfaces                                       |
-| `packages/contracts/` | Shared contracts, access rules, runtime schemas, and domain types           |
-| `packages/config/`    | Typed defaults, environment modeling, and the module manifest registry      |
-| `packages/modules/`   | Backend module implementations organized by concern                         |
-| `packages/platform/`  | App snapshot services, platform environment helpers, and adapter boundaries |
-| `specs/`              | Governance docs, platform specs, module specs, ADRs, and ops guidance       |
-| `tests/`              | Contracts, modules, and platform validation                                 |
-| `ops/`                | Local infrastructure composition and operational assets                     |
-| `.github/`            | Workflows, templates, labels, instructions, and automation policy           |
+- `apps/`: application shells and route surfaces
+- `packages/contracts/`: shared contracts, access rules, runtime schemas, and domain types
+- `packages/config/`: typed defaults, environment modeling, and the module manifest registry
+- `packages/modules/`: backend module implementations organized by concern
+- `packages/platform/`: app snapshot services, backend-owned HTTP APIs, platform environment helpers, and adapter boundaries
+- `specs/`: governance docs, platform specs, module specs, ADRs, and ops guidance
+- `tests/`: contracts, modules, and platform validation
+- `ops/`: local infrastructure composition, compose profiles, and operational assets
+- `.github/`: workflows, templates, labels, instructions, and automation policy
 
 ## Quality Bar
 
@@ -130,6 +138,8 @@ docker compose --env-file .env -f ops/docker/compose.yml up -d
 3. Authorization and field-level data exposure are platform concerns, not UI-only checks.
 4. Reusable vocabularies live in shared constants and schemas instead of repeated string literals.
 5. Dependencies stay pinned and continuously scanned; vendor CVEs are tracked without pretending drift disappears on its own.
+6. Reuse named exported schema types such as `RequestContext` instead of re-deriving `Schema.Schema.Type<typeof RequestContextSchema>` in consuming code, and keep `unknown` limited to honest decode or external-boundary cases.
+7. Runtime URLs, API keys, realms, and connection strings must come from validated environment input; adapters and services must not hide localhost or credential fallbacks in code.
 
 ## Governance Entry Points
 
@@ -145,23 +155,29 @@ docker compose --env-file .env -f ops/docker/compose.yml up -d
 
 ## Local Platform Endpoints
 
-| Surface          | URL                      |
-| ---------------- | ------------------------ |
-| Public web       | `http://localhost:3000`  |
-| Product app      | `http://localhost:3002`  |
-| Admin app        | `http://localhost:3004`  |
-| Convex API       | `http://127.0.0.1:3210`  |
-| Convex dashboard | `http://localhost:6791`  |
-| Keycloak         | `http://localhost:8080`  |
-| Ory Keto read    | `http://localhost:4466`  |
-| Ory Keto write   | `http://localhost:4467`  |
-| Unleash          | `http://localhost:4242`  |
-| Valkey           | `redis://localhost:6379` |
-| Meilisearch      | `http://localhost:7700`  |
-| Novu             | `http://localhost:3100`  |
-| OpenMeter        | `http://localhost:8889`  |
-| Postal           | `http://localhost:5000`  |
-| GlitchTip        | `http://localhost:8001`  |
-| Grafana          | `http://localhost:3001`  |
-| Prometheus       | `http://localhost:9090`  |
-| Tempo            | `http://localhost:3200`  |
+| Surface          | URL                         | Profile   |
+| ---------------- | --------------------------- | --------- |
+| Public web       | `http://localhost:3000`     | default   |
+| Product app      | `http://localhost:3002`     | default   |
+| Admin app        | `http://localhost:3004`     | default   |
+| Convex API       | `http://127.0.0.1:3210`     | default   |
+| Convex dashboard | `http://localhost:6791`     | default   |
+| Keycloak         | `http://localhost:8080`     | default   |
+| Ory Keto read    | `http://localhost:4466`     | default   |
+| Ory Keto write   | `http://localhost:4467`     | default   |
+| Unleash          | `http://localhost:4242`     | default   |
+| Valkey           | `redis://localhost:6379`    | default   |
+| Meilisearch      | `http://localhost:7700`     | default   |
+| Novu             | `http://localhost:3100`     | default   |
+| OpenMeter        | `http://localhost:8889`     | default   |
+| Postal           | `http://localhost:5000`     | default   |
+| GlitchTip        | `http://localhost:8001`     | default   |
+| Grafana          | `http://localhost:3001`     | default   |
+| Prometheus       | `http://localhost:9090`     | default   |
+| Tempo            | `http://localhost:3200`     | default   |
+| OpenPanel        | `http://localhost:3005`     | analytics |
+| OpenPanel API    | `http://localhost:3005/api` | analytics |
+| Kong proxy       | `http://localhost:8000`     | hardened  |
+| Kong admin API   | `http://localhost:18001`    | hardened  |
+| Kong manager     | `http://localhost:18002`    | hardened  |
+| Vault            | `http://localhost:8200`     | hardened  |

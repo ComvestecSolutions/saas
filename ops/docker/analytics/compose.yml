@@ -1,0 +1,140 @@
+x-openpanel-runtime-environment: &openpanel_runtime_environment
+  NODE_ENV: ${NODE_ENV:-development}
+  SELF_HOSTED: "true"
+  ALLOW_REGISTRATION: ${OPENPANEL_ALLOW_REGISTRATION:-false}
+  ALLOW_INVITATION: ${OPENPANEL_ALLOW_INVITATION:-true}
+  BATCH_SIZE: ${OPENPANEL_BATCH_SIZE:-5000}
+  BATCH_INTERVAL: ${OPENPANEL_BATCH_INTERVAL:-10000}
+  API_URL: ${OPENPANEL_API_URL:-http://localhost:3005/api}
+  DASHBOARD_URL: ${OPENPANEL_DASHBOARD_URL:-http://localhost:3005}
+  API_CORS_ORIGINS: ${OPENPANEL_API_CORS_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:3004}
+  DATABASE_URL: ${OPENPANEL_DATABASE_URL:-postgresql://postgres:postgres@op-db:5432/postgres?schema=public}
+  DATABASE_URL_DIRECT: ${OPENPANEL_DATABASE_URL_DIRECT:-postgresql://postgres:postgres@op-db:5432/postgres?schema=public}
+  REDIS_URL: ${OPENPANEL_REDIS_URL:-redis://op-kv:6379}
+  CLICKHOUSE_URL: ${OPENPANEL_CLICKHOUSE_URL:-http://op-ch:8123/openpanel}
+  COOKIE_SECRET: ${OPENPANEL_COOKIE_SECRET:-openpanel-local-dev-secret-change-before-sharing}
+  EMAIL_SENDER: ${OPENPANEL_EMAIL_SENDER:-}
+  RESEND_API_KEY: ${OPENPANEL_RESEND_API_KEY:-}
+
+services:
+  op-db:
+    profiles: ["analytics"]
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - op-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  op-kv:
+    profiles: ["analytics"]
+    image: redis:7.2.5-alpine
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - op-kv-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  op-ch:
+    profiles: ["analytics"]
+    image: clickhouse/clickhouse-server:25.10.2.65
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - op-ch-data:/var/lib/clickhouse
+      - op-ch-logs:/var/log/clickhouse-server
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  op-api:
+    profiles: ["analytics"]
+    image: lindesvard/openpanel-api:${OPENPANEL_IMAGE_TAG:-2.0.0}
+    command: >
+      sh -c "
+        echo 'Running migrations...'
+        CI=true pnpm -r run migrate:deploy
+        pnpm start
+      "
+    environment: *openpanel_runtime_environment
+    depends_on:
+      op-db:
+        condition: service_healthy
+      op-ch:
+        condition: service_healthy
+      op-kv:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  op-dashboard:
+    profiles: ["analytics"]
+    image: lindesvard/openpanel-dashboard:${OPENPANEL_IMAGE_TAG:-2.0.0}
+    environment: *openpanel_runtime_environment
+    depends_on:
+      op-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:3000/api/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  op-worker:
+    profiles: ["analytics"]
+    image: lindesvard/openpanel-worker:${OPENPANEL_IMAGE_TAG:-2.0.0}
+    environment: *openpanel_runtime_environment
+    depends_on:
+      op-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      mode: replicated
+      replicas: ${OPENPANEL_WORKER_REPLICAS:-2}
+
+  op-proxy:
+    profiles: ["analytics"]
+    image: caddy:2-alpine
+    depends_on:
+      op-dashboard:
+        condition: service_healthy
+      op-api:
+        condition: service_healthy
+    ports:
+      - ${OPENPANEL_PORT:-3005}:80
+    volumes:
+      - op-proxy-data:/data
+      - op-proxy-config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  op-db-data:
+  op-kv-data:
+  op-ch-data:
+  op-ch-logs:
+  op-proxy-data:
+  op-proxy-config:

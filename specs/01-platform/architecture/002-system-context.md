@@ -35,7 +35,7 @@ The platform is a modular monolith in a Turborepo with three first-class applica
 9. Novu for multi-channel notifications.
 10. Polar + OpenMeter for billing and usage metering.
 11. Postal for transactional email delivery.
-12. PostHog for product analytics (adapter boundary, compose deferred).
+12. OpenPanel for product analytics (self-hosted adapter boundary, separate deployment from the root Compose baseline).
 13. GlitchTip for error tracking (adapter boundary, default Compose service).
 14. Convex-native workflows for background jobs and schedules (existing Convex boundary, future external-runner seam).
 15. Kong and Vault for hardened deployment profiles only.

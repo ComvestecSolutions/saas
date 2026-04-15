@@ -1,0 +1,12 @@
+services:
+  ory-keto:
+    image: oryd/keto:v0.14.0
+    command: ["serve", "--config", "/etc/keto/config.yaml"]
+    environment:
+      DSN: ${KETO_DSN:-postgres://comvestec:comvestec@postgres:5432/comvestec?sslmode=disable}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - ${KETO_READ_PORT:-4466}:4466
+      - ${KETO_WRITE_PORT:-4467}:4467

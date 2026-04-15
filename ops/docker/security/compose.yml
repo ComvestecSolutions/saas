@@ -1,0 +1,41 @@
+services:
+  kong:
+    profiles: ["hardened"]
+    image: kong:3.9.1
+    environment:
+      KONG_DATABASE: off
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_LISTEN: 0.0.0.0:8000, 0.0.0.0:8443 ssl
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002, 0.0.0.0:8445 ssl
+      KONG_ADMIN_GUI_URL: ${KONG_ADMIN_GUI_URL:-http://localhost:18002}
+    ports:
+      - ${KONG_PROXY_PORT:-8000}:8000
+      - ${KONG_PROXY_TLS_PORT:-8443}:8443
+      - ${KONG_ADMIN_API_PORT:-18001}:8001
+      - ${KONG_ADMIN_API_TLS_PORT:-18444}:8444
+      - ${KONG_ADMIN_GUI_PORT:-18002}:8002
+      - ${KONG_ADMIN_GUI_TLS_PORT:-18445}:8445
+    volumes:
+      - ./kong.yml:/etc/kong/kong.yml:ro
+
+  vault:
+    profiles: ["hardened"]
+    image: hashicorp/vault:1.21.4
+    command: server -config=/vault/config/vault.hcl
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:-http://127.0.0.1:8200}
+    ports:
+      - ${VAULT_PORT:-8200}:8200
+    volumes:
+      - ./vault.hcl:/vault/config/vault.hcl:ro
+      - vault_data:/vault/file
+
+volumes:
+  vault_data:

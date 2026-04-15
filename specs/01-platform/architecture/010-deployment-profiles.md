@@ -26,8 +26,11 @@ Convex, PostgreSQL, Keycloak, Ory Keto, Unleash, Valkey, Meilisearch, Novu, Open
 
 Convex-native workflow jobs use the same Convex deployment and do not require a separate Compose profile.
 
+The checked-in Compose entrypoint remains `ops/docker/compose.yml`; it includes concern-specific files from `ops/docker/observability/compose.yml`, `ops/docker/identity/compose.yml`, `ops/docker/feature-flags/compose.yml`, `ops/docker/search/compose.yml`, `ops/docker/messaging/compose.yml`, `ops/docker/metering/compose.yml`, `ops/docker/analytics/compose.yml`, and `ops/docker/security/compose.yml` so operators keep one consistent command surface.
+
 ## Optional Compose Profiles
 
-| Profile      | Services    | Notes                                                      |
-| ------------ | ----------- | ---------------------------------------------------------- |
-| **hardened** | Kong, Vault | Production security baseline and optional edge enforcement |
+| Profile       | Services                                                               | Notes                                                                  |
+| ------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **analytics** | OpenPanel proxy, API, dashboard, worker, PostgreSQL, Redis, ClickHouse | Optional local analytics stack that stays outside the default baseline |
+| **hardened**  | Kong, Vault                                                            | Production security baseline and optional edge enforcement             |

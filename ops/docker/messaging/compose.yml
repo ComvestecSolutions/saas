@@ -1,0 +1,27 @@
+services:
+  novu:
+    image: ghcr.io/novuhq/novu/api:3.14.0
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      API_ROOT_URL: ${NOVU_API_URL:-http://localhost:3100}
+      MONGO_URL: ""
+      REDIS_HOST: valkey
+      REDIS_PORT: 6379
+    depends_on:
+      - valkey
+    ports:
+      - ${NOVU_PORT:-3100}:3000
+
+  postal:
+    image: ghcr.io/postalserver/postal:3.3.4
+    environment:
+      POSTAL_FNAME: ${POSTAL_FNAME:-Admin}
+      POSTAL_LNAME: ${POSTAL_LNAME:-User}
+      POSTAL_EMAIL: ${POSTAL_EMAIL:-admin@localhost}
+    ports:
+      - ${POSTAL_API_PORT:-5000}:5000
+    volumes:
+      - postal_data:/opt/postal/data
+
+volumes:
+  postal_data:

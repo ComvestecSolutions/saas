@@ -1,0 +1,13 @@
+{
+  auto_https off
+}
+
+:80 {
+  handle_path /api/* {
+    reverse_proxy op-api:3000
+  }
+
+  handle {
+    reverse_proxy op-dashboard:3000
+  }
+}
