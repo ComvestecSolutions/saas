@@ -15,6 +15,8 @@ This directory is reserved for repository automation, validation scripts, spec c
 
 Planned tooling includes:
 
+The items below are backlog candidates, not implemented repository automation today.
+
 1. spec validation
 2. manifest validation
 3. bidirectional config registry sync and drift checks

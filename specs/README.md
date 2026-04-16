@@ -24,18 +24,20 @@ Use one of these statuses at the top of every future spec:
 ## Authoring Rules
 
 1. Specs define intent, boundaries, and invariants. They do not duplicate implementation details.
-2. Architecture, security, permissions, field visibility, data ownership, observability, and deployment changes must start here.
-3. Each module with runtime behavior must eventually have a manifest.
-4. Every non-trivial stack or architecture choice should have an ADR.
-5. If a feature requires a flag, config, permission, or sensitive data access, that requirement must be described in specs before implementation.
+2. Accepted specs and ADRs describe the approved platform direction even when delivery is still scaffolded or partially implemented.
+3. Architecture, security, permissions, field visibility, data ownership, observability, and deployment changes must start here.
+4. Each module with runtime behavior must eventually have a manifest.
+5. Every non-trivial stack or architecture choice should have an ADR.
+6. If a feature requires a flag, config, permission, or sensitive data access, that requirement must be described in specs before implementation.
 
 ## Progress Tracking
 
-Implementation status is tracked in [00-governance/implementation-tracker.md](00-governance/implementation-tracker.md). Backend-ready slice priorities are tracked in [00-governance/backend-readiness-roadmap.md](00-governance/backend-readiness-roadmap.md).
+Accepted specs define what the platform is expected to become. Current maturity lives in [00-governance/implementation-tracker.md](00-governance/implementation-tracker.md), and backend-ready slice priorities live in [00-governance/backend-readiness-roadmap.md](00-governance/backend-readiness-roadmap.md).
 
 1. Update the tracker in the same change when a spec area moves from documented to scaffolded, implemented, validated, or blocked.
 2. Update the roadmap in the same change when the first backend-ready slice changes scope, work order, or acceptance criteria.
 3. Link tracker rows to both the governing spec and the evidence that justifies the status.
+4. Do not rewrite accepted specs down to the current implementation gap. Use the tracker to record whether delivery is documented, scaffolded, implemented, validated, or blocked.
 
 ## Initial Scope
 

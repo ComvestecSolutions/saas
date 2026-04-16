@@ -6,6 +6,8 @@ applyTo: "**/*.{ts,tsx}"
 
 # Backend-first rules
 
+Accepted specs, manifests, and ADRs may intentionally lead the codebase. Use `specs/00-governance/implementation-tracker.md` as the source of truth for whether a capability is currently documented, scaffolded, implemented, validated, or blocked.
+
 1. Prefer Effect services, layers, and schemas for backend logic and contracts.
 2. Avoid hiding backend behavior in UI components, and defer frontend expansion until backend workflows are usable end to end.
 3. Keep runtime config, permission scopes, projection profiles, and field rules in shared packages. Runtime config declarations stay versioned in code, while effective no-redeploy state synchronizes bidirectionally with PostgreSQL-backed services. Code-side approval is the committed code change; database-side mutations require an authenticated user with the proper permissions.

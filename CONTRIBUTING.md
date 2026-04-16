@@ -12,7 +12,7 @@
 
 1. Install dependencies with `bun install`.
 2. Run `bun run hooks:install` if the hooks were not configured automatically.
-3. Keep hooks enabled. `pre-commit` blocks invalid local branch names, and `pre-push` revalidates published branch refs plus outbound commit messages.
+3. Keep hooks enabled. `pre-commit` blocks invalid local branch names, and `pre-push` revalidates the exact branch refs being published, lints outbound commit messages, then runs `bun run format:check`, `bun run typecheck`, and `bun run test`.
 4. Use `bun run format:check`, `bun run typecheck`, and `bun run test` before pushing.
 
 ## Type Hygiene
@@ -121,7 +121,7 @@ Before push:
 1. `bun run format:check`
 2. `bun run typecheck`
 3. `bun run test`
-4. Let the configured `pre-push` hook validate the exact branch refs being published and the commit messages leaving your machine.
+4. Let the configured `pre-push` hook validate the exact branch refs being published, lint the commit messages leaving your machine, and rerun formatting, typecheck, and tests against the staged repository state.
 
 Before merge:
 

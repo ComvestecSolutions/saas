@@ -10,6 +10,8 @@ This repository is the reusable SaaS foundation for Comvestec Solutions. Every c
 2. Add or update ADRs when a non-trivial technology or architecture decision changes.
 3. Implement code only after the relevant spec exists and is accepted.
 
+Accepted specs, manifests, and ADRs may intentionally lead the codebase. Use `specs/00-governance/implementation-tracker.md` as the source of truth for whether a capability is currently documented, scaffolded, implemented, validated, or blocked.
+
 ## Repository Workflow
 
 1. Follow `CONTRIBUTING.md` as the source of truth for branch, commit, and pull request workflow.
@@ -35,7 +37,7 @@ This repository is the reusable SaaS foundation for Comvestec Solutions. Every c
 11. When shared package roots start collecting many backend files, organize implementations into domain folders and keep the root limited to stable barrels or entrypoints.
 12. Follow the existing shared-package folder taxonomies unless a spec or ADR changes them: contracts uses `access/`, `data/`, `module-registry/`, `runtime/`, and `domains/`; modules uses `access/`, `governance/`, `domains/`, and `persistence/`; platform adapters use `identity/`, `storage/`, `messaging/`, `observability/`, `features-billing/`, and `search/` behind `packages/platform/src/adapters/index.ts`; config manifests use `access/`, `governance/`, `domains/`, `communication/`, and `data/` under `packages/config/src/manifests/`; module spec docs use the same five domain groups under `specs/02-modules/`; platform specs use `architecture/`, `access/`, `security/`, `runtime/`, and `domains/` under `specs/01-platform/`; ADRs use `architecture/`, `storage/`, `identity/`, `runtime/`, `communication/`, and `domains/` under `specs/03-adr/`; tests use `contracts/`, `modules/`, and `platform/` under `tests/` with shared utilities like `type-assertions.ts` at the test root; `ops/docker` keeps `compose.yml` as the only root entrypoint while included Compose files live in the concern folders `observability/`, `identity/`, `feature-flags/`, `search/`, `messaging/`, `metering/`, `analytics/`, and `security/`, with service-owned runtime assets colocated inside the folders that need them, such as Keycloak assets in `identity/`, observability assets in `observability/`, OpenPanel assets in `analytics/`, and Kong or Vault assets in `security/`.
 13. Organize for growth from day one. Create domain subfolders as soon as the first file in a concern area is added — never wait for accumulation to justify structure. The cost of an empty folder is zero; the cost of a retroactive reorganization is high.
-14. Do not treat adapter stubs, placeholder snapshots, or in-memory scaffolds as completed capabilities. A capability only moves beyond scaffolded when the owning module, persistence or audit ownership, and operator workflow are explicit.
+14. Do not treat adapter stubs, placeholder snapshots, or in-memory scaffolds as completed capabilities. A capability only moves beyond scaffolded when the owning module, persistence or audit ownership, and operator workflow are explicit. Record or read that maturity in `specs/00-governance/implementation-tracker.md` rather than collapsing accepted architecture down to current code.
 15. Governance-heavy flows such as runtime config, approvals, entitlements, billing, compliance, and audit must use durable PostgreSQL-backed state as the source of truth. In-memory state is limited to bounded cache-like concerns and local scaffolds.
 
 ## Backend Bias
