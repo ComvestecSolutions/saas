@@ -2,8 +2,8 @@ import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
   TenantOwnerProvisioningSchema,
   type TenantOwnerProvisioning,
-} from "../../domains/tenant-management";
-import type { PostgresDatabase } from "./database";
+} from "../../../domains/tenant-management";
+import type { PostgresDatabase } from "../database";
 import { tenantProvisioningReceiptsTable } from "./tenant-provisioning";
 
 export type TenantProvisioningReceiptInsert =

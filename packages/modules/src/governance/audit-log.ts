@@ -16,7 +16,7 @@ import {
 import {
   AuditLogPostgresRepository,
   type AuditLogPostgresRepositoryError,
-} from "../persistence/postgres/audit-log-repository";
+} from "../persistence/postgres/governance";
 
 export const AuditEventRequirementSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,

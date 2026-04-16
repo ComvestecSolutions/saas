@@ -3,7 +3,7 @@ import { billingSubscriptionStatus } from "@comvestec/contracts";
 import {
   type BillingWebhookPersistenceProjection,
   BillingWebhookPersistenceProjectionSchema,
-} from "../../domains/billing-metering";
+} from "../../../domains/billing-metering";
 import {
   billingEntitlementsTable,
   billingPaymentEventsTable,
@@ -13,7 +13,7 @@ import {
 import type {
   PostgresDatabase as BillingWebhookPostgresDatabase,
   PostgresTransaction as BillingWebhookPostgresTransaction,
-} from "./database";
+} from "../database";
 
 export type {
   BillingWebhookPostgresDatabase,

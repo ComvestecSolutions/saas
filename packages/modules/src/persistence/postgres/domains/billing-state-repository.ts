@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
-import { BillingEntitlementRecordSchema } from "../../domains/billing-metering";
+import { BillingEntitlementRecordSchema } from "../../../domains/billing-metering";
 import {
   BillingPlanIntervalSchema,
   PlatformScopeSchema,

@@ -17,7 +17,7 @@
     "backend:subscriber-journey:seed-plans": "bun run tooling/scripts/subscriber-journey/seed-polar-plans.ts",
     "backend:subscriber-journey:live-smoke": "bun run tooling/scripts/subscriber-journey/live-smoke.ts",
     "build": "turbo run build",
-    "check": "turbo run check && bun run typecheck:tests",
+    "check": "turbo run check && bun run typecheck:tooling && bun run typecheck:tests",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "dev": "turbo run dev --parallel",
@@ -35,7 +35,8 @@
     "test:watch": "bunx jest --config jest.config.cjs --watch --runInBand",
     "test:e2e": "bun run --cwd packages/e2e test:e2e",
     "test:e2e:ui": "bun run --cwd packages/e2e test:e2e:ui",
-    "typecheck": "bun run typecheck:workspace && bun run typecheck:tests",
+    "typecheck": "bun run typecheck:workspace && bun run typecheck:tooling && bun run typecheck:tests",
+    "typecheck:tooling": "bunx tsc --noEmit -p tsconfig.tooling.json",
     "typecheck:tests": "bunx tsc --noEmit -p tsconfig.test.json",
     "typecheck:workspace": "turbo run typecheck"
   },

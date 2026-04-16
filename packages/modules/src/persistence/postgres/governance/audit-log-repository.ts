@@ -5,7 +5,7 @@ import {
   type PlatformModuleId,
 } from "@comvestec/contracts";
 import { auditLogEventsTable } from "./audit-log";
-import type { PostgresDatabase } from "./database";
+import type { PostgresDatabase } from "../database";
 
 type AuditLogEventRow = typeof auditLogEventsTable.$inferSelect;
 

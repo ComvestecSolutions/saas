@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { env as processEnvironment, exit as exitProcess } from "node:process";
-import type { BillingPlan } from "@comvestec/contracts";
+import type { PublicBillingPlan } from "@comvestec/contracts";
 import { makePolarAdapter } from "@comvestec/platform";
 import {
   printToolingScriptError,
@@ -50,8 +50,8 @@ const buildMissingPlanError = (
   message: `Polar public catalog is still missing canonical managed plans: ${missingPlanKeys.join(", ")}.`,
 });
 
-const partitionPublicPlans = (plans: readonly BillingPlan[]) => {
-  const plansByKey = new Map<string, BillingPlan[]>();
+const partitionPublicPlans = (plans: readonly PublicBillingPlan[]) => {
+  const plansByKey = new Map<string, PublicBillingPlan[]>();
 
   for (const plan of plans) {
     const currentPlans = plansByKey.get(plan.planKey) ?? [];
@@ -59,8 +59,8 @@ const partitionPublicPlans = (plans: readonly BillingPlan[]) => {
     plansByKey.set(plan.planKey, currentPlans);
   }
 
-  const canonicalPlansByKey = new Map<string, BillingPlan>();
-  const duplicatePlans: BillingPlan[] = [];
+  const canonicalPlansByKey = new Map<string, PublicBillingPlan>();
+  const duplicatePlans: PublicBillingPlan[] = [];
 
   for (const [planKey, matchingPlans] of plansByKey) {
     canonicalPlansByKey.set(planKey, matchingPlans[0]!);
@@ -73,7 +73,7 @@ const partitionPublicPlans = (plans: readonly BillingPlan[]) => {
   };
 };
 
-const printCatalog = (plans: readonly BillingPlan[]) => {
+const printCatalog = (plans: readonly PublicBillingPlan[]) => {
   const sortedPlans = [...plans].sort((left, right) =>
     left.planKey.localeCompare(right.planKey),
   );

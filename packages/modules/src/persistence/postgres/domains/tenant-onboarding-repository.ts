@@ -1,14 +1,8 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import { onboardingStepStatus } from "@comvestec/contracts";
-import {
-  OnboardingStepSchema,
-  TenantOnboardingPlanSchema,
-} from "../../domains/tenant-management";
-import type {
-  OnboardingStep,
-  TenantOnboardingPlan,
-} from "../../domains/tenant-management";
-import type { PostgresDatabase } from "./database";
+import { TenantOnboardingPlanSchema } from "../../../domains/tenant-management";
+import type { OnboardingStep } from "../../../domains/tenant-management";
+import type { PostgresDatabase } from "../database";
 import {
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,

@@ -6,7 +6,7 @@ import {
 import {
   BillingWebhookReceiptRecordSchema,
   type BillingWebhookReceiptRecord,
-} from "../../domains/billing-metering";
+} from "../../../domains/billing-metering";
 import { webhookReceiptsTable } from "./billing";
 
 const BillingWebhookReceiptLookupSchema = Schema.Struct({

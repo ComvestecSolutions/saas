@@ -1,4 +1,9 @@
-import { auditLogEventsTable } from "./audit-log";
+import { identitySessionAuditTable } from "./access";
+import {
+  auditLogEventsTable,
+  runtimeConfigOverridesTable,
+  runtimeConfigSyncArtifactsTable,
+} from "./governance";
 import {
   billingCustomerAccountsTable,
   billingEntitlementsTable,
@@ -7,19 +12,12 @@ import {
   billingPlansTable,
   billingPlanPricesTable,
   billingSubscriptionsTable,
-  webhookReceiptsTable,
-} from "./billing";
-import { identitySessionAuditTable } from "./identity-session";
-import {
-  runtimeConfigOverridesTable,
-  runtimeConfigSyncArtifactsTable,
-} from "./runtime-config";
-import { tenantBrandingDomainVerificationTable } from "./tenant-branding";
-import {
+  tenantBrandingDomainVerificationTable,
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,
-} from "./tenant-onboarding";
-import { tenantProvisioningReceiptsTable } from "./tenant-provisioning";
+  tenantProvisioningReceiptsTable,
+  webhookReceiptsTable,
+} from "./domains";
 
 export {
   auditLogEventsTable,

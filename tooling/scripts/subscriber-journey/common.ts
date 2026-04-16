@@ -33,6 +33,27 @@ export type ToolingScriptProcessError = {
   readonly exitCode: number;
 };
 
+const isTaggedError = (error: unknown): error is { readonly _tag: string } =>
+  typeof error === "object" &&
+  error !== null &&
+  "_tag" in error &&
+  typeof (error as Record<string, unknown>)._tag === "string";
+
+const isToolingScriptConfigurationError = (
+  error: unknown,
+): error is ToolingScriptConfigurationError =>
+  isTaggedError(error) && error._tag === "ToolingScriptConfigurationError";
+
+const isToolingScriptProcessError = (
+  error: unknown,
+): error is ToolingScriptProcessError =>
+  isTaggedError(error) && error._tag === "ToolingScriptProcessError";
+
+const isToolingScriptHttpError = (
+  error: unknown,
+): error is ToolingScriptHttpError =>
+  isTaggedError(error) && error._tag === "ToolingScriptHttpError";
+
 type ToolingScriptRequestFailure = {
   readonly cause: unknown;
   readonly status?: number;
@@ -272,32 +293,35 @@ export const requireConfiguredValue = (key: string, value: string) =>
     : Effect.succeed(value);
 
 export const printToolingScriptError = (error: unknown) => {
-  if (typeof error === "object" && error !== null && "_tag" in error) {
-    switch (error._tag) {
-      case "ToolingScriptConfigurationError":
-        console.error(`Configuration error for ${error.key}: ${error.message}`);
-        return;
-      case "ToolingScriptProcessError":
-        console.error(
-          `Command failed: bun run ${error.script} exited with code ${error.exitCode}.`,
-        );
-        return;
-      case "ToolingScriptHttpError":
-        console.error(`HTTP error during ${error.operation}.`);
+  if (isToolingScriptConfigurationError(error)) {
+    console.error(`Configuration error for ${error.key}: ${error.message}`);
+    return;
+  }
 
-        if (error.status !== undefined) {
-          console.error(`Status: ${error.status}`);
-        }
+  if (isToolingScriptProcessError(error)) {
+    console.error(
+      `Command failed: bun run ${error.script} exited with code ${error.exitCode}.`,
+    );
+    return;
+  }
 
-        if (error.body !== undefined && error.body.length > 0) {
-          console.error(error.body);
-        }
+  if (isToolingScriptHttpError(error)) {
+    console.error(`HTTP error during ${error.operation}.`);
 
-        return;
-      case "ParseError":
-        console.error(String(error));
-        return;
+    if (error.status !== undefined) {
+      console.error(`Status: ${error.status}`);
     }
+
+    if (error.body !== undefined && error.body.length > 0) {
+      console.error(error.body);
+    }
+
+    return;
+  }
+
+  if (isTaggedError(error) && error._tag === "ParseError") {
+    console.error(String(error));
+    return;
   }
 
   console.error(error);

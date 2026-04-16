@@ -85,6 +85,9 @@ const safeParseJson = (value: string) => {
   }
 };
 
+const toError = (cause: unknown) =>
+  cause instanceof Error ? cause : new Error(String(cause));
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -214,16 +217,8 @@ const getOrganizationId = (environment: PolarWebhookForwarderEnvironment) =>
 
       return organizationId;
     },
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.flatMap((result) => {
-      if (result instanceof Error) {
-        return Effect.fail(result);
-      }
-
-      return Effect.succeed(result);
-    }),
-  );
+    catch: toError,
+  });
 
 const forwardWebhookEvent = (options: {
   readonly localWebhookUrl: string;
@@ -249,16 +244,8 @@ const forwardWebhookEvent = (options: {
         body: body.length === 0 ? null : safeParseJson(body),
       };
     },
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.flatMap((result) => {
-      if (result instanceof Error) {
-        return Effect.fail(result);
-      }
-
-      return Effect.succeed(result);
-    }),
-  );
+    catch: toError,
+  });
 
 const main = Effect.gen(function* () {
   const environment = yield* decodeForwarderEnvironment(processEnvironment);
@@ -358,16 +345,8 @@ const main = Effect.gen(function* () {
           return options.once ? "stop" : "continue";
         });
       },
-      catch: (cause) => cause,
-    }).pipe(
-      Effect.flatMap((result) => {
-        if (result instanceof Error) {
-          return Effect.fail(result);
-        }
-
-        return Effect.succeed(result === "stop");
-      }),
-    );
+      catch: toError,
+    }).pipe(Effect.map((result) => result === "stop"));
 
     if (shouldStop) {
       return;

@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import { PlatformScopeSchema } from "@comvestec/contracts";
 import { PlatformAdapterServiceNameSchema } from "@comvestec/platform";
-import type { PostgresDatabase } from "./database";
+import type { PostgresDatabase } from "../database";
 import { identitySessionAuditTable } from "./identity-session";
 
 const IdentitySessionAuditMetadataSchema = Schema.Record({

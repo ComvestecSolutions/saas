@@ -122,6 +122,7 @@ Before push:
 2. `bun run typecheck`
 3. `bun run test`
 4. Let the configured `pre-push` hook validate the exact branch refs being published, lint the commit messages leaving your machine, and rerun formatting, typecheck, and tests against the staged repository state.
+5. Make sure `bun run typecheck` covers every first-party TypeScript surface touched by the change. Root tooling and config files such as `tooling/**/*.ts` and `drizzle.config.ts`, and TypeScript workspaces such as `packages/e2e`, need explicit `tsconfig` and script wiring instead of ad hoc local-only checks.
 
 Before merge:
 

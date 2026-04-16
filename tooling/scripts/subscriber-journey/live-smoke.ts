@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 import { env as processEnvironment, exit as exitProcess } from "node:process";
 import {
   actorType,
@@ -130,7 +130,7 @@ const createJsonPost = <A>(options: {
   readonly body: unknown;
   readonly decode: (
     payload: unknown,
-  ) => Effect.Effect<A, Schema.ParseResult.ParseError>;
+  ) => Effect.Effect<A, ParseResult.ParseError>;
 }) =>
   requestJson({
     operation: options.operation,
