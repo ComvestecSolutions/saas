@@ -1,5 +1,7 @@
 import { Effect, Schema } from "effect";
 import {
+  adminBillingApiBasePath,
+  handleAdminBillingHttpRequest,
   handleSubscriberJourneyHttpRequest,
   subscriberJourneyApiBasePath,
 } from "@comvestec/platform";
@@ -37,10 +39,17 @@ const port = await Effect.runPromise(resolveServerPort(process.env));
 
 const server = Bun.serve({
   port,
-  fetch: (request) =>
-    Effect.runPromise(handleSubscriberJourneyHttpRequest(process.env, request)),
+  fetch: (request) => {
+    const pathname = new URL(request.url).pathname;
+
+    return Effect.runPromise(
+      pathname.startsWith(adminBillingApiBasePath)
+        ? handleAdminBillingHttpRequest(process.env, request)
+        : handleSubscriberJourneyHttpRequest(process.env, request),
+    );
+  },
 });
 
 console.log(
-  `Subscriber journey API listening on http://localhost:${server.port}${subscriberJourneyApiBasePath}`,
+  `Subscriber journey API listening on http://localhost:${server.port}${subscriberJourneyApiBasePath} and http://localhost:${server.port}${adminBillingApiBasePath}`,
 );

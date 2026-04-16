@@ -3,19 +3,26 @@ import { and, desc, eq } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { findModuleManifest } from "@comvestec/config";
 import {
+  actorType,
   authorizationNamespace,
   authorizationRelation,
+  BillingEntitlementQuotaSnapshotSchema,
+  type BillingPlanCreateRequest,
+  BillingPlanCreateRequestSchema,
+  type BillingPlanCreateResult,
   type BillingCheckoutSessionInput,
   type BillingCheckoutSession,
   type BillingProviderWebhookInput,
+  GovernanceEntitlementFeatureKeySchema,
   type PublicBillingPlanCatalog,
   permissionScope,
   platformModuleId,
+  platformScope,
   projectionProfile,
-  RequestContextSchema,
   type RequestContext,
 } from "@comvestec/contracts";
 import {
+  makeAuthorizationModule,
   BillingStatePostgresRepository,
   BillingWebhookReplayPostgresRepository,
   BillingWebhookService,
@@ -43,26 +50,30 @@ import {
   makeBillingWebhookService,
   makeIdentitySessionModule,
   makeIdentitySessionPostgresRepository,
-  makeAuthorizationModule,
   makeFieldSecurityModule,
   makeTenantManagementModule,
   makeTenantOnboardingPostgresRepository,
+  makeTenantProvisioningPostgresRepository,
   BillingMeteringModule,
   BillingWebhookPostgresRepository,
   type PostgresDatabase,
   type PostgresInsertBuilder,
   type PostgresTransaction,
-  TenantManagementModule,
   TenantOnboardingPostgresRepository,
+  TenantProvisioningPostgresRepository,
+  TenantManagementModule,
   type AuthorizationDecision,
   type BillingEntitlementRecord,
+  type TenantProvisioningPostgresRepositoryError,
 } from "@comvestec/modules";
 import {
   makeKeycloakAdapter,
+  makeOryKetoAdapter,
   makePolarAdapter,
   makePostgresAdapter,
   makeValkeyAdapter,
   PolarAdapter,
+  type PolarManagedBillingPlanError,
   type PolarAdapterRequestError,
   type PolarCatalogMetadataError,
   type PolarPlanNotFoundError,
@@ -72,10 +83,11 @@ import {
   type KeycloakAdapterRequestError,
   type KeycloakSessionIdentifierMissingError,
   type KeycloakSessionInactiveError,
+  OryKetoAdapter,
+  type OryKetoAdapterRequestError,
   PlatformAdapterServiceNameSchema,
   type PostgresRuntimeDatabase,
   ValkeyAdapter,
-  type ValkeyAdapterOperationError,
 } from "../adapters";
 import {
   type MissingModuleManifestError,
@@ -106,9 +118,11 @@ export const SubscriberJourneyRuntimeOptionsSchema = Schema.Struct({
   keycloakRealm: Schema.NonEmptyString,
   keycloakClientId: Schema.NonEmptyString,
   keycloakClientSecret: Schema.NonEmptyString,
-  polarApiKey: Schema.NonEmptyString,
+  polarAccessToken: Schema.NonEmptyString,
   polarApiUrl: Schema.NonEmptyString,
   valkeyUrl: Schema.NonEmptyString,
+  ketoReadUrl: Schema.NonEmptyString,
+  ketoWriteUrl: Schema.NonEmptyString,
 });
 
 export type SubscriberJourneyRuntimeOptions = Schema.Schema.Type<
@@ -121,9 +135,11 @@ const SubscriberJourneyProcessEnvironmentSchema = Schema.Struct({
   KEYCLOAK_REALM: Schema.NonEmptyString,
   KEYCLOAK_CLIENT_ID: Schema.NonEmptyString,
   KEYCLOAK_CLIENT_SECRET: Schema.NonEmptyString,
-  POLAR_API_KEY: Schema.NonEmptyString,
+  POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_API_URL: Schema.NonEmptyString,
   VALKEY_URL: Schema.NonEmptyString,
+  KETO_READ_URL: Schema.NonEmptyString,
+  KETO_WRITE_URL: Schema.NonEmptyString,
 });
 
 const ProductBootstrapBillingStatusSchema = Schema.Struct({
@@ -131,6 +147,14 @@ const ProductBootstrapBillingStatusSchema = Schema.Struct({
   billingInterval: Schema.optional(Schema.NonEmptyString),
   status: Schema.optional(Schema.NonEmptyString),
   currentPeriodEnd: Schema.optional(Schema.NonEmptyString),
+  usage: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        featureKey: GovernanceEntitlementFeatureKeySchema,
+        quotaSnapshot: BillingEntitlementQuotaSnapshotSchema,
+      }),
+    ),
+  ),
 });
 
 export type ProductBootstrapBillingStatus = Schema.Schema.Type<
@@ -143,6 +167,12 @@ export type ProductBootstrapResult = {
   readonly authorization: AuthorizationDecision;
   readonly billingStatus: ProductBootstrapBillingStatus;
   readonly entitlements: readonly BillingEntitlementRecord[];
+};
+
+export type ManagedBillingPlanAccessDeniedError = {
+  readonly _tag: "ManagedBillingPlanAccessDeniedError";
+  readonly reason: string;
+  readonly auditRequired: boolean;
 };
 
 export type SubscriberJourneyServiceError =
@@ -158,7 +188,10 @@ export type SubscriberJourneyServiceError =
   | PolarCatalogMetadataError
   | PolarPlanNotFoundError
   | PolarPriceNotFoundError
-  | PolarWebhookSignatureError;
+  | PolarWebhookSignatureError
+  | OryKetoAdapterRequestError
+  | ManagedBillingPlanAccessDeniedError
+  | TenantProvisioningPostgresRepositoryError;
 
 export type SubscriberJourneyWebhookReplayError =
   | BillingWebhookProcessingError
@@ -178,19 +211,74 @@ const decodeSubscriberJourneyRuntimeOptions = Schema.decodeUnknown(
   SubscriberJourneyRuntimeOptionsSchema,
 );
 
-const buildTenantViewerTuple = (requestContext: RequestContext) =>
-  requestContext.actorId === undefined
-    ? []
-    : [
-        {
+const buildBootstrapAuthorizationDecision = (input: {
+  readonly requestContext: RequestContext;
+  readonly allowed: boolean;
+  readonly reason: string;
+}): AuthorizationDecision => ({
+  allowed: input.allowed,
+  cacheKey: [
+    "subscriber-journey",
+    input.requestContext.correlationId,
+    input.requestContext.tenant.scope,
+    input.requestContext.tenant.scopeId,
+    input.requestContext.actorId ?? "anonymous",
+    permissionScope.tenantRead,
+  ].join(":"),
+  reason: input.reason,
+  auditRequired: false,
+  ...(input.allowed && input.requestContext.actorId !== undefined
+    ? {
+        matchedTuple: {
           namespace: authorizationNamespace.tenant,
-          object: requestContext.tenant.scopeId,
+          object: input.requestContext.tenant.scopeId,
           relation: authorizationRelation.viewer,
-          subject: requestContext.actorId,
-          tenantScope: requestContext.tenant.scope,
-          tenantScopeId: requestContext.tenant.scopeId,
+          subject: input.requestContext.actorId,
+          tenantScope: input.requestContext.tenant.scope,
+          tenantScopeId: input.requestContext.tenant.scopeId,
         },
-      ];
+      }
+    : {}),
+});
+
+const buildActorTypeAuthorizationSubject = (
+  actorTypeValue: RequestContext["actorType"],
+) => `actor-type:${actorTypeValue}`;
+
+const authorizeManagedBillingPlanWrite = (requestContext: RequestContext) =>
+  makeAuthorizationModule({
+    tuples: [
+      {
+        namespace: authorizationNamespace.billingEntitlement,
+        object: platformScope.platform,
+        relation: authorizationRelation.admin,
+        subject: buildActorTypeAuthorizationSubject(actorType.platformOperator),
+        tenantScope: platformScope.platform,
+        tenantScopeId: platformScope.platform,
+      },
+    ],
+    cacheTtlSeconds: 60,
+    maxCacheSize: 128,
+  }).pipe(
+    Effect.flatMap((authorization) =>
+      authorization.check({
+        requestContext,
+        namespace: authorizationNamespace.billingEntitlement,
+        object: platformScope.platform,
+        relation: authorizationRelation.admin,
+        permissionScope: permissionScope.billingWrite,
+      }),
+    ),
+    Effect.flatMap((decision) =>
+      decision.allowed
+        ? Effect.succeed(decision)
+        : Effect.fail({
+            _tag: "ManagedBillingPlanAccessDeniedError",
+            reason: decision.reason,
+            auditRequired: decision.auditRequired,
+          } satisfies ManagedBillingPlanAccessDeniedError),
+    ),
+  );
 
 export type SubscriberJourneyService = {
   readonly listPublicPlans: Effect.Effect<
@@ -221,6 +309,15 @@ export type SubscriberJourneyService = {
     | PolarPlanNotFoundError
     | PolarPriceNotFoundError
   >;
+  readonly createManagedBillingPlan: (
+    input: BillingPlanCreateRequest,
+  ) => Effect.Effect<
+    BillingPlanCreateResult,
+    | ParseResult.ParseError
+    | IdentitySessionModuleError
+    | PolarManagedBillingPlanError
+    | ManagedBillingPlanAccessDeniedError
+  >;
   readonly processBillingWebhook: (
     input: BillingProviderWebhookInput,
   ) => Effect.Effect<
@@ -241,6 +338,7 @@ export type SubscriberJourneyService = {
 export const makeSubscriberJourneyService = () =>
   Effect.gen(function* () {
     const polar = yield* PolarAdapter;
+    const oryKeto = yield* OryKetoAdapter;
     const identitySession = yield* IdentitySessionModule;
     const billingWebhook = yield* BillingWebhookService;
     const billingWebhookReplay = yield* BillingWebhookReplayPostgresRepository;
@@ -251,6 +349,21 @@ export const makeSubscriberJourneyService = () =>
       resolveRequestContext: identitySession.resolveRequestContext,
       startAuthentication: identitySession.startAuthentication,
       completeAuthentication: identitySession.completeAuthentication,
+      createManagedBillingPlan: (input: BillingPlanCreateRequest) =>
+        Schema.decodeUnknown(BillingPlanCreateRequestSchema)(input).pipe(
+          Effect.flatMap((request) =>
+            Effect.gen(function* () {
+              const requestContext =
+                yield* identitySession.resolveRequestContext({
+                  sessionId: request.sessionId,
+                });
+
+              yield* authorizeManagedBillingPlanWrite(requestContext);
+
+              return yield* polar.createManagedBillingPlan(request.plan);
+            }),
+          ),
+        ),
       createCheckoutSession: polar.createCheckoutSession,
       processBillingWebhook: billingWebhook.processPolarWebhook,
       replayBillingWebhook: (input: SubscriberJourneyWebhookReplayInput) =>
@@ -303,20 +416,31 @@ export const makeSubscriberJourneyService = () =>
                 });
               const snapshot =
                 yield* getProductAppSnapshotForRequest(requestContext);
-              const authorization = yield* makeAuthorizationModule({
-                tuples: buildTenantViewerTuple(requestContext),
-                cacheTtlSeconds: 60,
-              }).pipe(
-                Effect.flatMap((service) =>
-                  service.check({
-                    requestContext,
-                    namespace: authorizationNamespace.tenant,
-                    object: requestContext.tenant.scopeId,
-                    relation: authorizationRelation.viewer,
-                    permissionScope: permissionScope.tenantRead,
-                  }),
-                ),
-              );
+              const authorization =
+                requestContext.actorId === undefined
+                  ? buildBootstrapAuthorizationDecision({
+                      requestContext,
+                      allowed: false,
+                      reason: "Request context is missing an actor id.",
+                    })
+                  : yield* oryKeto
+                      .check({
+                        namespace: authorizationNamespace.tenant,
+                        object: requestContext.tenant.scopeId,
+                        relation: authorizationRelation.viewer,
+                        subject: requestContext.actorId,
+                      })
+                      .pipe(
+                        Effect.map((result) =>
+                          buildBootstrapAuthorizationDecision({
+                            requestContext,
+                            allowed: result.allowed,
+                            reason: result.allowed
+                              ? "Matched persisted tenant viewer relation."
+                              : "Missing persisted tenant viewer relation.",
+                          }),
+                        ),
+                      );
               const fieldSecurity = yield* makeFieldSecurityModule();
               const billingProjection = findModuleManifest(
                 platformModuleId.billingAndMetering,
@@ -417,11 +541,15 @@ const makeSubscriberJourneyRuntime = (
       clientId: options.keycloakClientId,
       clientSecret: options.keycloakClientSecret,
     });
+    const oryKeto = yield* makeOryKetoAdapter({
+      readUrl: options.ketoReadUrl,
+      writeUrl: options.ketoWriteUrl,
+    });
     const valkey = yield* makeValkeyAdapter({
       url: options.valkeyUrl,
     });
     const polar = yield* makePolarAdapter({
-      apiKey: options.polarApiKey,
+      apiKey: options.polarAccessToken,
       apiUrl: options.polarApiUrl,
     });
     const tenantManagement = yield* makeTenantManagementModule();
@@ -430,6 +558,8 @@ const makeSubscriberJourneyRuntime = (
       yield* makeIdentitySessionPostgresRepository(writeDatabase);
     const onboardingRepository =
       yield* makeTenantOnboardingPostgresRepository(writeDatabase);
+    const tenantProvisioningRepository =
+      yield* makeTenantProvisioningPostgresRepository(writeDatabase);
     const billingWebhookRepository =
       yield* makeBillingWebhookPostgresRepository(writeDatabase);
     const billingWebhookReplayQueryable: BillingWebhookReplayPostgresQueryable =
@@ -489,11 +619,16 @@ const makeSubscriberJourneyRuntime = (
       );
     const identitySession = yield* makeIdentitySessionModule().pipe(
       Effect.provideService(KeycloakAdapter, keycloak),
+      Effect.provideService(OryKetoAdapter, oryKeto),
       Effect.provideService(ValkeyAdapter, valkey),
       Effect.provideService(TenantManagementModule, tenantManagement),
       Effect.provideService(
         IdentitySessionPostgresRepository,
         identityRepository,
+      ),
+      Effect.provideService(
+        TenantProvisioningPostgresRepository,
+        tenantProvisioningRepository,
       ),
       Effect.provideService(
         TenantOnboardingPostgresRepository,
@@ -509,6 +644,7 @@ const makeSubscriberJourneyRuntime = (
       ),
     );
     const subscriberJourney = yield* makeSubscriberJourneyService().pipe(
+      Effect.provideService(OryKetoAdapter, oryKeto),
       Effect.provideService(PolarAdapter, polar),
       Effect.provideService(IdentitySessionModule, identitySession),
       Effect.provideService(BillingWebhookService, billingWebhookService),
@@ -555,9 +691,11 @@ export const resolveSubscriberJourneyRuntimeOptionsFromEnvironment = (
           keycloakRealm: resolvedEnvironment.KEYCLOAK_REALM,
           keycloakClientId: resolvedEnvironment.KEYCLOAK_CLIENT_ID,
           keycloakClientSecret: resolvedEnvironment.KEYCLOAK_CLIENT_SECRET,
-          polarApiKey: resolvedEnvironment.POLAR_API_KEY,
+          polarAccessToken: resolvedEnvironment.POLAR_ACCESS_TOKEN,
           polarApiUrl: resolvedEnvironment.POLAR_API_URL,
           valkeyUrl: resolvedEnvironment.VALKEY_URL,
+          ketoReadUrl: resolvedEnvironment.KETO_READ_URL,
+          ketoWriteUrl: resolvedEnvironment.KETO_WRITE_URL,
         }) satisfies SubscriberJourneyRuntimeOptions,
     ),
   );

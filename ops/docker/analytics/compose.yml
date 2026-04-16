@@ -18,7 +18,6 @@ x-openpanel-runtime-environment: &openpanel_runtime_environment
 
 services:
   op-db:
-    profiles: ["analytics"]
     image: postgres:14-alpine
     environment:
       POSTGRES_USER: postgres
@@ -33,7 +32,6 @@ services:
       retries: 5
 
   op-kv:
-    profiles: ["analytics"]
     image: redis:7.2.5-alpine
     command: ["redis-server", "--maxmemory-policy", "noeviction"]
     volumes:
@@ -45,7 +43,6 @@ services:
       retries: 5
 
   op-ch:
-    profiles: ["analytics"]
     image: clickhouse/clickhouse-server:25.10.2.65
     environment:
       CLICKHOUSE_SKIP_USER_SETUP: "1"
@@ -64,7 +61,6 @@ services:
       retries: 5
 
   op-api:
-    profiles: ["analytics"]
     image: lindesvard/openpanel-api:${OPENPANEL_IMAGE_TAG:-2.0.0}
     command: >
       sh -c "
@@ -87,7 +83,6 @@ services:
       retries: 5
 
   op-dashboard:
-    profiles: ["analytics"]
     image: lindesvard/openpanel-dashboard:${OPENPANEL_IMAGE_TAG:-2.0.0}
     environment: *openpanel_runtime_environment
     depends_on:
@@ -101,7 +96,6 @@ services:
       retries: 5
 
   op-worker:
-    profiles: ["analytics"]
     image: lindesvard/openpanel-worker:${OPENPANEL_IMAGE_TAG:-2.0.0}
     environment: *openpanel_runtime_environment
     depends_on:
@@ -117,7 +111,6 @@ services:
       replicas: ${OPENPANEL_WORKER_REPLICAS:-2}
 
   op-proxy:
-    profiles: ["analytics"]
     image: caddy:2-alpine
     depends_on:
       op-dashboard:

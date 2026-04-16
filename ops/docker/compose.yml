@@ -12,6 +12,7 @@ include:
 
 services:
   postgres:
+    container_name: postgres
     image: postgres:18.3-alpine3.23
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-comvestec}
@@ -33,7 +34,50 @@ services:
       retries: 6
       start_period: 10s
 
+  vendor-postgres:
+    container_name: vendor-postgres
+    image: postgres:18.3-alpine3.23
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-comvestec}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-comvestec}
+      PGDATABASE: ${POSTGRES_DB:-comvestec}
+      CONVEX_POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432/convex}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak}
+      KETO_DSN: ${KETO_DSN:-postgres://comvestec:comvestec@postgres:5432/keto?sslmode=disable}
+      UNLEASH_DATABASE_URL: ${UNLEASH_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/unleash?sslmode=disable}
+      OPENMETER_POSTGRES_URL: ${OPENMETER_POSTGRES_URL:-postgres://comvestec:comvestec@postgres:5432/openmeter?sslmode=disable}
+      GLITCHTIP_DATABASE_URL: ${GLITCHTIP_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/glitchtip}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        extract_database_name() {
+          printf '%s' "$$1" | sed -E 's#.*/([^/?]+)(\?.*)?$$#\1#'
+        }
+        for database in \
+          "$$(extract_database_name "$$CONVEX_POSTGRES_URL")" \
+          "$$KEYCLOAK_DB_NAME" \
+          "$$(extract_database_name "$$KETO_DSN")" \
+          "$$(extract_database_name "$$UNLEASH_DATABASE_URL")" \
+          "$$(extract_database_name "$$OPENMETER_POSTGRES_URL")" \
+          "$$(extract_database_name "$$GLITCHTIP_DATABASE_URL")"; do
+          if [ -z "$$database" ] || [ "$$database" = "$$PGDATABASE" ]; then
+            continue
+          fi
+          existing="$$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$$database'")"
+          if [ "$$existing" != "1" ]; then
+            psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$$database\""
+          fi
+        done
+    restart: "no"
+
   valkey:
+    container_name: valkey
     image: valkey/valkey:9.0.3-trixie
     command: ["valkey-server", "--save", "", "--appendonly", "no"]
     ports:
@@ -42,6 +86,7 @@ services:
       - valkey_data:/data
 
   keycloak:
+    container_name: keycloak
     image: quay.io/keycloak/keycloak:26.6.0
     command:
       [
@@ -55,15 +100,15 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
-      KC_DB_URL_DATABASE: ${POSTGRES_DB:-comvestec}
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
       KC_DB_USERNAME: ${POSTGRES_USER:-comvestec}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-comvestec}
       KC_HEALTH_ENABLED: true
       KC_METRICS_ENABLED: true
       KC_PROXY_HEADERS: xforwarded
     depends_on:
-      postgres:
-        condition: service_healthy
+      vendor-postgres:
+        condition: service_completed_successfully
     ports:
       - ${KEYCLOAK_PORT:-8080}:8080
       - 9000:9000
@@ -73,13 +118,13 @@ services:
   convex-backend:
     image: ghcr.io/get-convex/convex-backend:9e188cd84ef96146ee101bc95e6365ca35871e4a
     depends_on:
-      postgres:
-        condition: service_healthy
+      vendor-postgres:
+        condition: service_completed_successfully
       otel-collector:
         condition: service_started
     environment:
       INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-comvestec-foundation}
-      POSTGRES_URL: ${POSTGRES_URL_INTERNAL:-postgresql://comvestec:comvestec@postgres:5432/comvestec}
+      POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432/convex}
       DO_NOT_REQUIRE_SSL: 1
       CONVEX_CLOUD_ORIGIN: ${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}
       CONVEX_SITE_ORIGIN: ${CONVEX_SELF_HOSTED_SITE_URL:-http://127.0.0.1:3211}

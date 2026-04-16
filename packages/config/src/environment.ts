@@ -25,7 +25,7 @@ export const PlatformEnvironmentSchema = Schema.Struct({
   novuApiUrl: Schema.NonEmptyString,
   meilisearchUrl: Schema.NonEmptyString,
   meilisearchApiKey: Schema.NonEmptyString,
-  polarApiKey: Schema.NonEmptyString,
+  polarAccessToken: Schema.NonEmptyString,
   polarApiUrl: Schema.NonEmptyString,
   polarWebhookSecret: Schema.NonEmptyString,
   openmeterUrl: Schema.NonEmptyString,

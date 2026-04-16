@@ -4,7 +4,9 @@ import { Schema } from "effect";
 import {
   billingAndMeteringFeatureFlag,
   billingEnforcementMode,
+  BillingPlanCreateRequestSchema,
   BillingPlanSchema,
+  billingPlanVisibility,
   BillingWebhookReconciliationSchema,
   billingMeteringMode,
   billingPlanInterval,
@@ -184,6 +186,38 @@ describe("contract schemas", () => {
     expect(plan.entitlements[0]?.meteringMode).toBe(billingMeteringMode.none);
     expect(plan.entitlements[1]?.enforcementMode).toBe(
       billingEnforcementMode.rateLimit,
+    );
+  });
+
+  it("decodes managed recurring billing plan creation requests", () => {
+    const request = Schema.decodeUnknownSync(BillingPlanCreateRequestSchema)({
+      sessionId: "sess_admin_plan_create",
+      plan: {
+        planKey: "scale",
+        displayName: "Scale",
+        description: "Operator-created recurring plan.",
+        visibility: billingPlanVisibility.draft,
+        price: {
+          interval: billingPlanInterval.month,
+          currency: "USD",
+          amountMinor: 4900,
+        },
+        entitlements: [
+          {
+            moduleId: platformModuleId.tenantManagement,
+            featureKey: tenantManagementFeatureFlag.enabled,
+            included: true,
+            meteringMode: billingMeteringMode.none,
+            enforcementMode: billingEnforcementMode.none,
+          },
+        ],
+      },
+    });
+
+    expect(request.plan.visibility).toBe(billingPlanVisibility.draft);
+    expect(request.plan.price.interval).toBe(billingPlanInterval.month);
+    expect(request.plan.entitlements[0]?.moduleId).toBe(
+      platformModuleId.tenantManagement,
     );
   });
 

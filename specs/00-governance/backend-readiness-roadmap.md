@@ -6,6 +6,8 @@ Status: accepted
 
 Deliver one backend-ready subscriber journey before expanding frontend scope. For this milestone, a user must be able to:
 
+This roadmap defines the intended backend-ready slice. Use [implementation-tracker.md](implementation-tracker.md) as the source of truth for the current maturity of each step in that slice.
+
 1. View a public-safe plan catalog.
 2. Start authentication and complete the identity callback.
 3. Create a hosted checkout session.

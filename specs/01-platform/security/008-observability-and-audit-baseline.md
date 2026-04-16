@@ -11,6 +11,8 @@ Status: accepted
 5. traces
 6. business events
 
+Business events may feed product analytics, but product analytics does not replace audit or security logging.
+
 ## Required Correlation Context
 
 Every important event should carry as applicable:
@@ -55,3 +57,5 @@ Audit at minimum:
 2. Traces must cross app, workflow, and storage boundaries where possible.
 3. Alerting should distinguish platform health, security anomalies, and product issues.
 4. Health probes and SLO dashboards are first-class operator surfaces, not ad hoc infrastructure notes.
+5. Product analytics remains a platform-owned boundary. The current analytics provider is OpenPanel behind the repo-managed analytics service group and the shared OpenPanel adapter, not ad hoc browser-only vendor calls.
+6. Product analytics events must stay distinct from audit trails. Sensitive access, privileged actions, and compliance events continue to flow through audit boundaries even when a related business event is also emitted to analytics.

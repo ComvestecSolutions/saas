@@ -6,6 +6,7 @@ import {
   billingEnforcementMode,
   billingMeteringMode,
   billingPlanInterval,
+  billingPlanVisibility,
   billingSubscriptionStatus,
   billingWebhookEventType,
   billingWebhookReconciliationAction,
@@ -36,6 +37,7 @@ import {
   createOryKetoTestOptions,
   createPolarTestOptions,
   createValkeyTestClient,
+  defaultTestBillingPlans,
 } from "../platform-adapter-doubles";
 
 describe("platform adapters", () => {
@@ -284,6 +286,42 @@ describe("platform adapters", () => {
       provider: platformAdapterServiceName.polar,
     });
     await expect(
+      Effect.runPromise(
+        polar.createManagedBillingPlan({
+          planKey: "scale",
+          displayName: "Scale",
+          description: "Operator-created recurring plan.",
+          visibility: billingPlanVisibility.draft,
+          price: {
+            interval: billingPlanInterval.month,
+            currency: "USD",
+            amountMinor: 4900,
+          },
+          entitlements: [
+            {
+              moduleId: platformModuleId.tenantManagement,
+              included: true,
+              meteringMode: billingMeteringMode.none,
+              enforcementMode: billingEnforcementMode.none,
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      plan: expect.objectContaining({
+        planKey: "scale",
+        displayName: "Scale",
+        prices: [
+          expect.objectContaining({
+            interval: billingPlanInterval.month,
+            amountMinor: 4900,
+          }),
+        ],
+      }),
+      visibility: billingPlanVisibility.draft,
+      provider: platformAdapterServiceName.polar,
+    });
+    await expect(
       Effect.runPromise(openmeter.healthcheck),
     ).resolves.toMatchObject({ healthy: true });
     await expect(
@@ -299,6 +337,45 @@ describe("platform adapters", () => {
     await expect(Effect.runPromise(postal.healthcheck)).resolves.toMatchObject({
       healthy: true,
     });
+  });
+
+  it("normalizes Polar SDK base URLs that already include /v1", async () => {
+    let requestedUrl: string | undefined;
+
+    const polar = await Effect.runPromise(
+      makePolarAdapter({
+        apiKey: "polar-key",
+        apiUrl: "http://localhost:8888/v1",
+        fetch: async (input) => {
+          requestedUrl =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.toString()
+                : input.url;
+
+          return new Response(
+            JSON.stringify({
+              items: [],
+              pagination: {
+                total_count: 0,
+                max_page: 0,
+              },
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            },
+          );
+        },
+      }),
+    );
+
+    await expect(Effect.runPromise(polar.listPlans)).resolves.toEqual([]);
+    expect(requestedUrl).toContain("/v1/products");
+    expect(requestedUrl).not.toContain("/v1/v1/products");
   });
 
   it("creates a postgres adapter with an explicit runtime connection seam", async () => {
@@ -395,6 +472,219 @@ describe("platform adapters", () => {
       priceId: "price_growth_month",
       interval: billingPlanInterval.month,
     });
+  });
+
+  it("sends lowercase currency codes to the polar sdk for managed plans", async () => {
+    const polarOptions = createPolarTestOptions();
+    let capturedRequest:
+      | Parameters<
+          NonNullable<typeof polarOptions.sdkClient>["products"]["create"]
+        >[0]
+      | undefined;
+
+    const polar = await Effect.runPromise(
+      makePolarAdapter({
+        ...polarOptions,
+        sdkClient: {
+          ...polarOptions.sdkClient!,
+          products: {
+            ...polarOptions.sdkClient!.products,
+            create: async (request) => {
+              capturedRequest = request;
+
+              return {
+                id: "plan_seed_scale",
+                name: request.name,
+                description: request.description ?? null,
+                recurringInterval: request.recurringInterval,
+                recurringIntervalCount: request.recurringIntervalCount ?? 1,
+                visibility: request.visibility ?? "draft",
+                isArchived: false,
+                metadata: request.metadata ?? {},
+                prices: request.prices.map((price, index) => ({
+                  id: `price_seed_scale_${index + 1}`,
+                  recurringInterval: request.recurringInterval,
+                  priceCurrency: price.priceCurrency ?? "usd",
+                  priceAmount: price.priceAmount,
+                  isArchived: false,
+                })),
+              };
+            },
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        polar.createManagedBillingPlan({
+          planKey: "scale",
+          displayName: "Scale",
+          description: "Operator-created recurring plan.",
+          visibility: billingPlanVisibility.draft,
+          price: {
+            interval: billingPlanInterval.month,
+            currency: "USD",
+            amountMinor: 4900,
+          },
+          entitlements: [
+            {
+              moduleId: platformModuleId.tenantManagement,
+              included: true,
+              meteringMode: billingMeteringMode.none,
+              enforcementMode: billingEnforcementMode.none,
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      plan: expect.objectContaining({
+        planKey: "scale",
+      }),
+    });
+
+    expect(capturedRequest?.prices[0]?.priceCurrency).toBe("usd");
+  });
+
+  it("returns the existing public managed plan instead of creating a duplicate", async () => {
+    const existingScalePlan = defaultTestBillingPlans.find(
+      (plan) => plan.planKey === "scale",
+    );
+
+    expect(existingScalePlan).toBeDefined();
+
+    if (existingScalePlan === undefined) {
+      return;
+    }
+
+    const polarOptions = createPolarTestOptions();
+    let createCallCount = 0;
+
+    const polar = await Effect.runPromise(
+      makePolarAdapter({
+        ...polarOptions,
+        sdkClient: {
+          ...polarOptions.sdkClient!,
+          products: {
+            ...polarOptions.sdkClient!.products,
+            create: async (request) => {
+              createCallCount += 1;
+
+              return polarOptions.sdkClient!.products.create(request);
+            },
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        polar.createManagedBillingPlan({
+          planKey: existingScalePlan.planKey,
+          displayName: existingScalePlan.displayName,
+          description: existingScalePlan.description,
+          visibility: billingPlanVisibility.public,
+          price: {
+            interval: existingScalePlan.prices[0]!.interval,
+            currency: existingScalePlan.prices[0]!.currency,
+            amountMinor: existingScalePlan.prices[0]!.amountMinor,
+          },
+          entitlements: existingScalePlan.entitlements,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      plan: expect.objectContaining({
+        planId: existingScalePlan.planId,
+        planKey: existingScalePlan.planKey,
+      }),
+      visibility: billingPlanVisibility.public,
+      provider: platformAdapterServiceName.polar,
+    });
+
+    expect(createCallCount).toBe(0);
+  });
+
+  it("updates duplicate managed products into a different canonical plan", async () => {
+    const starterPlan = defaultTestBillingPlans.find(
+      (plan) => plan.planKey === "starter",
+    );
+    const growthPlan = defaultTestBillingPlans.find(
+      (plan) => plan.planKey === "growth",
+    );
+
+    expect(starterPlan).toBeDefined();
+    expect(growthPlan).toBeDefined();
+
+    if (starterPlan === undefined || growthPlan === undefined) {
+      return;
+    }
+
+    const polar = await Effect.runPromise(
+      makePolarAdapter(createPolarTestOptions()),
+    );
+
+    await expect(
+      Effect.runPromise(
+        polar.updateManagedBillingPlan(starterPlan.planId, {
+          planKey: growthPlan.planKey,
+          displayName: growthPlan.displayName,
+          description: growthPlan.description,
+          visibility: billingPlanVisibility.public,
+          price: {
+            interval: growthPlan.prices[0]!.interval,
+            currency: growthPlan.prices[0]!.currency,
+            amountMinor: growthPlan.prices[0]!.amountMinor,
+          },
+          entitlements: growthPlan.entitlements,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      plan: expect.objectContaining({
+        planId: starterPlan.planId,
+        planKey: growthPlan.planKey,
+        displayName: growthPlan.displayName,
+        prices: [
+          expect.objectContaining({
+            interval: growthPlan.prices[0]!.interval,
+            amountMinor: growthPlan.prices[0]!.amountMinor,
+          }),
+        ],
+      }),
+      visibility: billingPlanVisibility.public,
+      provider: platformAdapterServiceName.polar,
+    });
+  });
+
+  it("archives managed products that should be removed from the public catalog", async () => {
+    const scalePlan = defaultTestBillingPlans.find(
+      (plan) => plan.planKey === "scale",
+    );
+
+    expect(scalePlan).toBeDefined();
+
+    if (scalePlan === undefined) {
+      return;
+    }
+
+    const polar = await Effect.runPromise(
+      makePolarAdapter(createPolarTestOptions()),
+    );
+
+    await expect(
+      Effect.runPromise(polar.archiveManagedBillingPlan(scalePlan.planId)),
+    ).resolves.toMatchObject({
+      plan: expect.objectContaining({
+        planId: scalePlan.planId,
+        active: false,
+      }),
+      provider: platformAdapterServiceName.polar,
+    });
+
+    await expect(Effect.runPromise(polar.listPlans)).resolves.not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ planId: scalePlan.planId }),
+      ]),
+    );
   });
 
   it("normalizes verified polar webhook deliveries into billing reconciliation", async () => {

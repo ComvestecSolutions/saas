@@ -173,6 +173,13 @@ describe("modules persistence", () => {
     expect(columns.tenantOnboardingStepsTable).toEqual(
       expect.arrayContaining(["stepId", "status", "retryCount"]),
     );
+    expect(columns.tenantProvisioningReceiptsTable).toEqual(
+      expect.arrayContaining([
+        "ownerActorId",
+        "authorizationTuples",
+        "requestContext",
+      ]),
+    );
   });
 
   it("persists idempotent identity session lifecycle events", async () => {

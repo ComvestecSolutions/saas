@@ -4,6 +4,8 @@ This folder owns the repository-managed local deployment surface for the Comvest
 
 `compose.yml` is the only entrypoint. It uses Compose `include` so operators keep one command surface while the stack is split into concern-focused files.
 
+The default local profile keeps one shared PostgreSQL engine, but it does not keep one shared logical database. The platform system-of-record tables stay in the `comvestec` database, while service-owned state such as Convex, Keycloak, Ory Keto, Unleash, OpenMeter, and GlitchTip is isolated into dedicated databases on that same local PostgreSQL instance.
+
 ## Compose Files
 
 - `compose.yml`: core baseline services such as PostgreSQL, Valkey, Keycloak, and Convex
@@ -13,8 +15,8 @@ This folder owns the repository-managed local deployment surface for the Comvest
 - `search/compose.yml`: Meilisearch
 - `messaging/compose.yml`: Novu and Postal
 - `metering/compose.yml`: OpenMeter
-- `analytics/compose.yml`: OpenPanel services behind the optional `analytics` profile, plus the local analytics proxy and ClickHouse bootstrap assets
-- `security/compose.yml`: Kong and Vault behind the optional `hardened` profile, plus the local security runtime assets
+- `analytics/compose.yml`: OpenPanel services, plus the local analytics proxy and ClickHouse bootstrap assets
+- `security/compose.yml`: Kong and Vault, plus the local security runtime assets
 
 ## Asset Folders
 
@@ -34,32 +36,79 @@ The checked-in `.env.example` mirrors the current runtime expectations and uses 
 
 Do not replace seeded local defaults with placeholders. Replace only the bootstrap-generated or external-provider sentinels when those services are actually provisioned.
 
+## First Run
+
+1. Copy `.env.example` to `.env`.
+2. Keep the seeded local values unless you have a concrete reason to override them.
+3. Start the current full local platform footprint with `docker compose --env-file .env -f ops/docker/compose.yml up -d`.
+4. Capture bootstrap-generated values as the local services come online and write them back to `.env`.
+5. Use service-specific `up`, `restart`, `logs`, or `ps` commands only when you are intentionally troubleshooting a subset of the platform.
+6. Run `bun run backend:subscriber-journey:bootstrap` once PostgreSQL and Keycloak are healthy so the shared schema is applied and the local Keycloak smoke user is ready for backend-owned subscriber-journey validation.
+
+The Compose baseline now includes a `vendor-postgres` one-shot service that creates dedicated local databases for the Postgres-backed infrastructure dependencies. This keeps the current one-host developer footprint small without mixing vendor-owned tables and migrations into the platform database.
+
+There is not yet a single bootstrap script for every generated value. Today the repo relies on service-specific setup flows and runbooks for items such as the Convex admin key, GlitchTip DSN, Postal API key, Novu API key, OpenPanel client id, and the hardened-profile Vault bootstrap artifacts.
+
 ## Common Commands
 
-Start the default local baseline:
+Start the current full local platform footprint:
 
 ```bash
 docker compose --env-file .env -f ops/docker/compose.yml up -d
 ```
 
-Start the default baseline plus OpenPanel analytics:
+Re-run the Postgres database bootstrap and recreate the affected services after pulling a change that updates service database isolation:
 
 ```bash
-docker compose --env-file .env -f ops/docker/compose.yml --profile analytics up -d
+docker compose --env-file .env -f ops/docker/compose.yml up -d --force-recreate vendor-postgres keycloak convex-backend ory-keto unleash openmeter glitchtip
 ```
 
-Start the default baseline plus Kong and Vault:
+Apply the shared PostgreSQL schema after the baseline is running:
 
 ```bash
-docker compose --env-file .env -f ops/docker/compose.yml --profile hardened up -d
+bun run db:migrate
+```
+
+Apply the shared PostgreSQL schema and provision the Keycloak smoke user for the backend subscriber-journey slice:
+
+```bash
+bun run backend:subscriber-journey:bootstrap
+```
+
+Start the backend-owned subscriber-journey API:
+
+```bash
+bun run backend:subscriber-journey
+```
+
+Kick off the live Keycloak to Polar smoke path after a real `POLAR_ACCESS_TOKEN` is in `.env` and `POLAR_WEBHOOK_SECRET` has been copied from `polar listen http://127.0.0.1:3010/api/subscriber-journey/billing/webhooks/polar`:
+
+```bash
+bun run backend:subscriber-journey:live-smoke
+```
+
+Generate a new reviewable SQL migration after changing any table definition under [packages/modules/src/persistence/postgres/](../../packages/modules/src/persistence/postgres/):
+
+```bash
+bun run db:generate
+```
+
+Start only the analytics service group:
+
+```bash
+docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker op-proxy
+```
+
+Start only the security service group:
+
+```bash
+docker compose --env-file .env -f ops/docker/compose.yml up -d kong vault
 ```
 
 Render the final merged Compose model without starting containers:
 
 ```bash
 docker compose --env-file .env -f ops/docker/compose.yml config --quiet
-docker compose --env-file .env -f ops/docker/compose.yml --profile analytics config --quiet
-docker compose --env-file .env -f ops/docker/compose.yml --profile hardened config --quiet
 ```
 
 Stop everything that belongs to the repo-managed deployment surface:
@@ -70,12 +119,16 @@ docker compose --env-file .env -f ops/docker/compose.yml down
 
 ## Profile Notes
 
-- `analytics` is optional and keeps OpenPanel out of the default baseline.
-- `hardened` is optional and keeps Kong plus Vault off the default baseline.
+- `analytics/` remains the concern-owned Compose file and runtime-asset folder for OpenPanel and its supporting services.
+- `security/` remains the concern-owned Compose file and runtime-asset folder for Kong and Vault.
 - Kong keeps the public proxy on `8000` and moves admin surfaces to `18001` and `18002` so the hardened profile can run beside GlitchTip on `8001`.
 - Vault starts in normal server mode, not dev mode. Initialize and unseal it before treating it as ready.
 
 ## Runbooks
 
+- [Backup And Restore Runbook](../../specs/04-ops/runbooks/backup-restore.md)
+- [Config Rollback Runbook](../../specs/04-ops/runbooks/config-rollback.md)
+- [Incident Response Runbook](../../specs/04-ops/runbooks/incident-response.md)
 - [OpenPanel Self-Hosting Runbook](../../specs/04-ops/runbooks/openpanel-self-hosting.md)
 - [Kong And Vault Bootstrap Runbook](../../specs/04-ops/runbooks/kong-vault-bootstrap.md)
+- [Sensitive Access Review Runbook](../../specs/04-ops/runbooks/sensitive-access-review.md)

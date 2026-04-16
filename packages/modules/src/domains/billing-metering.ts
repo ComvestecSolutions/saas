@@ -2,10 +2,8 @@ import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import { PlatformAdapterServiceNameSchema } from "@comvestec/platform";
 import {
   billingEnforcementMode,
-  BillingMeterKeySchema,
-  BillingEnforcementModeSchema,
+  BillingEntitlementQuotaSnapshotSchema,
   billingMeteringMode,
-  BillingMeteringModeSchema,
   billingPaymentEventStatus,
   BillingPlanInterval,
   BillingPlanIntervalSchema,
@@ -28,7 +26,6 @@ import {
   GovernanceEntitlementFeatureKeySchema,
   PlatformModuleIdSchema,
   PlatformScopeSchema,
-  UsageQuotaPeriodSchema,
   UsageQuotaDecision,
   UsageQuotaDecisionSchema,
   UsageQuotaEvaluationRequestSchema,
@@ -140,19 +137,6 @@ const BillingPaymentEventRecordSchema = Schema.Struct({
 
 export type BillingPaymentEventRecord = Schema.Schema.Type<
   typeof BillingPaymentEventRecordSchema
->;
-
-const BillingEntitlementQuotaSnapshotSchema = Schema.Struct({
-  meteringMode: BillingMeteringModeSchema,
-  meterKey: Schema.optional(BillingMeterKeySchema),
-  unit: Schema.optional(Schema.NonEmptyString),
-  quotaLimit: Schema.optional(Schema.Number),
-  quotaPeriod: Schema.optional(UsageQuotaPeriodSchema),
-  enforcementMode: BillingEnforcementModeSchema,
-});
-
-export type BillingEntitlementQuotaSnapshot = Schema.Schema.Type<
-  typeof BillingEntitlementQuotaSnapshotSchema
 >;
 
 const BillingEntitlementRecordSchema = Schema.Struct({

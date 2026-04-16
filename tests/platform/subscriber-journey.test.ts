@@ -1,8 +1,15 @@
 import { Effect } from "effect";
 import {
+  actorType,
+  billingAndMeteringFeatureFlag,
+  billingEnforcementMode,
+  billingMeteringMode,
+  billingPlanInterval,
+  billingPlanVisibility,
   billingWebhookEventType,
   platformModuleId,
   platformScope,
+  usageQuotaPeriod,
 } from "@comvestec/contracts";
 import {
   BillingMeteringModule,
@@ -25,8 +32,11 @@ import {
   makeIdentitySessionPostgresRepository,
   makeTenantManagementModule,
   makeTenantOnboardingPostgresRepository,
+  makeTenantProvisioningPostgresRepository,
   TenantManagementModule,
   TenantOnboardingPostgresRepository,
+  TenantProvisioningPostgresRepository,
+  tenantProvisioningReceiptsTable,
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,
   webhookReceiptsTable,
@@ -38,8 +48,10 @@ import {
 import {
   KeycloakAdapter,
   makeKeycloakAdapter,
+  makeOryKetoAdapter,
   makePolarAdapter,
   makeSubscriberJourneyService,
+  OryKetoAdapter,
   PolarAdapter,
   platformAdapterServiceName,
   makeValkeyAdapter,
@@ -47,6 +59,7 @@ import {
 } from "@comvestec/platform";
 import {
   createKeycloakTestOptions,
+  createOryKetoTestOptions,
   createPolarTestOptions,
   createValkeyTestClient,
 } from "../platform-adapter-doubles";
@@ -72,6 +85,10 @@ const createSubscriberJourneyTestDatabase = () => {
   const onboardingSteps = new Map<
     string,
     typeof tenantOnboardingStepsTable.$inferInsert
+  >();
+  const provisioningReceipts = new Map<
+    string,
+    typeof tenantProvisioningReceiptsTable.$inferInsert
   >();
   const receipts = new Map<string, typeof webhookReceiptsTable.$inferInsert>();
   const subscriptions = new Map<
@@ -106,6 +123,13 @@ const createSubscriberJourneyTestDatabase = () => {
       if (table === tenantOnboardingStepsTable) {
         const step = row as typeof tenantOnboardingStepsTable.$inferInsert;
         onboardingSteps.set(`${step.runId}:${step.stepId}`, step);
+        continue;
+      }
+
+      if (table === tenantProvisioningReceiptsTable) {
+        const receipt =
+          row as typeof tenantProvisioningReceiptsTable.$inferInsert;
+        provisioningReceipts.set(receipt.provisioningId, receipt);
         continue;
       }
 
@@ -245,10 +269,104 @@ const createSubscriberJourneyTestDatabase = () => {
     identitySessionEvents,
     onboardingRuns,
     onboardingSteps,
+    provisioningReceipts,
     receipts,
     subscriptions,
     paymentEvents,
     entitlements,
+  };
+};
+
+const createSubscriberJourneyHarness = async () => {
+  const database = createSubscriberJourneyTestDatabase();
+  const keycloak = await Effect.runPromise(
+    makeKeycloakAdapter(createKeycloakTestOptions()),
+  );
+  const valkey = await Effect.runPromise(
+    makeValkeyAdapter({
+      url: "redis://localhost:6379",
+      client: createValkeyTestClient(),
+    }),
+  );
+  const oryKeto = await Effect.runPromise(
+    makeOryKetoAdapter(createOryKetoTestOptions()),
+  );
+  const polar = await Effect.runPromise(
+    makePolarAdapter(createPolarTestOptions()),
+  );
+  const tenantManagement = await Effect.runPromise(
+    makeTenantManagementModule(),
+  );
+  const billingMetering = await Effect.runPromise(makeBillingMeteringModule());
+  const identityRepository = await Effect.runPromise(
+    makeIdentitySessionPostgresRepository(database.writeDatabase),
+  );
+  const onboardingRepository = await Effect.runPromise(
+    makeTenantOnboardingPostgresRepository(database.writeDatabase),
+  );
+  const provisioningRepository = await Effect.runPromise(
+    makeTenantProvisioningPostgresRepository(database.writeDatabase),
+  );
+  const billingWebhookRepository = await Effect.runPromise(
+    makeBillingWebhookPostgresRepository(database.writeDatabase),
+  );
+  const billingStateRepository = await Effect.runPromise(
+    makeBillingStatePostgresRepository(database.readDatabase),
+  );
+  const billingWebhookReplayRepository = await Effect.runPromise(
+    makeBillingWebhookReplayPostgresRepository(database.replayDatabase),
+  );
+  const identitySession = await Effect.runPromise(
+    makeIdentitySessionModule().pipe(
+      Effect.provideService(KeycloakAdapter, keycloak),
+      Effect.provideService(OryKetoAdapter, oryKeto),
+      Effect.provideService(ValkeyAdapter, valkey),
+      Effect.provideService(TenantManagementModule, tenantManagement),
+      Effect.provideService(
+        IdentitySessionPostgresRepository,
+        identityRepository,
+      ),
+      Effect.provideService(
+        TenantProvisioningPostgresRepository,
+        provisioningRepository,
+      ),
+      Effect.provideService(
+        TenantOnboardingPostgresRepository,
+        onboardingRepository,
+      ),
+    ),
+  );
+  const billingWebhookService = await Effect.runPromise(
+    makeBillingWebhookService().pipe(
+      Effect.provideService(PolarAdapter, polar),
+      Effect.provideService(BillingMeteringModule, billingMetering),
+      Effect.provideService(
+        BillingWebhookPostgresRepository,
+        billingWebhookRepository,
+      ),
+    ),
+  );
+  const subscriberJourney = await Effect.runPromise(
+    makeSubscriberJourneyService().pipe(
+      Effect.provideService(OryKetoAdapter, oryKeto),
+      Effect.provideService(PolarAdapter, polar),
+      Effect.provideService(IdentitySessionModule, identitySession),
+      Effect.provideService(BillingWebhookService, billingWebhookService),
+      Effect.provideService(
+        BillingWebhookReplayPostgresRepository,
+        billingWebhookReplayRepository,
+      ),
+      Effect.provideService(
+        BillingStatePostgresRepository,
+        billingStateRepository,
+      ),
+    ),
+  );
+
+  return {
+    database,
+    subscriberJourney,
+    valkey,
   };
 };
 
@@ -263,6 +381,9 @@ describe("platform subscriber journey", () => {
         url: "redis://localhost:6379",
         client: createValkeyTestClient(),
       }),
+    );
+    const oryKeto = await Effect.runPromise(
+      makeOryKetoAdapter(createOryKetoTestOptions()),
     );
     const polar = await Effect.runPromise(
       makePolarAdapter(createPolarTestOptions()),
@@ -279,6 +400,9 @@ describe("platform subscriber journey", () => {
     const onboardingRepository = await Effect.runPromise(
       makeTenantOnboardingPostgresRepository(database.writeDatabase),
     );
+    const provisioningRepository = await Effect.runPromise(
+      makeTenantProvisioningPostgresRepository(database.writeDatabase),
+    );
     const billingWebhookRepository = await Effect.runPromise(
       makeBillingWebhookPostgresRepository(database.writeDatabase),
     );
@@ -291,11 +415,16 @@ describe("platform subscriber journey", () => {
     const identitySession = await Effect.runPromise(
       makeIdentitySessionModule().pipe(
         Effect.provideService(KeycloakAdapter, keycloak),
+        Effect.provideService(OryKetoAdapter, oryKeto),
         Effect.provideService(ValkeyAdapter, valkey),
         Effect.provideService(TenantManagementModule, tenantManagement),
         Effect.provideService(
           IdentitySessionPostgresRepository,
           identityRepository,
+        ),
+        Effect.provideService(
+          TenantProvisioningPostgresRepository,
+          provisioningRepository,
         ),
         Effect.provideService(
           TenantOnboardingPostgresRepository,
@@ -315,6 +444,7 @@ describe("platform subscriber journey", () => {
     );
     const subscriberJourney = await Effect.runPromise(
       makeSubscriberJourneyService().pipe(
+        Effect.provideService(OryKetoAdapter, oryKeto),
         Effect.provideService(PolarAdapter, polar),
         Effect.provideService(IdentitySessionModule, identitySession),
         Effect.provideService(BillingWebhookService, billingWebhookService),
@@ -412,7 +542,16 @@ describe("platform subscriber journey", () => {
     expect(plans.length).toBeGreaterThan(0);
     expect(authStart.redirect.tenantHint).toBe("org_1");
     expect(authCompletion.requestContext.actorId).toBe("usr_owner_1");
+    expect(authCompletion.provisioning.status).toBe("provisioned");
     expect(webhook.reconciliation.event.subscriptionId).toBe("sub_journey");
+    expect(
+      database.provisioningReceipts.get(
+        ["tenant-provisioning", platformScope.organization, "org_1"].join(":"),
+      ),
+    ).toMatchObject({
+      ownerActorId: "usr_owner_1",
+      status: "provisioned",
+    });
     expect(
       database.receipts.get(
         [platformAdapterServiceName.polar, "wh_journey"].join(":"),
@@ -434,6 +573,19 @@ describe("platform subscriber journey", () => {
     expect(bootstrap.billingStatus).toMatchObject({
       plan: checkout.planId,
       status: "active",
+      usage: [
+        {
+          featureKey: billingAndMeteringFeatureFlag.apiRequests,
+          quotaSnapshot: {
+            meteringMode: billingMeteringMode.rateLimit,
+            meterKey: billingAndMeteringFeatureFlag.apiRequests,
+            unit: "request",
+            quotaLimit: 60,
+            quotaPeriod: usageQuotaPeriod.minute,
+            enforcementMode: billingEnforcementMode.rateLimit,
+          },
+        },
+      ],
     });
     expect(bootstrap.entitlements).toEqual(
       expect.arrayContaining([
@@ -442,5 +594,115 @@ describe("platform subscriber journey", () => {
         }),
       ]),
     );
+  });
+
+  it("allows platform operators to create managed billing plans", async () => {
+    const { subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_admin_plan_create",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_admin_plan_create",
+          correlationId: "corr_admin_plan_create",
+          reason: "Create managed recurring plan",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      subscriberJourney.createManagedBillingPlan({
+        sessionId: "sess_admin_plan_create",
+        plan: {
+          planKey: "scale",
+          displayName: "Scale",
+          description: "Operator-created recurring plan.",
+          visibility: billingPlanVisibility.draft,
+          price: {
+            interval: billingPlanInterval.month,
+            currency: "USD",
+            amountMinor: 4900,
+          },
+          entitlements: [
+            {
+              moduleId: platformModuleId.tenantManagement,
+              included: true,
+              meteringMode: billingMeteringMode.none,
+              enforcementMode: billingEnforcementMode.none,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      plan: expect.objectContaining({
+        planKey: "scale",
+        displayName: "Scale",
+      }),
+      visibility: billingPlanVisibility.draft,
+      provider: platformAdapterServiceName.polar,
+    });
+  });
+
+  it("denies non-platform sessions from creating managed billing plans", async () => {
+    const { subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_org_member_plan_create",
+        requestContext: {
+          actorType: actorType.organizationMember,
+          actorId: "usr_member_1",
+          sessionId: "sess_org_member_plan_create",
+          correlationId: "corr_org_member_plan_create",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            enterpriseId: "ent_1",
+            organizationId: "org_1",
+            individualId: "usr_member_1",
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          subscriberJourney.createManagedBillingPlan({
+            sessionId: "sess_org_member_plan_create",
+            plan: {
+              planKey: "scale",
+              displayName: "Scale",
+              visibility: billingPlanVisibility.draft,
+              price: {
+                interval: billingPlanInterval.month,
+                currency: "USD",
+                amountMinor: 4900,
+              },
+              entitlements: [
+                {
+                  moduleId: platformModuleId.tenantManagement,
+                  included: true,
+                  meteringMode: billingMeteringMode.none,
+                  enforcementMode: billingEnforcementMode.none,
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "ManagedBillingPlanAccessDeniedError",
+    });
   });
 });

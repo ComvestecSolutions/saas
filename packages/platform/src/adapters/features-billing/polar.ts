@@ -8,7 +8,11 @@ import {
   BillingCheckoutSessionInputSchema,
   BillingCheckoutSessionSchema,
   BillingEntitlementItemSchema,
+  BillingPlanCreateInputSchema,
+  BillingPlanCreateResultSchema,
   billingPlanIntervals,
+  billingPlanVisibility,
+  billingPlanVisibilities,
   BillingPlanSchema,
   billingSubscriptionStatus,
   billingWebhookEventType,
@@ -22,7 +26,10 @@ import type {
   BillingCheckoutSession,
   BillingCheckoutSessionInput,
   BillingPlan,
+  BillingPlanCreateInput,
+  BillingPlanCreateResult,
   BillingPlanInterval,
+  BillingPlanVisibility,
   BillingProviderWebhookInput,
   BillingSubscriptionStatus,
   BillingWebhookEventType,
@@ -34,9 +41,11 @@ import {
   platformAdapterServiceName,
 } from "../service-names";
 import {
+  buildPolarCatalogProductMetadata,
   buildPolarCheckoutMetadata,
   polarMetadataKey,
   polarWebhookMetadataField,
+  readPolarCatalogProductEntitlements,
   type PolarCatalogMetadataField,
   type PolarCatalogProductMetadataLookup,
   type PolarCheckoutMetadata,
@@ -71,6 +80,8 @@ type PolarSdkProduct = {
   readonly name: string;
   readonly description: string | null;
   readonly recurringInterval?: string | null;
+  readonly recurringIntervalCount?: number | null;
+  readonly visibility?: PolarSdkProductVisibility;
   readonly isArchived: boolean;
   readonly metadata?: PolarCatalogProductMetadataLookup;
   readonly prices: readonly PolarSdkPrice[];
@@ -88,7 +99,7 @@ type PolarSdkCheckout = {
   readonly expiresAt: Date | string;
 };
 
-type PolarSdkProductVisibility = "draft" | "private" | "public";
+type PolarSdkProductVisibility = string;
 
 type PolarSdkListProductsRequest = {
   readonly isArchived?: boolean | null;
@@ -105,6 +116,43 @@ type PolarSdkCreateCheckoutRequest = {
   readonly metadata?: PolarCheckoutMetadata;
 };
 
+type PolarSdkCreateProductPriceRequest = {
+  readonly amountType: "fixed";
+  readonly priceCurrency?: string;
+  readonly priceAmount: number;
+};
+
+type PolarSdkCreateProductRequest = {
+  readonly metadata?: PolarCatalogProductMetadataLookup;
+  readonly name: string;
+  readonly description?: string | null;
+  readonly visibility?: PolarSdkProductVisibility;
+  readonly prices: PolarSdkCreateProductPriceRequest[];
+  readonly organizationId?: string | null;
+  readonly recurringInterval: string;
+  readonly recurringIntervalCount?: number;
+};
+
+type PolarSdkUpdateProductPriceRequest =
+  | PolarSdkCreateProductPriceRequest
+  | {
+      readonly id: string;
+    };
+
+type PolarSdkUpdateProductRequest = {
+  readonly id: string;
+  readonly productUpdate: {
+    readonly metadata?: PolarCatalogProductMetadataLookup;
+    readonly name?: string | null;
+    readonly description?: string | null;
+    readonly visibility?: PolarSdkProductVisibility | null;
+    readonly prices?: PolarSdkUpdateProductPriceRequest[] | null;
+    readonly recurringInterval?: string | null;
+    readonly recurringIntervalCount?: number | null;
+    readonly isArchived?: boolean | null;
+  };
+};
+
 type PolarSdkProductListResult = AsyncIterable<PolarSdkProductListPage>;
 
 export type PolarAdapterSdkClient = {
@@ -112,6 +160,12 @@ export type PolarAdapterSdkClient = {
     readonly list: (
       request: PolarSdkListProductsRequest,
     ) => Promise<PolarSdkProductListResult>;
+    readonly create: (
+      request: PolarSdkCreateProductRequest,
+    ) => Promise<PolarSdkProduct>;
+    readonly update: (
+      request: PolarSdkUpdateProductRequest,
+    ) => Promise<PolarSdkProduct>;
   };
   readonly checkouts: {
     readonly create: (
@@ -125,6 +179,9 @@ export type PolarAdapterRequestError = {
   readonly operation:
     | "healthcheck"
     | "listPlans"
+    | "createManagedBillingPlan"
+    | "updateManagedBillingPlan"
+    | "archiveManagedBillingPlan"
     | "createCheckoutSession"
     | "reconcileWebhookEvent";
   readonly cause: unknown;
@@ -152,6 +209,11 @@ export type PolarCatalogError =
   | PolarAdapterRequestError
   | PolarCatalogMetadataError;
 
+export type PolarManagedBillingPlanError =
+  | ParseResult.ParseError
+  | PolarAdapterRequestError
+  | PolarCatalogMetadataError;
+
 export type PolarCheckoutSessionError =
   | PolarCatalogError
   | PolarPlanNotFoundError
@@ -171,6 +233,14 @@ type PolarRequestFailure = {
 
 const decodeBillingPlan = Schema.decodeUnknown(BillingPlanSchema);
 
+const decodeBillingPlanCreateInput = Schema.decodeUnknown(
+  BillingPlanCreateInputSchema,
+);
+
+const decodeBillingPlanCreateResult = Schema.decodeUnknown(
+  BillingPlanCreateResultSchema,
+);
+
 const decodePublicBillingPlanCatalog = Schema.decodeUnknown(
   PublicBillingPlanCatalogSchema,
 );
@@ -178,6 +248,8 @@ const decodePublicBillingPlanCatalog = Schema.decodeUnknown(
 const decodeBillingEntitlements = Schema.decodeUnknown(
   Schema.Array(BillingEntitlementItemSchema),
 );
+
+const decodeBillingPlanId = Schema.decodeUnknown(Schema.NonEmptyString);
 
 const buildPolarRequestError = (
   operation: PolarAdapterRequestError["operation"],
@@ -212,6 +284,17 @@ const buildPolarRequestFailure = (cause: unknown): PolarRequestFailure => {
   };
 };
 
+const normalizePolarSdkServerUrl = (apiUrl: string) => {
+  try {
+    const parsedUrl = new URL(apiUrl);
+    const normalizedPath = parsedUrl.pathname.replace(/\/+$/, "");
+
+    return normalizedPath === "/v1" ? parsedUrl.origin : apiUrl;
+  } catch {
+    return apiUrl;
+  }
+};
+
 const createPolarSdkClient = (
   options: PolarAdapterRuntimeOptions,
   input: PolarAdapterOptions,
@@ -222,7 +305,7 @@ const createPolarSdkClient = (
 
   const sdk = new Polar({
     accessToken: options.apiKey,
-    serverURL: options.apiUrl,
+    serverURL: normalizePolarSdkServerUrl(options.apiUrl),
     ...(input.fetch !== undefined
       ? {
           httpClient: new HTTPClient({
@@ -234,7 +317,14 @@ const createPolarSdkClient = (
 
   return {
     products: {
-      list: (request) => sdk.products.list(request),
+      list: (request) =>
+        sdk.products.list(
+          request as never,
+        ) as Promise<PolarSdkProductListResult>,
+      create: (request) =>
+        sdk.products.create(request as never) as Promise<PolarSdkProduct>,
+      update: (request) =>
+        sdk.products.update(request as never) as Promise<PolarSdkProduct>,
     },
     checkouts: {
       create: (request) => sdk.checkouts.create(request),
@@ -250,6 +340,12 @@ const normalizeDescription = (description: unknown) =>
 const isBillingPlanInterval = (value: unknown): value is BillingPlanInterval =>
   typeof value === "string" &&
   billingPlanIntervals.includes(value as BillingPlanInterval);
+
+const isBillingPlanVisibility = (
+  value: unknown,
+): value is BillingPlanVisibility =>
+  typeof value === "string" &&
+  billingPlanVisibilities.includes(value as BillingPlanVisibility);
 
 const buildPolarCatalogMetadataError = (
   productId: BillingPlan["planId"],
@@ -319,7 +415,7 @@ const parsePolarEntitlements = (
 const buildBillingPlanFromProduct = (product: PolarSdkProduct) => {
   const metadata: PolarCatalogProductMetadataLookup = product.metadata ?? {};
   const planKeyValue = metadata[polarMetadataKey.planKey];
-  const entitlementsValue = metadata[polarMetadataKey.entitlements];
+  const entitlementsValue = readPolarCatalogProductEntitlements(metadata);
 
   if (typeof planKeyValue !== "string" || planKeyValue.length === 0) {
     return Effect.fail(
@@ -357,6 +453,75 @@ const buildBillingPlanFromProduct = (product: PolarSdkProduct) => {
     ),
   );
 };
+
+const matchesManagedPlanCreateInput = (
+  product: PolarSdkProduct,
+  input: BillingPlanCreateInput,
+) => {
+  const metadata: PolarCatalogProductMetadataLookup = product.metadata ?? {};
+  const productVisibility = isBillingPlanVisibility(product.visibility)
+    ? product.visibility
+    : billingPlanVisibility.public;
+
+  return (
+    !product.isArchived &&
+    metadata[polarMetadataKey.planKey] === input.planKey &&
+    productVisibility === input.visibility
+  );
+};
+
+const buildManagedProductMetadata = (input: BillingPlanCreateInput) =>
+  buildPolarCatalogProductMetadata({
+    planKey: input.planKey,
+    entitlements: JSON.stringify(input.entitlements),
+  });
+
+const buildManagedProductPriceRequest = (input: BillingPlanCreateInput) => ({
+  amountType: "fixed" as const,
+  priceCurrency: input.price.currency.toLowerCase(),
+  priceAmount: input.price.amountMinor,
+});
+
+const buildManagedProductCreateRequest = (input: BillingPlanCreateInput) => ({
+  metadata: buildManagedProductMetadata(input),
+  name: input.displayName,
+  ...(input.description !== undefined
+    ? { description: input.description }
+    : {}),
+  visibility: input.visibility,
+  prices: [buildManagedProductPriceRequest(input)],
+  ...(input.organizationId !== undefined
+    ? { organizationId: input.organizationId }
+    : {}),
+  recurringInterval: input.price.interval,
+  ...(input.recurringIntervalCount !== undefined
+    ? { recurringIntervalCount: input.recurringIntervalCount }
+    : {}),
+});
+
+const buildManagedProductUpdateRequest = (input: BillingPlanCreateInput) => ({
+  metadata: buildManagedProductMetadata(input),
+  name: input.displayName,
+  ...(input.description !== undefined
+    ? { description: input.description }
+    : {}),
+  visibility: input.visibility,
+  prices: [buildManagedProductPriceRequest(input)],
+});
+
+const buildBillingPlanCreateResult = (
+  product: PolarSdkProduct,
+  fallbackVisibility: BillingPlanVisibility,
+) =>
+  buildBillingPlanFromProduct(product).pipe(
+    Effect.flatMap((plan) =>
+      decodeBillingPlanCreateResult({
+        plan,
+        visibility: product.visibility ?? fallbackVisibility,
+        provider: platformAdapterServiceName.polar,
+      }),
+    ),
+  );
 
 export type PolarPlanNotFoundError = {
   readonly _tag: "PolarPlanNotFoundError";
@@ -694,6 +859,8 @@ export const normalizeValidatedPolarWebhookPayload = (
         payload.type,
         "data.prices[].id",
       );
+      const cancellationTimestamp =
+        payload.data.endsAt ?? payload.data.canceledAt;
 
       return yield* Schema.decodeUnknown(BillingProviderWebhookInputSchema)({
         provider: platformAdapterServiceName.polar,
@@ -713,11 +880,10 @@ export const normalizeValidatedPolarWebhookPayload = (
         priceId,
         customerId: payload.data.customerId,
         currentPeriodEnd: payload.data.currentPeriodEnd.toISOString(),
-        ...((payload.data.endsAt ?? payload.data.canceledAt) !== null &&
-        (payload.data.endsAt ?? payload.data.canceledAt) !== undefined
+        ...(cancellationTimestamp !== null &&
+        cancellationTimestamp !== undefined
           ? {
-              cancelAt: (payload.data.endsAt ??
-                payload.data.canceledAt)!.toISOString(),
+              cancelAt: cancellationTimestamp.toISOString(),
             }
           : {}),
       });
@@ -787,6 +953,16 @@ export type PolarAdapterService = {
     PublicBillingPlanCatalog,
     PolarCatalogError
   >;
+  readonly createManagedBillingPlan: (
+    input: BillingPlanCreateInput,
+  ) => Effect.Effect<BillingPlanCreateResult, PolarManagedBillingPlanError>;
+  readonly updateManagedBillingPlan: (
+    planId: BillingPlan["planId"],
+    input: BillingPlanCreateInput,
+  ) => Effect.Effect<BillingPlanCreateResult, PolarManagedBillingPlanError>;
+  readonly archiveManagedBillingPlan: (
+    planId: BillingPlan["planId"],
+  ) => Effect.Effect<BillingPlanCreateResult, PolarManagedBillingPlanError>;
   readonly createCheckoutSession: (
     input: BillingCheckoutSessionInput,
   ) => Effect.Effect<BillingCheckoutSession, PolarCheckoutSessionError>;
@@ -808,15 +984,18 @@ export const makePolarAdapter = (input: PolarAdapterOptions) =>
     Effect.map((options): PolarAdapterService => {
       const sdkClient = createPolarSdkClient(options, input);
 
-      const listCatalogPlans = (
+      const listRecurringProducts = (
         operation: PolarAdapterRequestError["operation"],
+        visibility?: readonly BillingPlanVisibility[],
       ) =>
         Effect.tryPromise({
           try: async () => {
             const pages = await sdkClient.products.list({
               isArchived: false,
               isRecurring: true,
-              visibility: ["public"],
+              ...(visibility !== undefined
+                ? { visibility: [...visibility] }
+                : {}),
               limit: 100,
             });
             const products: PolarSdkProduct[] = [];
@@ -831,7 +1010,12 @@ export const makePolarAdapter = (input: PolarAdapterOptions) =>
           },
           catch: (cause) =>
             buildPolarRequestError(operation, buildPolarRequestFailure(cause)),
-        }).pipe(
+        });
+
+      const listCatalogPlans = (
+        operation: PolarAdapterRequestError["operation"],
+      ) =>
+        listRecurringProducts(operation, [billingPlanVisibility.public]).pipe(
           Effect.flatMap((response) =>
             Effect.forEach(response, buildBillingPlanFromProduct),
           ),
@@ -910,6 +1094,106 @@ export const makePolarAdapter = (input: PolarAdapterOptions) =>
             ),
           ),
         ),
+        createManagedBillingPlan: (planInput: BillingPlanCreateInput) =>
+          decodeBillingPlanCreateInput(planInput).pipe(
+            Effect.flatMap((decodedInput) =>
+              listRecurringProducts("createManagedBillingPlan", [
+                decodedInput.visibility,
+              ]).pipe(
+                Effect.flatMap((products) => {
+                  const existingProduct = products.find((product) =>
+                    matchesManagedPlanCreateInput(product, decodedInput),
+                  );
+
+                  if (existingProduct !== undefined) {
+                    return buildBillingPlanCreateResult(
+                      existingProduct,
+                      decodedInput.visibility,
+                    );
+                  }
+
+                  return Effect.tryPromise({
+                    try: () =>
+                      sdkClient.products.create(
+                        buildManagedProductCreateRequest(decodedInput),
+                      ),
+                    catch: (cause) =>
+                      buildPolarRequestError(
+                        "createManagedBillingPlan",
+                        buildPolarRequestFailure(cause),
+                      ),
+                  }).pipe(
+                    Effect.flatMap((product) =>
+                      buildBillingPlanCreateResult(
+                        product,
+                        decodedInput.visibility,
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        updateManagedBillingPlan: (
+          planId: BillingPlan["planId"],
+          planInput: BillingPlanCreateInput,
+        ) =>
+          decodeBillingPlanId(planId).pipe(
+            Effect.flatMap((decodedPlanId) =>
+              decodeBillingPlanCreateInput(planInput).pipe(
+                Effect.flatMap((decodedInput) =>
+                  Effect.tryPromise({
+                    try: () =>
+                      sdkClient.products.update({
+                        id: decodedPlanId,
+                        productUpdate:
+                          buildManagedProductUpdateRequest(decodedInput),
+                      }),
+                    catch: (cause) =>
+                      buildPolarRequestError(
+                        "updateManagedBillingPlan",
+                        buildPolarRequestFailure(cause),
+                      ),
+                  }).pipe(
+                    Effect.flatMap((product) =>
+                      buildBillingPlanCreateResult(
+                        product,
+                        decodedInput.visibility,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        archiveManagedBillingPlan: (planId: BillingPlan["planId"]) =>
+          decodeBillingPlanId(planId).pipe(
+            Effect.flatMap((decodedPlanId) =>
+              Effect.tryPromise({
+                try: () =>
+                  sdkClient.products.update({
+                    id: decodedPlanId,
+                    productUpdate: {
+                      isArchived: true,
+                    },
+                  }),
+                catch: (cause) =>
+                  buildPolarRequestError(
+                    "archiveManagedBillingPlan",
+                    buildPolarRequestFailure(cause),
+                  ),
+              }).pipe(
+                Effect.flatMap((product) =>
+                  buildBillingPlanCreateResult(
+                    product,
+                    isBillingPlanVisibility(product.visibility)
+                      ? product.visibility
+                      : billingPlanVisibility.public,
+                  ),
+                ),
+              ),
+            ),
+          ),
         createCheckoutSession: (checkoutInput: BillingCheckoutSessionInput) =>
           Schema.decodeUnknown(BillingCheckoutSessionInputSchema)(
             checkoutInput,

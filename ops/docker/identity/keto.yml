@@ -1,0 +1,40 @@
+log:
+  level: info
+
+serve:
+  read:
+    host: 0.0.0.0
+    port: 4466
+  write:
+    host: 0.0.0.0
+    port: 4467
+  metrics:
+    host: 0.0.0.0
+    port: 4468
+  opl:
+    host: 0.0.0.0
+    port: 4469
+
+namespaces:
+  - id: 0
+    name: tenant
+  - id: 1
+    name: organization
+  - id: 2
+    name: individual
+  - id: 3
+    name: module
+  - id: 4
+    name: config-key
+  - id: 5
+    name: feature-flag
+  - id: 6
+    name: branding-profile
+  - id: 7
+    name: file
+  - id: 8
+    name: audit-event
+  - id: 9
+    name: support-case
+  - id: 10
+    name: billing-entitlement

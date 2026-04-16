@@ -65,12 +65,12 @@ services:
   glitchtip:
     image: glitchtip/glitchtip:6
     depends_on:
-      postgres:
-        condition: service_healthy
+      vendor-postgres:
+        condition: service_completed_successfully
       valkey:
         condition: service_started
     environment:
-      DATABASE_URL: ${GLITCHTIP_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/comvestec}
+      DATABASE_URL: ${GLITCHTIP_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/glitchtip}
       VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379}
       SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-change-me-in-local-env}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}

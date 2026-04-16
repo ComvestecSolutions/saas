@@ -26,7 +26,7 @@ export type RuntimeEnvironment = {
   readonly novuApiUrl: string;
   readonly meilisearchUrl: string;
   readonly meilisearchApiKey: Redacted.Redacted<string>;
-  readonly polarApiKey: Redacted.Redacted<string>;
+  readonly polarAccessToken: Redacted.Redacted<string>;
   readonly polarApiUrl: string;
   readonly polarWebhookSecret: Redacted.Redacted<string>;
   readonly openmeterUrl: string;
@@ -67,7 +67,7 @@ export const makeRuntimeEnvironment = (input: unknown) =>
         novuApiUrl: environment.novuApiUrl,
         meilisearchUrl: environment.meilisearchUrl,
         meilisearchApiKey: Redacted.make(environment.meilisearchApiKey),
-        polarApiKey: Redacted.make(environment.polarApiKey),
+        polarAccessToken: Redacted.make(environment.polarAccessToken),
         polarApiUrl: environment.polarApiUrl,
         polarWebhookSecret: Redacted.make(environment.polarWebhookSecret),
         openmeterUrl: environment.openmeterUrl,

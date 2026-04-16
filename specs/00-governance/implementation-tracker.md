@@ -7,6 +7,7 @@ Status: accepted
 1. Provide a versioned delivery view next to the specs and ADRs.
 2. Track whether each accepted area is documented, scaffolded, implemented, validated, or blocked.
 3. Link tracker rows to the code, tests, and operator surfaces that justify the current status.
+4. Act as the source of truth for current delivery maturity when accepted specs and ADRs intentionally lead the codebase.
 
 ## Status Model
 
@@ -36,6 +37,8 @@ Last updated: 2026-04-15
 
 Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
+Use this tracker, not the surrounding module or app catalog docs, to determine whether a capability is currently documented, scaffolded, implemented, validated, or blocked.
+
 ### Current Pattern Priorities To Reach 10/10
 
 1. Promote the validated anonymous-to-entitled backend slice from code-level completion to live-environment readiness with webhook replay, smoke coverage, and runbooks.
@@ -64,8 +67,8 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 - Governing spec: [008 Observability and Audit Baseline](../01-platform/security/008-observability-and-audit-baseline.md)
 - Status: scaffolded
-- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [ops/docker/observability/compose.yml](../../ops/docker/observability/compose.yml), [ops/docker/analytics/Caddyfile](../../ops/docker/analytics/Caddyfile), [specs/04-ops/runbooks/openpanel-self-hosting.md](../04-ops/runbooks/openpanel-self-hosting.md), [packages/platform/src/adapters/observability/observability.ts](../../packages/platform/src/adapters/observability/observability.ts), [packages/modules/src/domains/observability.ts](../../packages/modules/src/domains/observability.ts)
-- Cleanup: The main compose entrypoint is now broken into included subfiles by concern, and OpenPanel remains available through the repo-managed `analytics` profile without inflating the default baseline.
+- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [ops/docker/observability/compose.yml](../../ops/docker/observability/compose.yml), [ops/docker/analytics/compose.yml](../../ops/docker/analytics/compose.yml), [ops/docker/analytics/Caddyfile](../../ops/docker/analytics/Caddyfile), [specs/04-ops/runbooks/openpanel-self-hosting.md](../04-ops/runbooks/openpanel-self-hosting.md), [packages/platform/src/adapters/observability/observability.ts](../../packages/platform/src/adapters/observability/observability.ts), [packages/platform/src/adapters/observability/openpanel.ts](../../packages/platform/src/adapters/observability/openpanel.ts), [packages/modules/src/domains/observability.ts](../../packages/modules/src/domains/observability.ts)
+- Cleanup: The main compose entrypoint is now broken into included subfiles by concern, OpenPanel starts by default as part of the current dependency footprint with ownership rooted in `ops/docker/analytics/`, and the platform exposes a dedicated OpenPanel adapter boundary plus OpenPanel-native runtime fields.
 - Next gap: Add real telemetry emission and wire error events into GlitchTip.
 
 #### Security and field-level data access
@@ -80,16 +83,16 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 - Governing spec: [010 Deployment Profiles](../01-platform/architecture/010-deployment-profiles.md), [013 Technology Stack](../01-platform/architecture/013-technology-stack.md)
 - Status: scaffolded
-- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [ops/docker/observability/compose.yml](../../ops/docker/observability/compose.yml), [ops/docker/identity/compose.yml](../../ops/docker/identity/compose.yml), [ops/docker/feature-flags/compose.yml](../../ops/docker/feature-flags/compose.yml), [ops/docker/search/compose.yml](../../ops/docker/search/compose.yml), [ops/docker/messaging/compose.yml](../../ops/docker/messaging/compose.yml), [ops/docker/metering/compose.yml](../../ops/docker/metering/compose.yml), [ops/docker/analytics/compose.yml](../../ops/docker/analytics/compose.yml), [ops/docker/security/compose.yml](../../ops/docker/security/compose.yml), [ops/docker/README.md](../../ops/docker/README.md), [ops/docker/analytics/Caddyfile](../../ops/docker/analytics/Caddyfile), [ops/docker/analytics/init-db.sh](../../ops/docker/analytics/init-db.sh), [ops/docker/security/kong.yml](../../ops/docker/security/kong.yml), [ops/docker/security/vault.hcl](../../ops/docker/security/vault.hcl), [specs/04-ops/runbooks/openpanel-self-hosting.md](../04-ops/runbooks/openpanel-self-hosting.md), [specs/04-ops/runbooks/kong-vault-bootstrap.md](../04-ops/runbooks/kong-vault-bootstrap.md)
-- Cleanup: The deployment baseline now keeps one repo-managed Compose entrypoint in the root `ops/docker` folder while assigning each included compose file to its own concern folder, colocates Keycloak and observability runtime assets with their owning `identity/` and `observability/` concerns, moves OpenPanel runtime assets into `analytics/`, moves Kong and Vault runtime assets into `security/`, classifies example env values by seeded-local versus bootstrap-generated versus external-provider ownership, and ships operator runbooks for both optional profiles: `analytics` for OpenPanel and `hardened` for Kong plus Vault.
-- Next gap: Add environment-specific deployment automation and profile validation for optional external stacks as well as the default local baseline.
+- Evidence: [ops/docker/compose.yml](../../ops/docker/compose.yml), [ops/docker/observability/compose.yml](../../ops/docker/observability/compose.yml), [ops/docker/identity/compose.yml](../../ops/docker/identity/compose.yml), [ops/docker/feature-flags/compose.yml](../../ops/docker/feature-flags/compose.yml), [ops/docker/search/compose.yml](../../ops/docker/search/compose.yml), [ops/docker/messaging/compose.yml](../../ops/docker/messaging/compose.yml), [ops/docker/metering/compose.yml](../../ops/docker/metering/compose.yml), [ops/docker/analytics/compose.yml](../../ops/docker/analytics/compose.yml), [ops/docker/security/compose.yml](../../ops/docker/security/compose.yml), [ops/docker/README.md](../../ops/docker/README.md), [ops/docker/analytics/Caddyfile](../../ops/docker/analytics/Caddyfile), [ops/docker/analytics/init-db.sh](../../ops/docker/analytics/init-db.sh), [ops/docker/security/kong.yml](../../ops/docker/security/kong.yml), [ops/docker/security/vault.hcl](../../ops/docker/security/vault.hcl), [specs/03-adr/storage/ADR-017-shared-postgres-instance-isolated-service-databases.md](../03-adr/storage/ADR-017-shared-postgres-instance-isolated-service-databases.md), [specs/04-ops/runbooks/openpanel-self-hosting.md](../04-ops/runbooks/openpanel-self-hosting.md), [specs/04-ops/runbooks/kong-vault-bootstrap.md](../04-ops/runbooks/kong-vault-bootstrap.md)
+- Cleanup: The deployment baseline now keeps one repo-managed Compose entrypoint in the root `ops/docker` folder while assigning each included compose file to its own concern folder, colocates Keycloak and observability runtime assets with their owning `identity/` and `observability/` concerns, moves OpenPanel runtime assets into `analytics/`, moves Kong and Vault runtime assets into `security/`, classifies example env values by seeded-local versus bootstrap-generated versus external-provider ownership, isolates Postgres-backed infrastructure dependencies into dedicated service databases on the shared local PostgreSQL engine, and ships operator runbooks for both current concern-owned service groups: `analytics` for OpenPanel and `security` for Kong plus Vault.
+- Next gap: Add environment-specific deployment automation and validation for the full local stack plus concern-owned service groups.
 
 #### Technology catalog
 
 - Governing spec: [013 Technology Stack](../01-platform/architecture/013-technology-stack.md)
 - Status: scaffolded
-- Evidence: [specs/01-platform/architecture/013-technology-stack.md](../01-platform/architecture/013-technology-stack.md), [packages/platform/src/index.ts](../../packages/platform/src/index.ts)
-- Cleanup: platform adapter boundaries now enforce non-empty runtime-facing configuration and identifiers, preserve `ParseResult.ParseError` on decoded runtime inputs, expose real Keycloak, Valkey, Ory Keto, and Polar service boundaries, and centralize adapter service names and healthcheck schemas in `packages/platform/src/adapters/service-names.ts`.
+- Evidence: [specs/01-platform/architecture/013-technology-stack.md](../01-platform/architecture/013-technology-stack.md), [packages/platform/src/index.ts](../../packages/platform/src/index.ts), [packages/platform/src/adapters/observability/openpanel.ts](../../packages/platform/src/adapters/observability/openpanel.ts), [packages/platform/src/services/platform-environment.ts](../../packages/platform/src/services/platform-environment.ts)
+- Cleanup: platform adapter boundaries now enforce non-empty runtime-facing configuration and identifiers, preserve `ParseResult.ParseError` on decoded runtime inputs, expose real Keycloak, Valkey, Ory Keto, OpenPanel, and Polar service boundaries, and centralize adapter service names and healthcheck schemas in `packages/platform/src/adapters/service-names.ts`.
 - Next gap: Complete adapter health probes and integration tests.
 
 #### Security hygiene automation
@@ -101,23 +104,25 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 ### Architecture Decision Records
 
-| ADR                                                                                                                                               | Status   | Evidence                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------- |
-| [ADR-001 Modular Monolith](../03-adr/architecture/ADR-001-modular-monolith.md)                                                                    | accepted | Repository structure       |
-| [ADR-002 Convex PostgreSQL Split](../03-adr/storage/ADR-002-convex-postgres-split.md)                                                             | accepted | Compose + adapters         |
-| [ADR-003 Convex Storage First](../03-adr/storage/ADR-003-convex-storage-first.md)                                                                 | accepted | Compose                    |
-| [ADR-004 Keycloak First Identity](../03-adr/identity/ADR-004-keycloak-first-identity.md)                                                          | accepted | Compose + adapter          |
-| [ADR-005 Open Source Dependency Policy](../03-adr/architecture/ADR-005-open-source-dependency-policy.md)                                          | accepted | Tech stack spec            |
-| [ADR-006 Instant App State Strategy](../03-adr/runtime/ADR-006-instant-app-state-strategy.md)                                                     | accepted | Convex adapter             |
-| [ADR-007 No-Redeploy Runtime Config Sync](../03-adr/runtime/ADR-007-no-redeploy-runtime-config-sync.md)                                           | accepted | Config package             |
-| [ADR-008 Ory Keto Authorization](../03-adr/identity/ADR-008-ory-keto-authz.md)                                                                    | accepted | Compose + adapter          |
-| [ADR-009 Unleash Feature Flags](../03-adr/runtime/ADR-009-unleash-feature-flags.md)                                                               | accepted | Compose + adapter          |
-| [ADR-010 Drizzle ORM](../03-adr/storage/ADR-010-drizzle-orm.md)                                                                                   | accepted | Referenced in specs        |
-| [ADR-011 Effect Runtime Backbone](../03-adr/runtime/ADR-011-effect-runtime-backbone.md)                                                           | accepted | All platform packages      |
-| [ADR-012 Postal Email Delivery](../03-adr/communication/ADR-012-postal-email-delivery.md)                                                         | accepted | Compose + adapter          |
-| [ADR-013 Docker Hardened Images Policy](../03-adr/architecture/ADR-013-docker-hardened-images-policy.md)                                          | accepted | Docs + security CI         |
-| [ADR-014 Tenant Branding Strategy](../03-adr/domains/ADR-014-tenant-branding-strategy.md)                                                         | accepted | White-label spec set       |
-| [ADR-015 Convex Native Workflows And GlitchTip Error Tracking](../03-adr/domains/ADR-015-convex-native-workflows-and-glitchtip-error-tracking.md) | accepted | Specs + adapters + Compose |
+| ADR                                                                                                                                                | Status   | Evidence                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------- |
+| [ADR-001 Modular Monolith](../03-adr/architecture/ADR-001-modular-monolith.md)                                                                     | accepted | Repository structure       |
+| [ADR-002 Convex PostgreSQL Split](../03-adr/storage/ADR-002-convex-postgres-split.md)                                                              | accepted | Compose + adapters         |
+| [ADR-003 Convex Storage First](../03-adr/storage/ADR-003-convex-storage-first.md)                                                                  | accepted | Compose                    |
+| [ADR-004 Keycloak First Identity](../03-adr/identity/ADR-004-keycloak-first-identity.md)                                                           | accepted | Compose + adapter          |
+| [ADR-005 Open Source Dependency Policy](../03-adr/architecture/ADR-005-open-source-dependency-policy.md)                                           | accepted | Tech stack spec            |
+| [ADR-006 Instant App State Strategy](../03-adr/runtime/ADR-006-instant-app-state-strategy.md)                                                      | accepted | Convex adapter             |
+| [ADR-007 No-Redeploy Runtime Config Sync](../03-adr/runtime/ADR-007-no-redeploy-runtime-config-sync.md)                                            | accepted | Config package             |
+| [ADR-008 Ory Keto Authorization](../03-adr/identity/ADR-008-ory-keto-authz.md)                                                                     | accepted | Compose + adapter          |
+| [ADR-009 Unleash Feature Flags](../03-adr/runtime/ADR-009-unleash-feature-flags.md)                                                                | accepted | Compose + adapter          |
+| [ADR-010 Drizzle ORM](../03-adr/storage/ADR-010-drizzle-orm.md)                                                                                    | accepted | Referenced in specs        |
+| [ADR-011 Effect Runtime Backbone](../03-adr/runtime/ADR-011-effect-runtime-backbone.md)                                                            | accepted | All platform packages      |
+| [ADR-012 Postal Email Delivery](../03-adr/communication/ADR-012-postal-email-delivery.md)                                                          | accepted | Compose + adapter          |
+| [ADR-013 Docker Hardened Images Policy](../03-adr/architecture/ADR-013-docker-hardened-images-policy.md)                                           | accepted | Docs + security CI         |
+| [ADR-014 Tenant Branding Strategy](../03-adr/domains/ADR-014-tenant-branding-strategy.md)                                                          | accepted | White-label spec set       |
+| [ADR-015 Convex Native Workflows And GlitchTip Error Tracking](../03-adr/domains/ADR-015-convex-native-workflows-and-glitchtip-error-tracking.md)  | accepted | Specs + adapters + Compose |
+| [ADR-016 OpenPanel Self-Hosted Analytics](../03-adr/domains/ADR-016-openpanel-self-hosted-analytics.md)                                            | accepted | Specs + adapter + Compose  |
+| [ADR-017 Shared PostgreSQL Instance, Isolated Service Databases](../03-adr/storage/ADR-017-shared-postgres-instance-isolated-service-databases.md) | accepted | Specs + Compose            |
 
 ### Applications
 
@@ -207,8 +212,8 @@ Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
 - Governing manifest: [Manifest](../02-modules/domains/billing-and-metering/manifest.md)
 - Status: implemented
-- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/billing-state-repository.ts](../../packages/modules/src/persistence/postgres/billing-state-repository.ts), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
-- Next gap: Add authenticated operator replay/audit tooling and live infrastructure smoke coverage.
+- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/billing-state-repository.ts](../../packages/modules/src/persistence/postgres/billing-state-repository.ts), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [packages/platform/src/services/admin-billing-http.ts](../../packages/platform/src/services/admin-billing-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts), [tests/platform/admin-billing-http.test.ts](../../tests/platform/admin-billing-http.test.ts)
+- Next gap: Expand authenticated operator billing management beyond initial SDK-backed recurring plan creation, including multi-interval catalog composition, replay/audit tooling, and live infrastructure smoke coverage.
 
 #### Notification center
 

@@ -29,6 +29,9 @@ const defaultCompleteAuthentication: SubscriberJourneyService["completeAuthentic
 const defaultCreateCheckoutSession: SubscriberJourneyService["createCheckoutSession"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
+const defaultCreateManagedBillingPlan: SubscriberJourneyService["createManagedBillingPlan"] =
+  () => unexpectedSubscriberJourneyServiceEffect();
+
 const defaultProcessBillingWebhook: SubscriberJourneyService["processBillingWebhook"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
@@ -49,6 +52,8 @@ const createSubscriberJourneyServiceDouble = (
     overrides.startAuthentication ?? defaultStartAuthentication,
   completeAuthentication:
     overrides.completeAuthentication ?? defaultCompleteAuthentication,
+  createManagedBillingPlan:
+    overrides.createManagedBillingPlan ?? defaultCreateManagedBillingPlan,
   createCheckoutSession:
     overrides.createCheckoutSession ?? defaultCreateCheckoutSession,
   processBillingWebhook:

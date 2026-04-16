@@ -12,25 +12,32 @@ import {
 import {
   KeycloakAdapter,
   KeycloakLoginRedirectSchema,
+  OryKetoAdapter,
   KeycloakSessionInputSchema,
   KeycloakSessionSchema,
   type KeycloakAdapterRequestError,
   type KeycloakSessionIdentifierMissingError,
   type KeycloakSessionInactiveError,
+  type OryKetoAdapterRequestError,
   ValkeyAdapter,
   type ValkeyAdapterOperationError,
 } from "@comvestec/platform";
 import {
   TenantManagementModule,
+  TenantOwnerProvisioningSchema,
   TenantOnboardingPlanSchema,
   type TenantOnboardingPlan,
+  tenantProvisioningStatus,
+  type TenantOwnerProvisioningActorMissingError,
 } from "../domains";
 import {
   IdentitySessionLifecycleEventSchema,
   IdentitySessionPostgresRepository,
+  TenantProvisioningPostgresRepository,
   tenantOnboardingRunStatus,
   type IdentitySessionPostgresRepositoryError,
   TenantOnboardingPersistenceProjectionSchema,
+  type TenantProvisioningPostgresRepositoryError,
   TenantOnboardingPostgresRepository,
   type TenantOnboardingPostgresRepositoryError,
 } from "../persistence";
@@ -70,6 +77,7 @@ export type IdentitySessionStartResult = Schema.Schema.Type<
 export const IdentitySessionCompletionResultSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   session: KeycloakSessionSchema,
+  provisioning: TenantOwnerProvisioningSchema,
   onboardingPlan: TenantOnboardingPlanSchema,
   lifecycleEvent: IdentitySessionLifecycleEventSchema,
   onboarding: TenantOnboardingPersistenceProjectionSchema,
@@ -83,10 +91,13 @@ export type IdentitySessionModuleError =
   | ParseResult.ParseError
   | IdentitySessionPostgresRepositoryError
   | TenantOnboardingPostgresRepositoryError
+  | TenantProvisioningPostgresRepositoryError
   | KeycloakAdapterRequestError
   | KeycloakSessionInactiveError
   | KeycloakSessionIdentifierMissingError
+  | OryKetoAdapterRequestError
   | ValkeyAdapterOperationError
+  | TenantOwnerProvisioningActorMissingError
   | IdentitySessionRequestContextNotFoundError;
 
 const IdentitySessionRequestContextLookupSchema = Schema.Struct({
@@ -191,9 +202,12 @@ export class IdentitySessionModule extends Context.Tag("IdentitySessionModule")<
 export const makeIdentitySessionModule = () =>
   Effect.gen(function* () {
     const keycloak = yield* KeycloakAdapter;
+    const oryKeto = yield* OryKetoAdapter;
     const valkey = yield* ValkeyAdapter;
     const tenantManagement = yield* TenantManagementModule;
     const identitySessionRepository = yield* IdentitySessionPostgresRepository;
+    const tenantProvisioningRepository =
+      yield* TenantProvisioningPostgresRepository;
     const tenantOnboardingRepository =
       yield* TenantOnboardingPostgresRepository;
 
@@ -235,11 +249,18 @@ export const makeIdentitySessionModule = () =>
                 ...(request.host !== undefined ? { host: request.host } : {}),
                 tenant: request.tenant,
               });
+              const pendingProvisioning =
+                yield* tenantManagement.provisionTenantOwner({
+                  requestContext,
+                });
               const onboardingPlan =
                 yield* tenantManagement.buildOnboardingPlan({
                   requestContext,
                   enabledModules: request.enabledModules,
                 });
+              yield* tenantProvisioningRepository.persistProvisioningReceipt(
+                pendingProvisioning,
+              );
               const lifecycleEvent =
                 yield* identitySessionRepository.persistLifecycleEvent({
                   eventId: [
@@ -259,6 +280,7 @@ export const makeIdentitySessionModule = () =>
                     correlationId: request.correlationId,
                     realm: session.realm,
                     tenantHint: session.tenantHint ?? request.tenant.scopeId,
+                    provisioningId: pendingProvisioning.provisioningId,
                   },
                 });
               const onboarding =
@@ -275,6 +297,35 @@ export const makeIdentitySessionModule = () =>
                     sessionId: session.sessionId,
                   },
                 });
+              const tupleWriteExit = yield* Effect.exit(
+                Effect.forEach(
+                  pendingProvisioning.authorizationTuples,
+                  (tuple) =>
+                    oryKeto.writeTuple({
+                      namespace: tuple.namespace,
+                      object: tuple.object,
+                      relation: tuple.relation,
+                      subject: tuple.subject,
+                    }),
+                ),
+              );
+
+              if (tupleWriteExit._tag === "Failure") {
+                yield* tenantProvisioningRepository
+                  .persistProvisioningReceipt({
+                    ...pendingProvisioning,
+                    status: tenantProvisioningStatus.failed,
+                  })
+                  .pipe(Effect.ignore);
+
+                return yield* Effect.failCause(tupleWriteExit.cause);
+              }
+
+              const provisioning =
+                yield* tenantProvisioningRepository.persistProvisioningReceipt({
+                  ...pendingProvisioning,
+                  status: tenantProvisioningStatus.provisioned,
+                });
               yield* valkey.writeSession({
                 sessionId: session.sessionId,
                 requestContext,
@@ -283,6 +334,7 @@ export const makeIdentitySessionModule = () =>
               return yield* decodeIdentitySessionCompletionResult({
                 requestContext,
                 session,
+                provisioning,
                 onboardingPlan,
                 lifecycleEvent,
                 onboarding,

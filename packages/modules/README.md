@@ -1,24 +1,16 @@
 # Modules Package
 
-This workspace package holds reusable domain and platform module services for the SaaS foundation.
+This workspace package holds reusable backend module services and persistence helpers for the SaaS foundation.
 
-The initial implementation focuses on the cross-cutting scaffolds that make the accepted specs executable:
+Accepted module manifests live in [../../specs/02-modules/README.md](../../specs/02-modules/README.md) and describe the approved capability catalog. This package does not yet implement every accepted module in code. Use [../../specs/00-governance/implementation-tracker.md](../../specs/00-governance/implementation-tracker.md) for the current maturity of each module.
 
-1. authorization and explainability
-2. field-security projection enforcement
-3. audit declaration and event capture
-4. runtime-config resolution and change proposals
-5. tenant-branding resolution and identity handoff
-6. observability telemetry and SLO scaffolds
-7. quota enforcement, cost allocation, break-glass, onboarding, and isolation checks
+Current code is organized by concern so growth happens inside focused folders instead of a flat package root:
 
-The package follows the manifests in [specs/02-modules/README.md](specs/02-modules/README.md).
+- `access/`: authorization, field security, identity-session support, and related access helpers
+- `governance/`: audit-log, runtime-config, support-operations, and adjacent governance scaffolds
+- `domains/`: tenant management, tenant branding, observability, billing or metering flows, and adjacent domain services
+- `persistence/`: PostgreSQL schema and repository helpers for the current backend slices
 
 Cross-module coordination stays inside declared module services and capability contracts rather than direct persistence access.
 
-Source files are organized by concern so growth happens inside focused folders instead of a flat package root:
-
-1. access
-2. governance
-3. domains
-4. persistence
+Some accepted modules are still manifest-only until their owning service, persistence, audit, and operator workflows land. That gap is intentional and tracked in the implementation tracker rather than hidden in package prose.

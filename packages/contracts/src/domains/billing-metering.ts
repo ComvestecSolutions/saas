@@ -159,6 +159,19 @@ export type BillingEntitlementItem = Schema.Schema.Type<
   typeof BillingEntitlementItemSchema
 >;
 
+export const BillingEntitlementQuotaSnapshotSchema = Schema.Struct({
+  meteringMode: BillingMeteringModeSchema,
+  meterKey: Schema.optional(BillingMeterKeySchema),
+  unit: Schema.optional(Schema.NonEmptyString),
+  quotaLimit: Schema.optional(Schema.Number),
+  quotaPeriod: Schema.optional(UsageQuotaPeriodSchema),
+  enforcementMode: BillingEnforcementModeSchema,
+});
+
+export type BillingEntitlementQuotaSnapshot = Schema.Schema.Type<
+  typeof BillingEntitlementQuotaSnapshotSchema
+>;
+
 const BillingPlanPublicFields = {
   planId: Schema.NonEmptyString,
   planKey: Schema.NonEmptyString,
@@ -187,6 +200,78 @@ export const PublicBillingPlanCatalogSchema = Schema.Array(
 
 export type PublicBillingPlanCatalog = Schema.Schema.Type<
   typeof PublicBillingPlanCatalogSchema
+>;
+
+const BillingPlanVisibilityConstantSchema = Schema.Struct({
+  draft: Schema.Literal("draft"),
+  private: Schema.Literal("private"),
+  public: Schema.Literal("public"),
+});
+
+export const billingPlanVisibility = Schema.validateSync(
+  BillingPlanVisibilityConstantSchema,
+)({
+  draft: "draft",
+  private: "private",
+  public: "public",
+} satisfies Schema.Schema.Type<typeof BillingPlanVisibilityConstantSchema>);
+
+export const billingPlanVisibilities = [
+  billingPlanVisibility.draft,
+  billingPlanVisibility.private,
+  billingPlanVisibility.public,
+] as const;
+
+export const BillingPlanVisibilitySchema = Schema.Literal(
+  ...billingPlanVisibilities,
+);
+
+export type BillingPlanVisibility = Schema.Schema.Type<
+  typeof BillingPlanVisibilitySchema
+>;
+
+export const BillingPlanCreatePriceInputSchema = Schema.Struct({
+  interval: BillingPlanIntervalSchema,
+  currency: Schema.NonEmptyString,
+  amountMinor: Schema.Number,
+});
+
+export type BillingPlanCreatePriceInput = Schema.Schema.Type<
+  typeof BillingPlanCreatePriceInputSchema
+>;
+
+export const BillingPlanCreateInputSchema = Schema.Struct({
+  planKey: Schema.NonEmptyString,
+  displayName: Schema.NonEmptyString,
+  description: Schema.optional(Schema.NonEmptyString),
+  visibility: BillingPlanVisibilitySchema,
+  recurringIntervalCount: Schema.optional(Schema.Number),
+  organizationId: Schema.optional(Schema.NonEmptyString),
+  price: BillingPlanCreatePriceInputSchema,
+  entitlements: Schema.Array(BillingEntitlementItemSchema),
+});
+
+export type BillingPlanCreateInput = Schema.Schema.Type<
+  typeof BillingPlanCreateInputSchema
+>;
+
+export const BillingPlanCreateRequestSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  plan: BillingPlanCreateInputSchema,
+});
+
+export type BillingPlanCreateRequest = Schema.Schema.Type<
+  typeof BillingPlanCreateRequestSchema
+>;
+
+export const BillingPlanCreateResultSchema = Schema.Struct({
+  plan: BillingPlanSchema,
+  visibility: BillingPlanVisibilitySchema,
+  provider: Schema.NonEmptyString,
+});
+
+export type BillingPlanCreateResult = Schema.Schema.Type<
+  typeof BillingPlanCreateResultSchema
 >;
 
 export const BillingCheckoutSessionInputSchema = Schema.Struct({

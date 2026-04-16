@@ -27,7 +27,9 @@ import {
   makeIdentitySessionPostgresRepository,
   makeTenantManagementModule,
   makeTenantOnboardingPostgresRepository,
+  makeTenantProvisioningPostgresRepository,
   identitySessionAuditTable,
+  tenantProvisioningReceiptsTable,
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,
   tenantOnboardingRunStatus,
@@ -36,17 +38,22 @@ import {
   IdentitySessionPostgresRepository,
   TenantManagementModule,
   TenantOnboardingPostgresRepository,
+  TenantProvisioningPostgresRepository,
+  tenantProvisioningStatus,
 } from "@comvestec/modules";
 import {
   KeycloakAdapter,
   makeKeycloakAdapter,
+  makeOryKetoAdapter,
   makeValkeyAdapter,
+  OryKetoAdapter,
   platformAdapterServiceName,
   ValkeyAdapter,
 } from "@comvestec/platform";
 import { organizationRequestContext, supportRequestContext } from "./_fixtures";
 import {
   createKeycloakTestOptions,
+  createOryKetoTestOptions,
   createValkeyTestClient,
 } from "../platform-adapter-doubles";
 
@@ -62,6 +69,10 @@ const createIdentitySessionTestDatabase = () => {
   const onboardingRuns = new Map<
     string,
     typeof tenantOnboardingRunsTable.$inferInsert
+  >();
+  const provisioningReceipts = new Map<
+    string,
+    typeof tenantProvisioningReceiptsTable.$inferInsert
   >();
   const onboardingSteps = new Map<
     string,
@@ -81,6 +92,13 @@ const createIdentitySessionTestDatabase = () => {
       if (table === tenantOnboardingRunsTable) {
         const run = row as typeof tenantOnboardingRunsTable.$inferInsert;
         onboardingRuns.set(run.runId, run);
+        continue;
+      }
+
+      if (table === tenantProvisioningReceiptsTable) {
+        const receipt =
+          row as typeof tenantProvisioningReceiptsTable.$inferInsert;
+        provisioningReceipts.set(receipt.provisioningId, receipt);
         continue;
       }
 
@@ -112,6 +130,7 @@ const createIdentitySessionTestDatabase = () => {
     database,
     identitySessionEvents,
     onboardingRuns,
+    provisioningReceipts,
     onboardingSteps,
   };
 };
@@ -391,6 +410,9 @@ describe("modules access", () => {
     const tenantManagement = await Effect.runPromise(
       makeTenantManagementModule(),
     );
+    const oryKeto = await Effect.runPromise(
+      makeOryKetoAdapter(createOryKetoTestOptions()),
+    );
     const valkey = await Effect.runPromise(
       makeValkeyAdapter({
         url: "redis://localhost:6379",
@@ -403,14 +425,22 @@ describe("modules access", () => {
     const onboardingRepository = await Effect.runPromise(
       makeTenantOnboardingPostgresRepository(database.database),
     );
+    const provisioningRepository = await Effect.runPromise(
+      makeTenantProvisioningPostgresRepository(database.database),
+    );
     const identitySession = await Effect.runPromise(
       makeIdentitySessionModule().pipe(
         Effect.provideService(KeycloakAdapter, keycloak),
+        Effect.provideService(OryKetoAdapter, oryKeto),
         Effect.provideService(ValkeyAdapter, valkey),
         Effect.provideService(TenantManagementModule, tenantManagement),
         Effect.provideService(
           IdentitySessionPostgresRepository,
           identityRepository,
+        ),
+        Effect.provideService(
+          TenantProvisioningPostgresRepository,
+          provisioningRepository,
         ),
         Effect.provideService(
           TenantOnboardingPostgresRepository,
@@ -469,6 +499,9 @@ describe("modules access", () => {
     );
     expect(completion.requestContext.actorId).toBe("usr_owner_1");
     expect(completion.requestContext.sessionId).toBe("sess_auth_1");
+    expect(completion.provisioning.status).toBe(
+      tenantProvisioningStatus.provisioned,
+    );
     expect(completion.lifecycleEvent.eventType).toBe(
       identitySessionLifecycleEventType.authCallbackCompleted,
     );
@@ -500,6 +533,25 @@ describe("modules access", () => {
       status: tenantOnboardingRunStatus.inProgress,
       correlationId: "corr_auth_start",
     });
+    expect(
+      database.provisioningReceipts.get(
+        ["tenant-provisioning", platformScope.organization, "org_1"].join(":"),
+      ),
+    ).toMatchObject({
+      ownerActorId: "usr_owner_1",
+      status: tenantProvisioningStatus.provisioned,
+      correlationId: "corr_auth_start",
+    });
+    await expect(
+      Effect.runPromise(
+        oryKeto.check({
+          namespace: authorizationNamespace.tenant,
+          object: "org_1",
+          relation: authorizationRelation.viewer,
+          subject: "usr_owner_1",
+        }),
+      ),
+    ).resolves.toMatchObject({ allowed: true });
     await expect(
       Effect.runPromise(
         identitySession.resolveRequestContext({ sessionId: "sess_auth_1" }),

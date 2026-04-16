@@ -19,6 +19,8 @@ The platform should remain Kubernetes-ready without forcing Kubernetes complexit
 5. Keep local deployment profiles operationally complete: identity, state, cache, authorization, feature flags, search, notifications, email, metering, logs, metrics, traces, and dashboard surfaces must boot together.
 6. Use Docker Hardened Images for first-party application containers when the platform begins shipping app Dockerfiles; do not replace vendor-owned infrastructure images such as PostgreSQL, Keycloak, Grafana, or Meilisearch with generic hardened base images.
 7. Custom-domain hostname mapping, certificate issuance, and TLS termination are deployment-edge responsibilities. App routes consume resolved host context and effective branding, but they do not own domain verification or certificate management.
+8. Concern-owned included Compose files may group related services, but current platform dependencies should not rely on profile gating when the runtime environment requires them.
+9. A shared local PostgreSQL engine may host multiple services, but each platform-owned or third-party service must use a dedicated logical database. Do not point Keycloak, Ory Keto, Unleash, Convex, OpenMeter, GlitchTip, or similar service-owned state at the platform system-of-record database.
 
 ## Default Compose Services
 
@@ -28,9 +30,9 @@ Convex-native workflow jobs use the same Convex deployment and do not require a 
 
 The checked-in Compose entrypoint remains `ops/docker/compose.yml`; it includes concern-specific files from `ops/docker/observability/compose.yml`, `ops/docker/identity/compose.yml`, `ops/docker/feature-flags/compose.yml`, `ops/docker/search/compose.yml`, `ops/docker/messaging/compose.yml`, `ops/docker/metering/compose.yml`, `ops/docker/analytics/compose.yml`, and `ops/docker/security/compose.yml` so operators keep one consistent command surface.
 
-## Optional Compose Profiles
+PostgreSQL-backed services in the default profile may share the same local PostgreSQL server process, but they do not share one database. The platform system-of-record database remains isolated from service-owned databases such as Convex, Keycloak, Ory Keto, Unleash, OpenMeter, and GlitchTip.
 
-| Profile       | Services                                                               | Notes                                                                  |
-| ------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **analytics** | OpenPanel proxy, API, dashboard, worker, PostgreSQL, Redis, ClickHouse | Optional local analytics stack that stays outside the default baseline |
-| **hardened**  | Kong, Vault                                                            | Production security baseline and optional edge enforcement             |
+## Concern-Owned Service Groups
+
+1. `analytics/`: OpenPanel proxy, API, dashboard, worker, PostgreSQL, Redis, and ClickHouse.
+2. `security/`: Kong and Vault.

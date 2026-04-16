@@ -13,43 +13,45 @@ Canonical list of every runtime dependency the SaaS foundation relies on, with e
 
 ## Classification
 
-| Category                                            | Tool                    | Hosting                              | Swap path                    |
-| --------------------------------------------------- | ----------------------- | ------------------------------------ | ---------------------------- |
-| Package manager / runner                            | Bun                     | Local CLI                            | —                            |
-| Monorepo orchestration                              | Turborepo               | Local CLI                            | —                            |
-| SSR / routing framework                             | TanStack Start          | Bundled                              | —                            |
-| Runtime backbone                                    | Effect                  | Bundled                              | —                            |
-| Language                                            | TypeScript 6            | Bundled                              | —                            |
-| Interactive app state + files                       | Convex (self-hosted)    | Docker (backend image)               | Convex Cloud                 |
-| System records (audit, config, billing, compliance) | PostgreSQL 18           | Docker                               | Any managed PostgreSQL       |
-| ORM / query builder                                 | Drizzle                 | Bundled                              | —                            |
-| Authentication / identity                           | Keycloak 26             | Docker                               | Any OIDC provider            |
-| Relationship-based authorization                    | Ory Keto                | Docker                               | Ory Network                  |
-| Feature flags                                       | Unleash                 | Docker                               | Unleash Cloud / LaunchDarkly |
-| Cache / rate-limit                                  | Valkey 9                | Docker                               | Redis Cloud / ElastiCache    |
-| Observability collector                             | OpenTelemetry Collector | Docker                               | Any OTLP endpoint            |
-| Metrics                                             | Prometheus              | Docker                               | Grafana Cloud / Datadog      |
-| Logs                                                | Loki                    | Docker                               | Grafana Cloud                |
-| Traces                                              | Tempo                   | Docker (volume-backed)               | Grafana Cloud                |
-| Dashboards                                          | Grafana OSS 12          | Docker                               | Grafana Cloud                |
-| Analytics                                           | OpenPanel (self-hosted) | Docker Compose (`analytics` profile) | OpenPanel Cloud              |
-| Error tracking                                      | GlitchTip               | Docker                               | GlitchTip Cloud              |
-| Background jobs / workflows                         | Convex native workflows | Bundled in Convex                    | Future external job adapter  |
-| Notifications                                       | Novu                    | Docker                               | Novu Cloud                   |
-| Billing                                             | Polar                   | External SaaS                        | Stripe / Paddle              |
-| Metering                                            | OpenMeter               | Docker                               | OpenMeter Cloud              |
-| Search                                              | Meilisearch             | Docker                               | Meilisearch Cloud / Algolia  |
-| Email delivery                                      | Postal                  | Docker                               | Resend / Postmark / SES      |
-| API gateway (hardened profile)                      | Kong                    | Docker                               | Kong Konnect                 |
-| Secrets management (hardened profile)               | Vault                   | Docker                               | HCP Vault                    |
+| Category                                            | Tool                    | Hosting                | Swap path                    |
+| --------------------------------------------------- | ----------------------- | ---------------------- | ---------------------------- |
+| Package manager / runner                            | Bun                     | Local CLI              | —                            |
+| Monorepo orchestration                              | Turborepo               | Local CLI              | —                            |
+| SSR / routing framework                             | TanStack Start          | Bundled                | —                            |
+| Runtime backbone                                    | Effect                  | Bundled                | —                            |
+| Language                                            | TypeScript 6            | Bundled                | —                            |
+| Interactive app state + files                       | Convex (self-hosted)    | Docker (backend image) | Convex Cloud                 |
+| System records (audit, config, billing, compliance) | PostgreSQL 18           | Docker                 | Any managed PostgreSQL       |
+| ORM / query builder                                 | Drizzle                 | Bundled                | —                            |
+| Authentication / identity                           | Keycloak 26             | Docker                 | Any OIDC provider            |
+| Relationship-based authorization                    | Ory Keto                | Docker                 | Ory Network                  |
+| Feature flags                                       | Unleash                 | Docker                 | Unleash Cloud / LaunchDarkly |
+| Cache / rate-limit                                  | Valkey 9                | Docker                 | Redis Cloud / ElastiCache    |
+| Observability collector                             | OpenTelemetry Collector | Docker                 | Any OTLP endpoint            |
+| Metrics                                             | Prometheus              | Docker                 | Grafana Cloud / Datadog      |
+| Logs                                                | Loki                    | Docker                 | Grafana Cloud                |
+| Traces                                              | Tempo                   | Docker (volume-backed) | Grafana Cloud                |
+| Dashboards                                          | Grafana OSS 12          | Docker                 | Grafana Cloud                |
+| Analytics                                           | OpenPanel (self-hosted) | Docker Compose         | OpenPanel Cloud              |
+| Error tracking                                      | GlitchTip               | Docker                 | GlitchTip Cloud              |
+| Background jobs / workflows                         | Convex native workflows | Bundled in Convex      | Future external job adapter  |
+| Notifications                                       | Novu                    | Docker                 | Novu Cloud                   |
+| Billing                                             | Polar                   | External SaaS          | Stripe / Paddle              |
+| Metering                                            | OpenMeter               | Docker                 | OpenMeter Cloud              |
+| Search                                              | Meilisearch             | Docker                 | Meilisearch Cloud / Algolia  |
+| Email delivery                                      | Postal                  | Docker                 | Resend / Postmark / SES      |
+| API gateway (hardened profile)                      | Kong                    | Docker                 | Kong Konnect                 |
+| Secrets management (hardened profile)               | Vault                   | Docker                 | HCP Vault                    |
 
-## Docker Compose profiles
+## Docker Compose service groups
 
 The checked-in Compose entrypoint is `ops/docker/compose.yml`, which preserves one operator command surface while including concern-specific files from `ops/docker/observability/compose.yml`, `ops/docker/identity/compose.yml`, `ops/docker/feature-flags/compose.yml`, `ops/docker/search/compose.yml`, `ops/docker/messaging/compose.yml`, `ops/docker/metering/compose.yml`, `ops/docker/analytics/compose.yml`, and `ops/docker/security/compose.yml`.
 
-1. `default`: Convex, PostgreSQL, Keycloak, Ory Keto, Unleash, Valkey, OTel Collector, Prometheus, Loki, Tempo, Grafana, Meilisearch, Novu, OpenMeter, Postal, and GlitchTip. Convex-native workflows share the existing Convex deployment.
-2. `analytics`: OpenPanel proxy, API, dashboard, worker, PostgreSQL, Redis, and ClickHouse.
-3. `hardened`: Kong and Vault.
+PostgreSQL remains the shared database engine for the local baseline, but the repository treats service database ownership as a boundary concern. The platform system-of-record database and service-owned databases such as Convex, Keycloak, Ory Keto, Unleash, OpenMeter, and GlitchTip must remain logically isolated even when they run on the same PostgreSQL container.
+
+1. The main entrypoint starts the current full platform dependency footprint by default.
+2. `analytics/`: OpenPanel proxy, API, dashboard, worker, PostgreSQL, Redis, and ClickHouse.
+3. `security/`: Kong and Vault.
 
 ## Version Verification
 
@@ -62,8 +64,8 @@ Verified current pins in this repository:
 3. Novu API `3.14.0`
 4. Core Compose baseline pins from the 2026-04-04 verification pass remain in place unless superseded here.
 5. Default GlitchTip service tracks the official `glitchtip/glitchtip:6` major tag.
-6. OpenPanel analytics profile pins `lindesvard/openpanel-api`, `lindesvard/openpanel-dashboard`, and `lindesvard/openpanel-worker` to `2.0.0`.
-7. Hardened profile pins Kong to `3.9.1` and Vault to `1.21.4`.
+6. OpenPanel services pin `lindesvard/openpanel-api`, `lindesvard/openpanel-dashboard`, and `lindesvard/openpanel-worker` to `2.0.0`, with the public host routed through the repo-managed Caddy proxy in `ops/docker/analytics/Caddyfile`.
+7. Kong and Vault pin to `3.9.1` and `1.21.4` respectively.
 
 The platform does not claim that every pinned image is permanently CVE-free. Instead, pinned versions are kept current and continuously checked through `bun audit`, Dependabot, and Trivy image/filesystem/config scans.
 

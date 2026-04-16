@@ -36,7 +36,6 @@ export type PolarCatalogMetadataField =
 
 type PolarCatalogProductMetadataFields = {
   readonly [polarMetadataKey.planKey]: BillingPlan["planKey"];
-  readonly [polarMetadataKey.entitlements]: string;
 };
 
 export type PolarCatalogProductMetadata = PolarMetadata &
@@ -61,6 +60,15 @@ const buildPolarMetadataFieldPath = <TKey extends PolarMetadataKey>(
   key: TKey,
 ) => `metadata.${key}` as const;
 
+const polarCatalogMetadataValueMaxLength = 500;
+
+const buildPolarEntitlementsChunkKey = (index: number) =>
+  `${polarMetadataKey.entitlements}${`${index + 1}`.padStart(2, "0")}`;
+
+const polarEntitlementsChunkKeyPattern = new RegExp(
+  `^${polarMetadataKey.entitlements}\\d{2}$`,
+);
+
 export const polarWebhookMetadataField = {
   tenantScope: buildPolarMetadataFieldPath(polarMetadataKey.tenantScope),
   tenantScopeId: buildPolarMetadataFieldPath(polarMetadataKey.tenantScopeId),
@@ -73,8 +81,59 @@ export const buildPolarCatalogProductMetadata = (input: {
   readonly entitlements: string;
 }): PolarCatalogProductMetadata => ({
   [polarMetadataKey.planKey]: input.planKey,
-  [polarMetadataKey.entitlements]: input.entitlements,
+  ...(input.entitlements.length <= polarCatalogMetadataValueMaxLength
+    ? {
+        [polarMetadataKey.entitlements]: input.entitlements,
+      }
+    : Object.fromEntries(
+        Array.from(
+          {
+            length: Math.ceil(
+              input.entitlements.length / polarCatalogMetadataValueMaxLength,
+            ),
+          },
+          (_unusedValue, index) => [
+            buildPolarEntitlementsChunkKey(index),
+            input.entitlements.slice(
+              index * polarCatalogMetadataValueMaxLength,
+              (index + 1) * polarCatalogMetadataValueMaxLength,
+            ),
+          ],
+        ),
+      )),
 });
+
+export const readPolarCatalogProductEntitlements = (
+  metadata: PolarCatalogProductMetadataLookup,
+) => {
+  const directEntitlements = metadata[polarMetadataKey.entitlements];
+
+  if (typeof directEntitlements === "string" && directEntitlements.length > 0) {
+    return directEntitlements;
+  }
+
+  const chunkKeys = Object.keys(metadata)
+    .filter((key) => polarEntitlementsChunkKeyPattern.test(key))
+    .sort();
+
+  if (chunkKeys.length === 0) {
+    return undefined;
+  }
+
+  const chunkValues: string[] = [];
+
+  for (const chunkKey of chunkKeys) {
+    const chunkValue = metadata[chunkKey];
+
+    if (typeof chunkValue !== "string" || chunkValue.length === 0) {
+      return undefined;
+    }
+
+    chunkValues.push(chunkValue);
+  }
+
+  return chunkValues.join("");
+};
 
 export const buildPolarCheckoutMetadata = (input: {
   readonly tenantScope: BillingCheckoutSessionInput["tenantScope"];

@@ -2,11 +2,11 @@ services:
   unleash:
     image: unleashorg/unleash-server:7.6.1
     environment:
-      DATABASE_URL: ${UNLEASH_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/comvestec?sslmode=disable}
+      DATABASE_URL: ${UNLEASH_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/unleash?sslmode=disable}
       DATABASE_SSL: "false"
       INIT_ADMIN_API_TOKENS: ${UNLEASH_API_TOKEN:-default:development.unleash-insecure-api-token}
     depends_on:
-      postgres:
-        condition: service_healthy
+      vendor-postgres:
+        condition: service_completed_successfully
     ports:
       - ${UNLEASH_PORT:-4242}:4242

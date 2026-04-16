@@ -79,8 +79,10 @@ export const DataClassificationDeclarationListSchema = Schema.Array(
 
 export const defineModuleFields = <const TFields extends ModuleFieldMap>(
   fields: TFields,
-): TFields =>
-  Schema.validateSync(ModuleFieldMapSchema)(fields) as unknown as TFields;
+): TFields => {
+  Schema.validateSync(ModuleFieldMapSchema)(fields);
+  return fields;
+};
 
 export const defineProjectionDescriptors = <
   const TFields extends ModuleFieldMap,
@@ -90,10 +92,10 @@ export const defineProjectionDescriptors = <
 >(
   _fields: TFields,
   descriptors: TDescriptors,
-): TDescriptors =>
-  Schema.validateSync(ProjectionDescriptorListSchema)(
-    descriptors,
-  ) as unknown as TDescriptors;
+): TDescriptors => {
+  Schema.validateSync(ProjectionDescriptorListSchema)(descriptors);
+  return descriptors;
+};
 
 export const defineDataClassificationDeclarations = <
   const TFields extends ModuleFieldMap,
@@ -103,10 +105,10 @@ export const defineDataClassificationDeclarations = <
 >(
   _fields: TFields,
   declarations: TDeclarations,
-): TDeclarations =>
-  Schema.validateSync(DataClassificationDeclarationListSchema)(
-    declarations,
-  ) as unknown as TDeclarations;
+): TDeclarations => {
+  Schema.validateSync(DataClassificationDeclarationListSchema)(declarations);
+  return declarations;
+};
 
 const baseProjectionFields = defineModuleFields({
   id: "id",

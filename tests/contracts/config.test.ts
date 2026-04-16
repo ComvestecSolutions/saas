@@ -31,7 +31,7 @@ describe("contract config", () => {
       novuApiUrl: "http://localhost:3100",
       meilisearchUrl: "http://localhost:7700",
       meilisearchApiKey: "meili-master-key",
-      polarApiKey: "polar-api-key",
+      polarAccessToken: "polar-access-token",
       polarApiUrl: "http://localhost:8888",
       polarWebhookSecret: "polar-webhook-secret",
       openmeterUrl: "http://localhost:8889",

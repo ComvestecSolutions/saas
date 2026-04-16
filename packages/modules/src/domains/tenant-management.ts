@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
+  authorizationNamespace,
+  authorizationRelation,
   onboardingStepStatus,
   OnboardingStepStatusSchema,
   platformModuleId,
@@ -8,6 +10,10 @@ import {
   RequestContextSchema,
   TenantContextSchema,
 } from "@comvestec/contracts";
+import {
+  AuthorizationTupleSchema,
+  type AuthorizationTuple,
+} from "../access/authorization";
 import { hasPrivilegedBreakGlassAccess } from "../access/break-glass";
 
 export const OnboardingStepSchema = Schema.Struct({
@@ -38,6 +44,66 @@ export type BuildOnboardingPlanInput = Schema.Schema.Type<
   typeof BuildOnboardingPlanInputSchema
 >;
 
+const TenantProvisioningStatusConstantSchema = Schema.Struct({
+  pending: Schema.Literal("pending"),
+  provisioned: Schema.Literal("provisioned"),
+  failed: Schema.Literal("failed"),
+});
+
+export const tenantProvisioningStatus = Schema.validateSync(
+  TenantProvisioningStatusConstantSchema,
+)({
+  pending: "pending",
+  provisioned: "provisioned",
+  failed: "failed",
+} satisfies Schema.Schema.Type<typeof TenantProvisioningStatusConstantSchema>);
+
+export const tenantProvisioningStatuses = [
+  tenantProvisioningStatus.pending,
+  tenantProvisioningStatus.provisioned,
+  tenantProvisioningStatus.failed,
+] as const;
+
+export const TenantProvisioningStatusSchema = Schema.Literal(
+  ...tenantProvisioningStatuses,
+);
+
+export type TenantProvisioningStatus = Schema.Schema.Type<
+  typeof TenantProvisioningStatusSchema
+>;
+
+const TenantProvisioningMetadataSchema = Schema.Record({
+  key: Schema.NonEmptyString,
+  value: Schema.Any,
+});
+
+const ProvisionTenantOwnerInputSchema = Schema.Struct({
+  requestContext: RequestContextSchema,
+});
+
+export type ProvisionTenantOwnerInput = Schema.Schema.Type<
+  typeof ProvisionTenantOwnerInputSchema
+>;
+
+export const TenantOwnerProvisioningSchema = Schema.Struct({
+  provisioningId: Schema.NonEmptyString,
+  requestContext: RequestContextSchema,
+  ownerActorId: Schema.NonEmptyString,
+  status: TenantProvisioningStatusSchema,
+  authorizationTuples: Schema.Array(AuthorizationTupleSchema),
+  metadata: TenantProvisioningMetadataSchema,
+  provisionedAt: Schema.optional(Schema.NonEmptyString),
+});
+
+export type TenantOwnerProvisioning = Schema.Schema.Type<
+  typeof TenantOwnerProvisioningSchema
+>;
+
+export type TenantOwnerProvisioningActorMissingError = {
+  readonly _tag: "TenantOwnerProvisioningActorMissingError";
+  readonly correlationId: string;
+};
+
 const IsolationAssertionInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   resourceTenant: TenantContextSchema,
@@ -56,10 +122,55 @@ export type IsolationAssertionResult = Schema.Schema.Type<
   typeof IsolationAssertionResultSchema
 >;
 
+const buildProvisioningId = (
+  requestContext: ProvisionTenantOwnerInput["requestContext"],
+) =>
+  [
+    "tenant-provisioning",
+    requestContext.tenant.scope,
+    requestContext.tenant.scopeId,
+  ].join(":");
+
+const buildOwnerAuthorizationTuples = (
+  requestContext: ProvisionTenantOwnerInput["requestContext"],
+  actorId: string,
+): readonly AuthorizationTuple[] => [
+  {
+    namespace: authorizationNamespace.tenant,
+    object: requestContext.tenant.scopeId,
+    relation: authorizationRelation.owner,
+    subject: actorId,
+    tenantScope: requestContext.tenant.scope,
+    tenantScopeId: requestContext.tenant.scopeId,
+  },
+  {
+    namespace: authorizationNamespace.tenant,
+    object: requestContext.tenant.scopeId,
+    relation: authorizationRelation.member,
+    subject: actorId,
+    tenantScope: requestContext.tenant.scope,
+    tenantScopeId: requestContext.tenant.scopeId,
+  },
+  {
+    namespace: authorizationNamespace.tenant,
+    object: requestContext.tenant.scopeId,
+    relation: authorizationRelation.viewer,
+    subject: actorId,
+    tenantScope: requestContext.tenant.scope,
+    tenantScopeId: requestContext.tenant.scopeId,
+  },
+];
+
 export type TenantManagementModuleService = {
   readonly buildOnboardingPlan: (
     input: BuildOnboardingPlanInput,
   ) => Effect.Effect<TenantOnboardingPlan, ParseResult.ParseError>;
+  readonly provisionTenantOwner: (
+    input: ProvisionTenantOwnerInput,
+  ) => Effect.Effect<
+    TenantOwnerProvisioning,
+    ParseResult.ParseError | TenantOwnerProvisioningActorMissingError
+  >;
   readonly assertTenantIsolation: (
     input: IsolationAssertionInput,
   ) => Effect.Effect<IsolationAssertionResult, ParseResult.ParseError>;
@@ -123,6 +234,40 @@ export const makeTenantManagementModule = () =>
           });
         }),
       ),
+    provisionTenantOwner: (
+      input: ProvisionTenantOwnerInput,
+    ): Effect.Effect<
+      TenantOwnerProvisioning,
+      ParseResult.ParseError | TenantOwnerProvisioningActorMissingError
+    > =>
+      Effect.gen(function* () {
+        const request = yield* Schema.decodeUnknown(
+          ProvisionTenantOwnerInputSchema,
+        )(input);
+
+        if (request.requestContext.actorId === undefined) {
+          return yield* Effect.fail({
+            _tag: "TenantOwnerProvisioningActorMissingError",
+            correlationId: request.requestContext.correlationId,
+          } satisfies TenantOwnerProvisioningActorMissingError);
+        }
+
+        return yield* Schema.decodeUnknown(TenantOwnerProvisioningSchema)({
+          provisioningId: buildProvisioningId(request.requestContext),
+          requestContext: request.requestContext,
+          ownerActorId: request.requestContext.actorId,
+          status: tenantProvisioningStatus.pending,
+          authorizationTuples: buildOwnerAuthorizationTuples(
+            request.requestContext,
+            request.requestContext.actorId,
+          ),
+          metadata: {
+            correlationId: request.requestContext.correlationId,
+            source: "identity-session.auth-callback",
+          },
+          provisionedAt: new Date().toISOString(),
+        });
+      }),
     assertTenantIsolation: (input: IsolationAssertionInput) =>
       Schema.decodeUnknown(IsolationAssertionInputSchema)(input).pipe(
         Effect.flatMap((request) => {

@@ -46,7 +46,7 @@ describe("platform services", () => {
         novuApiUrl: "http://localhost:3100",
         meilisearchUrl: "http://localhost:7700",
         meilisearchApiKey: "meili-master-key",
-        polarApiKey: "polar-api-key",
+        polarAccessToken: "polar-access-token",
         polarApiUrl: "http://localhost:8888",
         polarWebhookSecret: "polar-webhook-secret",
         openmeterUrl: "http://localhost:8889",
@@ -70,9 +70,11 @@ describe("platform services", () => {
           KEYCLOAK_REALM: "comvestec",
           KEYCLOAK_CLIENT_ID: "saas-platform",
           KEYCLOAK_CLIENT_SECRET: "change-me",
-          POLAR_API_KEY: "polar-api-key",
+          POLAR_ACCESS_TOKEN: "polar-access-token",
           POLAR_API_URL: "http://127.0.0.1:8888",
           VALKEY_URL: "redis://127.0.0.1:6379",
+          KETO_READ_URL: "http://127.0.0.1:4466",
+          KETO_WRITE_URL: "http://127.0.0.1:4467",
         }),
       ),
     ).resolves.toEqual({
@@ -81,9 +83,11 @@ describe("platform services", () => {
       keycloakRealm: "comvestec",
       keycloakClientId: "saas-platform",
       keycloakClientSecret: "change-me",
-      polarApiKey: "polar-api-key",
+      polarAccessToken: "polar-access-token",
       polarApiUrl: "http://127.0.0.1:8888",
       valkeyUrl: "redis://127.0.0.1:6379",
+      ketoReadUrl: "http://127.0.0.1:4466",
+      ketoWriteUrl: "http://127.0.0.1:4467",
     });
   });
 
@@ -103,9 +107,11 @@ describe("platform services", () => {
         KEYCLOAK_REALM: "comvestec",
         KEYCLOAK_CLIENT_ID: "saas-platform",
         KEYCLOAK_CLIENT_SECRET: "change-me",
-        POLAR_API_KEY: "polar-api-key",
+        POLAR_ACCESS_TOKEN: "polar-access-token",
         POLAR_API_URL: "http://127.0.0.1:8888",
         VALKEY_URL: "redis://127.0.0.1:6379",
+        KETO_READ_URL: "http://127.0.0.1:4466",
+        KETO_WRITE_URL: "http://127.0.0.1:4467",
       }),
     );
 

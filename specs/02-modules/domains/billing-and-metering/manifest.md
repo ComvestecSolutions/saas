@@ -18,6 +18,7 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 8. Public-safe plan catalog and hosted checkout session creation.
 9. Subscription, payment, and entitlement reconciliation from verified provider events.
 10. Plan composition from modules and feature entitlements, with most entitlements remaining non-metered by default.
+11. Authenticated operator plan creation and publication workflows that preserve platform-owned plan metadata and entitlement declarations at the provider boundary.
 
 ## First Backend-Ready Slice
 
@@ -82,3 +83,4 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 9. A plan entitlement defaults to included non-metered access unless it explicitly declares usage metering or rate-limit enforcement.
 10. Most feature access should remain non-metered; metering and quota controls are opt-in per entitlement item.
 11. Rate limiting is the default constrained-feature enforcement pattern unless a stricter block mode is explicitly required.
+12. Provider-backed plan creation must persist the platform plan key and serialized entitlement declarations as provider metadata so catalog reads and webhook reconciliation continue to resolve back to the shared billing contract.
