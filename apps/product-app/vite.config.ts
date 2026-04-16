@@ -12,6 +12,13 @@ export default defineConfig({
   plugins: [
     tanstackStart({
       srcDirectory: "src",
+      router: {
+        plugin: {
+          vite: {
+            environmentName: "client",
+          },
+        },
+      },
     }),
     viteReact(),
   ],
