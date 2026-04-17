@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import {
   runtimeConfigAuditAction,
   supportOperationsAuditAction,
-  permissionScope,
   platformModuleId,
   platformScope,
   runtimeChangeProposalAction,

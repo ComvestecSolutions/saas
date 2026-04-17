@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 import {
-  DeclaredModuleConfigKeySchema,
   DeclaredRuntimeGovernedKeySchema,
   GovernanceEntitlementFeatureKeySchema,
 } from "../module-registry/key-factories";
