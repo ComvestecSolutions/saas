@@ -40,7 +40,6 @@ Use [../../00-governance/implementation-tracker.md](../../00-governance/implemen
    - `OPENPANEL_REDIS_URL=redis://op-kv:6379`
    - `OPENPANEL_CLICKHOUSE_URL=http://op-ch:8123/openpanel`
    - `OPENPANEL_COOKIE_SECRET=<generated-secret-or-local-secret>`
-   - `OPENPANEL_WORKER_REPLICAS=2`
 
    Optional local email settings stay empty unless you are testing OpenPanel email delivery:
    - `OPENPANEL_EMAIL_SENDER=`
@@ -49,7 +48,7 @@ Use [../../00-governance/implementation-tracker.md](../../00-governance/implemen
 3. Start the OpenPanel service group.
 
    ```bash
-   docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker op-proxy
+   docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker-a op-worker-b op-proxy
    ```
 
 4. The local deployment exposes OpenPanel through the repo-managed proxy on one public host:
@@ -63,14 +62,15 @@ Use [../../00-governance/implementation-tracker.md](../../00-governance/implemen
 1. Check the container state.
 
    ```bash
-   docker compose --env-file .env -f ops/docker/compose.yml ps op-db op-kv op-ch op-api op-dashboard op-worker op-proxy
+   docker compose --env-file .env -f ops/docker/compose.yml ps op-db op-kv op-ch op-api op-dashboard op-worker-a op-worker-b op-proxy
    ```
 
 2. Confirm the core services are healthy:
    - `op-proxy`
    - `op-api`
    - `op-dashboard`
-   - `op-worker`
+   - `op-worker-a`
+   - `op-worker-b`
    - `op-db`
    - `op-kv`
    - `op-ch`
@@ -85,7 +85,7 @@ Use [../../00-governance/implementation-tracker.md](../../00-governance/implemen
 
 5. Capture the client identifier created by OpenPanel and replace the bootstrap sentinel stored as `OPENPANEL_CLIENT_ID` in the foundation environment.
 
-6. If the API healthcheck fails while the proxy is up, inspect `op-api`, `op-dashboard`, and `op-worker` logs first. The profile depends on successful PostgreSQL migrations plus healthy Redis and ClickHouse services before the dashboard becomes usable.
+6. If the API healthcheck fails while the proxy is up, inspect `op-api`, `op-dashboard`, `op-worker-a`, and `op-worker-b` logs first. The profile depends on successful PostgreSQL migrations plus healthy Redis and ClickHouse services before the dashboard becomes usable.
 
 ## Foundation Wiring
 
@@ -102,13 +102,13 @@ Use [../../00-governance/implementation-tracker.md](../../00-governance/implemen
 1. Refresh the upstream checkout.
 
    ```bash
-   docker compose --env-file .env -f ops/docker/compose.yml pull op-db op-kv op-ch op-api op-dashboard op-worker op-proxy
+   docker compose --env-file .env -f ops/docker/compose.yml pull op-db op-kv op-ch op-api op-dashboard op-worker-a op-worker-b op-proxy
    ```
 
 2. Restart the OpenPanel service group.
 
    ```bash
-   docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker op-proxy
+   docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker-a op-worker-b op-proxy
    ```
 
 3. Re-run the verification steps after every update.

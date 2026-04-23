@@ -24,18 +24,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test:
-        [
+      test: [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-comvestec} -d ${POSTGRES_DB:-comvestec}",
+          "pg_isready -U ${POSTGRES_USER:-comvestec} -d
+          ${POSTGRES_DB:-comvestec}",
         ]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 10s
 
-  vendor-postgres:
-    container_name: vendor-postgres
+  postgres-bootstrap:
+    container_name: postgres-bootstrap
     image: postgres:18.3-alpine3.23
     depends_on:
       postgres:
@@ -46,7 +46,8 @@ services:
       PGUSER: ${POSTGRES_USER:-comvestec}
       PGPASSWORD: ${POSTGRES_PASSWORD:-comvestec}
       PGDATABASE: ${POSTGRES_DB:-comvestec}
-      CONVEX_POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432/convex}
+      CONVEX_POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432}
+      CONVEX_INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-comvestec-foundation}
       KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak}
       KETO_DSN: ${KETO_DSN:-postgres://comvestec:comvestec@postgres:5432/keto?sslmode=disable}
       UNLEASH_DATABASE_URL: ${UNLEASH_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/unleash?sslmode=disable}
@@ -59,8 +60,11 @@ services:
         extract_database_name() {
           printf '%s' "$$1" | sed -E 's#.*/([^/?]+)(\?.*)?$$#\1#'
         }
+        convex_database_name() {
+          printf '%s' "$$1" | tr '-' '_'
+        }
         for database in \
-          "$$(extract_database_name "$$CONVEX_POSTGRES_URL")" \
+          "$$(convex_database_name "$$CONVEX_INSTANCE_NAME")" \
           "$$KEYCLOAK_DB_NAME" \
           "$$(extract_database_name "$$KETO_DSN")" \
           "$$(extract_database_name "$$UNLEASH_DATABASE_URL")" \
@@ -107,7 +111,7 @@ services:
       KC_METRICS_ENABLED: true
       KC_PROXY_HEADERS: xforwarded
     depends_on:
-      vendor-postgres:
+      postgres-bootstrap:
         condition: service_completed_successfully
     ports:
       - ${KEYCLOAK_PORT:-8080}:8080
@@ -116,18 +120,32 @@ services:
       - ./identity/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
 
   convex-backend:
+    container_name: convex-backend
     image: ghcr.io/get-convex/convex-backend:9e188cd84ef96146ee101bc95e6365ca35871e4a
     depends_on:
-      vendor-postgres:
+      postgres-bootstrap:
         condition: service_completed_successfully
       otel-collector:
         condition: service_started
     environment:
       INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-comvestec-foundation}
-      POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432/convex}
+      POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432}
+      POSTGRES_URL_INTERNAL: ${POSTGRES_URL_INTERNAL:-postgresql://comvestec:comvestec@postgres:5432/comvestec}
       DO_NOT_REQUIRE_SSL: 1
       CONVEX_CLOUD_ORIGIN: ${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}
       CONVEX_SITE_ORIGIN: ${CONVEX_SELF_HOSTED_SITE_URL:-http://127.0.0.1:3211}
+      CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}
+      CONVEX_SELF_HOSTED_SITE_URL: ${CONVEX_SELF_HOSTED_SITE_URL:-http://127.0.0.1:3211}
+      CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY:-generate-after-running-generate_admin_key}
+      KEYCLOAK_BASE_URL_INTERNAL: ${KEYCLOAK_BASE_URL_INTERNAL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-comvestec}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-saas-platform}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-change-me}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-set-from-polar-organization-access-token}
+      POLAR_API_URL: ${POLAR_API_URL:-https://api.polar.sh}
+      VALKEY_URL_INTERNAL: ${VALKEY_URL_INTERNAL:-redis://valkey:6379}
+      KETO_READ_URL_INTERNAL: ${KETO_READ_URL_INTERNAL:-http://ory-keto:4466}
+      KETO_WRITE_URL_INTERNAL: ${KETO_WRITE_URL_INTERNAL:-http://ory-keto:4467}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
       - 3210:3210
@@ -136,6 +154,7 @@ services:
       - convex_data:/convex/data
 
   convex-dashboard:
+    container_name: convex-dashboard
     image: ghcr.io/get-convex/convex-dashboard:9e188cd84ef96146ee101bc95e6365ca35871e4a
     depends_on:
       convex-backend:

@@ -1,10 +1,11 @@
 services:
   openmeter:
+    container_name: openmeter
     image: ghcr.io/openmeterio/openmeter:v1.0.0-beta.227
     environment:
       POSTGRES_URL: ${OPENMETER_POSTGRES_URL:-postgres://comvestec:comvestec@postgres:5432/openmeter?sslmode=disable}
     depends_on:
-      vendor-postgres:
+      postgres-bootstrap:
         condition: service_completed_successfully
     ports:
       - ${OPENMETER_PORT:-8889}:8888

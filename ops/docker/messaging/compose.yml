@@ -1,5 +1,6 @@
 services:
   novu:
+    container_name: novu
     image: ghcr.io/novuhq/novu/api:3.14.0
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -13,6 +14,7 @@ services:
       - ${NOVU_PORT:-3100}:3000
 
   postal:
+    container_name: postal
     image: ghcr.io/postalserver/postal:3.3.4
     environment:
       POSTAL_FNAME: ${POSTAL_FNAME:-Admin}

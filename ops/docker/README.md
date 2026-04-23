@@ -42,10 +42,13 @@ Do not replace seeded local defaults with placeholders. Replace only the bootstr
 2. Keep the seeded local values unless you have a concrete reason to override them.
 3. Start the current full local platform footprint with `docker compose --env-file .env -f ops/docker/compose.yml up -d`.
 4. Capture bootstrap-generated values as the local services come online and write them back to `.env`.
-5. Use service-specific `up`, `restart`, `logs`, or `ps` commands only when you are intentionally troubleshooting a subset of the platform.
-6. Run `bun run backend:subscriber-journey:bootstrap` once PostgreSQL and Keycloak are healthy so the shared schema is applied and the local Keycloak smoke user is ready for backend-owned subscriber-journey validation.
+5. After the Convex admin key is present in `.env`, run `bun run convex:env:sync` whenever the deployment-managed worker values change so the active Convex deployment gets the current Postgres, Keycloak, Polar, Valkey, and Keto settings.
+6. Use service-specific `up`, `restart`, `logs`, or `ps` commands only when you are intentionally troubleshooting a subset of the platform.
+7. Run `bun run backend:subscriber-journey:bootstrap` once PostgreSQL, Convex, and Keycloak are healthy so the shared schema is applied and the local Keycloak smoke user is ready for backend-owned subscriber-journey validation.
 
-The Compose baseline now includes a `vendor-postgres` one-shot service that creates dedicated local databases for the Postgres-backed infrastructure dependencies. This keeps the current one-host developer footprint small without mixing vendor-owned tables and migrations into the platform database.
+The Compose baseline now includes a `postgres-bootstrap` one-shot service that creates dedicated local databases for the Postgres-backed infrastructure dependencies. This keeps the current one-host developer footprint small without mixing vendor-owned tables and migrations into the platform database.
+
+Convex follows the upstream self-hosted Postgres contract: `CONVEX_POSTGRES_URL` must point at the Postgres cluster without a database path, and the actual Convex database name is derived from `CONVEX_INSTANCE_NAME` by replacing `-` with `_`. With the default local values, `comvestec-foundation` maps to the dedicated `comvestec_foundation` database.
 
 There is not yet a single bootstrap script for every generated value. Today the repo relies on service-specific setup flows and runbooks for items such as the Convex admin key, GlitchTip DSN, Postal API key, Novu API key, OpenPanel client id, and the hardened-profile Vault bootstrap artifacts.
 
@@ -60,8 +63,22 @@ docker compose --env-file .env -f ops/docker/compose.yml up -d
 Re-run the Postgres database bootstrap and recreate the affected services after pulling a change that updates service database isolation:
 
 ```bash
-docker compose --env-file .env -f ops/docker/compose.yml up -d --force-recreate vendor-postgres keycloak convex-backend ory-keto unleash openmeter glitchtip
+docker compose --env-file .env -f ops/docker/compose.yml up -d --force-recreate postgres-bootstrap keycloak convex-backend ory-keto unleash openmeter glitchtip
 ```
+
+Generate the local Convex admin key after `convex-backend` is healthy and write it back to `.env` as `CONVEX_SELF_HOSTED_ADMIN_KEY`:
+
+```bash
+docker compose --env-file .env -f ops/docker/compose.yml exec convex-backend ./generate_admin_key.sh
+```
+
+Sync the deployment-managed Convex worker env values from `.env` into the active deployment after generating the admin key or changing any of the worker-facing backend settings:
+
+```bash
+bun run convex:env:sync
+```
+
+This sync step only writes the deployment-managed worker values. Convex provides its own runtime system URLs inside functions, and the CLI uses the local shell configuration for the deployment URL and admin key.
 
 Apply the shared PostgreSQL schema after the baseline is running:
 
@@ -96,7 +113,7 @@ bun run db:generate
 Start only the analytics service group:
 
 ```bash
-docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker op-proxy
+docker compose --env-file .env -f ops/docker/compose.yml up -d op-db op-kv op-ch op-api op-dashboard op-worker-a op-worker-b op-proxy
 ```
 
 Start only the security service group:

@@ -16,8 +16,21 @@ x-openpanel-runtime-environment: &openpanel_runtime_environment
   EMAIL_SENDER: ${OPENPANEL_EMAIL_SENDER:-}
   RESEND_API_KEY: ${OPENPANEL_RESEND_API_KEY:-}
 
+x-openpanel-worker-service: &openpanel_worker_service
+  image: lindesvard/openpanel-worker:${OPENPANEL_IMAGE_TAG:-2.0.0}
+  environment: *openpanel_runtime_environment
+  depends_on:
+    op-api:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:3000/healthcheck || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
 services:
   op-db:
+    container_name: op-db
     image: postgres:14-alpine
     environment:
       POSTGRES_USER: postgres
@@ -32,6 +45,7 @@ services:
       retries: 5
 
   op-kv:
+    container_name: op-kv
     image: redis:7.2.5-alpine
     command: ["redis-server", "--maxmemory-policy", "noeviction"]
     volumes:
@@ -43,6 +57,7 @@ services:
       retries: 5
 
   op-ch:
+    container_name: op-ch
     image: clickhouse/clickhouse-server:25.10.2.65
     environment:
       CLICKHOUSE_SKIP_USER_SETUP: "1"
@@ -61,6 +76,7 @@ services:
       retries: 5
 
   op-api:
+    container_name: op-api
     image: lindesvard/openpanel-api:${OPENPANEL_IMAGE_TAG:-2.0.0}
     command: >
       sh -c "
@@ -83,6 +99,7 @@ services:
       retries: 5
 
   op-dashboard:
+    container_name: op-dashboard
     image: lindesvard/openpanel-dashboard:${OPENPANEL_IMAGE_TAG:-2.0.0}
     environment: *openpanel_runtime_environment
     depends_on:
@@ -95,22 +112,16 @@ services:
       timeout: 5s
       retries: 5
 
-  op-worker:
-    image: lindesvard/openpanel-worker:${OPENPANEL_IMAGE_TAG:-2.0.0}
-    environment: *openpanel_runtime_environment
-    depends_on:
-      op-api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/healthcheck || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      mode: replicated
-      replicas: ${OPENPANEL_WORKER_REPLICAS:-2}
+  op-worker-a:
+    <<: *openpanel_worker_service
+    container_name: op-worker-a
+
+  op-worker-b:
+    <<: *openpanel_worker_service
+    container_name: op-worker-b
 
   op-proxy:
+    container_name: op-proxy
     image: caddy:2-alpine
     depends_on:
       op-dashboard:

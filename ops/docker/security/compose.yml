@@ -1,5 +1,6 @@
 services:
   kong:
+    container_name: kong
     image: kong:3.9.1
     environment:
       KONG_DATABASE: off
@@ -23,6 +24,7 @@ services:
       - ./kong.yml:/etc/kong/kong.yml:ro
 
   vault:
+    container_name: vault
     image: hashicorp/vault:1.21.4
     command: server -config=/vault/config/vault.hcl
     cap_add:

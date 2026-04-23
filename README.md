@@ -107,11 +107,15 @@ bun run format:check
 bun run typecheck
 bun run test
 docker compose --env-file .env -f ops/docker/compose.yml up -d
+# Generate the Convex admin key, write it to .env, then sync the deployment env.
+bun run convex:env:sync
 bun run db:migrate
 bun run backend:subscriber-journey:bootstrap
 ```
 
-Before starting the local stack, copy `.env.example` to `.env` if you have not already done so. The example env file now uses three provenance categories that match the current runtime pattern: seeded locally, generated during bootstrap, and external-provider supplied. Leave the seeded local defaults in place, then replace only the bootstrap-generated or external-provider sentinel values when those services are actually provisioned.
+Use Bun for all repo-owned commands, hooks, automation, CI workflow examples, and documentation snippets. The current runtime exception is Convex action files that must keep `"use node"`, because Convex only supports its default runtime or Node.js for those functions.
+
+Before starting the local stack, copy `.env.example` to `.env` if you have not already done so. The example env file now uses three provenance categories that match the current runtime pattern: seeded locally, generated during bootstrap, and external-provider supplied. Leave the seeded local defaults in place, then replace only the bootstrap-generated or external-provider sentinel values when those services are actually provisioned. For the self-hosted Convex path, generate the local Convex admin key, write it back to `.env` as `CONVEX_SELF_HOSTED_ADMIN_KEY`, and run `bun run convex:env:sync` after any deployment-managed worker env change because Convex deployment env is separate from the Compose container env. Convex actions receive the deployment URL and site URL from Convex system environment variables, not from the synced worker env file.
 
 Use [ops/docker/README.md](ops/docker/README.md) as the operator index for first-run commands, concern-owned service groups, and the runbooks that explain bootstrap-generated values such as the Convex admin key, GlitchTip DSN, OpenPanel client id, and other service credentials.
 

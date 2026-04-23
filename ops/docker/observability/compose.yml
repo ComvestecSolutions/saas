@@ -1,5 +1,6 @@
 services:
   otel-collector:
+    container_name: otel-collector
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-0.149.0}
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     ports:
@@ -9,6 +10,7 @@ services:
       - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
 
   prometheus:
+    container_name: prometheus
     image: prom/prometheus:v3.11.1-distroless
     depends_on:
       otel-collector:
@@ -25,6 +27,7 @@ services:
       - prometheus_data:/prometheus
 
   loki:
+    container_name: loki
     image: grafana/loki:3.7.1
     command: ["-config.file=/etc/loki/config.yaml"]
     ports:
@@ -34,6 +37,7 @@ services:
       - loki_data:/loki
 
   grafana:
+    container_name: grafana
     image: grafana/grafana:12.4.2
     depends_on:
       prometheus:
@@ -54,6 +58,7 @@ services:
       - grafana_data:/var/lib/grafana
 
   tempo:
+    container_name: tempo
     image: grafana/tempo:2.8.3
     command: ["-config.file=/etc/tempo/config.yaml"]
     ports:
@@ -63,9 +68,10 @@ services:
       - tempo_data:/var/tempo
 
   glitchtip:
+    container_name: glitchtip
     image: glitchtip/glitchtip:6
     depends_on:
-      vendor-postgres:
+      postgres-bootstrap:
         condition: service_completed_successfully
       valkey:
         condition: service_started
