@@ -12,6 +12,8 @@ export type RuntimeEnvironment = {
   readonly keycloakRealm: string;
   readonly keycloakClientId: string;
   readonly keycloakClientSecret: Redacted.Redacted<string>;
+  readonly keycloakConvexServiceActorUsername: string;
+  readonly keycloakConvexServiceActorPassword: Redacted.Redacted<string>;
   readonly otelEndpoint: string;
   readonly grafanaBaseUrl: string;
   readonly valkeyUrl: string;
@@ -53,6 +55,11 @@ export const makeRuntimeEnvironment = (input: unknown) =>
         keycloakRealm: environment.keycloakRealm,
         keycloakClientId: environment.keycloakClientId,
         keycloakClientSecret: Redacted.make(environment.keycloakClientSecret),
+        keycloakConvexServiceActorUsername:
+          environment.keycloakConvexServiceActorUsername,
+        keycloakConvexServiceActorPassword: Redacted.make(
+          environment.keycloakConvexServiceActorPassword,
+        ),
         otelEndpoint: environment.otelEndpoint,
         grafanaBaseUrl: environment.grafanaBaseUrl,
         valkeyUrl: environment.valkeyUrl,

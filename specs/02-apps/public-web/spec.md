@@ -13,8 +13,8 @@ Status: accepted
 
 ## First Backend-Ready Slice
 
-1. Public-web consumes anonymous, public-safe plan listing from backend-owned subscriber journey HTTP routes.
-2. Public-web may initiate auth start and hosted checkout handoff through backend-owned endpoints, but it must not become a client-owned billing system.
+1. Public-web consumes anonymous, public-safe plan listing through shared subscriber-journey backend functions invoked from route-owned server data or server functions; the backend-owned HTTP layer remains available for true external callers.
+2. Public-web may initiate auth start and hosted checkout handoff through shared server-owned backend services, and auth start must build a validated absolute product-app callback URI plus a server-generated callback-state token instead of forwarding client-owned redirect metadata.
 3. Return and cancel pages may confirm status only; entitlement activation must come from verified backend webhook processing.
 4. Public-web may hand off into product-app only after a backend session and tenant context exist.
 

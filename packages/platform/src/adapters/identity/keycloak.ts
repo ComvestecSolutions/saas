@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
+import { AbsoluteRedirectUriSchema } from "@comvestec/contracts";
 import {
   createPlatformAdapterHealthcheckSchema,
   platformAdapterServiceName,
@@ -22,7 +23,8 @@ export type KeycloakAdapterOptions = KeycloakAdapterRuntimeOptions & {
 const KeycloakLoginRedirectInputSchema = Schema.Struct({
   tenantHint: Schema.optional(Schema.NonEmptyString),
   displayNameHint: Schema.optional(Schema.NonEmptyString),
-  returnHost: Schema.optional(Schema.NonEmptyString),
+  redirectUri: AbsoluteRedirectUriSchema,
+  state: Schema.optional(Schema.NonEmptyString),
 });
 
 export type KeycloakLoginRedirectInput = Schema.Schema.Type<
@@ -39,11 +41,20 @@ export type KeycloakAccessTokenInput = Schema.Schema.Type<
 
 const KeycloakAuthorizationCodeInputSchema = Schema.Struct({
   authorizationCode: Schema.NonEmptyString,
-  redirectUri: Schema.NonEmptyString,
+  redirectUri: AbsoluteRedirectUriSchema,
 });
 
 export type KeycloakAuthorizationCodeInput = Schema.Schema.Type<
   typeof KeycloakAuthorizationCodeInputSchema
+>;
+
+const KeycloakPasswordGrantInputSchema = Schema.Struct({
+  username: Schema.NonEmptyString,
+  password: Schema.NonEmptyString,
+});
+
+export type KeycloakPasswordGrantInput = Schema.Schema.Type<
+  typeof KeycloakPasswordGrantInputSchema
 >;
 
 export const KeycloakSessionSchema = Schema.Struct({
@@ -75,7 +86,8 @@ export const KeycloakLoginRedirectSchema = Schema.Struct({
   realm: Schema.NonEmptyString,
   tenantHint: Schema.optional(Schema.NonEmptyString),
   displayNameHint: Schema.optional(Schema.NonEmptyString),
-  returnHost: Schema.optional(Schema.NonEmptyString),
+  redirectUri: AbsoluteRedirectUriSchema,
+  state: Schema.optional(Schema.NonEmptyString),
 });
 
 export type KeycloakLoginRedirect = Schema.Schema.Type<
@@ -96,6 +108,7 @@ const KeycloakWellKnownConfigurationSchema = Schema.Struct({
 
 const KeycloakTokenExchangeResponseSchema = Schema.Struct({
   access_token: Schema.NonEmptyString,
+  id_token: Schema.optional(Schema.NonEmptyString),
 });
 
 type KeycloakTokenExchangeResponse = Schema.Schema.Type<
@@ -116,10 +129,21 @@ type KeycloakTokenIntrospectionResponse = Schema.Schema.Type<
 
 export type KeycloakAdapterRequestError = {
   readonly _tag: "KeycloakAdapterRequestError";
-  readonly operation: "healthcheck" | "tokenExchange" | "tokenIntrospection";
+  readonly operation:
+    | "healthcheck"
+    | "tokenExchange"
+    | "tokenIntrospection"
+    | "passwordGrant";
   readonly cause: unknown;
   readonly status?: number;
   readonly body?: string;
+};
+
+export type KeycloakPasswordGrantIdTokenMissingError = {
+  readonly _tag: "KeycloakPasswordGrantIdTokenMissingError";
+  readonly realm: string;
+  readonly clientId: string;
+  readonly username: string;
 };
 
 export type KeycloakSessionInactiveError = {
@@ -177,6 +201,10 @@ const decodeKeycloakSessionInput = Schema.decodeUnknown(
 
 const decodeTokenExchangeResponse = Schema.decodeUnknown(
   KeycloakTokenExchangeResponseSchema,
+);
+
+const decodePasswordGrantInput = Schema.decodeUnknown(
+  KeycloakPasswordGrantInputSchema,
 );
 
 const decodeTokenIntrospectionResponse = Schema.decodeUnknown(
@@ -247,6 +275,14 @@ export type KeycloakAdapterService = {
   readonly validateSession: (
     input: KeycloakSessionInput,
   ) => Effect.Effect<KeycloakSession, KeycloakAdapterError>;
+  readonly issueIdTokenWithPasswordGrant: (
+    input: KeycloakPasswordGrantInput,
+  ) => Effect.Effect<
+    string,
+    | ParseResult.ParseError
+    | KeycloakAdapterRequestError
+    | KeycloakPasswordGrantIdTokenMissingError
+  >;
 };
 
 export class KeycloakAdapter extends Context.Tag("KeycloakAdapter")<
@@ -347,6 +383,46 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
           ),
         );
 
+      const issueIdTokenWithPasswordGrant = (
+        grantInput: KeycloakPasswordGrantInput,
+      ) =>
+        decodePasswordGrantInput(grantInput).pipe(
+          Effect.flatMap((decodedInput) =>
+            createKeycloakRequest({
+              operation: "passwordGrant",
+              url: tokenEndpoint,
+              init: {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                  client_id: options.clientId,
+                  client_secret: options.clientSecret,
+                  grant_type: "password",
+                  scope: "openid",
+                  username: decodedInput.username,
+                  password: decodedInput.password,
+                }).toString(),
+              },
+              decode: decodeTokenExchangeResponse,
+              fetchImplementation,
+            }).pipe(
+              Effect.flatMap((response: KeycloakTokenExchangeResponse) =>
+                response.id_token !== undefined
+                  ? Effect.succeed(response.id_token)
+                  : Effect.fail({
+                      _tag: "KeycloakPasswordGrantIdTokenMissingError",
+                      realm: options.realm,
+                      clientId: options.clientId,
+                      username: decodedInput.username,
+                    } satisfies KeycloakPasswordGrantIdTokenMissingError),
+              ),
+            ),
+          ),
+        );
+
       return {
         serviceName: platformAdapterServiceName.keycloak,
         issuerUrl,
@@ -377,13 +453,10 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
               authorizationUrl.searchParams.set("client_id", options.clientId);
               authorizationUrl.searchParams.set("response_type", "code");
               authorizationUrl.searchParams.set("scope", "openid");
-
-              if (decodedInput.returnHost !== undefined) {
-                authorizationUrl.searchParams.set(
-                  "redirect_uri",
-                  decodedInput.returnHost,
-                );
-              }
+              authorizationUrl.searchParams.set(
+                "redirect_uri",
+                decodedInput.redirectUri,
+              );
 
               if (decodedInput.tenantHint !== undefined) {
                 authorizationUrl.searchParams.set(
@@ -399,12 +472,17 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
                 );
               }
 
+              if (decodedInput.state !== undefined) {
+                authorizationUrl.searchParams.set("state", decodedInput.state);
+              }
+
               return decodeKeycloakLoginRedirect({
                 url: authorizationUrl.toString(),
                 realm: options.realm,
                 tenantHint: decodedInput.tenantHint,
                 displayNameHint: decodedInput.displayNameHint,
-                returnHost: decodedInput.returnHost,
+                redirectUri: decodedInput.redirectUri,
+                state: decodedInput.state,
               });
             }),
           ),
@@ -422,6 +500,7 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
               return exchangeAuthorizationCode(decodedInput);
             }),
           ),
+        issueIdTokenWithPasswordGrant,
       };
     }),
   );

@@ -4,6 +4,9 @@ export const subscriberJourneySessionHeaderName = "x-comvestec-session-id";
 
 export const subscriberJourneySessionCookieName = "comvestec_session";
 
+const subscriberJourneySessionCookieAttributes =
+  "Path=/; HttpOnly; SameSite=Lax";
+
 const parseCookieHeader = (cookieHeader: string) =>
   cookieHeader
     .split(";")
@@ -59,3 +62,11 @@ export const extractSubscriberJourneySessionId = (
 
   return decodeSessionCookie(sessionCookie);
 };
+
+export const buildSubscriberJourneySessionCookieHeader = (
+  sessionId: string,
+  options?: {
+    readonly secure?: boolean;
+  },
+) =>
+  `${subscriberJourneySessionCookieName}=${encodeURIComponent(sessionId)}; ${subscriberJourneySessionCookieAttributes}${options?.secure === true ? "; Secure" : ""}`;

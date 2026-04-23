@@ -29,6 +29,8 @@ A standalone individual who does not belong to any enterprise or organization is
 1. Keycloak is the source for authentication, sessions, MFA, and external identity federation.
 2. A single human identity can belong to multiple organizations and enterprises.
 3. Platform operators are outside customer tenant scope and require elevated controls.
+4. Convex trusts Keycloak-issued identity tokens for authenticated user and operator execution instead of app-local anonymous passthrough.
+5. Automated Convex workflow execution must authenticate as an auditable service actor rather than anonymous background work.
 
 ## Request Access Context
 
@@ -40,6 +42,7 @@ Every server-side authorization, projection, runtime-config, branding, and audit
 4. Standalone individuals may resolve with `scope: individual` and no enterprise or organization membership IDs.
 5. Anonymous public requests, platform operators, support operators, and service actors may operate without customer tenant membership IDs.
 6. Session ID, correlation ID, optional reason, impersonation context, and break-glass context travel with the request access context for explainability and audit.
+7. A request access context remains the platform contract for authorization and audit decisions even when a backend boundary such as Convex validates a trusted token directly.
 
 ## Authorization
 
@@ -54,3 +57,5 @@ Every server-side authorization, projection, runtime-config, branding, and audit
 2. Every persisted record and emitted event must carry tenant context unless intentionally global.
 3. Sensitive fields require explicit visibility rules and may require read auditing.
 4. Shared contracts must not conflate actor identity with tenant scope resolution.
+5. Any backend boundary that runs authenticated business logic for a user or operator must validate a trusted identity token and expose that identity to execution logs or audit evidence.
+6. Service-owned background executions must use explicit service-actor identity and correlation provenance, not unauthenticated internal shortcuts.

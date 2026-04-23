@@ -155,6 +155,44 @@ type PolarSdkUpdateProductRequest = {
 
 type PolarSdkProductListResult = AsyncIterable<PolarSdkProductListPage>;
 
+type PolarSdkCustomer = {
+  readonly id: string;
+  readonly externalId: string | null;
+  readonly email: string | null;
+};
+
+type PolarSdkSubscription = {
+  readonly id: string;
+  readonly productId: string;
+  readonly customerId: string;
+  readonly status: string;
+  readonly currentPeriodEnd: Date | string | null;
+  readonly endsAt: Date | string | null;
+  readonly canceledAt: Date | string | null;
+  readonly prices: readonly {
+    readonly id: string;
+    readonly isArchived?: boolean;
+  }[];
+};
+
+type PolarSdkSubscriptionListPage = {
+  readonly result: {
+    readonly items: readonly PolarSdkSubscription[];
+  };
+};
+
+type PolarSdkSubscriptionListResult =
+  AsyncIterable<PolarSdkSubscriptionListPage>;
+
+export type PolarActiveSubscriptionLookup = {
+  readonly customerId: string;
+  readonly subscriptionId: string;
+  readonly planId: string;
+  readonly priceId: string;
+  readonly status: BillingSubscriptionStatus;
+  readonly currentPeriodEnd: string | undefined;
+};
+
 export type PolarAdapterSdkClient = {
   readonly products: {
     readonly list: (
@@ -172,6 +210,16 @@ export type PolarAdapterSdkClient = {
       request: PolarSdkCreateCheckoutRequest,
     ) => Promise<PolarSdkCheckout>;
   };
+  readonly customers: {
+    readonly getExternal: (externalId: string) => Promise<PolarSdkCustomer>;
+  };
+  readonly subscriptions: {
+    readonly list: (request: {
+      readonly customerId?: string;
+      readonly active?: boolean;
+      readonly limit?: number;
+    }) => Promise<PolarSdkSubscriptionListResult>;
+  };
 };
 
 export type PolarAdapterRequestError = {
@@ -183,7 +231,8 @@ export type PolarAdapterRequestError = {
     | "updateManagedBillingPlan"
     | "archiveManagedBillingPlan"
     | "createCheckoutSession"
-    | "reconcileWebhookEvent";
+    | "reconcileWebhookEvent"
+    | "lookupActiveSubscriptionByExternalCustomerId";
   readonly cause: unknown;
   readonly status?: number;
   readonly body?: string;
@@ -328,6 +377,16 @@ const createPolarSdkClient = (
     },
     checkouts: {
       create: (request) => sdk.checkouts.create(request),
+    },
+    customers: {
+      getExternal: (externalId) =>
+        sdk.customers.getExternal({ externalId }) as Promise<PolarSdkCustomer>,
+    },
+    subscriptions: {
+      list: (request) =>
+        sdk.subscriptions.list(
+          request as never,
+        ) as Promise<PolarSdkSubscriptionListResult>,
     },
   };
 };
@@ -972,6 +1031,12 @@ export type PolarAdapterService = {
     BillingWebhookReconciliation,
     PolarWebhookReconciliationError
   >;
+  readonly lookupActiveSubscriptionByExternalCustomerId: (
+    externalCustomerId: string,
+  ) => Effect.Effect<
+    PolarActiveSubscriptionLookup | undefined,
+    PolarAdapterRequestError
+  >;
 };
 
 export class PolarAdapter extends Context.Tag("PolarAdapter")<
@@ -1352,6 +1417,93 @@ export const makePolarAdapter = (input: PolarAdapterOptions) =>
               }),
             ),
           ),
+        lookupActiveSubscriptionByExternalCustomerId: (
+          externalCustomerId: string,
+        ) =>
+          Effect.tryPromise({
+            try: async () => {
+              let customer: PolarSdkCustomer | undefined;
+
+              try {
+                customer =
+                  await sdkClient.customers.getExternal(externalCustomerId);
+              } catch {
+                return undefined;
+              }
+
+              if (customer === undefined) {
+                return undefined;
+              }
+
+              const pages = await sdkClient.subscriptions.list({
+                customerId: customer.id,
+                active: true,
+                limit: 10,
+              });
+              let subscription: PolarSdkSubscription | undefined;
+
+              for await (const page of pages) {
+                const active = page.result.items.find(
+                  (s) =>
+                    s.status === "active" ||
+                    s.status === "trialing" ||
+                    s.status === "past_due",
+                );
+
+                if (active !== undefined) {
+                  subscription = active;
+                  break;
+                }
+              }
+
+              if (subscription === undefined) {
+                return undefined;
+              }
+
+              const priceId =
+                subscription.prices.find((p) => !p.isArchived)?.id ??
+                subscription.prices[0]?.id;
+
+              if (priceId === undefined) {
+                return undefined;
+              }
+
+              const rawStatus = subscription.status;
+              const mappedStatus =
+                rawStatus === "active" || rawStatus === "trialing"
+                  ? billingSubscriptionStatus.active
+                  : rawStatus === "past_due"
+                    ? billingSubscriptionStatus.pastDue
+                    : rawStatus === "canceled" || rawStatus === "revoked"
+                      ? billingSubscriptionStatus.canceled
+                      : undefined;
+
+              if (mappedStatus === undefined) {
+                return undefined;
+              }
+
+              const currentPeriodEnd =
+                subscription.currentPeriodEnd instanceof Date
+                  ? subscription.currentPeriodEnd.toISOString()
+                  : typeof subscription.currentPeriodEnd === "string"
+                    ? subscription.currentPeriodEnd
+                    : undefined;
+
+              return {
+                customerId: customer.id,
+                subscriptionId: subscription.id,
+                planId: subscription.productId,
+                priceId,
+                status: mappedStatus,
+                currentPeriodEnd,
+              } satisfies PolarActiveSubscriptionLookup;
+            },
+            catch: (cause) =>
+              buildPolarRequestError(
+                "lookupActiveSubscriptionByExternalCustomerId",
+                buildPolarRequestFailure(cause),
+              ),
+          }),
       };
     }),
   );

@@ -16,6 +16,8 @@ module.exports = {
   moduleNameMapper: {
     "^@comvestec/contracts$": "<rootDir>/packages/contracts/src/index.ts",
     "^@comvestec/config$": "<rootDir>/packages/config/src/index.ts",
+    "^@comvestec/platform/http$":
+      "<rootDir>/packages/platform/src/http/index.ts",
     "^@comvestec/platform$": "<rootDir>/packages/platform/src/index.ts",
     "^@comvestec/modules$": "<rootDir>/packages/modules/src/index.ts",
   },

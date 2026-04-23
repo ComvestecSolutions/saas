@@ -1,57 +1,67 @@
 import { Effect, ParseResult, Schema } from "effect";
 import {
+  AbsoluteRedirectUriSchema,
   BillingCheckoutSessionInputSchema,
-  BillingProviderWebhookInputSchema,
   PlatformModuleIdSchema,
   RequestContextSchema,
   TenantContextSchema,
-  type BillingProviderWebhookInput,
 } from "@comvestec/contracts";
+import { KeycloakSessionInputSchema } from "../../adapters";
 import {
-  KeycloakSessionInputSchema,
-  platformAdapterServiceName,
-  type PolarWebhookValidationError,
-  validateAndNormalizePolarWebhookRequest,
-} from "../adapters";
+  decodeProductAppAuthCallbackStateFromEnvironment,
+  validateProductAppAuthCallbackRedirectUriFromEnvironment,
+} from "../access/first-party-auth";
+import { webhooksApiPath } from "../communication/webhooks-api-access-http";
 import {
   runSubscriberJourneyFromEnvironment,
   type SubscriberJourneyService,
 } from "./subscriber-journey";
 
-const StartAuthenticationRequestSchema = Schema.Struct({
+export const StartAuthenticationRequestSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   tenantHint: Schema.optional(Schema.NonEmptyString),
   displayNameHint: Schema.optional(Schema.NonEmptyString),
-  returnHost: Schema.optional(Schema.NonEmptyString),
+  redirectUri: AbsoluteRedirectUriSchema,
+  state: Schema.optional(Schema.NonEmptyString),
 });
 
-const CompleteAuthenticationRequestSchema = Schema.Struct({
+export const CompleteAuthenticationRequestSchema = Schema.Struct({
   session: KeycloakSessionInputSchema,
-  correlationId: Schema.NonEmptyString,
+  state: Schema.NonEmptyString,
   host: Schema.optional(Schema.NonEmptyString),
-  tenant: TenantContextSchema,
-  enabledModules: Schema.Array(PlatformModuleIdSchema),
 });
 
-const ResolveRequestContextRequestSchema = Schema.Struct({
+export const ResolveRequestContextRequestSchema = Schema.Struct({
   sessionId: Schema.NonEmptyString,
 });
 
-const BillingWebhookReplayRequestSchema = Schema.Struct({
-  deliveryId: Schema.NonEmptyString,
-});
-
-const ProductBootstrapRequestSchema = Schema.Struct({
+export const ProductBootstrapRequestSchema = Schema.Struct({
   sessionId: Schema.NonEmptyString,
-});
-
-const SubscriberJourneyWebhookEnvironmentSchema = Schema.Struct({
-  POLAR_WEBHOOK_SECRET: Schema.NonEmptyString,
 });
 
 type SubscriberJourneyServiceRunner = <A, E>(
   use: (service: SubscriberJourneyService) => Effect.Effect<A, E>,
 ) => Effect.Effect<A, E | ParseResult.ParseError>;
+
+type SubscriberJourneyHttpHandlerOptions = {
+  readonly validateStartAuthentication?: (
+    input: Schema.Schema.Type<typeof StartAuthenticationRequestSchema>,
+  ) => Effect.Effect<void, unknown>;
+  readonly hydrateCompleteAuthentication?: (
+    input: Schema.Schema.Type<typeof CompleteAuthenticationRequestSchema>,
+  ) => Effect.Effect<
+    {
+      readonly session: Schema.Schema.Type<typeof KeycloakSessionInputSchema>;
+      readonly correlationId: string;
+      readonly host?: string;
+      readonly tenant: Schema.Schema.Type<typeof TenantContextSchema>;
+      readonly enabledModules: readonly Schema.Schema.Type<
+        typeof PlatformModuleIdSchema
+      >[];
+    },
+    unknown
+  >;
+};
 
 type JsonRequestErrorTag =
   | "SubscriberJourneyJsonInvalidError"
@@ -61,15 +71,6 @@ type JsonRequestError = {
   readonly _tag: JsonRequestErrorTag;
 };
 
-type SubscriberJourneyWebhookEnvironmentError = {
-  readonly _tag: "SubscriberJourneyWebhookEnvironmentError";
-};
-
-type SubscriberJourneyWebhookParserError =
-  | ParseResult.ParseError
-  | PolarWebhookValidationError
-  | SubscriberJourneyWebhookEnvironmentError;
-
 export const subscriberJourneyApiBasePath = "/api/subscriber-journey";
 
 export const subscriberJourneyApiPath = {
@@ -78,8 +79,8 @@ export const subscriberJourneyApiPath = {
   completeAuthentication: `${subscriberJourneyApiBasePath}/auth/complete`,
   resolveRequestContext: `${subscriberJourneyApiBasePath}/identity/request-context`,
   createCheckoutSession: `${subscriberJourneyApiBasePath}/billing/checkouts`,
-  processBillingWebhook: `${subscriberJourneyApiBasePath}/billing/webhooks/polar`,
-  replayBillingWebhook: `${subscriberJourneyApiBasePath}/billing/webhooks/polar/replay`,
+  processBillingWebhook: webhooksApiPath.processPolarWebhook,
+  replayBillingWebhook: webhooksApiPath.replayPolarWebhook,
   buildProductBootstrap: `${subscriberJourneyApiBasePath}/product/bootstrap`,
 } as const;
 
@@ -134,17 +135,15 @@ const buildErrorResponse = (error: unknown) => {
         );
       case "SubscriberJourneyJsonRequestParseError":
       case "ParseError":
+      case "ProductAppAuthCallbackRedirectNotAllowedError":
+      case "ProductAppAuthCallbackStateInvalidError":
         return createJsonResponse(
           { error: "Request payload did not match the expected schema." },
           400,
         );
-      case "SubscriberJourneyWebhookEnvironmentError":
-        return createJsonResponse(
-          { error: "Webhook verification is not configured for this backend." },
-          500,
-        );
       case "PolarWebhookSignatureError":
       case "KeycloakSessionInactiveError":
+      case "ProductAppAuthCallbackStateExpiredError":
         return createJsonResponse(
           { error: "Authentication or signature validation failed." },
           401,
@@ -160,6 +159,7 @@ const buildErrorResponse = (error: unknown) => {
       case "KeycloakSessionIdentifierMissingError":
       case "PolarCatalogMetadataError":
       case "PolarWebhookPayloadMappingError":
+      case "TenantOwnerProvisioningActorMissingError":
         return createJsonResponse(
           {
             error:
@@ -168,8 +168,16 @@ const buildErrorResponse = (error: unknown) => {
           422,
         );
       case "KeycloakAdapterRequestError":
+      case "KeycloakPasswordGrantIdTokenMissingError":
+      case "AuthorizationDelegatedCheckError":
+      case "OryKetoAdapterRequestError":
       case "PolarAdapterRequestError":
+      case "ConvexAdapterRequestError":
+      case "SubscriberJourneyRepairQueryError":
+      case "TenantOnboardingPostgresRepositoryPersistenceError":
+      case "TenantProvisioningPostgresRepositoryPersistenceError":
       case "ValkeyAdapterOperationError":
+      case "WorkflowJobsPostgresRepositoryQueryError":
       case "PostgresAdapterConnectionError":
         return createJsonResponse(
           { error: "A backend dependency request failed." },
@@ -202,15 +210,6 @@ const methodNotAllowedResponse = () =>
 
 const notFoundResponse = () =>
   createJsonResponse({ error: "Subscriber journey route not found." }, 404);
-
-type SubscriberJourneyHttpHandlerOptions = {
-  readonly parsePolarWebhookRequest?: (
-    request: Request,
-  ) => Effect.Effect<
-    BillingProviderWebhookInput | null,
-    SubscriberJourneyWebhookParserError
-  >;
-};
 
 export const createSubscriberJourneyHttpHandler =
   (
@@ -246,6 +245,13 @@ export const createSubscriberJourneyHttpHandler =
             Schema.decodeUnknown(StartAuthenticationRequestSchema),
           ).pipe(
             Effect.flatMap((input) =>
+              options?.validateStartAuthentication === undefined
+                ? Effect.succeed(input)
+                : options
+                    .validateStartAuthentication(input)
+                    .pipe(Effect.map(() => input)),
+            ),
+            Effect.flatMap((input) =>
               runWithService((service) => service.startAuthentication(input)),
             ),
           ),
@@ -257,6 +263,13 @@ export const createSubscriberJourneyHttpHandler =
             request,
             Schema.decodeUnknown(CompleteAuthenticationRequestSchema),
           ).pipe(
+            Effect.flatMap((input) =>
+              options?.hydrateCompleteAuthentication === undefined
+                ? Effect.fail({
+                    _tag: "SubscriberJourneyJsonRequestParseError",
+                  } as const)
+                : options.hydrateCompleteAuthentication(input),
+            ),
             Effect.flatMap((input) =>
               runWithService((service) =>
                 service.completeAuthentication(input),
@@ -289,60 +302,6 @@ export const createSubscriberJourneyHttpHandler =
           ),
           (checkoutSession) => createJsonResponse(checkoutSession, 202),
         );
-      case subscriberJourneyApiPath.processBillingWebhook:
-        if (options?.parsePolarWebhookRequest !== undefined) {
-          return options.parsePolarWebhookRequest(request).pipe(
-            Effect.flatMap((input) => {
-              if (input === null) {
-                return Effect.succeed(
-                  createJsonResponse(
-                    { acknowledged: true, ignored: true },
-                    202,
-                  ),
-                );
-              }
-
-              return runRequest(
-                runWithService((service) =>
-                  service.processBillingWebhook(input),
-                ),
-                (result) => createJsonResponse(result, 202),
-              );
-            }),
-            Effect.catchAll((error) =>
-              Effect.succeed(buildErrorResponse(error)),
-            ),
-          );
-        }
-
-        return runRequest(
-          readRequestJson(
-            request,
-            Schema.decodeUnknown(BillingProviderWebhookInputSchema),
-          ).pipe(
-            Effect.flatMap((input) =>
-              runWithService((service) => service.processBillingWebhook(input)),
-            ),
-          ),
-          (result) => createJsonResponse(result, 202),
-        );
-      case subscriberJourneyApiPath.replayBillingWebhook:
-        return runRequest(
-          readRequestJson(
-            request,
-            Schema.decodeUnknown(BillingWebhookReplayRequestSchema),
-          ).pipe(
-            Effect.flatMap((input) =>
-              runWithService((service) =>
-                service.replayBillingWebhook({
-                  provider: platformAdapterServiceName.polar,
-                  deliveryId: input.deliveryId,
-                }),
-              ),
-            ),
-          ),
-          (result) => createJsonResponse(result, 202),
-        );
       case subscriberJourneyApiPath.buildProductBootstrap:
         return runRequest(
           readRequestJson(
@@ -367,22 +326,23 @@ export const handleSubscriberJourneyHttpRequest = (
   createSubscriberJourneyHttpHandler(
     (use) => runSubscriberJourneyFromEnvironment(environment, use),
     {
-      parsePolarWebhookRequest: (webhookRequest) =>
-        Schema.decodeUnknown(SubscriberJourneyWebhookEnvironmentSchema)(
+      validateStartAuthentication: (input) =>
+        validateProductAppAuthCallbackRedirectUriFromEnvironment(
           environment,
+          input.redirectUri,
+        ).pipe(Effect.map(() => undefined)),
+      hydrateCompleteAuthentication: (input) =>
+        decodeProductAppAuthCallbackStateFromEnvironment(
+          environment,
+          input.state,
         ).pipe(
-          Effect.mapError(
-            () =>
-              ({
-                _tag: "SubscriberJourneyWebhookEnvironmentError",
-              }) satisfies SubscriberJourneyWebhookEnvironmentError,
-          ),
-          Effect.flatMap((resolvedEnvironment) =>
-            validateAndNormalizePolarWebhookRequest({
-              request: webhookRequest,
-              secret: resolvedEnvironment.POLAR_WEBHOOK_SECRET,
-            }),
-          ),
+          Effect.map((statePayload) => ({
+            session: input.session,
+            correlationId: statePayload.correlationId,
+            ...(input.host !== undefined ? { host: input.host } : {}),
+            tenant: statePayload.tenant,
+            enabledModules: statePayload.enabledModules,
+          })),
         ),
     },
   )(request);

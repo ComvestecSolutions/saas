@@ -18,6 +18,7 @@ Canonical list of every runtime dependency the SaaS foundation relies on, with e
 | Package manager / runner                            | Bun                     | Local CLI              | —                            |
 | Monorepo orchestration                              | Turborepo               | Local CLI              | —                            |
 | SSR / routing framework                             | TanStack Start          | Bundled                | —                            |
+| Backend HTTP / API layer                            | H3 v2                   | Bundled                | Hono / raw Bun               |
 | Runtime backbone                                    | Effect                  | Bundled                | —                            |
 | Language                                            | TypeScript 6            | Bundled                | —                            |
 | Interactive app state + files                       | Convex (self-hosted)    | Docker (backend image) | Convex Cloud                 |

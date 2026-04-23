@@ -470,7 +470,10 @@ export const createKeycloakTestOptions = (
         }
 
         if (url === `${issuer}/protocol/openid-connect/token`) {
-          return createJsonResponse({ access_token: "access-token" });
+          return createJsonResponse({
+            access_token: "access-token",
+            id_token: "id-token",
+          });
         }
 
         return new Response("Not Found", {
@@ -646,6 +649,16 @@ export const createPolarTestOptions = (
             url: `http://polar.test/checkout/${encodeURIComponent(planId)}/${encodeURIComponent(priceId)}`,
             expiresAt: new Date(Date.now() + 30 * 60_000),
           };
+        },
+      },
+      customers: {
+        getExternal: async (_externalId) => {
+          throw new Error("polar-test: no customer for external id");
+        },
+      },
+      subscriptions: {
+        list: async (_request) => {
+          return (async function* () {})() as never;
         },
       },
     },

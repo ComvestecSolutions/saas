@@ -49,6 +49,13 @@ describe("platform adapters", () => {
       makeConvexAdapter({
         deploymentUrl: "http://127.0.0.1:3210",
         siteUrl: "http://127.0.0.1:3211",
+        adminKey: "convex-admin-key",
+        keycloakBaseUrl: "http://127.0.0.1:8080",
+        keycloakRealm: "comvestec",
+        keycloakClientId: "saas-platform",
+        keycloakClientSecret: "change-me",
+        keycloakConvexServiceActorUsername: "convex.billing.service",
+        keycloakConvexServiceActorPassword: "service-secret",
       }),
     );
     const observability = await Effect.runPromise(
@@ -66,12 +73,13 @@ describe("platform adapters", () => {
       Effect.runPromise(
         keycloak.buildLoginRedirect({
           tenantHint: "org_demo",
-          returnHost: "product.example.com",
+          redirectUri: "https://product.example.com/auth/callback",
         }),
       ),
     ).resolves.toMatchObject({
       realm: "comvestec",
       tenantHint: "org_demo",
+      redirectUri: "https://product.example.com/auth/callback",
     });
     await expect(
       Effect.runPromise(
@@ -82,6 +90,14 @@ describe("platform adapters", () => {
       sessionId: "sess_token",
       realm: "comvestec",
     });
+    await expect(
+      Effect.runPromise(
+        keycloak.issueIdTokenWithPasswordGrant({
+          username: "convex.billing.service",
+          password: "service-secret",
+        }),
+      ),
+    ).resolves.toBe("id-token");
     await expect(Effect.runPromise(convex.healthcheck)).resolves.toEqual({
       healthy: true,
       service: platformAdapterServiceName.convex,

@@ -10,6 +10,13 @@ Status: accepted
 4. Support compliance and break-glass workflows.
 5. Manage tenant branding, branding assets, sender identity metadata, and custom-domain verification state.
 
+## First Backend-Ready Slice
+
+1. Admin-app consumes shared governance, audit, and billing backend functions directly through route-owned server data or server functions.
+2. Operator authorization, audit capture, and runtime-config approval rules must behave the same for direct first-party calls and backend-owned HTTP adapters.
+3. Backend-owned HTTP endpoints remain available for true external callers, tooling, and smoke coverage, but they are not the canonical first-party app boundary.
+4. Billing repair and reconciliation controls must exist as backend-owned services and HTTP adapters before frontend admin screens ship.
+
 ## Rules
 
 1. The admin app is powerful but not exempt from audit.
@@ -21,3 +28,5 @@ Status: accepted
 7. Every admin-side mutation must surface effective changes and approval history.
 8. Branding screens must show effective scope, entitlement state, public-safe versus admin-only fields, and custom-domain lifecycle state before mutation.
 9. Branding mutations require `branding:manage`, auditable actor identity, and an approval path for high-risk changes such as custom-domain activation.
+10. Direct first-party admin calls must reuse the same security and audit enforcement as backend-owned HTTP callers rather than relying on app-local special cases.
+11. Backend-only operator controls for billing reconciliation must preserve the same actor identity in Convex execution, audit logs, and repair-state persistence that the initiating admin request carried.

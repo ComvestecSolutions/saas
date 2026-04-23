@@ -1,21 +1,29 @@
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import {
   actorType,
-  billingWebhookEventType,
-  billingWebhookReconciliationAction,
-  billingSubscriptionStatus,
+  platformModuleId,
   platformScope,
 } from "@comvestec/contracts";
-import { BillingWebhookProcessingResultSchema } from "@comvestec/modules";
+import {
+  createProductAppAuthCallbackStateFromEnvironment,
+  decodeProductAppAuthCallbackStateFromEnvironment,
+} from "@comvestec/platform";
 import {
   createSubscriberJourneyHttpHandler,
-  platformAdapterServiceName,
   subscriberJourneyApiPath,
   type SubscriberJourneyService,
 } from "@comvestec/platform";
 
+const authRouteEnvironment = {
+  PRODUCT_APP_BASE_URL: "http://localhost:3002",
+  KEYCLOAK_CLIENT_SECRET: "http-test-state-secret",
+};
+
 const unexpectedSubscriberJourneyServiceEffect = <A>() =>
   Effect.die(new Error("Unexpected subscriber journey test service call."));
+
+const defaultPreparePublicAuthStart: SubscriberJourneyService["preparePublicAuthStart"] =
+  () => unexpectedSubscriberJourneyServiceEffect();
 
 const defaultResolveRequestContext: SubscriberJourneyService["resolveRequestContext"] =
   () => unexpectedSubscriberJourneyServiceEffect();
@@ -29,13 +37,16 @@ const defaultCompleteAuthentication: SubscriberJourneyService["completeAuthentic
 const defaultCreateCheckoutSession: SubscriberJourneyService["createCheckoutSession"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
-const defaultCreateManagedBillingPlan: SubscriberJourneyService["createManagedBillingPlan"] =
-  () => unexpectedSubscriberJourneyServiceEffect();
-
 const defaultProcessBillingWebhook: SubscriberJourneyService["processBillingWebhook"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
 const defaultReplayBillingWebhook: SubscriberJourneyService["replayBillingWebhook"] =
+  () => unexpectedSubscriberJourneyServiceEffect();
+
+const defaultRunBillingConvergenceJob: SubscriberJourneyService["runBillingConvergenceJob"] =
+  () => unexpectedSubscriberJourneyServiceEffect();
+
+const defaultRunDueBillingConvergenceJobs: SubscriberJourneyService["runDueBillingConvergenceJobs"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
 const defaultBuildProductBootstrap: SubscriberJourneyService["buildProductBootstrap"] =
@@ -46,31 +57,62 @@ const createSubscriberJourneyServiceDouble = (
 ): SubscriberJourneyService => ({
   listPublicPlans:
     overrides.listPublicPlans ?? unexpectedSubscriberJourneyServiceEffect(),
+  preparePublicAuthStart:
+    overrides.preparePublicAuthStart ?? defaultPreparePublicAuthStart,
   resolveRequestContext:
     overrides.resolveRequestContext ?? defaultResolveRequestContext,
   startAuthentication:
     overrides.startAuthentication ?? defaultStartAuthentication,
   completeAuthentication:
     overrides.completeAuthentication ?? defaultCompleteAuthentication,
-  createManagedBillingPlan:
-    overrides.createManagedBillingPlan ?? defaultCreateManagedBillingPlan,
   createCheckoutSession:
     overrides.createCheckoutSession ?? defaultCreateCheckoutSession,
   processBillingWebhook:
     overrides.processBillingWebhook ?? defaultProcessBillingWebhook,
   replayBillingWebhook:
     overrides.replayBillingWebhook ?? defaultReplayBillingWebhook,
+  runBillingConvergenceJob:
+    overrides.runBillingConvergenceJob ?? defaultRunBillingConvergenceJob,
+  runDueBillingConvergenceJobs:
+    overrides.runDueBillingConvergenceJobs ??
+    defaultRunDueBillingConvergenceJobs,
   buildProductBootstrap:
     overrides.buildProductBootstrap ?? defaultBuildProductBootstrap,
 });
 
-const createTestHandler = (
-  service: Partial<SubscriberJourneyService>,
-  options?: Parameters<typeof createSubscriberJourneyHttpHandler>[1],
-) =>
+const createTestHandler = (service: Partial<SubscriberJourneyService>) =>
+  createSubscriberJourneyHttpHandler((use) =>
+    use(createSubscriberJourneyServiceDouble(service)),
+  );
+
+type SubscriberJourneyStartAuthenticationValidator = NonNullable<
+  NonNullable<
+    Parameters<typeof createSubscriberJourneyHttpHandler>[1]
+  >["validateStartAuthentication"]
+>;
+
+type SubscriberJourneyCompleteAuthenticationHydrator = NonNullable<
+  NonNullable<
+    Parameters<typeof createSubscriberJourneyHttpHandler>[1]
+  >["hydrateCompleteAuthentication"]
+>;
+
+const createValidatedTestHandler = (options: {
+  readonly service: Partial<SubscriberJourneyService>;
+  readonly validateStartAuthentication: SubscriberJourneyStartAuthenticationValidator;
+  readonly hydrateCompleteAuthentication?: SubscriberJourneyCompleteAuthenticationHydrator;
+}) =>
   createSubscriberJourneyHttpHandler(
-    (use) => use(createSubscriberJourneyServiceDouble(service)),
-    options,
+    (use) => use(createSubscriberJourneyServiceDouble(options.service)),
+    {
+      validateStartAuthentication: options.validateStartAuthentication,
+      ...(options.hydrateCompleteAuthentication === undefined
+        ? {}
+        : {
+            hydrateCompleteAuthentication:
+              options.hydrateCompleteAuthentication,
+          }),
+    },
   );
 
 describe("platform subscriber journey http", () => {
@@ -124,7 +166,7 @@ describe("platform subscriber journey http", () => {
             url: "http://localhost:8080/realms/comvestec/protocol/openid-connect/auth",
             realm: "comvestec",
             tenantHint: input.tenantHint,
-            returnHost: input.returnHost,
+            redirectUri: input.redirectUri,
           },
         }),
     });
@@ -148,7 +190,7 @@ describe("platform subscriber journey http", () => {
                 },
               },
               tenantHint: "org_http",
-              returnHost: "https://product.example.com/auth/callback",
+              redirectUri: "https://product.example.com/auth/callback",
             }),
           },
         ),
@@ -188,6 +230,49 @@ describe("platform subscriber journey http", () => {
     });
   });
 
+  it("returns 400 when auth start redirect targets fall outside the approved product callback boundary", async () => {
+    const handler = createValidatedTestHandler({
+      service: {},
+      validateStartAuthentication: () =>
+        Effect.fail({
+          _tag: "ProductAppAuthCallbackRedirectNotAllowedError",
+          redirectUri: "https://evil.example.com/auth/callback",
+          expectedRedirectUri: "http://localhost:3002/auth/callback",
+        } as const),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.startAuthentication}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              requestContext: {
+                actorType: actorType.anonymous,
+                correlationId: "corr_http_start_rejected",
+                tenant: {
+                  scope: platformScope.platform,
+                  scopeId: platformScope.platform,
+                },
+              },
+              tenantHint: "org_http",
+              redirectUri: "https://evil.example.com/auth/callback",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Request payload did not match the expected schema.",
+    });
+  });
+
   it("returns 400 when auth completion session payload does not match the shared keycloak input contract", async () => {
     const handler = createTestHandler({});
 
@@ -204,12 +289,7 @@ describe("platform subscriber journey http", () => {
               session: {
                 unsupported: true,
               },
-              correlationId: "corr_http_complete",
-              tenant: {
-                scope: platformScope.organization,
-                scopeId: "org_http_complete",
-              },
-              enabledModules: [],
+              state: "invalid-state",
             }),
           },
         ),
@@ -222,177 +302,230 @@ describe("platform subscriber journey http", () => {
     });
   });
 
-  it("processes verified polar webhook requests through the HTTP surface", async () => {
-    const processBillingWebhook: SubscriberJourneyService["processBillingWebhook"] =
-      (
-        input: Parameters<SubscriberJourneyService["processBillingWebhook"]>[0],
-      ) =>
-        Schema.decodeUnknown(BillingWebhookProcessingResultSchema)({
-          reconciliation: {
-            action: billingWebhookReconciliationAction.activate,
-            event: {
-              provider: input.provider,
-              deliveryId: input.deliveryId,
-              eventId: input.eventId,
-              eventType: input.eventType,
-              occurredAt: input.occurredAt,
-              subscriptionId: input.subscriptionId,
-              tenantScope: input.tenantScope,
-              tenantScopeId: input.tenantScopeId,
-              planId: input.planId,
-              priceId: input.priceId,
-              ...(input.customerId !== undefined
-                ? { customerId: input.customerId }
-                : {}),
-            },
-            subscription: {
-              subscriptionId: input.subscriptionId,
-              planId: input.planId,
-              priceId: input.priceId,
-              status: billingSubscriptionStatus.active,
-              interval: "month",
-              entitlements: [],
-            },
-            entitlementsActive: true,
-          },
-          projection: {
-            webhookReceipt: {
-              receiptId: `${input.provider}:${input.deliveryId}`,
-              provider: platformAdapterServiceName.polar,
-              deliveryId: input.deliveryId,
-              eventType: input.eventType,
-              processingState: "processed",
-              verifiedSignature: true,
-              scope: input.tenantScope,
-              scopeId: input.tenantScopeId,
-              payload: {
-                eventId: input.eventId,
-                subscriptionId: input.subscriptionId,
-                planId: input.planId,
-                priceId: input.priceId,
-                occurredAt: input.occurredAt,
-                action: billingWebhookReconciliationAction.activate,
-                entitlementsActive: true,
-                ...(input.customerId !== undefined
-                  ? { customerId: input.customerId }
-                  : {}),
-              },
-              receivedAt: input.occurredAt,
-              processedAt: input.occurredAt,
-            },
-            subscription: {
-              subscriptionId: input.subscriptionId,
-              provider: platformAdapterServiceName.polar,
-              providerSubscriptionId: input.subscriptionId,
-              scope: input.tenantScope,
-              scopeId: input.tenantScopeId,
-              planId: input.planId,
-              priceId: input.priceId,
-              status: billingSubscriptionStatus.active,
-              metadata: {
-                action: billingWebhookReconciliationAction.activate,
-                interval: "month",
-                entitlementsActive: true,
-                ...(input.customerId !== undefined
-                  ? { customerId: input.customerId }
-                  : {}),
-              },
-            },
-            paymentEvent: {
-              eventId: `${input.provider}:${input.eventId}`,
-              provider: platformAdapterServiceName.polar,
-              providerEventId: input.eventId,
-              subscriptionId: input.subscriptionId,
-              scope: input.tenantScope,
-              scopeId: input.tenantScopeId,
-              eventType: input.eventType,
-              status: "succeeded",
-              effectiveAt: input.occurredAt,
-              payload: {
-                planId: input.planId,
-                priceId: input.priceId,
-                action: billingWebhookReconciliationAction.activate,
-                ...(input.customerId !== undefined
-                  ? { customerId: input.customerId }
-                  : {}),
-              },
-            },
-            entitlements: [],
-          },
-        });
-
-    const handler = createTestHandler(
-      {
-        processBillingWebhook,
-      },
-      {
-        parsePolarWebhookRequest: () =>
-          Effect.succeed({
-            provider: platformAdapterServiceName.polar,
-            deliveryId: "wh_http_1",
-            eventId: "evt_http_1",
-            eventType: billingWebhookEventType.checkoutCompleted,
-            occurredAt: new Date().toISOString(),
-            verifiedSignature: true,
-            subscriptionId: "sub_http_1",
-            tenantScope: platformScope.organization,
-            tenantScopeId: "org_http_1",
-            planId: "plan_starter",
-            priceId: "price_starter_month",
-            customerId: "cus_http_1",
-          }),
-      },
+  it("hydrates auth completion from signed callback state instead of caller-owned tenant metadata", async () => {
+    const completeAuthenticationState = await Effect.runPromise(
+      createProductAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_http_complete",
+        redirectUri: "http://localhost:3002/auth/callback",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_http_complete",
+          enterpriseId: "ent_http_complete",
+          organizationId: "org_http_complete",
+        },
+        enabledModules: [
+          platformModuleId.tenantManagement,
+          platformModuleId.identitySession,
+          platformModuleId.billingAndMetering,
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
     );
+    let capturedInput:
+      | Parameters<SubscriberJourneyService["completeAuthentication"]>[0]
+      | undefined;
+    const handler = createValidatedTestHandler({
+      service: {
+        completeAuthentication: (input) => {
+          capturedInput = input;
+
+          return Effect.succeed({
+            requestContext: {
+              actorType: actorType.organizationAdmin,
+              actorId: "usr_http_complete",
+              sessionId: "sess_http_complete",
+              correlationId: input.correlationId,
+              tenant: input.tenant,
+            },
+            session: {
+              authenticated: true,
+              sessionId: "sess_http_complete",
+              actorId: "usr_http_complete",
+              realm: "comvestec",
+            },
+            provisioning: {
+              provisioningId: "prov_http_complete",
+              tenantScope: input.tenant.scope,
+              tenantScopeId: input.tenant.scopeId,
+              actorId: "usr_http_complete",
+              status: "provisioned",
+              authorizationTuples: [],
+              moduleAccess: input.enabledModules.map((moduleId) => ({
+                moduleId,
+                included: true,
+              })),
+            },
+            onboardingPlan: {
+              runId: "run_http_complete",
+              tenantScope: input.tenant.scope,
+              tenantScopeId: input.tenant.scopeId,
+              enabledModules: input.enabledModules,
+              currentStepId: undefined,
+              steps: [],
+            },
+            lifecycleEvent: {
+              eventId: "event_http_complete",
+              sessionId: "sess_http_complete",
+              actorId: "usr_http_complete",
+              tenantScope: input.tenant.scope,
+              tenantScopeId: input.tenant.scopeId,
+              eventType: "auth.callback.completed",
+              provider: "keycloak",
+              metadata: {
+                correlationId: input.correlationId,
+                realm: "comvestec",
+                tenantHint: input.tenant.scopeId,
+                provisioningId: "prov_http_complete",
+              },
+            },
+            onboarding: {
+              runId: "run_http_complete",
+              triggeredBy: "usr_http_complete",
+              correlationId: input.correlationId,
+              status: "in-progress",
+              currentStepId: undefined,
+              plan: {
+                runId: "run_http_complete",
+                tenantScope: input.tenant.scope,
+                tenantScopeId: input.tenant.scopeId,
+                enabledModules: input.enabledModules,
+                currentStepId: undefined,
+                steps: [],
+              },
+              metadata: {
+                provider: "keycloak",
+                realm: "comvestec",
+                sessionId: "sess_http_complete",
+              },
+            },
+          } as never);
+        },
+      },
+      validateStartAuthentication: () => Effect.void,
+      hydrateCompleteAuthentication: (input) =>
+        decodeProductAppAuthCallbackStateFromEnvironment(
+          authRouteEnvironment,
+          input.state,
+        ).pipe(
+          Effect.map((statePayload) => ({
+            session: input.session,
+            correlationId: statePayload.correlationId,
+            ...(input.host !== undefined ? { host: input.host } : {}),
+            tenant: statePayload.tenant,
+            enabledModules: statePayload.enabledModules,
+          })),
+        ),
+    });
 
     const response = await Effect.runPromise(
       handler(
         new Request(
-          `http://localhost${subscriberJourneyApiPath.processBillingWebhook}`,
+          `http://localhost${subscriberJourneyApiPath.completeAuthentication}`,
           {
             method: "POST",
-            body: JSON.stringify({ type: "order.paid" }),
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              session: {
+                accessToken: "access-token",
+              },
+              state: completeAuthenticationState,
+            }),
           },
         ),
       ),
     );
 
     expect(response.status).toBe(202);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({
-        reconciliation: expect.objectContaining({
-          action: billingWebhookReconciliationAction.activate,
-        }),
-      }),
-    );
+    if (capturedInput === undefined) {
+      throw new Error("Expected hydrated completion input.");
+    }
+
+    expect(capturedInput.correlationId).toBe("corr_http_complete");
+    expect(capturedInput.tenant).toEqual({
+      scope: platformScope.organization,
+      scopeId: "org_http_complete",
+      enterpriseId: "ent_http_complete",
+      organizationId: "org_http_complete",
+    });
+    expect(capturedInput.enabledModules).toEqual([
+      platformModuleId.tenantManagement,
+      platformModuleId.identitySession,
+      platformModuleId.billingAndMetering,
+    ]);
   });
 
-  it("returns 401 when raw polar webhook verification fails", async () => {
-    const handler = createTestHandler(
-      {},
-      {
-        parsePolarWebhookRequest: () =>
-          Effect.fail({
-            _tag: "PolarWebhookSignatureError",
-            deliveryId: "wh_http_bad",
-          }),
-      },
-    );
+  it("returns 502 when checkout-triggered Convex scheduling fails as a backend dependency", async () => {
+    const handler = createTestHandler({
+      createCheckoutSession: () =>
+        Effect.fail({
+          _tag: "ConvexAdapterRequestError",
+          operation: "scheduleBillingReconciliationWorkflowJob",
+          cause: new Error("convex down"),
+          status: 503,
+          body: "convex down",
+        } as const),
+    });
 
     const response = await Effect.runPromise(
       handler(
         new Request(
-          `http://localhost${subscriberJourneyApiPath.processBillingWebhook}`,
+          `http://localhost${subscriberJourneyApiPath.createCheckoutSession}`,
           {
             method: "POST",
-            body: JSON.stringify({ type: "order.paid" }),
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              tenantScope: platformScope.organization,
+              tenantScopeId: "org_http_checkout",
+              planId: "plan_starter",
+              priceId: "price_starter_month",
+              successUrl: "http://localhost:3002/billing/success",
+              cancelUrl: "http://localhost:3002/billing/cancel",
+            }),
           },
         ),
       ),
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({
-      error: "Authentication or signature validation failed.",
+      error: "A backend dependency request failed.",
+    });
+  });
+
+  it("returns 502 when product bootstrap authorization delegation fails as a backend dependency", async () => {
+    const handler = createTestHandler({
+      buildProductBootstrap: () =>
+        Effect.fail({
+          _tag: "AuthorizationDelegatedCheckError",
+          reason: "Failed to evaluate persisted authorization relation.",
+          cause: new Error("keto unavailable"),
+        } as const),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.buildProductBootstrap}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sessionId: "sess_http_bootstrap_dependency_failure",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "A backend dependency request failed.",
     });
   });
 });
