@@ -19,6 +19,8 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 9. Subscription, payment, and entitlement reconciliation from verified provider events.
 10. Plan composition from modules and feature entitlements, with most entitlements remaining non-metered by default.
 11. Authenticated operator plan creation and publication workflows that preserve platform-owned plan metadata and entitlement declarations at the provider boundary.
+12. Durable customer-account linkage between provider customer ids, tenant scope, and prior owner evidence for repair-safe reconciliation.
+13. Authenticated manual and automatic reconciliation dispatch into Convex-backed execution paths.
 
 ## First Backend-Ready Slice
 
@@ -27,6 +29,10 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 3. Reconcile subscription state and entitlement activation from verified provider webhooks rather than return URLs.
 4. Provide billing status bootstrap for entitled product access and operator support.
 5. Support both monthly and yearly pricing for the same sellable plan when the catalog declares both prices.
+6. Persist enough durable customer-account linkage during reconciliation to support automatic downstream repair when prior owner evidence already exists.
+7. Treat provider resource reads as eventually consistent with verified webhook processing so replay and repair flows do not misclassify not-yet-materialized customers or subscriptions as missing truth.
+8. Expose backend-only operator triggers for manual reconciliation and targeted repair-gap replay while frontend admin workflows remain deferred.
+9. Ensure both manual and automatic Convex-backed reconciliation runs carry auditable identity, whether that identity is an operator or a service actor.
 
 ## Permission Scopes
 
@@ -84,3 +90,7 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 10. Most feature access should remain non-metered; metering and quota controls are opt-in per entitlement item.
 11. Rate limiting is the default constrained-feature enforcement pattern unless a stricter block mode is explicitly required.
 12. Provider-backed plan creation must persist the platform plan key and serialized entitlement declarations as provider metadata so catalog reads and webhook reconciliation continue to resolve back to the shared billing contract.
+13. Verified webhook reconciliation should persist provider customer linkage into PostgreSQL whenever prior tenant owner evidence exists so missing onboarding or provisioning state can be repaired idempotently.
+14. Replay and repair flows must treat direct provider customer, order, and subscription reads as eventually consistent and prefer verified webhook plus PostgreSQL-backed convergence when provider resources are still materializing.
+15. A billing reconciliation workflow must not complete successfully while required provisioning, onboarding, subscription, entitlement, or webhook state remains missing for the reconciled tenant.
+16. Manual operator-triggered reconciliation, targeted repair-gap replay, and automatic service-triggered reconciliation must remain idempotent and leave no duplicate durable records for the same customer or tenant state.

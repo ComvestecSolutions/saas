@@ -1,7 +1,4 @@
 import { Effect, ParseResult, Schema } from "effect";
-import { dirname, resolve } from "node:path";
-import { env as processEnvironment, execPath } from "node:process";
-import { fileURLToPath } from "node:url";
 
 export const subscriberJourneySmokeDefaults = {
   username: "smoke.owner",
@@ -11,6 +8,14 @@ export const subscriberJourneySmokeDefaults = {
   lastName: "Owner",
   tenantId: "org_smoke",
   enterpriseId: "ent_smoke",
+} as const;
+
+export const subscriberJourneyConvexServiceActorDefaults = {
+  username: "convex.billing.service",
+  email: "convex.billing.service@local.test",
+  password: "Passw0rd!",
+  firstName: "Convex",
+  lastName: "Billing Service",
 } as const;
 
 export type ToolingScriptConfigurationError = {
@@ -93,10 +98,10 @@ const buildToolingScriptProcessError = (
   exitCode,
 });
 
-export const workspaceRootDirectory = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../..",
-);
+export const workspaceRootDirectory = Bun.resolveSync(
+  "../../../package.json",
+  import.meta.dir,
+).replace(/[/\\]package\.json$/, "");
 
 export const decodeKeycloakTokenResponse = Schema.decodeUnknown(
   KeycloakTokenResponseSchema,
@@ -215,9 +220,9 @@ export const issueKeycloakPasswordGrant = (input: {
 export const runBunScript = (script: string) =>
   Effect.tryPromise({
     try: async () => {
-      const childProcess = Bun.spawn([execPath, "run", script], {
+      const childProcess = Bun.spawn([process.execPath, "run", script], {
         cwd: workspaceRootDirectory,
-        env: processEnvironment,
+        env: Bun.env,
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",

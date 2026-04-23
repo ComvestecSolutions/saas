@@ -5,6 +5,7 @@ import {
   onboardingStepStatus,
   OnboardingStepStatusSchema,
   platformModuleId,
+  platformScope,
   PlatformModuleIdSchema,
   PlatformScopeSchema,
   RequestContextSchema,
@@ -103,6 +104,64 @@ export type TenantOwnerProvisioningActorMissingError = {
   readonly _tag: "TenantOwnerProvisioningActorMissingError";
   readonly correlationId: string;
 };
+
+export const ProvisioningTenantScopeSchema = Schema.Literal(
+  platformScope.organization,
+  platformScope.individual,
+);
+
+export type ProvisioningTenantScope = Schema.Schema.Type<
+  typeof ProvisioningTenantScopeSchema
+>;
+
+const CreateProvisioningTenantContextInputSchema = Schema.Struct({
+  scope: ProvisioningTenantScopeSchema,
+});
+
+export type CreateProvisioningTenantContextInput = Schema.Schema.Type<
+  typeof CreateProvisioningTenantContextInputSchema
+>;
+
+const buildProvisioningTenantContext = (scope: ProvisioningTenantScope) => {
+  switch (scope) {
+    case platformScope.individual: {
+      const individualId = `usr_${crypto.randomUUID()}`;
+
+      return {
+        scope,
+        scopeId: individualId,
+        individualId,
+      };
+    }
+    case platformScope.organization:
+    default: {
+      const organizationId = `org_${crypto.randomUUID()}`;
+
+      return {
+        scope,
+        scopeId: organizationId,
+        organizationId,
+      };
+    }
+  }
+};
+
+export const createProvisioningTenantContext = (
+  input: CreateProvisioningTenantContextInput = {
+    scope: platformScope.organization,
+  },
+): Effect.Effect<
+  Schema.Schema.Type<typeof TenantContextSchema>,
+  ParseResult.ParseError,
+  never
+> =>
+  Schema.decodeUnknown(CreateProvisioningTenantContextInputSchema)(input).pipe(
+    Effect.flatMap((request) =>
+      Schema.decodeUnknown(TenantContextSchema)(
+        buildProvisioningTenantContext(request.scope),
+      ),
+    ),
+  );
 
 const IsolationAssertionInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,

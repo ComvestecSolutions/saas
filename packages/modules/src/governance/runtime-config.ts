@@ -24,6 +24,16 @@ import {
   RuntimeChangeProposalActionSchema,
   RuntimeResolutionSourceSchema,
 } from "@comvestec/contracts";
+import {
+  RuntimeConfigPostgresRepository,
+  type RuntimeConfigPostgresRepositoryError,
+  type RuntimeConfigPostgresRepositoryService,
+  type RuntimeConfigOverrideRecord,
+  RuntimeConfigOverrideRecordSchema,
+  type RuntimeConfigSyncArtifactRecord,
+  RuntimeConfigSyncArtifactRecordSchema,
+  runtimeConfigSyncArtifactStatus,
+} from "../persistence/postgres/governance";
 
 const RuntimeResolutionRequestBaseFields = {
   requestContext: RequestContextSchema,
@@ -48,6 +58,30 @@ const RuntimeFlagResolutionRequestSchema = Schema.Struct({
 
 export type RuntimeFlagResolutionRequest = Schema.Schema.Type<
   typeof RuntimeFlagResolutionRequestSchema
+>;
+
+const StoredRuntimeResolutionRequestBaseFields = {
+  requestContext: RequestContextSchema,
+  moduleId: PlatformModuleIdSchema,
+  entitlements: Schema.Array(EntitlementSchema),
+};
+
+const StoredRuntimeConfigResolutionRequestSchema = Schema.Struct({
+  ...StoredRuntimeResolutionRequestBaseFields,
+  key: DeclaredModuleConfigKeySchema,
+});
+
+export type StoredRuntimeConfigResolutionRequest = Schema.Schema.Type<
+  typeof StoredRuntimeConfigResolutionRequestSchema
+>;
+
+const StoredRuntimeFlagResolutionRequestSchema = Schema.Struct({
+  ...StoredRuntimeResolutionRequestBaseFields,
+  flag: FeatureFlagDeclarationSchema,
+});
+
+export type StoredRuntimeFlagResolutionRequest = Schema.Schema.Type<
+  typeof StoredRuntimeFlagResolutionRequestSchema
 >;
 
 export const RuntimeResolutionResultSchema = Schema.Struct({
@@ -102,6 +136,18 @@ const RuntimeChangeProposalRequestSchema = Schema.Struct({
 
 export type RuntimeChangeProposalRequest = Schema.Schema.Type<
   typeof RuntimeChangeProposalRequestSchema
+>;
+
+const RuntimeChangeProposalPersistRequestSchema = Schema.Struct({
+  moduleId: PlatformModuleIdSchema,
+  renameMap: Schema.Record({
+    key: DeclaredRuntimeGovernedKeySchema,
+    value: DeclaredRuntimeGovernedKeySchema,
+  }),
+});
+
+export type RuntimeChangeProposalPersistRequest = Schema.Schema.Type<
+  typeof RuntimeChangeProposalPersistRequestSchema
 >;
 
 const resolveCascadeCandidates = (requestContext: RequestContext) => {
@@ -278,6 +324,211 @@ export type UnknownConfigKeyError = {
   readonly key: DeclaredModuleConfigKey;
 };
 
+export type RuntimeConfigPersistenceNotConfiguredError = {
+  readonly _tag: "RuntimeConfigPersistenceNotConfiguredError";
+  readonly operation:
+    | "resolveStoredConfigValue"
+    | "resolveStoredFeatureFlag"
+    | "listOverridesByModule"
+    | "upsertOverride"
+    | "persistChangeProposals"
+    | "listChangeProposalsByModule";
+};
+
+export type RuntimeConfigModulePersistenceError =
+  | ParseResult.ParseError
+  | RuntimeConfigPostgresRepositoryError
+  | RuntimeConfigPersistenceNotConfiguredError;
+
+const requireRuntimeConfigRepository = <A, E>(
+  repository: RuntimeConfigPostgresRepositoryService | undefined,
+  operation: RuntimeConfigPersistenceNotConfiguredError["operation"],
+  useRepository: (
+    runtimeConfigRepository: RuntimeConfigPostgresRepositoryService,
+  ) => Effect.Effect<A, E>,
+) =>
+  Effect.fromNullable(repository).pipe(
+    Effect.mapError(
+      (): RuntimeConfigPersistenceNotConfiguredError => ({
+        _tag: "RuntimeConfigPersistenceNotConfiguredError",
+        operation,
+      }),
+    ),
+    Effect.flatMap(useRepository),
+  );
+
+const resolveDecodedConfigValue = (
+  request: RuntimeConfigResolutionRequest,
+): Effect.Effect<
+  RuntimeResolutionResult,
+  ParseResult.ParseError | UnknownConfigKeyError
+> => {
+  const declaration = findDeclaration(request.moduleId, request.key);
+  if (declaration === undefined) {
+    return Effect.fail({
+      _tag: "UnknownConfigKeyError",
+      key: request.key,
+    } satisfies UnknownConfigKeyError);
+  }
+
+  const entitled =
+    !declaration.billable ||
+    resolveModuleEnabledState(
+      request.moduleId,
+      request.requestContext,
+      request.overrides,
+      request.entitlements,
+    ).effectiveValue;
+
+  if (!entitled) {
+    return decodeRuntimeResolutionResult({
+      moduleId: request.moduleId,
+      key: request.key,
+      effectiveValue: declaration.defaultValue,
+      source: runtimeResolutionSource.unentitledDefault,
+      entitled: false,
+    } satisfies RuntimeResolutionResult);
+  }
+
+  const matchedOverride = findMatchedOverride(
+    request.moduleId,
+    request.key,
+    declaration.allowedScopes,
+    request.requestContext,
+    request.overrides,
+  );
+
+  return decodeRuntimeResolutionResult(
+    (matchedOverride === undefined
+      ? {
+          moduleId: request.moduleId,
+          key: request.key,
+          effectiveValue: declaration.defaultValue,
+          source: runtimeResolutionSource.codeDefault,
+          entitled: true,
+        }
+      : {
+          moduleId: request.moduleId,
+          key: request.key,
+          effectiveValue: matchedOverride.value,
+          source: runtimeResolutionSource.runtimeOverride,
+          entitled: true,
+          resolvedScope: matchedOverride.scope,
+          resolvedScopeId: matchedOverride.scopeId,
+        }) satisfies RuntimeResolutionResult,
+  );
+};
+
+const resolveDecodedFeatureFlag = (request: RuntimeFlagResolutionRequest) => {
+  const moduleEnabledKey = getModuleEnabledFeatureFlagKey(request.moduleId);
+  const moduleState = resolveModuleEnabledState(
+    request.moduleId,
+    request.requestContext,
+    request.overrides,
+    request.entitlements,
+  );
+
+  if (request.flag.key !== moduleEnabledKey && !moduleState.effectiveValue) {
+    return decodeRuntimeResolutionResult({
+      moduleId: request.moduleId,
+      key: request.flag.key,
+      effectiveValue: false,
+      source: moduleState.source,
+      entitled: false,
+      ...(moduleState.resolvedScope !== undefined
+        ? { resolvedScope: moduleState.resolvedScope }
+        : {}),
+      ...(moduleState.resolvedScopeId !== undefined
+        ? { resolvedScopeId: moduleState.resolvedScopeId }
+        : {}),
+    } satisfies RuntimeResolutionResult);
+  }
+
+  const resolution =
+    request.flag.key === moduleEnabledKey
+      ? moduleState
+      : resolveFeatureFlagState(
+          request.moduleId,
+          request.flag,
+          request.requestContext,
+          request.overrides,
+          request.entitlements,
+        );
+
+  return decodeRuntimeResolutionResult({
+    moduleId: request.moduleId,
+    key: request.flag.key,
+    effectiveValue: resolution.effectiveValue,
+    source: resolution.source,
+    entitled: resolution.entitled,
+    ...(resolution.resolvedScope !== undefined
+      ? { resolvedScope: resolution.resolvedScope }
+      : {}),
+    ...(resolution.resolvedScopeId !== undefined
+      ? { resolvedScopeId: resolution.resolvedScopeId }
+      : {}),
+  } satisfies RuntimeResolutionResult);
+};
+
+const buildDecodedChangeProposals = (request: RuntimeChangeProposalRequest) => {
+  const moduleManifest = findModuleManifest(request.moduleId);
+  const declaredKeys = new Set<string>(
+    moduleManifest?.configKeys.map((configKey) => configKey.key) ?? [],
+  );
+
+  return decodeRuntimeChangeProposalList(
+    request.overrides
+      .filter((override) => override.moduleId === request.moduleId)
+      .map((override) => {
+        const renamedKey = request.renameMap[override.key];
+        const action = renamedKey
+          ? runtimeChangeProposalAction.rename
+          : declaredKeys.has(override.key)
+            ? runtimeChangeProposalAction.update
+            : runtimeChangeProposalAction.retire;
+
+        return {
+          proposalId: `${request.moduleId}:${override.key}:${action}`,
+          moduleId: request.moduleId,
+          key: override.key,
+          action,
+          artifactPath: `specs/00-governance/runtime-config-proposals/${request.moduleId}.${override.key.replace(/\./g, "-")}.json`,
+          reason: renamedKey
+            ? `Runtime key should migrate to ${renamedKey}.`
+            : declaredKeys.has(override.key)
+              ? "Approved runtime override differs from the code-declared baseline."
+              : "Runtime key no longer exists in the code-declared manifest.",
+          runtimeValue: override.value,
+          ...(renamedKey !== undefined ? { codeValue: renamedKey } : {}),
+        };
+      }),
+  );
+};
+
+const buildSyncArtifactRecords = (
+  proposals: readonly RuntimeChangeProposal[],
+) => {
+  const generatedAt = new Date().toISOString();
+
+  return Effect.forEach(proposals, (proposal) =>
+    Schema.decodeUnknown(RuntimeConfigSyncArtifactRecordSchema)({
+      proposalId: proposal.proposalId,
+      moduleId: proposal.moduleId,
+      key: proposal.key,
+      action: proposal.action,
+      artifactPath: proposal.artifactPath,
+      ...(proposal.runtimeValue !== undefined
+        ? { runtimeValue: proposal.runtimeValue }
+        : {}),
+      ...(proposal.codeValue !== undefined
+        ? { codeValue: proposal.codeValue }
+        : {}),
+      status: runtimeConfigSyncArtifactStatus.pending,
+      generatedAt,
+    }),
+  );
+};
+
 export type RuntimeConfigModuleService = {
   readonly resolveConfigValue: (
     input: RuntimeConfigResolutionRequest,
@@ -285,12 +536,48 @@ export type RuntimeConfigModuleService = {
     RuntimeResolutionResult,
     ParseResult.ParseError | UnknownConfigKeyError
   >;
+  readonly resolveStoredConfigValue: (
+    input: StoredRuntimeConfigResolutionRequest,
+  ) => Effect.Effect<
+    RuntimeResolutionResult,
+    UnknownConfigKeyError | RuntimeConfigModulePersistenceError
+  >;
   readonly resolveFeatureFlag: (
     input: RuntimeFlagResolutionRequest,
   ) => Effect.Effect<RuntimeResolutionResult, ParseResult.ParseError>;
+  readonly resolveStoredFeatureFlag: (
+    input: StoredRuntimeFlagResolutionRequest,
+  ) => Effect.Effect<
+    RuntimeResolutionResult,
+    RuntimeConfigModulePersistenceError
+  >;
   readonly buildChangeProposals: (
     input: RuntimeChangeProposalRequest,
   ) => Effect.Effect<readonly RuntimeChangeProposal[], ParseResult.ParseError>;
+  readonly listOverridesByModule: (
+    moduleId: PlatformModuleId,
+  ) => Effect.Effect<
+    readonly RuntimeConfigOverrideRecord[],
+    RuntimeConfigModulePersistenceError
+  >;
+  readonly upsertOverride: (
+    input: RuntimeConfigOverrideRecord,
+  ) => Effect.Effect<
+    RuntimeConfigOverrideRecord,
+    RuntimeConfigModulePersistenceError
+  >;
+  readonly persistChangeProposals: (
+    input: RuntimeChangeProposalPersistRequest,
+  ) => Effect.Effect<
+    readonly RuntimeConfigSyncArtifactRecord[],
+    RuntimeConfigModulePersistenceError
+  >;
+  readonly listChangeProposalsByModule: (
+    moduleId: PlatformModuleId,
+  ) => Effect.Effect<
+    readonly RuntimeConfigSyncArtifactRecord[],
+    RuntimeConfigModulePersistenceError
+  >;
 };
 
 export class RuntimeConfigModule extends Context.Tag("RuntimeConfigModule")<
@@ -298,174 +585,122 @@ export class RuntimeConfigModule extends Context.Tag("RuntimeConfigModule")<
   RuntimeConfigModuleService
 >() {}
 
-export const makeRuntimeConfigModule = () =>
+export const makeRuntimeConfigModule = (
+  runtimeConfigRepository?: RuntimeConfigPostgresRepositoryService,
+) =>
   Effect.succeed<RuntimeConfigModuleService>({
     resolveConfigValue: (input: RuntimeConfigResolutionRequest) =>
       Schema.decodeUnknown(RuntimeConfigResolutionRequestSchema)(input).pipe(
-        Effect.flatMap(
-          (
-            request,
-          ): Effect.Effect<
-            RuntimeResolutionResult,
-            ParseResult.ParseError | UnknownConfigKeyError
-          > => {
-            const declaration = findDeclaration(request.moduleId, request.key);
-            if (declaration === undefined) {
-              return Effect.fail({
-                _tag: "UnknownConfigKeyError",
-                key: request.key,
-              } satisfies UnknownConfigKeyError);
-            }
-
-            const entitled =
-              !declaration.billable ||
-              resolveModuleEnabledState(
-                request.moduleId,
-                request.requestContext,
-                request.overrides,
-                request.entitlements,
-              ).effectiveValue;
-
-            if (!entitled) {
-              return decodeRuntimeResolutionResult({
-                moduleId: request.moduleId,
-                key: request.key,
-                effectiveValue: declaration.defaultValue,
-                source: runtimeResolutionSource.unentitledDefault,
-                entitled: false,
-              } satisfies RuntimeResolutionResult);
-            }
-
-            const matchedOverride = findMatchedOverride(
-              request.moduleId,
-              request.key,
-              declaration.allowedScopes,
-              request.requestContext,
-              request.overrides,
-            );
-
-            return decodeRuntimeResolutionResult(
-              (matchedOverride === undefined
-                ? {
-                    moduleId: request.moduleId,
-                    key: request.key,
-                    effectiveValue: declaration.defaultValue,
-                    source: runtimeResolutionSource.codeDefault,
-                    entitled: true,
-                  }
-                : {
-                    moduleId: request.moduleId,
-                    key: request.key,
-                    effectiveValue: matchedOverride.value,
-                    source: runtimeResolutionSource.runtimeOverride,
-                    entitled: true,
-                    resolvedScope: matchedOverride.scope,
-                    resolvedScopeId: matchedOverride.scopeId,
-                  }) satisfies RuntimeResolutionResult,
-            );
-          },
+        Effect.flatMap(resolveDecodedConfigValue),
+      ),
+    resolveStoredConfigValue: (input: StoredRuntimeConfigResolutionRequest) =>
+      Schema.decodeUnknown(StoredRuntimeConfigResolutionRequestSchema)(
+        input,
+      ).pipe(
+        Effect.flatMap((request) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "resolveStoredConfigValue",
+            (repository) => repository.listOverridesByModule(request.moduleId),
+          ).pipe(
+            Effect.flatMap((overrides) =>
+              resolveDecodedConfigValue({
+                ...request,
+                overrides,
+              }),
+            ),
+          ),
         ),
       ),
     resolveFeatureFlag: (input: RuntimeFlagResolutionRequest) =>
       Schema.decodeUnknown(RuntimeFlagResolutionRequestSchema)(input).pipe(
-        Effect.flatMap((request) => {
-          const moduleEnabledKey = getModuleEnabledFeatureFlagKey(
-            request.moduleId,
-          );
-          const moduleState = resolveModuleEnabledState(
-            request.moduleId,
-            request.requestContext,
-            request.overrides,
-            request.entitlements,
-          );
-
-          if (
-            request.flag.key !== moduleEnabledKey &&
-            !moduleState.effectiveValue
-          ) {
-            return decodeRuntimeResolutionResult({
-              moduleId: request.moduleId,
-              key: request.flag.key,
-              effectiveValue: false,
-              source: moduleState.source,
-              entitled: false,
-              ...(moduleState.resolvedScope !== undefined
-                ? { resolvedScope: moduleState.resolvedScope }
-                : {}),
-              ...(moduleState.resolvedScopeId !== undefined
-                ? { resolvedScopeId: moduleState.resolvedScopeId }
-                : {}),
-            } satisfies RuntimeResolutionResult);
-          }
-
-          const resolution =
-            request.flag.key === moduleEnabledKey
-              ? moduleState
-              : resolveFeatureFlagState(
-                  request.moduleId,
-                  request.flag,
-                  request.requestContext,
-                  request.overrides,
-                  request.entitlements,
-                );
-
-          return decodeRuntimeResolutionResult({
-            moduleId: request.moduleId,
-            key: request.flag.key,
-            effectiveValue: resolution.effectiveValue,
-            source: resolution.source,
-            entitled: resolution.entitled,
-            ...(resolution.resolvedScope !== undefined
-              ? { resolvedScope: resolution.resolvedScope }
-              : {}),
-            ...(resolution.resolvedScopeId !== undefined
-              ? { resolvedScopeId: resolution.resolvedScopeId }
-              : {}),
-          } satisfies RuntimeResolutionResult);
-        }),
+        Effect.flatMap(resolveDecodedFeatureFlag),
+      ),
+    resolveStoredFeatureFlag: (input: StoredRuntimeFlagResolutionRequest) =>
+      Schema.decodeUnknown(StoredRuntimeFlagResolutionRequestSchema)(
+        input,
+      ).pipe(
+        Effect.flatMap((request) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "resolveStoredFeatureFlag",
+            (repository) => repository.listOverridesByModule(request.moduleId),
+          ).pipe(
+            Effect.flatMap((overrides) =>
+              resolveDecodedFeatureFlag({
+                ...request,
+                overrides,
+              }),
+            ),
+          ),
+        ),
       ),
     buildChangeProposals: (input: RuntimeChangeProposalRequest) =>
       Schema.decodeUnknown(RuntimeChangeProposalRequestSchema)(input).pipe(
-        Effect.flatMap((request) => {
-          const moduleManifest = findModuleManifest(request.moduleId);
-          const declaredKeys = new Set<string>(
-            moduleManifest?.configKeys.map((configKey) => configKey.key) ?? [],
-          );
-
-          return decodeRuntimeChangeProposalList(
-            request.overrides
-              .filter((override) => override.moduleId === request.moduleId)
-              .map((override) => {
-                const renamedKey = request.renameMap[override.key];
-                const action = renamedKey
-                  ? runtimeChangeProposalAction.rename
-                  : declaredKeys.has(override.key)
-                    ? runtimeChangeProposalAction.update
-                    : runtimeChangeProposalAction.retire;
-
-                return {
-                  proposalId: `${request.moduleId}:${override.key}:${action}`,
-                  moduleId: request.moduleId,
-                  key: override.key,
-                  action,
-                  artifactPath: `specs/00-governance/runtime-config-proposals/${request.moduleId}.${override.key.replace(/\./g, "-")}.json`,
-                  reason: renamedKey
-                    ? `Runtime key should migrate to ${renamedKey}.`
-                    : declaredKeys.has(override.key)
-                      ? "Approved runtime override differs from the code-declared baseline."
-                      : "Runtime key no longer exists in the code-declared manifest.",
-                  runtimeValue: override.value,
-                  ...(renamedKey !== undefined
-                    ? { codeValue: renamedKey }
-                    : {}),
-                };
+        Effect.flatMap(buildDecodedChangeProposals),
+      ),
+    listOverridesByModule: (moduleId: PlatformModuleId) =>
+      Schema.decodeUnknown(PlatformModuleIdSchema)(moduleId).pipe(
+        Effect.flatMap((decodedModuleId) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "listOverridesByModule",
+            (repository) => repository.listOverridesByModule(decodedModuleId),
+          ),
+        ),
+      ),
+    upsertOverride: (input: RuntimeConfigOverrideRecord) =>
+      Schema.decodeUnknown(RuntimeConfigOverrideRecordSchema)(input).pipe(
+        Effect.flatMap((override) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "upsertOverride",
+            (repository) => repository.upsertOverride(override),
+          ),
+        ),
+      ),
+    persistChangeProposals: (input: RuntimeChangeProposalPersistRequest) =>
+      Schema.decodeUnknown(RuntimeChangeProposalPersistRequestSchema)(
+        input,
+      ).pipe(
+        Effect.flatMap((request) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "persistChangeProposals",
+            (repository) => repository.listOverridesByModule(request.moduleId),
+          ).pipe(
+            Effect.flatMap((overrides) =>
+              buildDecodedChangeProposals({
+                moduleId: request.moduleId,
+                overrides,
+                renameMap: request.renameMap,
               }),
-          );
-        }),
+            ),
+            Effect.flatMap(buildSyncArtifactRecords),
+            Effect.flatMap((artifacts) =>
+              requireRuntimeConfigRepository(
+                runtimeConfigRepository,
+                "persistChangeProposals",
+                (repository) => repository.persistSyncArtifacts(artifacts),
+              ),
+            ),
+          ),
+        ),
+      ),
+    listChangeProposalsByModule: (moduleId: PlatformModuleId) =>
+      Schema.decodeUnknown(PlatformModuleIdSchema)(moduleId).pipe(
+        Effect.flatMap((decodedModuleId) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "listChangeProposalsByModule",
+            (repository) =>
+              repository.listSyncArtifactsByModule(decodedModuleId),
+          ),
+        ),
       ),
   });
 
 export const RuntimeConfigModuleLive = Layer.effect(
   RuntimeConfigModule,
-  makeRuntimeConfigModule(),
+  RuntimeConfigPostgresRepository.pipe(Effect.flatMap(makeRuntimeConfigModule)),
 );

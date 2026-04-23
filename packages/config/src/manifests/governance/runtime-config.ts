@@ -15,8 +15,21 @@ import { defineModuleManifest } from "../../manifest-helpers";
 
 export const runtimeConfigFields = defineModuleFields({
   moduleId: "moduleId",
-  effectiveValue: "effectiveValue",
+  key: "key",
+  scope: "scope",
+  scopeId: "scopeId",
+  value: "value",
   source: "source",
+  changedBy: "changedBy",
+  changedAt: "changedAt",
+  approvalReason: "approvalReason",
+  proposalId: "proposalId",
+  action: "action",
+  artifactPath: "artifactPath",
+  runtimeValue: "runtimeValue",
+  codeValue: "codeValue",
+  status: "status",
+  generatedAt: "generatedAt",
 });
 
 export const runtimeConfigFieldClassifications =
@@ -26,11 +39,63 @@ export const runtimeConfigFieldClassifications =
       classification: dataClassification.internal,
     },
     {
-      field: runtimeConfigFields.effectiveValue,
-      classification: dataClassification.tenantConfidential,
+      field: runtimeConfigFields.key,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.scope,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.scopeId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.value,
+      classification: dataClassification.regulatedSensitive,
     },
     {
       field: runtimeConfigFields.source,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.changedBy,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: runtimeConfigFields.changedAt,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.approvalReason,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: runtimeConfigFields.proposalId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.action,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.artifactPath,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.runtimeValue,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: runtimeConfigFields.codeValue,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: runtimeConfigFields.status,
+      classification: dataClassification.internal,
+    },
+    {
+      field: runtimeConfigFields.generatedAt,
       classification: dataClassification.internal,
     },
   ]);
@@ -90,10 +155,28 @@ export const runtimeConfigManifest = defineModuleManifest({
       profile: projectionProfile.admin,
       visibleFields: [
         runtimeConfigFields.moduleId,
-        runtimeConfigFields.effectiveValue,
+        runtimeConfigFields.key,
+        runtimeConfigFields.scope,
+        runtimeConfigFields.scopeId,
+        runtimeConfigFields.value,
         runtimeConfigFields.source,
+        runtimeConfigFields.changedBy,
+        runtimeConfigFields.changedAt,
+        runtimeConfigFields.approvalReason,
+        runtimeConfigFields.proposalId,
+        runtimeConfigFields.action,
+        runtimeConfigFields.artifactPath,
+        runtimeConfigFields.runtimeValue,
+        runtimeConfigFields.codeValue,
+        runtimeConfigFields.status,
+        runtimeConfigFields.generatedAt,
       ],
-      auditedFields: [runtimeConfigFields.effectiveValue],
+      auditedFields: [
+        runtimeConfigFields.value,
+        runtimeConfigFields.approvalReason,
+        runtimeConfigFields.runtimeValue,
+        runtimeConfigFields.codeValue,
+      ],
     },
   ]),
 });

@@ -9,7 +9,7 @@ import {
 } from "../../../domains/billing-metering";
 import { webhookReceiptsTable } from "./billing";
 
-const BillingWebhookReceiptLookupSchema = Schema.Struct({
+export const BillingWebhookReceiptLookupSchema = Schema.Struct({
   provider: PlatformAdapterServiceNameSchema,
   deliveryId: Schema.NonEmptyString,
 });

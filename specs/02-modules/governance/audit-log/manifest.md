@@ -42,19 +42,17 @@ Every module must declare at least:
 
 ## Data Classifications
 
-| Data                     | Classification      |
-| ------------------------ | ------------------- |
-| Audit event records      | regulated-sensitive |
-| Actor identity in events | internal            |
-| Correlation IDs          | internal            |
+| Data                              | Classification      |
+| --------------------------------- | ------------------- |
+| Event ids, timestamps, action     | internal            |
+| Actor identity and tenant scopeId | regulated-sensitive |
+| Targets and reasons               | regulated-sensitive |
+| Correlation IDs and module ids    | internal            |
 
 ## Projection Profiles
 
-| Profile           | Visible Fields                                                     | Audited Fields |
-| ----------------- | ------------------------------------------------------------------ | -------------- |
-| admin             | eventId, timestamp, actorId, action, target, moduleId              | —              |
-| compliance-review | eventId, timestamp, actorId, action, target, reason, correlationId | actorId        |
-| summary           | eventId, action, timestamp                                         | —              |
+- `admin`: visible fields are `eventId`, `timestamp`, `actorId`, `moduleId`, `tenantScope`, `tenantScopeId`, `action`, `target`, `reason`, and `correlationId`.
+- `admin`: audited fields are `actorId`, `tenantScopeId`, `target`, and `reason`.
 
 ## Rules
 

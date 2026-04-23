@@ -97,6 +97,41 @@ const BillingSubscriptionMetadataSchema = Schema.Struct({
   customerId: Schema.optional(Schema.NonEmptyString),
 });
 
+export const billingCustomerAccountLinkageSource = {
+  tenantProvisioning: "tenant-provisioning",
+  identitySessionAudit: "identity-session-audit",
+} as const;
+
+export const BillingCustomerAccountLinkageSourceSchema = Schema.Literal(
+  billingCustomerAccountLinkageSource.tenantProvisioning,
+  billingCustomerAccountLinkageSource.identitySessionAudit,
+);
+
+export type BillingCustomerAccountLinkageSource = Schema.Schema.Type<
+  typeof BillingCustomerAccountLinkageSourceSchema
+>;
+
+const BillingCustomerAccountMetadataSchema = Schema.Struct({
+  linkageSource: BillingCustomerAccountLinkageSourceSchema,
+  subscriptionId: Schema.NonEmptyString,
+  action: BillingWebhookReconciliationActionSchema,
+});
+
+const BillingCustomerAccountRecordSchema = Schema.Struct({
+  accountId: Schema.NonEmptyString,
+  provider: PlatformAdapterServiceNameSchema,
+  providerCustomerId: Schema.NonEmptyString,
+  actorId: Schema.NonEmptyString,
+  ...BillingScopedFields,
+  email: Schema.optional(Schema.NonEmptyString),
+  status: BillingSubscriptionStatusSchema,
+  metadata: BillingCustomerAccountMetadataSchema,
+});
+
+export type BillingCustomerAccountRecord = Schema.Schema.Type<
+  typeof BillingCustomerAccountRecordSchema
+>;
+
 const BillingSubscriptionRecordSchema = Schema.Struct({
   subscriptionId: Schema.NonEmptyString,
   provider: PlatformAdapterServiceNameSchema,
@@ -159,6 +194,7 @@ const BillingWebhookPersistenceProjectionSchema = Schema.Struct({
   subscription: BillingSubscriptionRecordSchema,
   paymentEvent: BillingPaymentEventRecordSchema,
   entitlements: Schema.Array(BillingEntitlementRecordSchema),
+  customerAccount: Schema.optional(BillingCustomerAccountRecordSchema),
 });
 
 export type BillingWebhookPersistenceProjection = Schema.Schema.Type<
@@ -166,6 +202,7 @@ export type BillingWebhookPersistenceProjection = Schema.Schema.Type<
 >;
 
 export {
+  BillingCustomerAccountRecordSchema,
   BillingEntitlementQuotaSnapshotSchema,
   BillingEntitlementRecordSchema,
   BillingPaymentEventRecordSchema,

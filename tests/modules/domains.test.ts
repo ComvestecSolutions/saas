@@ -25,6 +25,7 @@ import {
   usageQuotaPeriod,
 } from "@comvestec/contracts";
 import {
+  createProvisioningTenantContext,
   makeBillingMeteringModule,
   makeObservabilityModule,
   makeTenantBrandingModule,
@@ -329,6 +330,32 @@ describe("modules domains", () => {
       expect.arrayContaining(["branding", "billing"]),
     );
     expect(isolation.allowed).toBe(false);
+  });
+
+  it("creates organization-scoped provisioning tenant contexts", async () => {
+    const tenant = await Effect.runPromise(createProvisioningTenantContext());
+
+    expect(tenant).toEqual({
+      scope: platformScope.organization,
+      scopeId: expect.stringMatching(/^org_/),
+      organizationId: expect.any(String),
+    });
+    expect(tenant.scopeId).toBe(tenant.organizationId);
+  });
+
+  it("creates standalone individual provisioning tenant contexts", async () => {
+    const tenant = await Effect.runPromise(
+      createProvisioningTenantContext({
+        scope: platformScope.individual,
+      }),
+    );
+
+    expect(tenant).toEqual({
+      scope: platformScope.individual,
+      scopeId: expect.stringMatching(/^usr_/),
+      individualId: expect.any(String),
+    });
+    expect(tenant.scopeId).toBe(tenant.individualId);
   });
 
   it("allows cross-tenant access with valid break-glass context", async () => {

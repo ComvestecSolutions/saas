@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
+  AbsoluteRedirectUriSchema,
   actorType,
   onboardingStepStatus,
   PlatformModuleIdSchema,
@@ -46,7 +47,8 @@ const IdentitySessionStartInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   tenantHint: Schema.optional(Schema.NonEmptyString),
   displayNameHint: Schema.optional(Schema.NonEmptyString),
-  returnHost: Schema.optional(Schema.NonEmptyString),
+  redirectUri: AbsoluteRedirectUriSchema,
+  state: Schema.optional(Schema.NonEmptyString),
 });
 
 export type IdentitySessionStartInput = Schema.Schema.Type<
@@ -224,7 +226,8 @@ export const makeIdentitySessionModule = () =>
                     ? undefined
                     : request.requestContext.tenant.scopeId),
                 displayNameHint: request.displayNameHint,
-                returnHost: request.returnHost ?? request.requestContext.host,
+                redirectUri: request.redirectUri,
+                state: request.state,
               })
               .pipe(
                 Effect.flatMap((redirect) =>

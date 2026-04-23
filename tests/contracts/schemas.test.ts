@@ -2,6 +2,7 @@ import "../type-assertions";
 
 import { Schema } from "effect";
 import {
+  AbsoluteRedirectUriSchema,
   billingAndMeteringFeatureFlag,
   billingEnforcementMode,
   BillingPlanCreateRequestSchema,
@@ -65,6 +66,30 @@ describe("contract schemas", () => {
 
     expect(requestContext.actorId).toBeUndefined();
     expect(requestContext.host).toBe("www.comvestec.local");
+  });
+
+  it("accepts absolute http and https redirect uris", () => {
+    expect(
+      Schema.decodeUnknownSync(AbsoluteRedirectUriSchema)(
+        "https://product.example.com/auth/callback",
+      ),
+    ).toBe("https://product.example.com/auth/callback");
+    expect(
+      Schema.decodeUnknownSync(AbsoluteRedirectUriSchema)(
+        "http://localhost:3002/auth/callback",
+      ),
+    ).toBe("http://localhost:3002/auth/callback");
+  });
+
+  it("rejects relative or non-http redirect uris", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(AbsoluteRedirectUriSchema)("/auth/callback"),
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AbsoluteRedirectUriSchema)(
+        "javascript:alert('nope')",
+      ),
+    ).toThrow();
   });
 
   it("accepts request context with non-empty support elevation context", () => {

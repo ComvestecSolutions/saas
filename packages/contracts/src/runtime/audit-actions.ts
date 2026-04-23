@@ -34,6 +34,7 @@ export const billingAndMeteringAuditAction = defineModuleAuditActions(
   platformModuleId.billingAndMetering,
   {
     quotaBlocked: "quota.blocked",
+    reconciliationTriggered: "reconciliation.triggered",
   },
 );
 
@@ -50,6 +51,7 @@ export const auditActions = [
   runtimeConfigAuditAction.overrideChanged,
   supportOperationsAuditAction.breakGlassStarted,
   billingAndMeteringAuditAction.quotaBlocked,
+  billingAndMeteringAuditAction.reconciliationTriggered,
   tenantManagementAuditAction.onboardingCompleted,
 ] as const;
 

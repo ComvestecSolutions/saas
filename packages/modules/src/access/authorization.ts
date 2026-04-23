@@ -128,21 +128,54 @@ export const defaultScopeRelationMappings = Schema.validateSync(
     relation: authorizationRelation.impersonator,
   },
   {
+    permissionScope: permissionScope.billingRead,
+    namespace: authorizationNamespace.billingEntitlement,
+    relation: authorizationRelation.viewer,
+  },
+  {
     permissionScope: permissionScope.billingWrite,
     namespace: authorizationNamespace.billingEntitlement,
     relation: authorizationRelation.admin,
   },
+  {
+    permissionScope: permissionScope.workflowManage,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
 ] satisfies readonly ScopeRelationMapping[]);
 
-const AuthorizationModuleOptionsSchema = Schema.Struct({
+const AuthorizationModuleRuntimeOptionsSchema = Schema.Struct({
   tuples: Schema.Array(AuthorizationTupleSchema),
   cacheTtlSeconds: Schema.Number,
   maxCacheSize: Schema.optional(Schema.Number),
 });
 
-export type AuthorizationModuleOptions = Schema.Schema.Type<
-  typeof AuthorizationModuleOptionsSchema
+type AuthorizationModuleRuntimeOptions = Schema.Schema.Type<
+  typeof AuthorizationModuleRuntimeOptionsSchema
 >;
+
+export type AuthorizationDelegatedCheckInput = {
+  readonly namespace: AuthorizationTuple["namespace"];
+  readonly object: AuthorizationTuple["object"];
+  readonly relation: AuthorizationTuple["relation"];
+  readonly subject: AuthorizationTuple["subject"];
+  readonly tenantScope: AuthorizationTuple["tenantScope"];
+  readonly tenantScopeId: AuthorizationTuple["tenantScopeId"];
+};
+
+export type AuthorizationDelegatedCheckError = {
+  readonly _tag: "AuthorizationDelegatedCheckError";
+  readonly reason: string;
+  readonly cause: unknown;
+};
+
+export type AuthorizationDelegatedCheck = (
+  input: AuthorizationDelegatedCheckInput,
+) => Effect.Effect<boolean, AuthorizationDelegatedCheckError>;
+
+export type AuthorizationModuleOptions = AuthorizationModuleRuntimeOptions & {
+  readonly delegatedCheck?: AuthorizationDelegatedCheck;
+};
 
 const buildSubjectCandidates = (
   input: AuthorizationCheckInput,
@@ -182,14 +215,88 @@ const mappingAllowsRequest = (input: AuthorizationCheckInput) =>
       mapping.relation === input.relation,
   );
 
+const resolveCacheExpiry = (input: {
+  readonly now: number;
+  readonly cacheTtlSeconds: number;
+  readonly breakGlassAllowed: boolean;
+  readonly requestContext: AuthorizationCheckInput["requestContext"];
+}) => {
+  const ttlExpiry = input.now + input.cacheTtlSeconds * 1000;
+
+  if (!input.breakGlassAllowed) {
+    return ttlExpiry;
+  }
+
+  const breakGlassExpiry = input.requestContext.breakGlass?.expiresAt;
+  const parsedBreakGlassExpiry =
+    breakGlassExpiry === undefined
+      ? Number.NaN
+      : new Date(breakGlassExpiry).getTime();
+
+  return Number.isFinite(parsedBreakGlassExpiry)
+    ? Math.min(ttlExpiry, parsedBreakGlassExpiry)
+    : ttlExpiry;
+};
+
+const findMatchingTuple = (
+  tuples: readonly AuthorizationTuple[],
+  input: AuthorizationCheckInput,
+  subjectCandidates: readonly string[],
+) =>
+  tuples.find(
+    (tuple) =>
+      tuple.namespace === input.namespace &&
+      tuple.object === input.object &&
+      tuple.relation === input.relation &&
+      tuple.tenantScope === input.requestContext.tenant.scope &&
+      tuple.tenantScopeId === input.requestContext.tenant.scopeId &&
+      subjectCandidates.includes(tuple.subject),
+  );
+
+const buildDelegatedCheckInput = (
+  input: AuthorizationCheckInput,
+  subject: string,
+): AuthorizationDelegatedCheckInput => ({
+  namespace: input.namespace,
+  object: input.object,
+  relation: input.relation,
+  subject,
+  tenantScope: input.requestContext.tenant.scope,
+  tenantScopeId: input.requestContext.tenant.scopeId,
+});
+
+const resolveDelegatedMatchedSubject = (
+  input: AuthorizationCheckInput,
+  subjectCandidates: readonly string[],
+  delegatedCheck: AuthorizationDelegatedCheck,
+) =>
+  Effect.forEach(
+    subjectCandidates,
+    (subject) =>
+      delegatedCheck(buildDelegatedCheckInput(input, subject)).pipe(
+        Effect.map((allowed) => (allowed ? subject : undefined)),
+      ),
+    { concurrency: 1 },
+  ).pipe(
+    Effect.map((results) =>
+      results.find((subject): subject is string => subject !== undefined),
+    ),
+  );
+
 export type AuthorizationModuleService = {
   readonly listTuples: Effect.Effect<readonly AuthorizationTuple[]>;
   readonly check: (
     input: AuthorizationCheckInput,
-  ) => Effect.Effect<AuthorizationDecision, ParseResult.ParseError>;
+  ) => Effect.Effect<
+    AuthorizationDecision,
+    ParseResult.ParseError | AuthorizationDelegatedCheckError
+  >;
   readonly explain: (
     input: AuthorizationCheckInput,
-  ) => Effect.Effect<AuthorizationExplanation, ParseResult.ParseError>;
+  ) => Effect.Effect<
+    AuthorizationExplanation,
+    ParseResult.ParseError | AuthorizationDelegatedCheckError
+  >;
 };
 
 export class AuthorizationModule extends Context.Tag("AuthorizationModule")<
@@ -198,7 +305,7 @@ export class AuthorizationModule extends Context.Tag("AuthorizationModule")<
 >() {}
 
 export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
-  Schema.decodeUnknown(AuthorizationModuleOptionsSchema)(input).pipe(
+  Schema.decodeUnknown(AuthorizationModuleRuntimeOptionsSchema)(input).pipe(
     Effect.map((options): AuthorizationModuleService => {
       const cache = new Map<
         string,
@@ -216,6 +323,7 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
       };
 
       const tuples = [...options.tuples];
+      const delegatedCheck = input.delegatedCheck;
 
       const check = (checkInput: AuthorizationCheckInput) =>
         Schema.decodeUnknown(AuthorizationCheckInputSchema)(checkInput).pipe(
@@ -233,74 +341,140 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
               decodedInput.requestContext,
               now,
             );
-
-            const matchedTuple = tuples.find(
-              (tuple) =>
-                tuple.namespace === decodedInput.namespace &&
-                tuple.object === decodedInput.object &&
-                tuple.relation === decodedInput.relation &&
-                tuple.tenantScope ===
-                  decodedInput.requestContext.tenant.scope &&
-                tuple.tenantScopeId ===
-                  decodedInput.requestContext.tenant.scopeId &&
-                subjectCandidates.includes(tuple.subject),
+            const permissionMappingAllowed = mappingAllowsRequest(decodedInput);
+            const localMatchedTuple = findMatchingTuple(
+              tuples,
+              decodedInput,
+              subjectCandidates,
             );
 
-            const decision = breakGlassAllowed
-              ? {
-                  allowed: true,
-                  cacheKey,
-                  reason: "Allowed via break-glass context.",
-                  auditRequired: true,
-                }
-              : !mappingAllowsRequest(decodedInput)
+            if (breakGlassAllowed || !permissionMappingAllowed) {
+              const expiresAt = resolveCacheExpiry({
+                now,
+                cacheTtlSeconds: options.cacheTtlSeconds,
+                breakGlassAllowed,
+                requestContext: decodedInput.requestContext,
+              });
+              const localDecision = breakGlassAllowed
                 ? {
+                    allowed: true,
+                    cacheKey,
+                    reason: "Allowed via break-glass context.",
+                    auditRequired: true,
+                  }
+                : {
                     allowed: false,
                     cacheKey,
                     reason:
                       "Permission scope does not map to the requested namespace relation.",
                     auditRequired: false,
-                  }
-                : matchedTuple === undefined
-                  ? {
-                      allowed: false,
-                      cacheKey,
-                      reason: "No matching authorization tuple was found.",
-                      auditRequired: actorSupportsPrivilegedSupportEscalation(
-                        decodedInput.requestContext.actorType,
-                      ),
-                    }
-                  : {
-                      allowed: true,
-                      cacheKey,
-                      reason: "Matched declared authorization tuple.",
-                      auditRequired: actorSupportsPrivilegedSupportEscalation(
-                        decodedInput.requestContext.actorType,
-                      ),
-                      matchedTuple,
-                    };
+                  };
 
-            return Schema.decodeUnknown(AuthorizationDecisionSchema)(
-              decision,
-            ).pipe(
-              Effect.tap((validatedDecision) =>
-                Effect.sync(() => {
-                  cache.set(cacheKey, {
-                    decision: validatedDecision,
-                    expiresAt: now + options.cacheTtlSeconds * 1000,
-                  });
+              return Schema.decodeUnknown(AuthorizationDecisionSchema)(
+                localDecision,
+              ).pipe(
+                Effect.tap((validatedDecision) =>
+                  Effect.sync(() => {
+                    cache.set(cacheKey, {
+                      decision: validatedDecision,
+                      expiresAt,
+                    });
 
-                  if (cache.size > maxCacheSize) {
-                    evictExpiredEntries(now);
-                  }
-                  if (cache.size > maxCacheSize) {
-                    const oldest = cache.keys().next().value;
-                    if (oldest !== undefined) {
-                      cache.delete(oldest);
+                    if (cache.size > maxCacheSize) {
+                      evictExpiredEntries(now);
                     }
-                  }
-                }),
-              ),
+                    if (cache.size > maxCacheSize) {
+                      const oldest = cache.keys().next().value;
+                      if (oldest !== undefined) {
+                        cache.delete(oldest);
+                      }
+                    }
+                  }),
+                ),
+              );
+            }
+
+            const matchedTupleEffect =
+              delegatedCheck === undefined
+                ? Effect.succeed(localMatchedTuple)
+                : resolveDelegatedMatchedSubject(
+                    decodedInput,
+                    subjectCandidates,
+                    delegatedCheck,
+                  ).pipe(
+                    Effect.map((matchedSubject) =>
+                      matchedSubject === undefined
+                        ? undefined
+                        : localMatchedTuple?.subject === matchedSubject
+                          ? localMatchedTuple
+                          : ({
+                              namespace: decodedInput.namespace,
+                              object: decodedInput.object,
+                              relation: decodedInput.relation,
+                              subject: matchedSubject,
+                              tenantScope:
+                                decodedInput.requestContext.tenant.scope,
+                              tenantScopeId:
+                                decodedInput.requestContext.tenant.scopeId,
+                            } satisfies AuthorizationTuple),
+                    ),
+                  );
+
+            return matchedTupleEffect.pipe(
+              Effect.flatMap((matchedTuple) => {
+                const usedDelegatedCheck = delegatedCheck !== undefined;
+                const decision =
+                  matchedTuple === undefined
+                    ? {
+                        allowed: false,
+                        cacheKey,
+                        reason: usedDelegatedCheck
+                          ? "No persisted authorization relation was found."
+                          : "No matching authorization tuple was found.",
+                        auditRequired: actorSupportsPrivilegedSupportEscalation(
+                          decodedInput.requestContext.actorType,
+                        ),
+                      }
+                    : {
+                        allowed: true,
+                        cacheKey,
+                        reason: usedDelegatedCheck
+                          ? "Matched persisted authorization relation."
+                          : "Matched declared authorization tuple.",
+                        auditRequired: actorSupportsPrivilegedSupportEscalation(
+                          decodedInput.requestContext.actorType,
+                        ),
+                        matchedTuple,
+                      };
+
+                return Schema.decodeUnknown(AuthorizationDecisionSchema)(
+                  decision,
+                ).pipe(
+                  Effect.tap((validatedDecision) =>
+                    Effect.sync(() => {
+                      cache.set(cacheKey, {
+                        decision: validatedDecision,
+                        expiresAt: resolveCacheExpiry({
+                          now,
+                          cacheTtlSeconds: options.cacheTtlSeconds,
+                          breakGlassAllowed: false,
+                          requestContext: decodedInput.requestContext,
+                        }),
+                      });
+
+                      if (cache.size > maxCacheSize) {
+                        evictExpiredEntries(now);
+                      }
+                      if (cache.size > maxCacheSize) {
+                        const oldest = cache.keys().next().value;
+                        if (oldest !== undefined) {
+                          cache.delete(oldest);
+                        }
+                      }
+                    }),
+                  ),
+                );
+              }),
             );
           }),
         );
@@ -309,28 +483,38 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
         Schema.decodeUnknown(AuthorizationCheckInputSchema)(checkInput).pipe(
           Effect.flatMap((decodedInput) => {
             const subjectCandidates = buildSubjectCandidates(decodedInput);
-            const matchedTuple = tuples.find(
-              (tuple) =>
-                tuple.namespace === decodedInput.namespace &&
-                tuple.object === decodedInput.object &&
-                tuple.relation === decodedInput.relation &&
-                tuple.tenantScope ===
-                  decodedInput.requestContext.tenant.scope &&
-                tuple.tenantScopeId ===
-                  decodedInput.requestContext.tenant.scopeId &&
-                subjectCandidates.includes(tuple.subject),
+            const localMatchedTuple = findMatchingTuple(
+              tuples,
+              decodedInput,
+              subjectCandidates,
             );
+            const usedBreakGlass = hasPrivilegedBreakGlassAccess(
+              decodedInput.requestContext,
+            );
+            const permissionMappingAllowed = mappingAllowsRequest(decodedInput);
+            const matchedSubjectEffect =
+              usedBreakGlass || !permissionMappingAllowed
+                ? Effect.succeed<string | undefined>(undefined)
+                : delegatedCheck === undefined
+                  ? Effect.succeed(localMatchedTuple?.subject)
+                  : resolveDelegatedMatchedSubject(
+                      decodedInput,
+                      subjectCandidates,
+                      delegatedCheck,
+                    );
 
-            return Schema.decodeUnknown(AuthorizationExplanationSchema)({
-              cacheKey: buildCacheKey(decodedInput),
-              subjectCandidates: [...subjectCandidates],
-              matchedSubject: matchedTuple?.subject,
-              usedBreakGlass: hasPrivilegedBreakGlassAccess(
-                decodedInput.requestContext,
+            return matchedSubjectEffect.pipe(
+              Effect.flatMap((matchedSubject) =>
+                Schema.decodeUnknown(AuthorizationExplanationSchema)({
+                  cacheKey: buildCacheKey(decodedInput),
+                  subjectCandidates: [...subjectCandidates],
+                  ...(matchedSubject !== undefined ? { matchedSubject } : {}),
+                  usedBreakGlass,
+                  requestScope: decodedInput.requestContext.tenant.scope,
+                  requestScopeId: decodedInput.requestContext.tenant.scopeId,
+                }),
               ),
-              requestScope: decodedInput.requestContext.tenant.scope,
-              requestScopeId: decodedInput.requestContext.tenant.scopeId,
-            });
+            );
           }),
         );
 

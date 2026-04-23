@@ -7,3 +7,5 @@ export * from "./tenant-onboarding";
 export * from "./tenant-onboarding-repository";
 export * from "./tenant-provisioning";
 export * from "./tenant-provisioning-repository";
+export * from "./workflow-jobs";
+export * from "./workflow-jobs-repository";

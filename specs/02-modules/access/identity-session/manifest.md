@@ -15,18 +15,20 @@ Keycloak for authentication, federation, MFA, and session lifecycle. Valkey for 
 5. Consumption of approved `tenant-branding` identity/login branding through branded redirects around Keycloak-owned flows.
 6. Auth start and auth callback coordination for public-web and product-app entry points.
 7. Session-bound request bootstrap after validated callback completion.
+8. Backend token and service-actor coordination for downstream trusted execution surfaces such as Convex.
 
 ## Branded Redirect Contract
 
 1. Upstream surfaces resolve the public-safe tenant-branding projection before redirecting to login or reset flows.
-2. Redirect metadata may include tenant hint, display name hint, approved theme variant, return target, and correlation context.
+2. Redirect metadata may include tenant hint, display name hint, approved theme variant, a validated absolute callback URI to an approved first-party application target, and correlation context.
 3. Redirect metadata must not include unpublished assets, sender metadata, DNS proofs, or other secret branding state.
 
 ## First Backend-Ready Slice
 
 1. Support auth start from public-web and product-app through thin backend handlers that build branded redirects.
-2. Validate auth callback payloads, activate or resume session state, and record auditable lifecycle events before redirecting into product-app.
-3. Restrict post-auth redirects to approved application targets and preserve correlation context for downstream audit and billing flows.
+2. Validate auth callback payloads together with a server-generated callback-state token, activate or resume session state, record auditable lifecycle events, and set request transport before redirecting into product-app.
+3. Restrict post-auth redirects to approved application targets expressed as validated absolute callback URIs, and preserve correlation plus tenant context through server-generated callback state rather than browser-owned query data.
+4. Provide a backend-owned path that can resolve validated Keycloak identity into downstream trusted execution surfaces without making browser-owned tenant hints authoritative.
 
 ## Permission Scopes
 
@@ -73,3 +75,4 @@ Keycloak for authentication, federation, MFA, and session lifecycle. Valkey for 
 5. Runtime tenant branding defaults to branded redirect handoff, not dynamic theme mutation inside Keycloak.
 6. Auth callback handling must be auditable and safe to retry without duplicating session activation state.
 7. Checkout or signup completion must depend on validated session state, not anonymous query parameters.
+8. Any downstream execution surface that trusts Keycloak-derived identity must keep user or service-actor provenance auditable alongside the platform request context.

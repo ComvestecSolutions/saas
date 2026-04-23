@@ -10,9 +10,12 @@ import {
   billingAndMeteringConfigKey,
   billingAndMeteringFeatureFlag,
   platformModuleManifests,
+  runtimeConfigFields,
   tenantBrandingFieldClassifications,
   tenantBrandingFeatureFlag,
   tenantBrandingFields,
+  tenantManagementFieldClassifications,
+  tenantManagementFields,
   tenantManagementConfigKey,
   tenantManagementFeatureFlag,
 } from "@comvestec/config";
@@ -47,6 +50,24 @@ describe("contract manifests", () => {
           tenantBrandingFieldClassifications.find(
             (classification) =>
               classification.field === tenantBrandingFields.replyToEmail,
+          ),
+        ),
+      ]),
+    );
+  });
+
+  it("keeps tenant-management billing email classified as regulated-sensitive", () => {
+    const manifest = platformModuleManifests.find(
+      (candidate) => candidate.moduleId === platformModuleId.tenantManagement,
+    );
+
+    expect(manifest).toBeDefined();
+    expect(manifest?.fieldClassifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining(
+          tenantManagementFieldClassifications.find(
+            (classification) =>
+              classification.field === tenantManagementFields.billingEmail,
           ),
         ),
       ]),
@@ -136,5 +157,44 @@ describe("contract manifests", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps the runtime-config admin projection aligned with governance read views", () => {
+    const manifest = platformModuleManifests.find(
+      (candidate) => candidate.moduleId === platformModuleId.runtimeConfig,
+    );
+    const adminProjection = manifest?.projectionProfiles.find(
+      (profile) => profile.profile === projectionProfile.admin,
+    );
+    const classifiedFields = manifest?.fieldClassifications.map(
+      (classification) => classification.field,
+    );
+
+    expect(adminProjection).toBeDefined();
+    expect(classifiedFields).not.toContain("effectiveValue");
+    expect(adminProjection?.visibleFields).toEqual([
+      runtimeConfigFields.moduleId,
+      runtimeConfigFields.key,
+      runtimeConfigFields.scope,
+      runtimeConfigFields.scopeId,
+      runtimeConfigFields.value,
+      runtimeConfigFields.source,
+      runtimeConfigFields.changedBy,
+      runtimeConfigFields.changedAt,
+      runtimeConfigFields.approvalReason,
+      runtimeConfigFields.proposalId,
+      runtimeConfigFields.action,
+      runtimeConfigFields.artifactPath,
+      runtimeConfigFields.runtimeValue,
+      runtimeConfigFields.codeValue,
+      runtimeConfigFields.status,
+      runtimeConfigFields.generatedAt,
+    ]);
+    expect(adminProjection?.auditedFields).toEqual([
+      runtimeConfigFields.value,
+      runtimeConfigFields.approvalReason,
+      runtimeConfigFields.runtimeValue,
+      runtimeConfigFields.codeValue,
+    ]);
   });
 });

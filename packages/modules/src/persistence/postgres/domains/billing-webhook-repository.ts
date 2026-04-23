@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import { billingSubscriptionStatus } from "@comvestec/contracts";
 import {
@@ -5,6 +6,7 @@ import {
   BillingWebhookPersistenceProjectionSchema,
 } from "../../../domains/billing-metering";
 import {
+  billingCustomerAccountsTable,
   billingEntitlementsTable,
   billingPaymentEventsTable,
   billingSubscriptionsTable,
@@ -21,6 +23,7 @@ export type {
 };
 
 export type BillingWebhookPostgresUpsertSet = {
+  readonly customerAccount?: typeof billingCustomerAccountsTable.$inferInsert;
   readonly webhookReceipt: typeof webhookReceiptsTable.$inferInsert;
   readonly subscription: typeof billingSubscriptionsTable.$inferInsert;
   readonly paymentEvent: typeof billingPaymentEventsTable.$inferInsert;
@@ -45,7 +48,9 @@ const parseTimestamp = (value: string | undefined) =>
 const resolveCustomerAccountId = (
   projection: BillingWebhookPersistenceProjection,
 ) => {
-  const customerId = projection.subscription.metadata.customerId;
+  const customerId =
+    projection.customerAccount?.providerCustomerId ??
+    projection.subscription.metadata.customerId;
 
   return customerId !== undefined
     ? [projection.subscription.provider, customerId].join(":")
@@ -62,6 +67,27 @@ export const buildBillingWebhookPostgresUpsertSet = (
   Schema.decodeUnknown(BillingWebhookPersistenceProjectionSchema)(input).pipe(
     Effect.map(
       (projection): BillingWebhookPostgresUpsertSet => ({
+        ...(projection.customerAccount !== undefined
+          ? {
+              customerAccount: {
+                accountId: projection.customerAccount.accountId,
+                provider: projection.customerAccount.provider,
+                providerCustomerId:
+                  projection.customerAccount.providerCustomerId,
+                actorId: projection.customerAccount.actorId,
+                scope: projection.customerAccount.scope,
+                scopeId: projection.customerAccount.scopeId,
+                ...(projection.customerAccount.email !== undefined
+                  ? { email: projection.customerAccount.email }
+                  : {}),
+                status: projection.customerAccount.status,
+                metadata: projection.customerAccount.metadata,
+                updatedAt: parseTimestamp(
+                  projection.webhookReceipt.processedAt,
+                ),
+              },
+            }
+          : {}),
         webhookReceipt: {
           receiptId: projection.webhookReceipt.receiptId,
           provider: projection.webhookReceipt.provider,
@@ -169,6 +195,30 @@ export const makeBillingWebhookPostgresRepository = (
               Effect.tryPromise({
                 try: () =>
                   database.transaction(async (tx) => {
+                    if (upsertSet.customerAccount !== undefined) {
+                      await tx
+                        .insert(billingCustomerAccountsTable)
+                        .values(upsertSet.customerAccount)
+                        .onConflictDoUpdate({
+                          target: [
+                            billingCustomerAccountsTable.provider,
+                            billingCustomerAccountsTable.providerCustomerId,
+                          ],
+                          set: {
+                            actorId: sql`${billingCustomerAccountsTable.actorId}`,
+                            scope: sql`${billingCustomerAccountsTable.scope}`,
+                            scopeId: sql`${billingCustomerAccountsTable.scopeId}`,
+                            email:
+                              upsertSet.customerAccount.email ??
+                              sql`${billingCustomerAccountsTable.email}`,
+                            status: upsertSet.customerAccount.status,
+                            metadata: sql`${billingCustomerAccountsTable.metadata}`,
+                            updatedAt: upsertSet.customerAccount.updatedAt,
+                          },
+                        })
+                        .execute();
+                    }
+
                     await tx
                       .insert(webhookReceiptsTable)
                       .values(upsertSet.webhookReceipt)

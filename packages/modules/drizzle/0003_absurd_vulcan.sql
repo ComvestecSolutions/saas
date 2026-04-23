@@ -1,0 +1,1 @@
+CREATE INDEX "workflow_jobs_gap_idx" ON "workflow_jobs" USING btree ("source_module_id","gap_reason","updated_at");

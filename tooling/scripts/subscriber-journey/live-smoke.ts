@@ -1,19 +1,21 @@
 import { Effect, ParseResult, Schema } from "effect";
-import { env as processEnvironment, exit as exitProcess } from "node:process";
+import { resolveDefaultTenantOnboardingEnabledModules } from "@comvestec/config";
 import {
   actorType,
   BillingCheckoutSessionSchema,
-  platformModuleId,
+  PlatformModuleIdSchema,
   platformScope,
   PublicBillingPlanCatalogSchema,
   RequestContextSchema,
 } from "@comvestec/contracts";
 import {
-  BillingEntitlementRecordSchema,
   IdentitySessionCompletionResultSchema,
   IdentitySessionStartResultSchema,
 } from "@comvestec/modules";
-import { subscriberJourneyApiPath } from "@comvestec/platform";
+import {
+  createProductAppAuthCallbackStateFromEnvironment,
+  subscriberJourneyApiPath,
+} from "@comvestec/platform";
 import {
   hostFromUrlString,
   issueKeycloakPasswordGrant,
@@ -35,7 +37,7 @@ const SubscriberJourneyLiveSmokeEnvironmentSchema = Schema.Struct({
   POLAR_WEBHOOK_SECRET: Schema.NonEmptyString,
   APP_BASE_URL: Schema.NonEmptyString,
   PRODUCT_APP_PORT: Schema.NonEmptyString,
-  SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST: Schema.optional(Schema.NonEmptyString),
+  SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI: Schema.optional(Schema.NonEmptyString),
   SUBSCRIBER_JOURNEY_SMOKE_SUCCESS_URL: Schema.optional(Schema.NonEmptyString),
   SUBSCRIBER_JOURNEY_SMOKE_CANCEL_URL: Schema.optional(Schema.NonEmptyString),
   SUBSCRIBER_JOURNEY_SMOKE_USER_USERNAME: Schema.optional(
@@ -56,20 +58,24 @@ const SubscriberJourneyPlanListResponseSchema = Schema.Struct({
 
 const SubscriberJourneyBootstrapResultSchema = Schema.Struct({
   requestContext: RequestContextSchema,
-  snapshot: Schema.Struct({
-    application: Schema.NonEmptyString,
-  }),
   authorization: Schema.Struct({
     allowed: Schema.Boolean,
     reason: Schema.NonEmptyString,
   }),
-  billingStatus: Schema.Struct({
-    plan: Schema.optional(Schema.NonEmptyString),
-    billingInterval: Schema.optional(Schema.NonEmptyString),
-    status: Schema.optional(Schema.NonEmptyString),
-    currentPeriodEnd: Schema.optional(Schema.NonEmptyString),
-  }),
-  entitlements: Schema.Array(BillingEntitlementRecordSchema),
+  snapshot: Schema.optional(
+    Schema.Struct({
+      application: Schema.NonEmptyString,
+    }),
+  ),
+  billingStatus: Schema.optional(
+    Schema.Struct({
+      plan: Schema.optional(Schema.NonEmptyString),
+      billingInterval: Schema.optional(Schema.NonEmptyString),
+      status: Schema.optional(Schema.NonEmptyString),
+      currentPeriodEnd: Schema.optional(Schema.NonEmptyString),
+    }),
+  ),
+  enabledModules: Schema.optional(Schema.Array(PlatformModuleIdSchema)),
 });
 
 type SubscriberJourneyLiveSmokeEnvironment = Schema.Schema.Type<
@@ -107,8 +113,8 @@ const resolveSmokeFixture = (
     environment.SUBSCRIBER_JOURNEY_SMOKE_ENTERPRISE_ID,
     subscriberJourneySmokeDefaults.enterpriseId,
   ),
-  returnHost: resolveOptionalOverride(
-    environment.SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST,
+  redirectUri: resolveOptionalOverride(
+    environment.SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI,
     `http://localhost:${environment.PRODUCT_APP_PORT}/auth/callback`,
   ),
   successUrl: resolveOptionalOverride(
@@ -147,11 +153,11 @@ const createJsonPost = <A>(options: {
   });
 
 const main = Effect.gen(function* () {
-  const environment = yield* decodeLiveSmokeEnvironment(processEnvironment);
+  const environment = yield* decodeLiveSmokeEnvironment(Bun.env);
   const smokeFixture = resolveSmokeFixture(environment);
   const requestHost = yield* hostFromUrlString(
-    smokeFixture.returnHost,
-    "SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST",
+    smokeFixture.redirectUri,
+    "SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI",
   );
 
   yield* requireConfiguredValue(
@@ -173,6 +179,26 @@ const main = Effect.gen(function* () {
     subscriberJourneyApiPath.replayBillingWebhook,
   );
   const correlationId = `corr_smoke_${Date.now()}`;
+  const enabledModules = resolveDefaultTenantOnboardingEnabledModules();
+  const authCompletionState =
+    yield* createProductAppAuthCallbackStateFromEnvironment(
+      {
+        PRODUCT_APP_BASE_URL: new URL(smokeFixture.redirectUri).origin,
+        KEYCLOAK_CLIENT_SECRET: environment.KEYCLOAK_CLIENT_SECRET,
+      },
+      {
+        correlationId,
+        redirectUri: smokeFixture.redirectUri,
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: smokeFixture.tenantId,
+          enterpriseId: smokeFixture.enterpriseId,
+          organizationId: smokeFixture.tenantId,
+        },
+        enabledModules,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      },
+    );
 
   console.log("Calling the backend-owned subscriber journey API...");
 
@@ -208,7 +234,8 @@ const main = Effect.gen(function* () {
         },
       },
       tenantHint: smokeFixture.tenantId,
-      returnHost: smokeFixture.returnHost,
+      redirectUri: smokeFixture.redirectUri,
+      state: authCompletionState,
     },
     decode: Schema.decodeUnknown(IdentitySessionStartResultSchema),
   });
@@ -232,20 +259,8 @@ const main = Effect.gen(function* () {
       session: {
         accessToken: keycloakAccessToken,
       },
-      correlationId,
       host: requestHost,
-      tenant: {
-        scope: platformScope.organization,
-        scopeId: smokeFixture.tenantId,
-        enterpriseId: smokeFixture.enterpriseId,
-        organizationId: smokeFixture.tenantId,
-        individualId: smokeFixture.username,
-      },
-      enabledModules: [
-        platformModuleId.tenantManagement,
-        platformModuleId.identitySession,
-        platformModuleId.billingAndMetering,
-      ],
+      state: authCompletionState,
     },
     decode: Schema.decodeUnknown(IdentitySessionCompletionResultSchema),
   });
@@ -315,5 +330,5 @@ try {
   await Effect.runPromise(main);
 } catch (error) {
   printToolingScriptError(error);
-  exitProcess(1);
+  process.exit(1);
 }

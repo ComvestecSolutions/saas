@@ -33,7 +33,7 @@ Status: accepted
 
 ## Snapshot
 
-Last updated: 2026-04-15
+Last updated: 2026-04-22
 
 Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
@@ -95,6 +95,21 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 - Cleanup: platform adapter boundaries now enforce non-empty runtime-facing configuration and identifiers, preserve `ParseResult.ParseError` on decoded runtime inputs, expose real Keycloak, Valkey, Ory Keto, OpenPanel, and Polar service boundaries, and centralize adapter service names and healthcheck schemas in `packages/platform/src/adapters/service-names.ts`.
 - Next gap: Complete adapter health probes and integration tests.
 
+#### Convex identity-backed execution
+
+- Governing spec: [003](../01-platform/access/003-tenant-identity-and-access.md), [Identity Session Manifest](../02-modules/access/identity-session/manifest.md), [Billing And Metering Manifest](../02-modules/domains/billing-and-metering/manifest.md), [ADR-019](../03-adr/identity/ADR-019-keycloak-backed-convex-identity-execution.md)
+- Status: implemented
+- Evidence: [packages/contracts/src/access/identity-claims.ts](../../packages/contracts/src/access/identity-claims.ts), [packages/platform/src/adapters/storage/convex.ts](../../packages/platform/src/adapters/storage/convex.ts), [convex/keycloakWorkflowIdentity.ts](../../convex/keycloakWorkflowIdentity.ts), [convex/workflowJobRunner.ts](../../convex/workflowJobRunner.ts), [convex/workflowJobs.ts](../../convex/workflowJobs.ts), [packages/platform/src/services/domains/admin-billing.ts](../../packages/platform/src/services/domains/admin-billing.ts), [tooling/scripts/subscriber-journey/bootstrap.ts](../../tooling/scripts/subscriber-journey/bootstrap.ts), [tests/platform/convex-workflow-job-runner.test.ts](../../tests/platform/convex-workflow-job-runner.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Extend the same claim-gated Keycloak execution model to future Convex-backed operator workflows beyond billing reconciliation.
+
+#### Backend-owned HTTP API layer
+
+- Governing spec: [Backend Readiness Roadmap](backend-readiness-roadmap.md), [013 Technology Stack](../01-platform/architecture/013-technology-stack.md), [ADR-018](../03-adr/architecture/ADR-018-h3-backend-http-layer.md)
+- Status: implemented
+- Evidence: [packages/platform/src/http/backend-api.ts](../../packages/platform/src/http/backend-api.ts), [packages/platform/src/http/index.ts](../../packages/platform/src/http/index.ts), [packages/platform/src/http/openapi-document.ts](../../packages/platform/src/http/openapi-document.ts), [packages/platform/src/http/openapi.ts](../../packages/platform/src/http/openapi.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [packages/platform/src/services/domains/admin-billing-http.ts](../../packages/platform/src/services/domains/admin-billing-http.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [tests/platform/backend-api.test.ts](../../tests/platform/backend-api.test.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts)
+- Cleanup: the standalone backend entrypoint now mounts the existing Request/Response handlers through one shared H3 app so backend-owned APIs keep Effect business logic while gaining an explicit routing boundary for external callers, and its OpenAPI JSON plus Swagger UI are generated from the same Effect request and response schemas that define the transport boundary.
+- Next gap: Move correlation, authorization, audit, webhook, and observability middleware into the shared H3 boundary while keeping transport-neutral security and governance logic below both direct and HTTP edges.
+
 #### Security hygiene automation
 
 - Governing spec: [010 Deployment Profiles](../01-platform/architecture/010-deployment-profiles.md), [013 Technology Stack](../01-platform/architecture/013-technology-stack.md)
@@ -123,29 +138,31 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 | [ADR-015 Convex Native Workflows And GlitchTip Error Tracking](../03-adr/domains/ADR-015-convex-native-workflows-and-glitchtip-error-tracking.md)  | accepted | Specs + adapters + Compose |
 | [ADR-016 OpenPanel Self-Hosted Analytics](../03-adr/domains/ADR-016-openpanel-self-hosted-analytics.md)                                            | accepted | Specs + adapter + Compose  |
 | [ADR-017 Shared PostgreSQL Instance, Isolated Service Databases](../03-adr/storage/ADR-017-shared-postgres-instance-isolated-service-databases.md) | accepted | Specs + Compose            |
+| [ADR-018 H3 Backend HTTP Layer](../03-adr/architecture/ADR-018-h3-backend-http-layer.md)                                                           | accepted | Platform HTTP entrypoint   |
+| [ADR-019 Keycloak-Backed Convex Identity Execution](../03-adr/identity/ADR-019-keycloak-backed-convex-identity-execution.md)                       | accepted | Specs + Convex auth slice  |
 
 ### Applications
 
 #### Public web
 
 - Governing spec: [Public Web Spec](../02-apps/public-web/spec.md)
-- Status: scaffolded
-- Evidence: [apps/public-web/src/routes/index.tsx](../../apps/public-web/src/routes/index.tsx), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/platform/subscriber-journey-http.test.ts](../../tests/platform/subscriber-journey-http.test.ts)
-- Next gap: Connect the public shell to the backend-owned subscriber journey API only after the app spec accepts the operator and customer interaction flow.
+- Status: implemented
+- Evidence: [apps/public-web/src/routes/index.tsx](../../apps/public-web/src/routes/index.tsx), [apps/public-web/src/routes/auth/start.ts](../../apps/public-web/src/routes/auth/start.ts), [packages/platform/src/services/apps/app-snapshots.ts](../../packages/platform/src/services/apps/app-snapshots.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/apps/subscriber-journey-actions.ts](../../packages/platform/src/services/apps/subscriber-journey-actions.ts), [tests/platform/app-auth-routes.test.ts](../../tests/platform/app-auth-routes.test.ts), [tests/platform/services.test.ts](../../tests/platform/services.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Add hosted checkout start and return routes on the same validated server-owned boundary.
 
 #### Product app
 
 - Governing spec: [Product App Spec](../02-apps/product-app/spec.md)
-- Status: scaffolded
-- Evidence: [apps/product-app/src/routes/index.tsx](../../apps/product-app/src/routes/index.tsx), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/platform/subscriber-journey-http.test.ts](../../tests/platform/subscriber-journey-http.test.ts)
-- Next gap: Connect the product shell to the backend-owned auth, request-context, and bootstrap endpoints after the app-spec flow is accepted.
+- Status: implemented
+- Evidence: [apps/product-app/src/routes/index.tsx](../../apps/product-app/src/routes/index.tsx), [apps/product-app/src/routes/auth/callback.ts](../../apps/product-app/src/routes/auth/callback.ts), [packages/platform/src/services/apps/app-snapshots.ts](../../packages/platform/src/services/apps/app-snapshots.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/apps/subscriber-journey-actions.ts](../../packages/platform/src/services/apps/subscriber-journey-actions.ts), [tests/platform/app-auth-routes.test.ts](../../tests/platform/app-auth-routes.test.ts), [tests/platform/services.test.ts](../../tests/platform/services.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Add logout, stale-session recovery, and post-checkout billing return routes on the same request-transport boundary.
 
 #### Admin app
 
 - Governing spec: [Admin App Spec](../02-apps/admin-app/spec.md)
 - Status: scaffolded
-- Evidence: [apps/admin-app/src/routes/index.tsx](../../apps/admin-app/src/routes/index.tsx)
-- Next gap: Implement config sync, drift review, approvals, and audit mutation flows.
+- Evidence: [apps/admin-app/src/routes/index.tsx](../../apps/admin-app/src/routes/index.tsx), [packages/platform/src/services/apps/app-snapshots.ts](../../packages/platform/src/services/apps/app-snapshots.ts), [packages/platform/src/services/governance/admin-governance.ts](../../packages/platform/src/services/governance/admin-governance.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [packages/platform/src/services/domains/admin-billing.ts](../../packages/platform/src/services/domains/admin-billing.ts), [packages/platform/src/services/apps/admin-billing-actions.ts](../../packages/platform/src/services/apps/admin-billing-actions.ts), [packages/platform/src/services/domains/admin-billing-http.ts](../../packages/platform/src/services/domains/admin-billing-http.ts), [tests/platform/services.test.ts](../../tests/platform/services.test.ts), [tests/platform/admin-governance-http.test.ts](../../tests/platform/admin-governance-http.test.ts), [tests/platform/admin-billing-http.test.ts](../../tests/platform/admin-billing-http.test.ts)
+- Next gap: Replace the remaining snapshot-only admin interactions with direct governance mutation helpers and ship explicit admin-app UI surfaces for the existing backend-owned billing reconciliation controls.
 
 ### Modules
 
@@ -153,39 +170,39 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 
 - Governing manifest: [Manifest](../02-modules/domains/tenant-management/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/domains/tenant-management.ts](../../packages/modules/src/domains/tenant-management.ts), [tests/modules/domains.test.ts](../../tests/modules/domains.test.ts)
-- Next gap: Replace onboarding and isolation scaffolds with durable tenant provisioning and onboarding state for the signup-to-entitled-access slice.
+- Evidence: [packages/modules/src/domains/tenant-management.ts](../../packages/modules/src/domains/tenant-management.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/domains/admin-billing.ts](../../packages/platform/src/services/domains/admin-billing.ts), [convex/workflowJobs.ts](../../convex/workflowJobs.ts), [convex/workflowJobRunner.ts](../../convex/workflowJobRunner.ts), [convex/crons.ts](../../convex/crons.ts), [tests/modules/domains.test.ts](../../tests/modules/domains.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Add dedicated admin-app repair controls and operator-driven replay or cancellation workflows for unresolved tenant repair gaps.
 
 #### Runtime config
 
 - Governing manifest: [Manifest](../02-modules/governance/config-runtime/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/governance/runtime-config.ts](../../packages/modules/src/governance/runtime-config.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
-- Next gap: Implement PostgreSQL-backed bidirectional sync.
+- Evidence: [packages/modules/src/governance/runtime-config.ts](../../packages/modules/src/governance/runtime-config.ts), [packages/modules/src/persistence/postgres/governance/runtime-config-repository.ts](../../packages/modules/src/persistence/postgres/governance/runtime-config-repository.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
+- Next gap: Implement approval workflows and extend the current first-party operator read surfaces into end-to-end approval workflows over persisted overrides and sync artifacts.
 
 #### Authorization
 
 - Governing manifest: [Manifest](../02-modules/access/authorization/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/access/authorization.ts](../../packages/modules/src/access/authorization.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts)
-- Security hardening: break-glass expiry validation, bounded cache with `maxCacheSize` (default 1000) plus expired-entry eviction and oldest-entry eviction, all vocabulary strings use shared constants.
-- Next gap: Replace in-memory relation tuples with Ory Keto-backed checks.
+- Evidence: [packages/modules/src/access/authorization.ts](../../packages/modules/src/access/authorization.ts), [packages/platform/src/services/access/authorization-delegation.ts](../../packages/platform/src/services/access/authorization-delegation.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/domains/admin-billing.ts](../../packages/platform/src/services/domains/admin-billing.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Security hardening: break-glass expiry validation, Ory Keto-backed delegated checks as the authorization source of truth, bounded cache with `maxCacheSize` (default 1000) plus expired-entry eviction and oldest-entry eviction, all vocabulary strings use shared constants.
+- Next gap: Add persisted tuple inspection and admin review surfaces so explainability is backed by Ory-managed relation reads instead of local synthesized matches.
 
 #### Field security
 
 - Governing manifest: [Manifest](../02-modules/access/field-security/manifest.md)
-- Status: scaffolded
-- Evidence: [packages/modules/src/access/field-security.ts](../../packages/modules/src/access/field-security.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts)
-- Security hardening: `regulated-sensitive` fields redacted for non-privileged actors, `secret` fields always redacted, anonymous actors see only `public` fields, all classification checks use shared `dataClassification.*` constants.
-- Next gap: Wire projection enforcement into route and mutation response paths.
+- Status: implemented
+- Evidence: [packages/modules/src/access/field-security.ts](../../packages/modules/src/access/field-security.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/governance/admin-governance.ts](../../packages/platform/src/services/governance/admin-governance.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [packages/platform/src/services/apps/app-snapshots.ts](../../packages/platform/src/services/apps/app-snapshots.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts), [tests/platform/admin-governance.test.ts](../../tests/platform/admin-governance.test.ts), [tests/platform/admin-governance-http.test.ts](../../tests/platform/admin-governance-http.test.ts)
+- Security hardening: `regulated-sensitive` fields redacted for non-privileged actors, `secret` fields always redacted, anonymous actors see only `public` fields, product bootstrap and admin-governance read surfaces now return manifest-projected payloads, admin-governance HTTP reads resolve request context from session-backed Valkey state instead of caller-asserted request bodies, direct and HTTP governance reads both enforce platform/support-operator access, and sensitive projected governance reads emit field-security audit events when audited fields remain visible.
+- Next gap: Extend projection enforcement to remaining mutation envelopes and remove remaining caller-supplied request-context trust from legacy governance mutation routes.
 
 #### Audit log
 
 - Governing manifest: [Manifest](../02-modules/governance/audit-log/manifest.md)
 - Status: scaffolded
-- Evidence: [packages/modules/src/governance/audit-log.ts](../../packages/modules/src/governance/audit-log.ts), [packages/modules/src/persistence/postgres/index.ts](../../packages/modules/src/persistence/postgres/index.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts)
+- Evidence: [packages/modules/src/governance/audit-log.ts](../../packages/modules/src/governance/audit-log.ts), [packages/modules/src/persistence/postgres/governance/audit-log-repository.ts](../../packages/modules/src/persistence/postgres/governance/audit-log-repository.ts), [packages/platform/src/services/governance/admin-governance.ts](../../packages/platform/src/services/governance/admin-governance.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [tests/modules/governance.test.ts](../../tests/modules/governance.test.ts), [tests/platform/admin-governance-http.test.ts](../../tests/platform/admin-governance-http.test.ts)
 - Cleanup: `AuditEventSchema.action` now uses the shared module-scoped audit action constants from contracts, and audit builders and requirements use Effect-safe runtime decoding instead of live-path `Schema.validateSync` calls.
-- Next gap: Implement append-only PostgreSQL storage and admin review surfaces.
+- Next gap: Expand audit review beyond module-scoped queries and complete operator workflows on top of the current module-scoped read surface.
 
 #### File storage
 
@@ -212,8 +229,9 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 
 - Governing manifest: [Manifest](../02-modules/domains/billing-and-metering/manifest.md)
 - Status: implemented
-- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/billing-state-repository.ts](../../packages/modules/src/persistence/postgres/billing-state-repository.ts), [packages/platform/src/services/subscriber-journey.ts](../../packages/platform/src/services/subscriber-journey.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [packages/platform/src/services/admin-billing-http.ts](../../packages/platform/src/services/admin-billing-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts), [tests/platform/admin-billing-http.test.ts](../../tests/platform/admin-billing-http.test.ts)
-- Next gap: Expand authenticated operator billing management beyond initial SDK-backed recurring plan creation, including multi-interval catalog composition, replay/audit tooling, and live infrastructure smoke coverage.
+- Evidence: [packages/platform/src/adapters/features-billing/polar.ts](../../packages/platform/src/adapters/features-billing/polar.ts), [packages/modules/src/domains/billing-webhook-processing.ts](../../packages/modules/src/domains/billing-webhook-processing.ts), [packages/modules/src/persistence/postgres/billing-state-repository.ts](../../packages/modules/src/persistence/postgres/billing-state-repository.ts), [packages/modules/src/persistence/postgres/domains/workflow-jobs-repository.ts](../../packages/modules/src/persistence/postgres/domains/workflow-jobs-repository.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [packages/platform/src/services/domains/admin-billing.ts](../../packages/platform/src/services/domains/admin-billing.ts), [packages/platform/src/services/apps/admin-billing-actions.ts](../../packages/platform/src/services/apps/admin-billing-actions.ts), [packages/platform/src/services/domains/admin-billing-http.ts](../../packages/platform/src/services/domains/admin-billing-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/billing-webhook-processing.test.ts](../../tests/modules/billing-webhook-processing.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts), [tests/platform/admin-billing-http.test.ts](../../tests/platform/admin-billing-http.test.ts)
+- Cleanup: backend-only operator-triggered repair-gap replay now routes through admin-billing service and HTTP adapters while preserving operator identity for workflow execution.
+- Next gap: Add operator-visible cancellation controls for unresolved repair gaps and expand reconciliation coverage beyond the current billing-focused convergence paths.
 
 #### Notification center
 
@@ -233,8 +251,8 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 
 - Governing manifest: [Manifest](../02-modules/access/identity-session/manifest.md)
 - Status: implemented
-- Evidence: [packages/platform/src/adapters/identity/keycloak.ts](../../packages/platform/src/adapters/identity/keycloak.ts), [packages/modules/src/access/identity-session.ts](../../packages/modules/src/access/identity-session.ts), [packages/modules/src/persistence/postgres/identity-session-repository.ts](../../packages/modules/src/persistence/postgres/identity-session-repository.ts), [packages/modules/src/persistence/postgres/tenant-onboarding-repository.ts](../../packages/modules/src/persistence/postgres/tenant-onboarding-repository.ts), [packages/platform/src/services/subscriber-journey-http.ts](../../packages/platform/src/services/subscriber-journey-http.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
-- Next gap: Add backend-owned callback-state orchestration and operator audit review surfaces beyond the current direct-call API.
+- Evidence: [packages/contracts/src/runtime/redirect-uris.ts](../../packages/contracts/src/runtime/redirect-uris.ts), [packages/platform/src/adapters/identity/keycloak.ts](../../packages/platform/src/adapters/identity/keycloak.ts), [packages/modules/src/access/identity-session.ts](../../packages/modules/src/access/identity-session.ts), [packages/modules/src/persistence/postgres/identity-session-repository.ts](../../packages/modules/src/persistence/postgres/identity-session-repository.ts), [packages/modules/src/persistence/postgres/tenant-onboarding-repository.ts](../../packages/modules/src/persistence/postgres/tenant-onboarding-repository.ts), [packages/platform/src/services/access/request-context-transport.ts](../../packages/platform/src/services/access/request-context-transport.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts), [tests/platform/app-auth-routes.test.ts](../../tests/platform/app-auth-routes.test.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts)
+- Next gap: Reuse the same session-to-token provenance binding for additional backend-owned operator workflows and session-backed service boundaries beyond billing reconciliation.
 
 #### Search
 
@@ -246,9 +264,9 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 #### Workflow jobs
 
 - Governing manifest: [Manifest](../02-modules/data/workflow-jobs/manifest.md)
-- Status: scaffolded
-- Evidence: [packages/platform/src/adapters/storage/convex.ts](../../packages/platform/src/adapters/storage/convex.ts)
-- Next gap: Implement durable job orchestration on Convex actions and scheduling.
+- Status: implemented
+- Evidence: [packages/contracts/src/data/workflow-jobs.ts](../../packages/contracts/src/data/workflow-jobs.ts), [packages/modules/src/domains/workflow-jobs.ts](../../packages/modules/src/domains/workflow-jobs.ts), [packages/modules/src/persistence/postgres/domains/workflow-jobs.ts](../../packages/modules/src/persistence/postgres/domains/workflow-jobs.ts), [packages/modules/src/persistence/postgres/domains/workflow-jobs-repository.ts](../../packages/modules/src/persistence/postgres/domains/workflow-jobs-repository.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/domains/admin-billing.ts](../../packages/platform/src/services/domains/admin-billing.ts), [packages/platform/src/services/domains/admin-billing-http.ts](../../packages/platform/src/services/domains/admin-billing-http.ts), [convex/workflowJobs.ts](../../convex/workflowJobs.ts), [convex/workflowJobRunner.ts](../../convex/workflowJobRunner.ts), [convex/crons.ts](../../convex/crons.ts), [tests/platform/subscriber-journey.test.ts](../../tests/platform/subscriber-journey.test.ts), [tests/platform/admin-billing-http.test.ts](../../tests/platform/admin-billing-http.test.ts)
+- Next gap: Persist Convex scheduler handles or targeted recovery provenance for operator-visible cancellation controls and broaden the module beyond billing-focused reconciliation jobs.
 
 #### Email delivery
 
@@ -260,9 +278,10 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 #### Webhooks API access
 
 - Governing manifest: [Manifest](../02-modules/communication/webhooks-api-access/manifest.md)
-- Status: scaffolded
-- Evidence: [packages/config/src/manifests/communication/webhooks-api-access.ts](../../packages/config/src/manifests/communication/webhooks-api-access.ts)
-- Next gap: Implement inbound provider webhook verification, idempotent processing, replay, and outbound webhook dispatch.
+- Status: implemented
+- Evidence: [packages/config/src/manifests/communication/webhooks-api-access.ts](../../packages/config/src/manifests/communication/webhooks-api-access.ts), [packages/modules/src/domains/webhooks-api-access.ts](../../packages/modules/src/domains/webhooks-api-access.ts), [packages/modules/src/persistence/postgres/domains/billing-webhook-replay-repository.ts](../../packages/modules/src/persistence/postgres/domains/billing-webhook-replay-repository.ts), [packages/platform/src/services/communication/webhooks-api-access-http.ts](../../packages/platform/src/services/communication/webhooks-api-access-http.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [tests/modules/webhooks-api-access.test.ts](../../tests/modules/webhooks-api-access.test.ts), [tests/platform/subscriber-journey-http.test.ts](../../tests/platform/subscriber-journey-http.test.ts)
+- Cleanup: inbound provider webhook processing and replay now route through a dedicated module service instead of remaining embedded only in subscriber-journey orchestration, while keeping the backend-owned HTTP surface unchanged.
+- Next gap: Add outbound webhook subscription management, delivery retry or backoff flows, and API key lifecycle beyond the current billing-provider intake slice.
 
 #### Import export
 
@@ -288,8 +307,8 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 
 ### Validation Baseline
 
-1. Repository validation for `validated` work currently means `bun run typecheck` and `bun run test` are green.
-2. The current snapshot reflects those commands running green on 2026-04-13.
-3. Test suite: 61 tests across 10 suites.
+1. Repository validation for `validated` work currently means `bun run format:check`, `bun run typecheck`, and `bun run test` are green.
+2. The current snapshot reflects those commands running green on 2026-04-22.
+3. Test suite: 219 tests across 21 suites.
 4. All source modules and test files use shared constants instead of raw vocabulary strings.
 5. Security invariants (break-glass expiry, regulated-sensitive redaction, tenant isolation, cache eviction) all have explicit test coverage.

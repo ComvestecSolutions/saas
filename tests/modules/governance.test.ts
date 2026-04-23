@@ -18,6 +18,10 @@ import {
   makeRuntimeConfigModule,
   makeSupportOperationsModule,
   type AuditLogPostgresRepositoryService,
+  type RuntimeConfigOverrideRecord,
+  type RuntimeConfigPostgresRepositoryService,
+  type RuntimeConfigSyncArtifactRecord,
+  runtimeConfigSyncArtifactStatus,
 } from "@comvestec/modules";
 import { organizationRequestContext, supportRequestContext } from "./_fixtures";
 
@@ -37,6 +41,43 @@ const makeInMemoryAuditLogRepository =
         }),
       queryByModule: (moduleId: PlatformModuleId) =>
         Effect.succeed(events.filter((e) => e.moduleId === moduleId)),
+    };
+  };
+
+const makeInMemoryRuntimeConfigRepository =
+  (): RuntimeConfigPostgresRepositoryService => {
+    const overrides = new Map<string, RuntimeConfigOverrideRecord>();
+    const artifacts = new Map<string, RuntimeConfigSyncArtifactRecord>();
+
+    const overrideKey = (override: RuntimeConfigOverrideRecord) =>
+      `${override.moduleId}:${override.key}:${override.scope}:${override.scopeId}`;
+
+    return {
+      listOverridesByModule: (moduleId: PlatformModuleId) =>
+        Effect.succeed(
+          [...overrides.values()].filter(
+            (override) => override.moduleId === moduleId,
+          ),
+        ),
+      upsertOverride: (input) =>
+        Effect.sync(() => {
+          overrides.set(overrideKey(input), input);
+          return input;
+        }),
+      listSyncArtifactsByModule: (moduleId: PlatformModuleId) =>
+        Effect.succeed(
+          [...artifacts.values()].filter(
+            (artifact) => artifact.moduleId === moduleId,
+          ),
+        ),
+      persistSyncArtifacts: (input) =>
+        Effect.sync(() => {
+          for (const artifact of input) {
+            artifacts.set(artifact.proposalId, artifact);
+          }
+
+          return input;
+        }),
     };
   };
 
@@ -140,6 +181,99 @@ describe("modules governance", () => {
       action: runtimeChangeProposalAction.rename,
       artifactPath: expect.stringContaining("runtime-config-proposals"),
     });
+  });
+
+  it("persists overrides and resolves stored runtime config values", async () => {
+    const runtimeConfig = await Effect.runPromise(
+      makeRuntimeConfigModule(makeInMemoryRuntimeConfigRepository()),
+    );
+
+    await Effect.runPromise(
+      runtimeConfig.upsertOverride({
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        scope: platformScope.organization,
+        scopeId: "org_1",
+        value: "Persistent Organization",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_admin_1",
+        changedAt: new Date().toISOString(),
+        approvalReason: "Approved through operator workflow",
+      }),
+    );
+
+    const overrides = await Effect.runPromise(
+      runtimeConfig.listOverridesByModule(platformModuleId.tenantBranding),
+    );
+    const resolution = await Effect.runPromise(
+      runtimeConfig.resolveStoredConfigValue({
+        requestContext: organizationRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        entitlements: [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_1",
+            active: true,
+            grantedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0]).toMatchObject({
+      approvalReason: "Approved through operator workflow",
+    });
+    expect(resolution.effectiveValue).toBe("Persistent Organization");
+    expect(resolution.source).toBe(runtimeResolutionSource.runtimeOverride);
+  });
+
+  it("persists sync artifacts from stored overrides", async () => {
+    const runtimeConfig = await Effect.runPromise(
+      makeRuntimeConfigModule(makeInMemoryRuntimeConfigRepository()),
+    );
+
+    await Effect.runPromise(
+      runtimeConfig.upsertOverride({
+        moduleId: platformModuleId.tenantBranding,
+        key: "tenant-branding.legacyTheme",
+        scope: platformScope.organization,
+        scopeId: "org_1",
+        value: "legacy",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_admin_1",
+        changedAt: new Date().toISOString(),
+      }),
+    );
+
+    const artifacts = await Effect.runPromise(
+      runtimeConfig.persistChangeProposals({
+        moduleId: platformModuleId.tenantBranding,
+        renameMap: {
+          "tenant-branding.legacyTheme": tenantBrandingConfigKey.themePrimary,
+        },
+      }),
+    );
+    const storedArtifacts = await Effect.runPromise(
+      runtimeConfig.listChangeProposalsByModule(
+        platformModuleId.tenantBranding,
+      ),
+    );
+
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({
+      action: runtimeChangeProposalAction.rename,
+      status: runtimeConfigSyncArtifactStatus.pending,
+    });
+    expect(storedArtifacts).toHaveLength(1);
+    const [storedArtifact] = storedArtifacts;
+    if (storedArtifact === undefined) {
+      throw new Error("Expected a persisted runtime-config sync artifact.");
+    }
+    expect(storedArtifact.artifactPath).toContain("runtime-config-proposals");
   });
 
   it("grants break-glass access with audit context", async () => {

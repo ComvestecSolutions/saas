@@ -1,5 +1,4 @@
 import { Effect, Schema } from "effect";
-import { env as processEnvironment, exit as exitProcess } from "node:process";
 import {
   actorType,
   BillingPlanCreateResultSchema,
@@ -107,7 +106,7 @@ const persistPlatformOperatorSession = (
   );
 
 const main = Effect.gen(function* () {
-  const environment = yield* decodeSeedEnvironment(processEnvironment);
+  const environment = yield* decodeSeedEnvironment(Bun.env);
   const port = yield* resolvePort(environment.SUBSCRIBER_JOURNEY_API_PORT);
   const correlationId = `corr_seed_polar_${Date.now()}`;
   const sessionId = `sess_seed_polar_${Date.now()}`;
@@ -228,5 +227,5 @@ try {
   await Effect.runPromise(main);
 } catch (error) {
   printToolingScriptError(error);
-  exitProcess(1);
+  process.exit(1);
 }

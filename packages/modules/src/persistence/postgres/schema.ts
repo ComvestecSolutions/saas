@@ -1,9 +1,9 @@
-import { identitySessionAuditTable } from "./access";
+import { identitySessionAuditTable } from "./access/identity-session";
+import { auditLogEventsTable } from "./governance/audit-log";
 import {
-  auditLogEventsTable,
   runtimeConfigOverridesTable,
   runtimeConfigSyncArtifactsTable,
-} from "./governance";
+} from "./governance/runtime-config";
 import {
   billingCustomerAccountsTable,
   billingEntitlementsTable,
@@ -12,12 +12,15 @@ import {
   billingPlansTable,
   billingPlanPricesTable,
   billingSubscriptionsTable,
-  tenantBrandingDomainVerificationTable,
+  webhookReceiptsTable,
+} from "./domains/billing";
+import { tenantBrandingDomainVerificationTable } from "./domains/tenant-branding";
+import {
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,
-  tenantProvisioningReceiptsTable,
-  webhookReceiptsTable,
-} from "./domains";
+} from "./domains/tenant-onboarding";
+import { tenantProvisioningReceiptsTable } from "./domains/tenant-provisioning";
+import { workflowJobsTable } from "./domains/workflow-jobs";
 
 export {
   auditLogEventsTable,
@@ -36,6 +39,7 @@ export {
   tenantOnboardingStepsTable,
   tenantProvisioningReceiptsTable,
   webhookReceiptsTable,
+  workflowJobsTable,
 };
 
 export const postgresSchema = {
@@ -55,4 +59,5 @@ export const postgresSchema = {
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,
   tenantProvisioningReceiptsTable,
+  workflowJobsTable,
 } as const;

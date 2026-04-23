@@ -56,19 +56,18 @@ PostgreSQL rows keyed by `(moduleId, key, scope, scopeId)` where scope is one of
 
 ## Data Classifications
 
-| Data                           | Classification      |
-| ------------------------------ | ------------------- |
-| Config key names and schemas   | internal            |
-| Effective config values        | tenant-confidential |
-| Override history and approvals | tenant-confidential |
-| Approval actor identity        | internal            |
+| Data                                    | Classification      |
+| --------------------------------------- | ------------------- |
+| Module ids, key names, scopes, statuses | internal            |
+| Override, runtime, code value           | regulated-sensitive |
+| Approval reasons and actor identity     | regulated-sensitive |
+| Change and generation timestamps        | internal            |
+| Proposal artifact paths                 | internal            |
 
 ## Projection Profiles
 
-| Profile | Visible Fields                                                     | Audited Fields |
-| ------- | ------------------------------------------------------------------ | -------------- |
-| admin   | moduleId, key, effectiveValue, scope, source, changedBy, changedAt | effectiveValue |
-| summary | moduleId, key                                                      | —              |
+- `admin`: visible fields are `moduleId`, `key`, `scope`, `scopeId`, `value`, `source`, `changedBy`, `changedAt`, `approvalReason`, `proposalId`, `action`, `artifactPath`, `runtimeValue`, `codeValue`, `status`, and `generatedAt`.
+- `admin`: audited fields are `value`, `approvalReason`, `runtimeValue`, and `codeValue`.
 
 ## Rules
 

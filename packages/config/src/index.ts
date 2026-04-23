@@ -1,6 +1,7 @@
 export * from "./defaults";
 export * from "./environment";
 export * from "./platform-constants";
+export * from "./workflow-jobs";
 export {
   auditLogConfigKey,
   auditLogFeatureFlag,
@@ -54,6 +55,12 @@ export {
 } from "./module-types";
 export { findModuleManifest, platformModuleManifests } from "./manifests";
 export {
+  defaultTenantOnboardingEnabledModules,
+  resolveDefaultTenantOnboardingEnabledModules,
+  tenantManagementFieldClassifications,
+  tenantManagementFields,
+} from "./manifests/domains/tenant-management";
+export {
   billingAndMeteringFieldClassifications,
   billingAndMeteringFields,
 } from "./manifests/domains/billing-and-metering";
@@ -73,7 +80,3 @@ export {
   tenantBrandingFieldClassifications,
   tenantBrandingFields,
 } from "./manifests/domains/tenant-branding";
-export {
-  tenantManagementFieldClassifications,
-  tenantManagementFields,
-} from "./manifests/domains/tenant-management";

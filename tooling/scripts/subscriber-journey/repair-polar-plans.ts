@@ -1,5 +1,4 @@
 import { Effect, Schema } from "effect";
-import { env as processEnvironment, exit as exitProcess } from "node:process";
 import type { PublicBillingPlan } from "@comvestec/contracts";
 import { makePolarAdapter } from "@comvestec/platform";
 import {
@@ -91,7 +90,7 @@ const printCatalog = (plans: readonly PublicBillingPlan[]) => {
 
 const main = Effect.gen(function* () {
   const environment: SubscriberJourneyRepairEnvironment =
-    yield* decodeRepairEnvironment(processEnvironment);
+    yield* decodeRepairEnvironment(Bun.env);
   const polar = yield* makePolarAdapter({
     apiKey: environment.POLAR_ACCESS_TOKEN,
     apiUrl: environment.POLAR_API_URL,
@@ -205,5 +204,5 @@ try {
   await Effect.runPromise(main);
 } catch (error) {
   printToolingScriptError(error);
-  exitProcess(1);
+  process.exit(1);
 }

@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { env as processEnvironment, exit as exitProcess } from "node:process";
+import { actorType, identityClaimKey } from "@comvestec/contracts";
 import {
   hostFromUrlString,
   issueKeycloakPasswordGrant,
@@ -11,6 +11,7 @@ import {
   requestUnknownJson,
   resolveOptionalOverride,
   runBunScript,
+  subscriberJourneyConvexServiceActorDefaults,
   subscriberJourneySmokeDefaults,
   uniqueStrings,
 } from "./common";
@@ -25,7 +26,7 @@ const SubscriberJourneyBootstrapEnvironmentSchema = Schema.Struct({
   PRODUCT_APP_PORT: Schema.NonEmptyString,
   ADMIN_APP_PORT: Schema.NonEmptyString,
   SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL: Schema.optional(Schema.NonEmptyString),
-  SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST: Schema.optional(Schema.NonEmptyString),
+  SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI: Schema.optional(Schema.NonEmptyString),
   SUBSCRIBER_JOURNEY_SMOKE_USER_USERNAME: Schema.optional(
     Schema.NonEmptyString,
   ),
@@ -37,6 +38,12 @@ const SubscriberJourneyBootstrapEnvironmentSchema = Schema.Struct({
     Schema.NonEmptyString,
   ),
   SUBSCRIBER_JOURNEY_SMOKE_USER_LAST_NAME: Schema.optional(
+    Schema.NonEmptyString,
+  ),
+  KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME: Schema.optional(
+    Schema.NonEmptyString,
+  ),
+  KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD: Schema.optional(
     Schema.NonEmptyString,
   ),
 });
@@ -81,8 +88,8 @@ const readStringArray = (record: Record<string, unknown>, key: string) => {
 const resolveSmokeFixture = (
   environment: SubscriberJourneyBootstrapEnvironment,
 ) => {
-  const returnHost = resolveOptionalOverride(
-    environment.SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST,
+  const redirectUri = resolveOptionalOverride(
+    environment.SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI,
     `http://localhost:${environment.PRODUCT_APP_PORT}/auth/callback`,
   );
 
@@ -107,9 +114,25 @@ const resolveSmokeFixture = (
       environment.SUBSCRIBER_JOURNEY_SMOKE_USER_LAST_NAME,
       subscriberJourneySmokeDefaults.lastName,
     ),
-    returnHost,
+    redirectUri,
   };
 };
+
+const resolveConvexServiceActorFixture = (
+  environment: SubscriberJourneyBootstrapEnvironment,
+) => ({
+  username: resolveOptionalOverride(
+    environment.KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME,
+    subscriberJourneyConvexServiceActorDefaults.username,
+  ),
+  email: subscriberJourneyConvexServiceActorDefaults.email,
+  password: resolveOptionalOverride(
+    environment.KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD,
+    subscriberJourneyConvexServiceActorDefaults.password,
+  ),
+  firstName: subscriberJourneyConvexServiceActorDefaults.firstName,
+  lastName: subscriberJourneyConvexServiceActorDefaults.lastName,
+});
 
 const createKeycloakAdminHeaders = (accessToken: string) => ({
   Accept: "application/json",
@@ -138,9 +161,47 @@ const ensureClientRepresentation = (value: unknown) =>
           "Keycloak returned an unexpected client representation payload.",
       } as const);
 
+const ensureUserProfileConfiguration = (value: unknown) =>
+  isRecord(value)
+    ? Effect.succeed(value)
+    : Effect.fail({
+        _tag: "ToolingScriptConfigurationError",
+        key: "KEYCLOAK_REALM",
+        message:
+          "Keycloak returned an unexpected user-profile configuration payload.",
+      } as const);
+
+const keycloakActorTypeProtocolMapperName = "comvestec-actor-type";
+
+const buildKeycloakActorTypeProtocolMapper = () => ({
+  name: keycloakActorTypeProtocolMapperName,
+  protocol: "openid-connect",
+  protocolMapper: "oidc-usermodel-attribute-mapper",
+  config: {
+    "access.token.claim": "true",
+    "id.token.claim": "true",
+    "userinfo.token.claim": "true",
+    "claim.name": identityClaimKey.actorType,
+    "jsonType.label": "String",
+    "user.attribute": identityClaimKey.actorType,
+  },
+});
+
+const buildKeycloakActorTypeProfileAttribute = () => ({
+  name: identityClaimKey.actorType,
+  displayName: "Comvestec actor type",
+  permissions: {
+    view: ["admin"],
+    edit: ["admin"],
+  },
+  multivalued: false,
+});
+
 const main = Effect.gen(function* () {
-  const environment = yield* decodeBootstrapEnvironment(processEnvironment);
+  const environment = yield* decodeBootstrapEnvironment(Bun.env);
   const smokeFixture = resolveSmokeFixture(environment);
+  const convexServiceActorFixture =
+    resolveConvexServiceActorFixture(environment);
 
   console.log(
     "Applying PostgreSQL migrations for the subscriber journey backend...",
@@ -196,14 +257,37 @@ const main = Effect.gen(function* () {
   const clientRepresentation = yield* ensureClientRepresentation(
     rawClientRepresentation,
   );
+  const rawUserProfileConfiguration = yield* requestUnknownJson({
+    operation: "keycloak.readUserProfile",
+    url: new URL(
+      `/admin/realms/${environment.KEYCLOAK_REALM}/users/profile`,
+      environment.KEYCLOAK_BASE_URL,
+    ).toString(),
+    init: {
+      headers: keycloakHeaders,
+    },
+  });
+  const userProfileConfiguration = yield* ensureUserProfileConfiguration(
+    rawUserProfileConfiguration,
+  );
+  const existingProtocolMappers = Array.isArray(
+    clientRepresentation.protocolMappers,
+  )
+    ? clientRepresentation.protocolMappers.filter(isRecord)
+    : [];
+  const existingUserProfileAttributes = Array.isArray(
+    userProfileConfiguration.attributes,
+  )
+    ? userProfileConfiguration.attributes.filter(isRecord)
+    : [];
 
   const appBaseOrigin = yield* originFromUrlString(
     environment.APP_BASE_URL,
     "APP_BASE_URL",
   );
   const smokeReturnOrigin = yield* originFromUrlString(
-    smokeFixture.returnHost,
-    "SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST",
+    smokeFixture.redirectUri,
+    "SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI",
   );
   const optionalPublicBaseOrigin =
     environment.SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL === undefined ||
@@ -236,6 +320,37 @@ const main = Effect.gen(function* () {
     ...readStringArray(clientRepresentation, "webOrigins"),
     ...desiredOrigins,
   ]);
+  const mergedProtocolMappers = [
+    ...existingProtocolMappers.filter(
+      (mapper) => mapper.name !== keycloakActorTypeProtocolMapperName,
+    ),
+    buildKeycloakActorTypeProtocolMapper(),
+  ];
+  const mergedUserProfileAttributes = [
+    ...existingUserProfileAttributes.filter(
+      (attribute) => attribute.name !== identityClaimKey.actorType,
+    ),
+    buildKeycloakActorTypeProfileAttribute(),
+  ];
+
+  yield* requestEmpty({
+    operation: "keycloak.updateUserProfile",
+    url: new URL(
+      `/admin/realms/${environment.KEYCLOAK_REALM}/users/profile`,
+      environment.KEYCLOAK_BASE_URL,
+    ).toString(),
+    init: {
+      method: "PUT",
+      headers: {
+        ...keycloakHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...userProfileConfiguration,
+        attributes: mergedUserProfileAttributes,
+      }),
+    },
+  });
 
   yield* requestEmpty({
     operation: "keycloak.updateClient",
@@ -253,6 +368,7 @@ const main = Effect.gen(function* () {
         ...clientRepresentation,
         redirectUris: mergedRedirectUris,
         webOrigins: mergedWebOrigins,
+        protocolMappers: mergedProtocolMappers,
         directAccessGrantsEnabled: true,
         serviceAccountsEnabled: true,
         standardFlowEnabled: true,
@@ -365,16 +481,127 @@ const main = Effect.gen(function* () {
     },
   });
 
+  const serviceActorLookupUrl = buildExactMatchUrl(
+    environment.KEYCLOAK_BASE_URL,
+    `/admin/realms/${environment.KEYCLOAK_REALM}/users`,
+    "username",
+    convexServiceActorFixture.username,
+  );
+
+  const existingServiceActors = yield* requestJson({
+    operation: "keycloak.lookupConvexServiceActor",
+    url: serviceActorLookupUrl,
+    init: {
+      headers: keycloakHeaders,
+    },
+    decode: decodeKeycloakUserMatch,
+  });
+
+  if (existingServiceActors[0] === undefined) {
+    yield* requestEmpty({
+      operation: "keycloak.createConvexServiceActor",
+      url: new URL(
+        `/admin/realms/${environment.KEYCLOAK_REALM}/users`,
+        environment.KEYCLOAK_BASE_URL,
+      ).toString(),
+      init: {
+        method: "POST",
+        headers: {
+          ...keycloakHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: convexServiceActorFixture.username,
+          email: convexServiceActorFixture.email,
+          firstName: convexServiceActorFixture.firstName,
+          lastName: convexServiceActorFixture.lastName,
+          enabled: true,
+          emailVerified: true,
+        }),
+      },
+    });
+  }
+
+  const ensuredServiceActors = yield* requestJson({
+    operation: "keycloak.ensureConvexServiceActor",
+    url: serviceActorLookupUrl,
+    init: {
+      headers: keycloakHeaders,
+    },
+    decode: decodeKeycloakUserMatch,
+  });
+
+  const convexServiceActor = ensuredServiceActors[0];
+
+  if (convexServiceActor === undefined) {
+    return yield* Effect.fail({
+      _tag: "ToolingScriptConfigurationError",
+      key: "KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME",
+      message:
+        "Failed to create or locate the Convex billing service actor in Keycloak.",
+    } as const);
+  }
+
+  yield* requestEmpty({
+    operation: "keycloak.updateConvexServiceActorProfile",
+    url: new URL(
+      `/admin/realms/${environment.KEYCLOAK_REALM}/users/${convexServiceActor.id}`,
+      environment.KEYCLOAK_BASE_URL,
+    ).toString(),
+    init: {
+      method: "PUT",
+      headers: {
+        ...keycloakHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: convexServiceActor.id,
+        username: convexServiceActorFixture.username,
+        email: convexServiceActorFixture.email,
+        firstName: convexServiceActorFixture.firstName,
+        lastName: convexServiceActorFixture.lastName,
+        attributes: {
+          [identityClaimKey.actorType]: [actorType.serviceActor],
+        },
+        enabled: true,
+        emailVerified: true,
+      }),
+    },
+  });
+
+  yield* requestEmpty({
+    operation: "keycloak.resetConvexServiceActorPassword",
+    url: new URL(
+      `/admin/realms/${environment.KEYCLOAK_REALM}/users/${convexServiceActor.id}/reset-password`,
+      environment.KEYCLOAK_BASE_URL,
+    ).toString(),
+    init: {
+      method: "PUT",
+      headers: {
+        ...keycloakHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        temporary: false,
+        type: "password",
+        value: convexServiceActorFixture.password,
+      }),
+    },
+  });
+
   const smokeReturnHost = yield* hostFromUrlString(
-    smokeFixture.returnHost,
-    "SUBSCRIBER_JOURNEY_SMOKE_RETURN_HOST",
+    smokeFixture.redirectUri,
+    "SUBSCRIBER_JOURNEY_SMOKE_REDIRECT_URI",
   );
 
   console.log("Subscriber journey bootstrap completed.");
   console.log(`- Keycloak realm: ${environment.KEYCLOAK_REALM}`);
   console.log(`- Keycloak client: ${environment.KEYCLOAK_CLIENT_ID}`);
   console.log(`- Smoke user: ${smokeFixture.username} (${smokeFixture.email})`);
-  console.log(`- Smoke return host: ${smokeFixture.returnHost}`);
+  console.log(
+    `- Convex service actor: ${convexServiceActorFixture.username} (${convexServiceActorFixture.email})`,
+  );
+  console.log(`- Smoke redirect URI: ${smokeFixture.redirectUri}`);
   console.log(`- Smoke request host header: ${smokeReturnHost}`);
 });
 
@@ -382,5 +609,5 @@ try {
   await Effect.runPromise(main);
 } catch (error) {
   printToolingScriptError(error);
-  exitProcess(1);
+  process.exit(1);
 }

@@ -1,17 +1,16 @@
 import { Effect, Schema } from "effect";
-import {
-  argv,
-  env as processEnvironment,
-  exit as exitProcess,
-} from "node:process";
 import { subscriberJourneyApiPath } from "@comvestec/platform";
-import { printToolingScriptError, requireConfiguredValue } from "./common";
+import {
+  printToolingScriptError,
+  requireConfiguredValue,
+  type ToolingScriptConfigurationError,
+} from "./common";
 
 const PolarWebhookForwarderEnvironmentSchema = Schema.Struct({
   POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_API_URL: Schema.NonEmptyString,
   POLAR_WEBHOOK_SECRET: Schema.NonEmptyString,
-  SUBSCRIBER_JOURNEY_API_PORT: Schema.optional(Schema.NonEmptyString),
+  SUBSCRIBER_JOURNEY_API_PORT: Schema.NonEmptyString,
 });
 
 const OrganizationAccessTokenListSchema = Schema.Struct({
@@ -61,8 +60,8 @@ const decodeOrganizationAccessTokenList = Schema.decodeUnknown(
 );
 
 const parseForwarderOptions = (): ParsedForwarderOptions => ({
-  dryRun: argv.includes("--dry-run"),
-  once: argv.includes("--once"),
+  dryRun: Bun.argv.includes("--dry-run"),
+  once: Bun.argv.includes("--once"),
 });
 
 const createPolarApiUrl = (apiBaseUrl: string, pathname: string) =>
@@ -76,6 +75,33 @@ const createLocalWebhookUrl = (port: string) =>
     subscriberJourneyApiPath.processBillingWebhook,
     `http://127.0.0.1:${port}`,
   ).toString();
+
+const resolvePort = (value: string) =>
+  Effect.try({
+    try: () => {
+      if (!/^\d+$/.test(value)) {
+        throw new Error(
+          "SUBSCRIBER_JOURNEY_API_PORT must be a positive integer.",
+        );
+      }
+
+      const port = Number(value);
+
+      if (!Number.isInteger(port) || port <= 0) {
+        throw new Error(
+          "SUBSCRIBER_JOURNEY_API_PORT must be a positive integer.",
+        );
+      }
+
+      return `${port}`;
+    },
+    catch: () =>
+      ({
+        _tag: "ToolingScriptConfigurationError",
+        key: "SUBSCRIBER_JOURNEY_API_PORT",
+        message: "SUBSCRIBER_JOURNEY_API_PORT must be a positive integer.",
+      }) satisfies ToolingScriptConfigurationError,
+  });
 
 const safeParseJson = (value: string) => {
   try {
@@ -248,9 +274,9 @@ const forwardWebhookEvent = (options: {
   });
 
 const main = Effect.gen(function* () {
-  const environment = yield* decodeForwarderEnvironment(processEnvironment);
+  const environment = yield* decodeForwarderEnvironment(Bun.env);
   const options = parseForwarderOptions();
-  const apiPort = environment.SUBSCRIBER_JOURNEY_API_PORT?.trim() || "3010";
+  const apiPort = yield* resolvePort(environment.SUBSCRIBER_JOURNEY_API_PORT);
 
   yield* requireConfiguredValue(
     "POLAR_ACCESS_TOKEN",
@@ -260,6 +286,10 @@ const main = Effect.gen(function* () {
   yield* requireConfiguredValue(
     "POLAR_WEBHOOK_SECRET",
     environment.POLAR_WEBHOOK_SECRET,
+  );
+  yield* requireConfiguredValue(
+    "SUBSCRIBER_JOURNEY_API_PORT",
+    environment.SUBSCRIBER_JOURNEY_API_PORT,
   );
 
   const organizationId = yield* getOrganizationId(environment);
@@ -356,5 +386,5 @@ const main = Effect.gen(function* () {
 
 Effect.runPromise(main).catch((error) => {
   printToolingScriptError(error);
-  exitProcess(1);
+  process.exit(1);
 });

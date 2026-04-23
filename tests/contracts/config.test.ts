@@ -17,6 +17,8 @@ describe("contract config", () => {
       keycloakRealm: "comvestec",
       keycloakClientId: "saas-platform",
       keycloakClientSecret: "secret",
+      keycloakConvexServiceActorUsername: "convex.billing.service",
+      keycloakConvexServiceActorPassword: "service-secret",
       otelEndpoint: "http://localhost:4318",
       grafanaBaseUrl: "http://localhost:3001",
       valkeyUrl: "redis://localhost:6379",

@@ -2,11 +2,73 @@ import {
   auditLogConfigKey,
   auditLogFeatureFlag,
   configSchemaType,
+  dataClassification,
+  defineDataClassificationDeclarations,
+  defineModuleFields,
+  defineProjectionDescriptors,
   permissionScope,
   platformModuleId,
   platformScope,
+  projectionProfile,
 } from "@comvestec/contracts";
 import { defineModuleManifest } from "../../manifest-helpers";
+
+export const auditLogFields = defineModuleFields({
+  eventId: "eventId",
+  timestamp: "timestamp",
+  actorId: "actorId",
+  moduleId: "moduleId",
+  tenantScope: "tenantScope",
+  tenantScopeId: "tenantScopeId",
+  action: "action",
+  target: "target",
+  reason: "reason",
+  correlationId: "correlationId",
+});
+
+export const auditLogFieldClassifications =
+  defineDataClassificationDeclarations(auditLogFields, [
+    {
+      field: auditLogFields.eventId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: auditLogFields.timestamp,
+      classification: dataClassification.internal,
+    },
+    {
+      field: auditLogFields.actorId,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: auditLogFields.moduleId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: auditLogFields.tenantScope,
+      classification: dataClassification.internal,
+    },
+    {
+      field: auditLogFields.tenantScopeId,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: auditLogFields.action,
+      classification: dataClassification.internal,
+    },
+    {
+      field: auditLogFields.target,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: auditLogFields.reason,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: auditLogFields.correlationId,
+      classification: dataClassification.internal,
+    },
+  ]);
 
 export const auditLogManifest = defineModuleManifest({
   moduleId: platformModuleId.auditLog,
@@ -43,6 +105,28 @@ export const auditLogManifest = defineModuleManifest({
     },
   ],
   permissionScopes: [permissionScope.auditRead],
-  fieldClassifications: [],
-  projectionProfiles: [],
+  fieldClassifications: auditLogFieldClassifications,
+  projectionProfiles: defineProjectionDescriptors(auditLogFields, [
+    {
+      profile: projectionProfile.admin,
+      visibleFields: [
+        auditLogFields.eventId,
+        auditLogFields.timestamp,
+        auditLogFields.actorId,
+        auditLogFields.moduleId,
+        auditLogFields.tenantScope,
+        auditLogFields.tenantScopeId,
+        auditLogFields.action,
+        auditLogFields.target,
+        auditLogFields.reason,
+        auditLogFields.correlationId,
+      ],
+      auditedFields: [
+        auditLogFields.actorId,
+        auditLogFields.tenantScopeId,
+        auditLogFields.target,
+        auditLogFields.reason,
+      ],
+    },
+  ]),
 });

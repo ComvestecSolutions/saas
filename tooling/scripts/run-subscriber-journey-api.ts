@@ -1,8 +1,11 @@
 import { Effect, Schema } from "effect";
 import {
+  backendApiDocsPath,
+  backendApiOpenApiPath,
+  createBackendApiRequestHandler,
+} from "@comvestec/platform/http";
+import {
   adminBillingApiBasePath,
-  handleAdminBillingHttpRequest,
-  handleSubscriberJourneyHttpRequest,
   subscriberJourneyApiBasePath,
 } from "@comvestec/platform";
 
@@ -36,20 +39,13 @@ const resolveServerPort = (environment: unknown) =>
   );
 
 const port = await Effect.runPromise(resolveServerPort(process.env));
+const handleRequest = createBackendApiRequestHandler(process.env);
 
 const server = Bun.serve({
   port,
-  fetch: (request) => {
-    const pathname = new URL(request.url).pathname;
-
-    return Effect.runPromise(
-      pathname.startsWith(adminBillingApiBasePath)
-        ? handleAdminBillingHttpRequest(process.env, request)
-        : handleSubscriberJourneyHttpRequest(process.env, request),
-    );
-  },
+  fetch: handleRequest,
 });
 
 console.log(
-  `Subscriber journey API listening on http://localhost:${server.port}${subscriberJourneyApiBasePath} and http://localhost:${server.port}${adminBillingApiBasePath}`,
+  `Subscriber journey API listening on http://localhost:${server.port}${subscriberJourneyApiBasePath}, http://localhost:${server.port}${adminBillingApiBasePath}, docs at http://localhost:${server.port}${backendApiDocsPath}, and OpenAPI at http://localhost:${server.port}${backendApiOpenApiPath}`,
 );

@@ -70,3 +70,4 @@ Keycloak for identity federation. Convex for tenant data and membership state. P
 5. Onboarding progress is tenant-scoped operational state, not a substitute for permission or entitlement checks.
 6. Tenant provisioning must be safe to retry when auth callback or billing events are delivered more than once.
 7. Initial tenant creation must not require frontend-owned orchestration.
+8. When billing reconciliation can prove prior owner linkage for a tenant, provisioning and onboarding repair may be retried automatically without waiting for another login.

@@ -1,17 +1,23 @@
 import {
+  billingAndMeteringFeatureFlag,
   configSchemaType,
   dataClassification,
   defineDataClassificationDeclarations,
   defineModuleFields,
   defineProjectionDescriptors,
+  identitySessionFeatureFlag,
   permissionScope,
   platformModuleId,
+  PlatformModuleIdSchema,
   platformScope,
   projectionProfile,
   tenantManagementConfigKey,
   tenantManagementFeatureFlag,
 } from "@comvestec/contracts";
+import { Schema } from "effect";
+import { identitySessionManifest } from "../access/identity-session";
 import { defineModuleManifest } from "../../manifest-helpers";
+import { billingAndMeteringManifest } from "./billing-and-metering";
 
 export const tenantManagementFields = defineModuleFields({
   id: "id",
@@ -36,7 +42,7 @@ export const tenantManagementFieldClassifications =
     },
     {
       field: tenantManagementFields.billingEmail,
-      classification: dataClassification.tenantConfidential,
+      classification: dataClassification.regulatedSensitive,
     },
   ]);
 
@@ -134,3 +140,34 @@ export const tenantManagementManifest = defineModuleManifest({
     },
   ]),
 });
+
+const tenantOnboardingModuleManifestSeed = [
+  {
+    manifest: tenantManagementManifest,
+    visibilityFlag: tenantManagementFeatureFlag.enabled,
+  },
+  {
+    manifest: identitySessionManifest,
+    visibilityFlag: identitySessionFeatureFlag.enabled,
+  },
+  {
+    manifest: billingAndMeteringManifest,
+    visibilityFlag: billingAndMeteringFeatureFlag.enabled,
+  },
+] as const;
+
+export const defaultTenantOnboardingEnabledModules = Schema.validateSync(
+  Schema.Array(PlatformModuleIdSchema),
+)(
+  tenantOnboardingModuleManifestSeed.flatMap(({ manifest, visibilityFlag }) =>
+    manifest.featureFlags.some(
+      (featureFlag) =>
+        featureFlag.key === visibilityFlag && featureFlag.defaultEnabled,
+    )
+      ? [manifest.moduleId]
+      : [],
+  ),
+);
+
+export const resolveDefaultTenantOnboardingEnabledModules = () =>
+  [...defaultTenantOnboardingEnabledModules] as const;

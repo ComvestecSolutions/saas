@@ -11,6 +11,8 @@ export const PlatformEnvironmentSchema = Schema.Struct({
   keycloakRealm: Schema.NonEmptyString,
   keycloakClientId: Schema.NonEmptyString,
   keycloakClientSecret: Schema.NonEmptyString,
+  keycloakConvexServiceActorUsername: Schema.NonEmptyString,
+  keycloakConvexServiceActorPassword: Schema.NonEmptyString,
   otelEndpoint: Schema.NonEmptyString,
   grafanaBaseUrl: Schema.NonEmptyString,
   valkeyUrl: Schema.NonEmptyString,

@@ -1,6 +1,9 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
+  BillingSubscriptionStatusSchema,
   BillingWebhookReconciliationSchema,
+  BillingWebhookReconciliationActionSchema,
+  PlatformScopeSchema,
   type BillingProviderWebhookInput,
 } from "@comvestec/contracts";
 import type {
@@ -12,6 +15,7 @@ import type {
 } from "@comvestec/platform";
 import { PolarAdapter } from "@comvestec/platform";
 import {
+  BillingCustomerAccountRecordSchema,
   BillingMeteringModule,
   BillingWebhookPersistenceProjectionSchema,
 } from "./billing-metering";
@@ -29,8 +33,42 @@ export type BillingWebhookProcessingResult = Schema.Schema.Type<
   typeof BillingWebhookProcessingResultSchema
 >;
 
+const BillingCustomerAccountResolutionInputSchema = Schema.Struct({
+  provider: Schema.NonEmptyString,
+  customerId: Schema.NonEmptyString,
+  scope: PlatformScopeSchema,
+  scopeId: Schema.NonEmptyString,
+  subscriptionId: Schema.NonEmptyString,
+  subscriptionStatus: BillingSubscriptionStatusSchema,
+  action: BillingWebhookReconciliationActionSchema,
+});
+
+type BillingCustomerAccountResolutionInput = Schema.Schema.Type<
+  typeof BillingCustomerAccountResolutionInputSchema
+>;
+
+export type BillingCustomerAccountResolutionError = {
+  readonly _tag: "BillingCustomerAccountResolutionError";
+  readonly operation: "resolveCustomerAccount";
+  readonly cause: unknown;
+};
+
+export type BillingCustomerAccountResolverApi = {
+  readonly resolveCustomerAccount: (
+    input: BillingCustomerAccountResolutionInput,
+  ) => Effect.Effect<
+    Schema.Schema.Type<typeof BillingCustomerAccountRecordSchema> | undefined,
+    ParseResult.ParseError | BillingCustomerAccountResolutionError
+  >;
+};
+
+export class BillingCustomerAccountResolver extends Context.Tag(
+  "BillingCustomerAccountResolver",
+)<BillingCustomerAccountResolver, BillingCustomerAccountResolverApi>() {}
+
 export type BillingWebhookProcessingError =
   | ParseResult.ParseError
+  | BillingCustomerAccountResolutionError
   | PolarAdapterRequestError
   | PolarCatalogMetadataError
   | PolarWebhookSignatureError
@@ -57,6 +95,7 @@ export const makeBillingWebhookService = () =>
     const polar = yield* PolarAdapter;
     const billingMetering = yield* BillingMeteringModule;
     const repository = yield* BillingWebhookPostgresRepository;
+    const customerAccountResolver = yield* BillingCustomerAccountResolver;
 
     return {
       processPolarWebhook: (input: BillingProviderWebhookInput) =>
@@ -66,8 +105,26 @@ export const makeBillingWebhookService = () =>
             yield* billingMetering.buildWebhookPersistenceProjection(
               reconciliation,
             );
+          const customerAccount =
+            reconciliation.event.customerId === undefined
+              ? undefined
+              : yield* customerAccountResolver.resolveCustomerAccount({
+                  provider: reconciliation.event.provider,
+                  customerId: reconciliation.event.customerId,
+                  scope: reconciliation.event.tenantScope,
+                  scopeId: reconciliation.event.tenantScopeId,
+                  subscriptionId: reconciliation.subscription.subscriptionId,
+                  subscriptionStatus: reconciliation.subscription.status,
+                  action: reconciliation.action,
+                });
+          const resolvedProjection = yield* Schema.decodeUnknown(
+            BillingWebhookPersistenceProjectionSchema,
+          )({
+            ...projection,
+            ...(customerAccount !== undefined ? { customerAccount } : {}),
+          });
           const persistedProjection =
-            yield* repository.persistWebhookProjection(projection);
+            yield* repository.persistWebhookProjection(resolvedProjection);
 
           return yield* Schema.decodeUnknown(
             BillingWebhookProcessingResultSchema,

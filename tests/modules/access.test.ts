@@ -229,6 +229,344 @@ describe("modules access", () => {
     expect(explanation.matchedSubject).toBe("usr_member_1");
   });
 
+  it("prefers delegated authorization checks over seeded tuples", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_1",
+            relation: authorizationRelation.viewer,
+            subject: "usr_member_1",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+        delegatedCheck: ({ subject }) =>
+          Effect.succeed(
+            subject === `actor-type:${actorType.organizationMember}`,
+          ),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.reason).toBe("Matched persisted authorization relation.");
+    expect(decision.matchedTuple).toMatchObject({
+      subject: `actor-type:${actorType.organizationMember}`,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_1",
+    });
+    expect(explanation.matchedSubject).toBe(
+      `actor-type:${actorType.organizationMember}`,
+    );
+  });
+
+  it("allows active break-glass access without delegated authorization availability", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [],
+        cacheTtlSeconds: 60,
+        delegatedCheck: () =>
+          Effect.fail({
+            _tag: "AuthorizationDelegatedCheckError",
+            reason: "Keto unavailable",
+            cause: new Error("keto unavailable"),
+          } as const),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          ...supportRequestContext,
+          correlationId: "corr_break_glass_delegated_failure",
+          breakGlass: {
+            approvedBy: "usr_admin_1",
+            reason: "Emergency support access",
+            expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          },
+        },
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision).toMatchObject({
+      allowed: true,
+      reason: "Allowed via break-glass context.",
+      auditRequired: true,
+    });
+  });
+
+  it("does not report a matched subject when break-glass short-circuits the explanation", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_1",
+            relation: authorizationRelation.viewer,
+            subject: "usr_support_1",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+        delegatedCheck: () =>
+          Effect.fail({
+            _tag: "AuthorizationDelegatedCheckError",
+            reason: "Keto unavailable",
+            cause: new Error("keto unavailable"),
+          } as const),
+      }),
+    );
+
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: {
+          ...supportRequestContext,
+          correlationId: "corr_break_glass_explain",
+          breakGlass: {
+            approvedBy: "usr_admin_1",
+            reason: "Emergency support access",
+            expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          },
+        },
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(explanation).not.toHaveProperty("matchedSubject");
+    expect(explanation.usedBreakGlass).toBe(true);
+  });
+
+  it("does not reuse cached break-glass access after the break-glass expiry passes", async () => {
+    jest.useFakeTimers();
+
+    try {
+      const issuedAt = new Date("2026-04-22T12:00:00.000Z");
+      const expiresAt = new Date(issuedAt.getTime() + 30_000).toISOString();
+      jest.setSystemTime(issuedAt.getTime());
+
+      const authorization = await Effect.runPromise(
+        makeAuthorizationModule({
+          tuples: [],
+          cacheTtlSeconds: 300,
+        }),
+      );
+
+      const activeRequestContext = {
+        ...supportRequestContext,
+        correlationId: "corr_break_glass_cache_expiry",
+        breakGlass: {
+          approvedBy: "usr_admin_1",
+          reason: "Emergency support access",
+          expiresAt,
+        },
+      };
+
+      const allowedDecision = await Effect.runPromise(
+        authorization.check({
+          requestContext: activeRequestContext,
+          namespace: authorizationNamespace.tenant,
+          object: "org_1",
+          relation: authorizationRelation.viewer,
+          permissionScope: permissionScope.tenantRead,
+        }),
+      );
+
+      expect(allowedDecision).toMatchObject({
+        allowed: true,
+        reason: "Allowed via break-glass context.",
+      });
+
+      jest.setSystemTime(issuedAt.getTime() + 31_000);
+
+      const deniedDecision = await Effect.runPromise(
+        authorization.check({
+          requestContext: activeRequestContext,
+          namespace: authorizationNamespace.tenant,
+          object: "org_1",
+          relation: authorizationRelation.viewer,
+          permissionScope: permissionScope.tenantRead,
+        }),
+      );
+
+      expect(deniedDecision).toMatchObject({
+        allowed: false,
+        reason: "No matching authorization tuple was found.",
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("denies unmapped permission scopes without delegated authorization availability", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [],
+        cacheTtlSeconds: 60,
+        delegatedCheck: () =>
+          Effect.fail({
+            _tag: "AuthorizationDelegatedCheckError",
+            reason: "Keto unavailable",
+            cause: new Error("keto unavailable"),
+          } as const),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.billingRead,
+      }),
+    );
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      reason:
+        "Permission scope does not map to the requested namespace relation.",
+      auditRequired: false,
+    });
+  });
+
+  it("does not report a matched subject when permission scope mapping denies the request", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_1",
+            relation: authorizationRelation.viewer,
+            subject: "usr_member_1",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.billingRead,
+      }),
+    );
+
+    expect(explanation).not.toHaveProperty("matchedSubject");
+    expect(explanation.usedBreakGlass).toBe(false);
+  });
+
+  it("maps billing read permission to billing entitlement viewer access", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.billingEntitlement,
+            object: platformScope.platform,
+            relation: authorizationRelation.viewer,
+            subject: `actor-type:${actorType.platformOperator}`,
+            tenantScope: platformScope.platform,
+            tenantScopeId: platformScope.platform,
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_billing_read",
+          correlationId: "corr_billing_read",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+        namespace: authorizationNamespace.billingEntitlement,
+        object: platformScope.platform,
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.billingRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("maps workflow manage permission to module admin access", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.module,
+            object: platformModuleId.workflowJobs,
+            relation: authorizationRelation.admin,
+            subject: `actor-type:${actorType.platformOperator}`,
+            tenantScope: platformScope.platform,
+            tenantScopeId: platformScope.platform,
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_workflow_manage",
+          correlationId: "corr_workflow_manage",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+        namespace: authorizationNamespace.module,
+        object: platformModuleId.workflowJobs,
+        relation: authorizationRelation.admin,
+        permissionScope: permissionScope.workflowManage,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+  });
+
   it("applies field-security projection and redaction", async () => {
     const fieldSecurity = await Effect.runPromise(makeFieldSecurityModule());
 
@@ -461,7 +799,7 @@ describe("modules access", () => {
           },
         },
         tenantHint: "org_1",
-        returnHost: "product.example.com",
+        redirectUri: "https://product.example.com/auth/callback",
       }),
     );
 

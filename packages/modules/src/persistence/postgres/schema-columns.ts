@@ -52,4 +52,7 @@ export const getPostgresSchemaColumnNames = () => ({
   tenantProvisioningReceiptsTable: Object.keys(
     getTableColumns(postgresSchema.tenantProvisioningReceiptsTable),
   ),
+  workflowJobsTable: Object.keys(
+    getTableColumns(postgresSchema.workflowJobsTable),
+  ),
 });
