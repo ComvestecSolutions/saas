@@ -24,6 +24,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Set Up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
       - name: Fetch Pull Request Commit Range
         run: |
           git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/base-target"
@@ -32,12 +40,12 @@ jobs:
       - name: Validate Published Branch Name
         env:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
-        run: node tooling/scripts/validate-branch-name.mjs "$BRANCH_NAME"
+        run: bun run tooling/scripts/validate-branch-name.mjs "$BRANCH_NAME"
 
       - name: Validate Commit History
-        run: node tooling/scripts/validate-commit-range.mjs refs/remotes/origin/base-target refs/remotes/origin/pull/${{ github.event.pull_request.number }}/head
+        run: bun run tooling/scripts/validate-commit-range.mjs refs/remotes/origin/base-target refs/remotes/origin/pull/${{ github.event.pull_request.number }}/head
 
       - name: Validate Pull Request Body
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: node tooling/scripts/validate-pr-body.mjs
+        run: bun run tooling/scripts/validate-pr-body.mjs

@@ -7,6 +7,7 @@
 3. Do not mix unrelated package, app, spec, and tooling changes into one commit.
 4. Update docs, instructions, specs, and tests in the same change when behavior or governance changes.
 5. Open pull requests to `dev`. Leave `main` untouched until a later promotion.
+6. Prefer Bun for repo-owned commands, hooks, automation, CI workflow commands, and documentation examples. Keep direct Node runtime usage only when an upstream platform explicitly requires it, such as Convex action files that must declare `"use node"`.
 
 ## Local Setup
 
@@ -123,6 +124,7 @@ Before push:
 3. `bun run test`
 4. Let the configured `pre-push` hook validate the exact branch refs being published, lint the commit messages leaving your machine, and rerun formatting, typecheck, and tests against the staged repository state.
 5. Make sure `bun run typecheck` covers every first-party TypeScript surface touched by the change. Root tooling and config files such as `tooling/**/*.ts` and `drizzle.config.ts`, and TypeScript workspaces such as `packages/e2e`, need explicit `tsconfig` and script wiring instead of ad hoc local-only checks.
+6. Convex changes must stay green under the root `bun run typecheck` path via `tsconfig.convex.json`. Because local pre-typecheck codegen is not reliable here, keep the generated `convex/_generated/` bindings committed so Convex source keeps resolving on fresh clones.
 
 Before merge:
 

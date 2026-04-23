@@ -1,11 +1,15 @@
 node_modules/
 .turbo/
-apps/**/.tanstack/tmp/
+# Keep convex/_generated tracked; fresh clones need the generated bindings for Convex resolution and typecheck.
+apps/**/.tanstack/
 dist/
 .output/
 .nitro/
 .data/
 coverage/
+.tmp/
+.tmp-trivy-artifact/
+.trivy-cache/
 .env
 .env.*
 !.env.example

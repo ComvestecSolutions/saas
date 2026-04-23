@@ -17,7 +17,7 @@ const headRef = process.argv[3] ?? process.env.HEAD_REF;
 
 if (!baseRef || !headRef) {
   process.stderr.write(
-    "Expected base and head revisions. Example: node tooling/scripts/validate-commit-range.mjs origin/dev HEAD\n",
+    "Expected base and head revisions. Example: bun run tooling/scripts/validate-commit-range.mjs origin/dev HEAD\n",
   );
   process.exit(1);
 }

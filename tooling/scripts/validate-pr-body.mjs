@@ -1,4 +1,12 @@
-const body = process.env.PR_BODY ?? "";
+const body = process.env.PR_BODY;
+
+if (body === undefined) {
+  process.stderr.write(
+    "PR_BODY environment variable is required for pull request body validation.\n",
+  );
+  process.exit(1);
+}
+
 const trimmed = body.replace(/^\s+/, "");
 const requiredHeadings = [
   "# Pull Request",
