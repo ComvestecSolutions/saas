@@ -3,6 +3,7 @@ import { platformModuleId, platformScope } from "@comvestec/contracts";
 import {
   createProductAppAuthCallbackStateFromEnvironment,
   decodeProductAppAuthCallbackStateFromEnvironment,
+  platformRequestCorrelationIdHeaderName,
   subscriberJourneySessionCookieName,
 } from "@comvestec/platform";
 import { handlePublicWebAuthStartRequest } from "../../apps/public-web/src/auth/start-route";
@@ -32,14 +33,12 @@ describe("app auth routes", () => {
       return startAuthentication(input);
     };
 
-    const response = await Effect.runPromise(
-      handlePublicWebAuthStartRequest(
-        authRouteEnvironment,
-        new Request(
-          "http://localhost:3000/auth/start?tenantHint=org_demo&displayNameHint=Spoofed+Tenant",
-        ),
-        instrumentedStartAuthentication,
+    const response = await handlePublicWebAuthStartRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3000/auth/start?tenantHint=org_demo&displayNameHint=Spoofed+Tenant",
       ),
+      instrumentedStartAuthentication,
     );
 
     expect(response.status).toBe(302);
@@ -62,6 +61,9 @@ describe("app auth routes", () => {
     expect(capturedInput.requestContext.host).toBe("localhost:3000");
     expect(capturedInput.tenantHint).toBe("org_demo");
     expect(capturedInput.displayNameHint).toBeUndefined();
+    expect(response.headers.get(platformRequestCorrelationIdHeaderName)).toBe(
+      capturedInput.requestContext.correlationId,
+    );
     expect(callbackUrl.origin).toBe("http://localhost:3002");
     expect(callbackUrl.pathname).toBe("/auth/callback");
     expect(callbackUrl.search).toBe("");
@@ -98,12 +100,10 @@ describe("app auth routes", () => {
       });
     };
 
-    await Effect.runPromise(
-      handlePublicWebAuthStartRequest(
-        authRouteEnvironment,
-        new Request("http://localhost:3000/auth/start?tenantHint=org_demo"),
-        startAuthentication,
-      ),
+    await handlePublicWebAuthStartRequest(
+      authRouteEnvironment,
+      new Request("http://localhost:3000/auth/start?tenantHint=org_demo"),
+      startAuthentication,
     );
 
     if (authStartState === undefined) {
@@ -134,18 +134,19 @@ describe("app auth routes", () => {
       });
     };
 
-    const response = await Effect.runPromise(
-      handleProductAuthCallbackRequest(
-        authRouteEnvironment,
-        new Request(
-          `http://localhost:3002/auth/callback?code=code_roundtrip&state=${encodeURIComponent(authStartState)}&tenantHint=evil-tenant&tenantScopeId=org_evil&organizationId=org_evil`,
-        ),
-        completeAuthentication,
+    const response = await handleProductAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3002/auth/callback?code=code_roundtrip&state=${encodeURIComponent(authStartState)}&tenantHint=evil-tenant&tenantScopeId=org_evil&organizationId=org_evil`,
       ),
+      completeAuthentication,
     );
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("http://localhost:3002/");
+    expect(response.headers.get(platformRequestCorrelationIdHeaderName)).toBe(
+      decodedState.correlationId,
+    );
 
     if (capturedCompleteInput === undefined) {
       throw new Error("Expected auth callback input to be captured.");
@@ -181,14 +182,12 @@ describe("app auth routes", () => {
       return startAuthentication(input);
     };
 
-    await Effect.runPromise(
-      handlePublicWebAuthStartRequest(
-        authRouteEnvironment,
-        new Request(
-          "http://localhost:3000/auth/start?tenantHint=usr_demo&tenantScopeHint=individual",
-        ),
-        instrumentedStartAuthentication,
+    await handlePublicWebAuthStartRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3000/auth/start?tenantHint=usr_demo&tenantScopeHint=individual",
       ),
+      instrumentedStartAuthentication,
     );
 
     if (capturedInput === undefined) {
@@ -247,18 +246,25 @@ describe("app auth routes", () => {
       }),
     );
 
-    const response = await Effect.runPromise(
-      handleProductAuthCallbackRequest(
-        authRouteEnvironment,
-        new Request(
-          `http://localhost:3002/auth/callback?code=code_123&state=${encodeURIComponent(state)}`,
-        ),
-        instrumentedCompleteAuthentication,
+    const response = await handleProductAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3002/auth/callback?code=code_123&state=${encodeURIComponent(state)}`,
+        {
+          headers: {
+            [platformRequestCorrelationIdHeaderName]:
+              "corr_external_callback_request",
+          },
+        },
       ),
+      instrumentedCompleteAuthentication,
     );
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("http://localhost:3002/");
+    expect(response.headers.get(platformRequestCorrelationIdHeaderName)).toBe(
+      "corr_external_callback_request",
+    );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=sess_callback; Path=/; HttpOnly; SameSite=Lax`,
     );
@@ -271,7 +277,7 @@ describe("app auth routes", () => {
       authorizationCode: "code_123",
       redirectUri: "http://localhost:3002/auth/callback",
     });
-    expect(capturedInput.correlationId).toBe("corr_1");
+    expect(capturedInput.correlationId).toBe("corr_external_callback_request");
     expect(capturedInput.tenant).toEqual({
       scope: platformScope.organization,
       scopeId: "org_demo",
@@ -286,33 +292,71 @@ describe("app auth routes", () => {
   });
 
   it("rejects invalid callback state", async () => {
-    const response = await Effect.runPromise(
-      handleProductAuthCallbackRequest(
-        authRouteEnvironment,
-        new Request(
-          "http://localhost:3002/auth/callback?code=code_123&state=not-a-valid-state",
-        ),
+    const response = await handleProductAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3002/auth/callback?code=code_123&state=not-a-valid-state",
       ),
     );
 
     expect(response.status).toBe(400);
+    expect(
+      response.headers.get(platformRequestCorrelationIdHeaderName),
+    ).toEqual(expect.any(String));
     await expect(response.json()).resolves.toEqual({
       error:
         "Auth callback query or callback state did not match the expected contract.",
     });
   });
 
-  it("returns 500 when auth-start backend configuration is invalid", async () => {
-    const response = await Effect.runPromise(
-      handlePublicWebAuthStartRequest(
-        {
-          KEYCLOAK_CLIENT_SECRET: "route-state-secret",
+  it("preserves signed-state correlation when callback state is expired", async () => {
+    const expiredState = await Effect.runPromise(
+      createProductAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_expired_state",
+        redirectUri: "http://localhost:3002/auth/callback",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_demo",
+          enterpriseId: "ent_demo",
+          organizationId: "org_demo",
         },
-        new Request("http://localhost:3000/auth/start?tenantHint=org_demo"),
+        enabledModules: [
+          platformModuleId.tenantManagement,
+          platformModuleId.identitySession,
+          platformModuleId.billingAndMetering,
+        ],
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    );
+
+    const response = await handleProductAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3002/auth/callback?code=code_123&state=${encodeURIComponent(expiredState)}`,
       ),
     );
 
+    expect(response.status).toBe(401);
+    expect(response.headers.get(platformRequestCorrelationIdHeaderName)).toBe(
+      "corr_expired_state",
+    );
+    await expect(response.json()).resolves.toEqual({
+      error: "Authentication callback state has expired.",
+    });
+  });
+
+  it("returns 500 when auth-start backend configuration is invalid", async () => {
+    const response = await handlePublicWebAuthStartRequest(
+      {
+        KEYCLOAK_CLIENT_SECRET: "route-state-secret",
+      },
+      new Request("http://localhost:3000/auth/start?tenantHint=org_demo"),
+    );
+
     expect(response.status).toBe(500);
+    expect(
+      response.headers.get(platformRequestCorrelationIdHeaderName),
+    ).toEqual(expect.any(String));
     await expect(response.json()).resolves.toEqual({
       error:
         "Public auth start is misconfigured or failed validation at the backend boundary.",
@@ -320,14 +364,15 @@ describe("app auth routes", () => {
   });
 
   it("returns 400 when auth-start query parameters fail schema validation", async () => {
-    const response = await Effect.runPromise(
-      handlePublicWebAuthStartRequest(
-        authRouteEnvironment,
-        new Request("http://localhost:3000/auth/start?tenantHint="),
-      ),
+    const response = await handlePublicWebAuthStartRequest(
+      authRouteEnvironment,
+      new Request("http://localhost:3000/auth/start?tenantHint="),
     );
 
     expect(response.status).toBe(400);
+    expect(
+      response.headers.get(platformRequestCorrelationIdHeaderName),
+    ).toEqual(expect.any(String));
     await expect(response.json()).resolves.toEqual({
       error: "Auth start query did not match the expected schema.",
     });

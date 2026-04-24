@@ -1544,6 +1544,22 @@ describe("platform subscriber journey", () => {
     ]);
   });
 
+  it("reuses provided auth-start correlation ids when supplied", async () => {
+    const { subscriberJourney } = await createSubscriberJourneyHarness();
+
+    const authStart = await Effect.runPromise(
+      subscriberJourney.preparePublicAuthStart({
+        correlationId: "corr_public_auth_start",
+        host: "product.example.com",
+      }),
+    );
+
+    expect(authStart.correlationId).toBe("corr_public_auth_start");
+    expect(authStart.requestContext.correlationId).toBe(
+      "corr_public_auth_start",
+    );
+  });
+
   it("omits product bootstrap payload when tenant authorization is denied", async () => {
     const { database, subscriberJourney, valkey } =
       await createSubscriberJourneyHarness();

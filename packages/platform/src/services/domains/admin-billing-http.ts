@@ -8,6 +8,15 @@ import {
 } from "@comvestec/contracts";
 import { extractSubscriberJourneySessionId } from "../access/request-context-transport";
 import {
+  createJsonResponse,
+  createMethodNotAllowedResponse,
+  createNotFoundResponse,
+  isTaggedError,
+  matchHttpEffect,
+  readRequestJson,
+  readRequestQuery,
+} from "../communication/http-transport";
+import {
   type AdminBillingProjectionConfigurationError,
   runAdminBillingFromEnvironment,
   type AdminBillingService,
@@ -52,62 +61,8 @@ export const ReplayBillingRepairGapHttpRequestSchema = Schema.Struct({
   jobId: Schema.NonEmptyString,
 });
 
-const createJsonResponse = (
-  body: unknown,
-  status = 200,
-  headers?: HeadersInit,
-) =>
-  Response.json(body, {
-    status,
-    ...(headers !== undefined ? { headers } : {}),
-  });
-
-const parseRequestJson = (request: Request) =>
-  Effect.tryPromise({
-    try: () => request.json(),
-    catch: () =>
-      ({
-        _tag: "AdminBillingJsonInvalidError",
-      }) satisfies JsonRequestError,
-  });
-
-const readRequestJson = <A, R = never>(
-  request: Request,
-  decode: (payload: unknown) => Effect.Effect<A, ParseResult.ParseError, R>,
-): Effect.Effect<A, JsonRequestError, R> =>
-  parseRequestJson(request).pipe(
-    Effect.flatMap((payload) =>
-      decode(payload).pipe(
-        Effect.mapError(
-          () =>
-            ({
-              _tag: "AdminBillingJsonRequestParseError",
-            }) satisfies JsonRequestError,
-        ),
-      ),
-    ),
-  );
-
-const readRequestQuery = <A, R = never>(
-  url: URL,
-  decode: (payload: unknown) => Effect.Effect<A, ParseResult.ParseError, R>,
-): Effect.Effect<A, JsonRequestError, R> =>
-  decode(Object.fromEntries(url.searchParams.entries())).pipe(
-    Effect.mapError(
-      () =>
-        ({
-          _tag: "AdminBillingJsonRequestParseError",
-        }) satisfies JsonRequestError,
-    ),
-  );
-
 const buildErrorResponse = (error: unknown) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    typeof error._tag === "string"
-  ) {
+  if (isTaggedError(error)) {
     switch (error._tag) {
       case "AdminBillingJsonInvalidError":
         return createJsonResponse(
@@ -219,23 +174,9 @@ const buildErrorResponse = (error: unknown) => {
   return createJsonResponse({ error: "Admin billing request failed." }, 500);
 };
 
-const runRequest = <A, E>(
-  effect: Effect.Effect<A, E>,
-  onSuccess: (value: A) => Response,
-  onFailure: (error: unknown) => Response = buildErrorResponse,
-) =>
-  effect.pipe(
-    Effect.match({
-      onFailure,
-      onSuccess,
-    }),
-  );
-
 const buildAccessDeniedResponse = (message: string) => (error: unknown) => {
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
+    isTaggedError(error) &&
     error._tag === "ManagedBillingPlanAccessDeniedError"
   ) {
     return createJsonResponse({ error: message }, 403);
@@ -243,14 +184,6 @@ const buildAccessDeniedResponse = (message: string) => (error: unknown) => {
 
   return buildErrorResponse(error);
 };
-
-const methodNotAllowedResponse = (allowedMethods: readonly string[]) =>
-  createJsonResponse({ error: "Method not allowed." }, 405, {
-    Allow: allowedMethods.join(", "),
-  });
-
-const notFoundResponse = () =>
-  createJsonResponse({ error: "Admin billing route not found." }, 404);
 
 const extractBearerToken = (request: Request) => {
   const authorizationHeader = request.headers.get("authorization")?.trim();
@@ -332,54 +265,58 @@ export const createAdminBillingHttpHandler =
     switch (url.pathname) {
       case adminBillingApiPath.listRepairGaps:
         if (request.method !== "GET") {
-          return Effect.succeed(methodNotAllowedResponse(["GET"]));
+          return Effect.succeed(createMethodNotAllowedResponse(["GET"]));
         }
 
-        return runRequest(
-          readRequestQuery(
+        return matchHttpEffect({
+          effect: readRequestQuery({
             url,
-            Schema.decodeUnknown(BillingRepairGapListRequestSchema),
-          ).pipe(
+            decode: Schema.decodeUnknown(BillingRepairGapListRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.listBillingRepairGaps(input)),
             ),
           ),
-          (result) => createJsonResponse(result),
-          buildAccessDeniedResponse(
+          onSuccess: (result) => createJsonResponse(result),
+          onFailure: buildAccessDeniedResponse(
             "Billing repair gap inspection is not allowed for this session.",
           ),
-        );
+        });
       case adminBillingApiPath.createManagedPlan:
         if (request.method !== "POST") {
-          return Effect.succeed(methodNotAllowedResponse(["POST"]));
+          return Effect.succeed(createMethodNotAllowedResponse(["POST"]));
         }
 
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(BillingPlanCreateRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminBillingJsonInvalidError",
+            decode: Schema.decodeUnknown(BillingPlanCreateRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
                 service.createManagedBillingPlan(input),
               ),
             ),
           ),
-          (result) => createJsonResponse(result, 202),
-          buildAccessDeniedResponse(
+          onSuccess: (result) => createJsonResponse(result, 202),
+          onFailure: buildAccessDeniedResponse(
             "Billing plan management is not allowed for this session.",
           ),
-        );
+        });
       case adminBillingApiPath.replayRepairGap:
         if (request.method !== "POST") {
-          return Effect.succeed(methodNotAllowedResponse(["POST"]));
+          return Effect.succeed(createMethodNotAllowedResponse(["POST"]));
         }
 
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(ReplayBillingRepairGapHttpRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminBillingJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              ReplayBillingRepairGapHttpRequestSchema,
+            ),
+          }).pipe(
             Effect.flatMap((body) =>
               buildBillingRepairGapReplayRequest(request, body),
             ),
@@ -389,23 +326,24 @@ export const createAdminBillingHttpHandler =
               ),
             ),
           ),
-          (result) => createJsonResponse(result),
-          buildAccessDeniedResponse(
+          onSuccess: (result) => createJsonResponse(result),
+          onFailure: buildAccessDeniedResponse(
             "Billing repair replay is not allowed for this session.",
           ),
-        );
+        });
       case adminBillingApiPath.runManualReconciliation:
         if (request.method !== "POST") {
-          return Effect.succeed(methodNotAllowedResponse(["POST"]));
+          return Effect.succeed(createMethodNotAllowedResponse(["POST"]));
         }
 
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(
+            invalidJsonTag: "AdminBillingJsonInvalidError",
+            decode: Schema.decodeUnknown(
               RunManualBillingReconciliationHttpRequestSchema,
             ),
-          ).pipe(
+          }).pipe(
             Effect.flatMap((body) =>
               buildManualBillingReconciliationRequest(request, body),
             ),
@@ -415,13 +353,15 @@ export const createAdminBillingHttpHandler =
               ),
             ),
           ),
-          (result) => createJsonResponse(result),
-          buildAccessDeniedResponse(
+          onSuccess: (result) => createJsonResponse(result),
+          onFailure: buildAccessDeniedResponse(
             "Manual billing reconciliation is not allowed for this session.",
           ),
-        );
+        });
       default:
-        return Effect.succeed(notFoundResponse());
+        return Effect.succeed(
+          createNotFoundResponse("Admin billing route not found."),
+        );
     }
   };
 

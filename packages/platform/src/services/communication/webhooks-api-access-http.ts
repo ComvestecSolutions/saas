@@ -5,6 +5,14 @@ import {
   validateAndNormalizePolarWebhookRequest,
 } from "../../adapters";
 import {
+  createJsonResponse,
+  createMethodNotAllowedResponse,
+  createNotFoundResponse,
+  isTaggedError,
+  matchHttpEffect,
+  readRequestJson,
+} from "./http-transport";
+import {
   runSubscriberJourneyFromEnvironment,
   type SubscriberJourneyService,
 } from "../domains/subscriber-journey";
@@ -55,49 +63,15 @@ export const webhooksApiPath = {
   replayPolarWebhook: `${webhooksApiBasePath}/polar/replay`,
 } as const;
 
-const createJsonResponse = (
-  body: unknown,
-  status = 200,
-  headers?: HeadersInit,
-) =>
-  Response.json(body, {
-    status,
-    ...(headers !== undefined ? { headers } : {}),
-  });
-
-const parseRequestJson = (request: Request) =>
-  Effect.tryPromise({
-    try: () => request.json(),
-    catch: () =>
-      ({
-        _tag: "WebhooksApiJsonInvalidError",
-      }) satisfies JsonRequestError,
-  });
-
-const readRequestJson = <A, R = never>(
-  request: Request,
-  decode: (payload: unknown) => Effect.Effect<A, ParseResult.ParseError, R>,
-): Effect.Effect<A, JsonRequestError, R> =>
-  parseRequestJson(request).pipe(
-    Effect.flatMap((payload) =>
-      decode(payload).pipe(
-        Effect.mapError(
-          () =>
-            ({
-              _tag: "WebhooksApiJsonRequestParseError",
-            }) satisfies JsonRequestError,
-        ),
-      ),
-    ),
-  );
+const webhooksApiAllowedMethodsByPath: Readonly<
+  Record<string, readonly string[]>
+> = {
+  [webhooksApiPath.processPolarWebhook]: ["POST"],
+  [webhooksApiPath.replayPolarWebhook]: ["POST"],
+};
 
 const buildErrorResponse = (error: unknown) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    typeof error._tag === "string"
-  ) {
+  if (isTaggedError(error)) {
     switch (error._tag) {
       case "WebhooksApiJsonInvalidError":
         return createJsonResponse(
@@ -148,25 +122,6 @@ const buildErrorResponse = (error: unknown) => {
   return createJsonResponse({ error: "Webhook API request failed." }, 500);
 };
 
-const runRequest = <A, E>(
-  effect: Effect.Effect<A, E>,
-  onSuccess: (value: A) => Response,
-) =>
-  effect.pipe(
-    Effect.match({
-      onFailure: buildErrorResponse,
-      onSuccess,
-    }),
-  );
-
-const methodNotAllowedResponse = () =>
-  createJsonResponse({ error: "Method not allowed." }, 405, {
-    Allow: "POST",
-  });
-
-const notFoundResponse = () =>
-  createJsonResponse({ error: "Webhook API route not found." }, 404);
-
 type WebhooksApiHttpHandlerOptions = {
   readonly parsePolarWebhookRequest?: (
     request: Request,
@@ -182,13 +137,16 @@ export const createWebhooksApiHttpHandler = (
 ) => {
   return (request: Request) => {
     const url = new URL(request.url);
+    const allowedMethods = webhooksApiAllowedMethodsByPath[url.pathname];
 
-    if (request.method !== "POST") {
+    if (allowedMethods === undefined) {
       return Effect.succeed(
-        url.pathname.startsWith(webhooksApiBasePath)
-          ? methodNotAllowedResponse()
-          : notFoundResponse(),
+        createNotFoundResponse("Webhook API route not found."),
       );
+    }
+
+    if (!allowedMethods.includes(request.method)) {
+      return Effect.succeed(createMethodNotAllowedResponse(allowedMethods));
     }
 
     switch (url.pathname) {
@@ -205,12 +163,13 @@ export const createWebhooksApiHttpHandler = (
                 );
               }
 
-              return runRequest(
-                runWithService((service) =>
+              return matchHttpEffect({
+                effect: runWithService((service) =>
                   service.processBillingWebhook(input),
                 ),
-                (result) => createJsonResponse(result, 202),
-              );
+                onFailure: buildErrorResponse,
+                onSuccess: (result) => createJsonResponse(result, 202),
+              });
             }),
             Effect.catchAll((error) =>
               Effect.succeed(buildErrorResponse(error)),
@@ -227,11 +186,12 @@ export const createWebhooksApiHttpHandler = (
           ),
         );
       case webhooksApiPath.replayPolarWebhook:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(BillingWebhookReplayRequestSchema),
-          ).pipe(
+            invalidJsonTag: "WebhooksApiJsonInvalidError",
+            decode: Schema.decodeUnknown(BillingWebhookReplayRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
                 service.replayBillingWebhook({
@@ -241,10 +201,13 @@ export const createWebhooksApiHttpHandler = (
               ),
             ),
           ),
-          (result) => createJsonResponse(result, 202),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result, 202),
+        });
       default:
-        return Effect.succeed(notFoundResponse());
+        return Effect.succeed(
+          createNotFoundResponse("Webhook API route not found."),
+        );
     }
   };
 };

@@ -2,8 +2,17 @@ import { Effect, Schema } from "effect";
 import {
   buildSubscriberJourneySessionCookieHeader,
   completeSubscriberAuthenticationFromEnvironment,
+  createJsonResponse,
+  createObservedPlatformRequestBoundary,
   decodeProductAppAuthCallbackStateFromEnvironment,
+  decodeProductAppAuthCallbackStatePayloadFromEnvironment,
+  isTaggedError,
+  matchHttpEffect,
+  platformRequestCorrelationIdHeaderName,
+  readOptionalSearchParam,
 } from "@comvestec/platform";
+
+const productAuthCallbackTelemetryServiceName = "product-app-auth-callback";
 
 const ProductAuthCallbackQuerySchema = Schema.Struct({
   code: Schema.NonEmptyString,
@@ -25,12 +34,6 @@ type ProductAuthCallbackProviderError = {
   readonly _tag: "ProductAuthCallbackProviderError";
   readonly error: string;
   readonly description?: string;
-};
-
-const readOptionalSearchParam = (url: URL, key: string) => {
-  const value = url.searchParams.get(key);
-
-  return value === null ? undefined : value;
 };
 
 const decodeProductAuthCallbackQuery = (url: URL) =>
@@ -56,15 +59,6 @@ const detectProviderError = (
     ...(description !== undefined ? { description } : {}),
   } satisfies ProductAuthCallbackProviderError);
 };
-
-const createJsonResponse = (body: unknown, status: number) =>
-  Response.json(body, { status });
-
-const isTaggedError = (error: unknown): error is { readonly _tag: string } =>
-  typeof error === "object" &&
-  error !== null &&
-  "_tag" in error &&
-  typeof error._tag === "string";
 
 const isProductAuthCallbackProviderError = (
   error: unknown,
@@ -125,62 +119,116 @@ const buildAuthCallbackRouteErrorResponse = (error: unknown) => {
   return createJsonResponse({ error: "Product auth callback failed." }, 500);
 };
 
+const buildAuthCallbackUnhandledErrorResponse = (input: {
+  readonly correlationHeaderName: string;
+  readonly correlationId: string;
+}) =>
+  Response.json(
+    { error: "Product auth callback failed." },
+    {
+      status: 500,
+      headers: {
+        [input.correlationHeaderName]: input.correlationId,
+      },
+    },
+  );
+
+const resolveAuthCallbackCorrelationId = (
+  environment: unknown,
+  request: Request,
+) => {
+  const requestUrl = new URL(request.url);
+  const state = readOptionalSearchParam(requestUrl, "state");
+
+  if (state === undefined) {
+    return Promise.resolve(undefined);
+  }
+
+  return Effect.runPromise(
+    decodeProductAppAuthCallbackStatePayloadFromEnvironment(
+      environment,
+      state,
+    ).pipe(
+      Effect.match({
+        onFailure: () => undefined,
+        onSuccess: (statePayload) => statePayload.correlationId,
+      }),
+    ),
+  );
+};
+
 export const handleProductAuthCallbackRequest = (
   environment: unknown,
   request: Request,
   completeAuthentication: CompleteSubscriberAuthentication = (input) =>
     completeSubscriberAuthenticationFromEnvironment(environment, input),
 ) => {
-  const requestUrl = new URL(request.url);
-  const callbackRequestUri = new URL(
-    requestUrl.pathname,
-    requestUrl.origin,
-  ).toString();
+  const requestBoundary = createObservedPlatformRequestBoundary({
+    environment,
+    serviceName: productAuthCallbackTelemetryServiceName,
+    buildUnhandledErrorResponse: buildAuthCallbackUnhandledErrorResponse,
+    resolveCorrelationId: ({ request: currentRequest }) =>
+      resolveAuthCallbackCorrelationId(environment, currentRequest),
+  });
 
-  return detectProviderError(requestUrl).pipe(
-    Effect.flatMap(() => decodeProductAuthCallbackQuery(requestUrl)),
-    Effect.flatMap((query) =>
-      decodeProductAppAuthCallbackStateFromEnvironment(
-        environment,
-        query.state,
-      ).pipe(
-        Effect.flatMap((statePayload) =>
-          statePayload.redirectUri === callbackRequestUri
-            ? completeAuthentication({
-                session: {
-                  authorizationCode: query.code,
-                  redirectUri: statePayload.redirectUri,
-                },
-                correlationId: statePayload.correlationId,
-                host: requestUrl.host,
-                tenant: statePayload.tenant,
-                enabledModules: [...statePayload.enabledModules],
-              })
-            : Effect.fail({
-                _tag: "ProductAppAuthCallbackStateInvalidError",
-                reason:
-                  "State redirect URI did not match the callback request.",
-              } as const),
-        ),
-      ),
-    ),
-    Effect.match({
-      onFailure: buildAuthCallbackRouteErrorResponse,
-      onSuccess: (result) =>
-        new Response(null, {
-          status: 302,
-          headers: {
-            Location: new URL("/", requestUrl.origin).toString(),
-            "Set-Cookie": buildSubscriberJourneySessionCookieHeader(
-              result.session.sessionId,
-              {
-                secure:
-                  requestUrl.hostname !== "localhost" &&
-                  requestUrl.hostname !== "127.0.0.1",
-              },
+  return requestBoundary.wrap((currentRequest) => {
+    const requestUrl = new URL(currentRequest.url);
+    const callbackRequestUri = new URL(
+      requestUrl.pathname,
+      requestUrl.origin,
+    ).toString();
+    const correlationId = currentRequest.headers.get(
+      platformRequestCorrelationIdHeaderName,
+    );
+
+    return Effect.runPromise(
+      matchHttpEffect({
+        effect: detectProviderError(requestUrl).pipe(
+          Effect.flatMap(() => decodeProductAuthCallbackQuery(requestUrl)),
+          Effect.flatMap((query) =>
+            decodeProductAppAuthCallbackStateFromEnvironment(
+              environment,
+              query.state,
+            ).pipe(
+              Effect.flatMap((statePayload) =>
+                statePayload.redirectUri === callbackRequestUri
+                  ? completeAuthentication({
+                      session: {
+                        authorizationCode: query.code,
+                        redirectUri: statePayload.redirectUri,
+                      },
+                      correlationId:
+                        correlationId ?? statePayload.correlationId,
+                      host: requestUrl.host,
+                      tenant: statePayload.tenant,
+                      enabledModules: [...statePayload.enabledModules],
+                    })
+                  : Effect.fail({
+                      _tag: "ProductAppAuthCallbackStateInvalidError",
+                      reason:
+                        "State redirect URI did not match the callback request.",
+                    } as const),
+              ),
             ),
-          },
-        }),
-    }),
-  );
+          ),
+        ),
+        onFailure: buildAuthCallbackRouteErrorResponse,
+        onSuccess: (result) =>
+          new Response(null, {
+            status: 302,
+            headers: {
+              Location: new URL("/", requestUrl.origin).toString(),
+              "Set-Cookie": buildSubscriberJourneySessionCookieHeader(
+                result.session.sessionId,
+                {
+                  secure:
+                    requestUrl.hostname !== "localhost" &&
+                    requestUrl.hostname !== "127.0.0.1",
+                },
+              ),
+            },
+          }),
+      }),
+    );
+  })(request);
 };

@@ -326,4 +326,63 @@ describe("platform webhooks api http", () => {
       error: "Authentication or signature validation failed.",
     });
   });
+
+  it("returns route-level Allow headers for unsupported webhook API methods", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${webhooksApiPath.processPolarWebhook}`, {
+          method: "GET",
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("POST");
+    await expect(response.json()).resolves.toEqual({
+      error: "Method not allowed.",
+    });
+  });
+
+  it("returns 404 for unknown webhook API routes", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          "http://localhost/api/subscriber-journey/billing/webhooks/polar/unknown",
+          {
+            method: "POST",
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Webhook API route not found.",
+    });
+  });
+
+  it("returns 404 for unknown webhook API routes even when the method is unsupported", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          "http://localhost/api/subscriber-journey/billing/webhooks/polar/unknown",
+          {
+            method: "GET",
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Allow")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Webhook API route not found.",
+    });
+  });
 });

@@ -36,7 +36,10 @@ export const workflowJobsReconciliationSweepIntervalMinutes =
   });
 
 export const workflowJobsRunningClaimTimeoutSeconds =
-  workflowJobsReconciliationSweepIntervalMinutes * 60;
+  resolveWorkflowJobsDefaultNumber({
+    key: workflowJobsConfigKey.claimTimeoutSeconds,
+    fallback: 900,
+  });
 
 export const workflowJobsScheduledRecoveryAttemptCount = Math.max(
   1,

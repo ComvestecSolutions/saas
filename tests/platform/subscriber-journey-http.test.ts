@@ -116,6 +116,13 @@ const createValidatedTestHandler = (options: {
   );
 
 describe("platform subscriber journey http", () => {
+  it("keeps the subscriber journey route registry scoped to subscriber-owned routes", () => {
+    expect(subscriberJourneyApiPath).not.toHaveProperty(
+      "processBillingWebhook",
+    );
+    expect(subscriberJourneyApiPath).not.toHaveProperty("replayBillingWebhook");
+  });
+
   it("lists public plans through the backend-owned HTTP surface", async () => {
     const handler = createTestHandler({
       listPublicPlans: Effect.succeed([
@@ -526,6 +533,79 @@ describe("platform subscriber journey http", () => {
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({
       error: "A backend dependency request failed.",
+    });
+  });
+
+  it("returns route-level Allow headers for unsupported subscriber journey methods", async () => {
+    const handler = createTestHandler({});
+
+    const startAuthenticationResponse = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.startAuthentication}`,
+          {
+            method: "GET",
+          },
+        ),
+      ),
+    );
+
+    expect(startAuthenticationResponse.status).toBe(405);
+    expect(startAuthenticationResponse.headers.get("Allow")).toBe("POST");
+    await expect(startAuthenticationResponse.json()).resolves.toEqual({
+      error: "Method not allowed.",
+    });
+
+    const listPublicPlansResponse = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.listPublicPlans}`,
+          {
+            method: "POST",
+          },
+        ),
+      ),
+    );
+
+    expect(listPublicPlansResponse.status).toBe(405);
+    expect(listPublicPlansResponse.headers.get("Allow")).toBe("GET");
+    await expect(listPublicPlansResponse.json()).resolves.toEqual({
+      error: "Method not allowed.",
+    });
+  });
+
+  it("returns 404 for unknown subscriber journey routes", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request("http://localhost/api/subscriber-journey/auth/unknown", {
+          method: "POST",
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Subscriber journey route not found.",
+    });
+  });
+
+  it("returns 404 for unknown subscriber journey routes even when the method is unsupported", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request("http://localhost/api/subscriber-journey/auth/unknown", {
+          method: "GET",
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Allow")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Subscriber journey route not found.",
     });
   });
 });

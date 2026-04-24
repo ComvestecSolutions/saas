@@ -113,6 +113,16 @@ export const workflowJobsManifest = defineModuleManifest({
       allowedScopes: [platformScope.platform],
       owner: platformModuleId.workflowJobs,
     },
+    {
+      key: workflowJobsConfigKey.claimTimeoutSeconds,
+      description:
+        "Seconds before a stale-running reconciliation job is reclaimed for recovery handling.",
+      schema: configSchemaType.number,
+      defaultValue: 900,
+      billable: false,
+      allowedScopes: [platformScope.platform],
+      owner: platformModuleId.workflowJobs,
+    },
   ],
   featureFlags: [
     {

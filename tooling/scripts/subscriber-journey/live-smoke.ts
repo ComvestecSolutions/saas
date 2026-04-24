@@ -15,6 +15,7 @@ import {
 import {
   createProductAppAuthCallbackStateFromEnvironment,
   subscriberJourneyApiPath,
+  webhooksApiPath,
 } from "@comvestec/platform";
 import {
   hostFromUrlString,
@@ -172,11 +173,11 @@ const main = Effect.gen(function* () {
   const apiBaseUrl = `http://127.0.0.1:${environment.SUBSCRIBER_JOURNEY_API_PORT}`;
   const localWebhookUrl = createApiUrl(
     apiBaseUrl,
-    subscriberJourneyApiPath.processBillingWebhook,
+    webhooksApiPath.processPolarWebhook,
   );
   const localReplayUrl = createApiUrl(
     apiBaseUrl,
-    subscriberJourneyApiPath.replayBillingWebhook,
+    webhooksApiPath.replayPolarWebhook,
   );
   const correlationId = `corr_smoke_${Date.now()}`;
   const enabledModules = resolveDefaultTenantOnboardingEnabledModules();
@@ -315,10 +316,10 @@ const main = Effect.gen(function* () {
   console.log(`- Local webhook replay endpoint: ${localReplayUrl}`);
   if (environment.SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL !== undefined) {
     console.log(
-      `- Public webhook endpoint: ${environment.SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL}${subscriberJourneyApiPath.processBillingWebhook}`,
+      `- Public webhook endpoint: ${environment.SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL}${webhooksApiPath.processPolarWebhook}`,
     );
     console.log(
-      `- Public webhook replay endpoint: ${environment.SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL}${subscriberJourneyApiPath.replayBillingWebhook}`,
+      `- Public webhook replay endpoint: ${environment.SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL}${webhooksApiPath.replayPolarWebhook}`,
     );
   }
   console.log(

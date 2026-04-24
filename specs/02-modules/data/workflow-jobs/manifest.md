@@ -34,6 +34,7 @@ Convex-native scheduling and actions for background job orchestration and schedu
 | `workflow-jobs.retry.maxAttempts`                | Whole-number post-primary automatic recovery budget before an unresolved reconciliation job is blocked for operator intervention | 3       | No       | platform       |
 | `workflow-jobs.reconciliation.deadlineSeconds`   | Delay before a scheduled reconciliation deadline evaluates drift                                                                 | 300     | No       | platform       |
 | `workflow-jobs.reconciliation.sweepIntervalMins` | Minutes between targeted follow-up attempts and stale-running reclaim checks for unresolved reconciliation jobs                  | 15      | No       | platform       |
+| `workflow-jobs.claim.timeoutSeconds`             | Seconds before a stale-running reconciliation job is reclaimed for recovery handling                                             | 900     | No       | platform       |
 
 ## Data Classifications
 

@@ -11,7 +11,14 @@ import {
   decodeProductAppAuthCallbackStateFromEnvironment,
   validateProductAppAuthCallbackRedirectUriFromEnvironment,
 } from "../access/first-party-auth";
-import { webhooksApiPath } from "../communication/webhooks-api-access-http";
+import {
+  createJsonResponse,
+  createMethodNotAllowedResponse,
+  createNotFoundResponse,
+  isTaggedError,
+  matchHttpEffect,
+  readRequestJson,
+} from "../communication/http-transport";
 import {
   runSubscriberJourneyFromEnvironment,
   type SubscriberJourneyService,
@@ -79,54 +86,22 @@ export const subscriberJourneyApiPath = {
   completeAuthentication: `${subscriberJourneyApiBasePath}/auth/complete`,
   resolveRequestContext: `${subscriberJourneyApiBasePath}/identity/request-context`,
   createCheckoutSession: `${subscriberJourneyApiBasePath}/billing/checkouts`,
-  processBillingWebhook: webhooksApiPath.processPolarWebhook,
-  replayBillingWebhook: webhooksApiPath.replayPolarWebhook,
   buildProductBootstrap: `${subscriberJourneyApiBasePath}/product/bootstrap`,
 } as const;
 
-const createJsonResponse = (
-  body: unknown,
-  status = 200,
-  headers?: HeadersInit,
-) =>
-  Response.json(body, {
-    status,
-    ...(headers !== undefined ? { headers } : {}),
-  });
-
-const parseRequestJson = (request: Request) =>
-  Effect.tryPromise({
-    try: () => request.json(),
-    catch: () =>
-      ({
-        _tag: "SubscriberJourneyJsonInvalidError",
-      }) satisfies JsonRequestError,
-  });
-
-const readRequestJson = <A, R = never>(
-  request: Request,
-  decode: (payload: unknown) => Effect.Effect<A, ParseResult.ParseError, R>,
-): Effect.Effect<A, JsonRequestError, R> =>
-  parseRequestJson(request).pipe(
-    Effect.flatMap((payload) =>
-      decode(payload).pipe(
-        Effect.mapError(
-          () =>
-            ({
-              _tag: "SubscriberJourneyJsonRequestParseError",
-            }) satisfies JsonRequestError,
-        ),
-      ),
-    ),
-  );
+const subscriberJourneyAllowedMethodsByPath: Readonly<
+  Record<string, readonly string[]>
+> = {
+  [subscriberJourneyApiPath.listPublicPlans]: ["GET"],
+  [subscriberJourneyApiPath.startAuthentication]: ["POST"],
+  [subscriberJourneyApiPath.completeAuthentication]: ["POST"],
+  [subscriberJourneyApiPath.resolveRequestContext]: ["POST"],
+  [subscriberJourneyApiPath.createCheckoutSession]: ["POST"],
+  [subscriberJourneyApiPath.buildProductBootstrap]: ["POST"],
+};
 
 const buildErrorResponse = (error: unknown) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    typeof error._tag === "string"
-  ) {
+  if (isTaggedError(error)) {
     switch (error._tag) {
       case "SubscriberJourneyJsonInvalidError":
         return createJsonResponse(
@@ -192,25 +167,6 @@ const buildErrorResponse = (error: unknown) => {
   );
 };
 
-const runRequest = <A, E>(
-  effect: Effect.Effect<A, E>,
-  onSuccess: (value: A) => Response,
-) =>
-  effect.pipe(
-    Effect.match({
-      onFailure: buildErrorResponse,
-      onSuccess,
-    }),
-  );
-
-const methodNotAllowedResponse = () =>
-  createJsonResponse({ error: "Method not allowed." }, 405, {
-    Allow: "GET, POST",
-  });
-
-const notFoundResponse = () =>
-  createJsonResponse({ error: "Subscriber journey route not found." }, 404);
-
 export const createSubscriberJourneyHttpHandler =
   (
     runWithService: SubscriberJourneyServiceRunner,
@@ -218,32 +174,34 @@ export const createSubscriberJourneyHttpHandler =
   ) =>
   (request: Request) => {
     const url = new URL(request.url);
+    const allowedMethods = subscriberJourneyAllowedMethodsByPath[url.pathname];
 
-    if (
-      request.method === "GET" &&
-      url.pathname === subscriberJourneyApiPath.listPublicPlans
-    ) {
-      return runRequest(
-        runWithService((service) => service.listPublicPlans),
-        (plans) => createJsonResponse({ plans }),
+    if (allowedMethods === undefined) {
+      return Effect.succeed(
+        createNotFoundResponse("Subscriber journey route not found."),
       );
     }
 
-    if (request.method !== "POST") {
-      return Effect.succeed(
-        url.pathname.startsWith(subscriberJourneyApiBasePath)
-          ? methodNotAllowedResponse()
-          : notFoundResponse(),
-      );
+    if (!allowedMethods.includes(request.method)) {
+      return Effect.succeed(createMethodNotAllowedResponse(allowedMethods));
+    }
+
+    if (url.pathname === subscriberJourneyApiPath.listPublicPlans) {
+      return matchHttpEffect({
+        effect: runWithService((service) => service.listPublicPlans),
+        onFailure: buildErrorResponse,
+        onSuccess: (plans) => createJsonResponse({ plans }),
+      });
     }
 
     switch (url.pathname) {
       case subscriberJourneyApiPath.startAuthentication:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(StartAuthenticationRequestSchema),
-          ).pipe(
+            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
+            decode: Schema.decodeUnknown(StartAuthenticationRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               options?.validateStartAuthentication === undefined
                 ? Effect.succeed(input)
@@ -255,14 +213,16 @@ export const createSubscriberJourneyHttpHandler =
               runWithService((service) => service.startAuthentication(input)),
             ),
           ),
-          (result) => createJsonResponse(result, 202),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result, 202),
+        });
       case subscriberJourneyApiPath.completeAuthentication:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(CompleteAuthenticationRequestSchema),
-          ).pipe(
+            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
+            decode: Schema.decodeUnknown(CompleteAuthenticationRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               options?.hydrateCompleteAuthentication === undefined
                 ? Effect.fail({
@@ -276,46 +236,56 @@ export const createSubscriberJourneyHttpHandler =
               ),
             ),
           ),
-          (result) => createJsonResponse(result, 202),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result, 202),
+        });
       case subscriberJourneyApiPath.resolveRequestContext:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(ResolveRequestContextRequestSchema),
-          ).pipe(
+            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
+            decode: Schema.decodeUnknown(ResolveRequestContextRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.resolveRequestContext(input)),
             ),
           ),
-          (requestContext) => createJsonResponse({ requestContext }),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (requestContext) => createJsonResponse({ requestContext }),
+        });
       case subscriberJourneyApiPath.createCheckoutSession:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(BillingCheckoutSessionInputSchema),
-          ).pipe(
+            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
+            decode: Schema.decodeUnknown(BillingCheckoutSessionInputSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.createCheckoutSession(input)),
             ),
           ),
-          (checkoutSession) => createJsonResponse(checkoutSession, 202),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (checkoutSession) =>
+            createJsonResponse(checkoutSession, 202),
+        });
       case subscriberJourneyApiPath.buildProductBootstrap:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(ProductBootstrapRequestSchema),
-          ).pipe(
+            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
+            decode: Schema.decodeUnknown(ProductBootstrapRequestSchema),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.buildProductBootstrap(input)),
             ),
           ),
-          (result) => createJsonResponse(result),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result),
+        });
       default:
-        return Effect.succeed(notFoundResponse());
+        return Effect.succeed(
+          createNotFoundResponse("Subscriber journey route not found."),
+        );
     }
   };
 

@@ -44,7 +44,6 @@ import {
   runtimeConfigSyncArtifactsTable,
   type RuntimeConfigOverrideRecord,
   type RuntimeConfigPostgresQueryable,
-  type RuntimeConfigSyncArtifactRecord,
 } from "../../../../modules/src/persistence/postgres/governance";
 import {
   makePostgresAdapter,
@@ -158,11 +157,28 @@ const RuntimeConfigRenameMapSchema = Schema.Record({
 });
 
 export const PersistRuntimeConfigProposalsRequestSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  moduleId: PlatformModuleIdSchema,
+  renameMap: RuntimeConfigRenameMapSchema,
+});
+
+const PersistRuntimeConfigProposalsCommandSchema = Schema.Struct({
+  requestContext: RequestContextSchema,
   moduleId: PlatformModuleIdSchema,
   renameMap: RuntimeConfigRenameMapSchema,
 });
 
 export const UpsertRuntimeConfigOverrideRequestSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  moduleId: PlatformModuleIdSchema,
+  key: DeclaredRuntimeGovernedKeySchema,
+  scope: PlatformScopeSchema,
+  scopeId: Schema.NonEmptyString,
+  value: Schema.Unknown,
+  approvalReason: Schema.NonEmptyString,
+});
+
+const UpsertRuntimeConfigOverrideCommandSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   moduleId: PlatformModuleIdSchema,
   key: DeclaredRuntimeGovernedKeySchema,
@@ -180,9 +196,28 @@ export type PersistRuntimeConfigProposalsRequest = Schema.Schema.Type<
   typeof PersistRuntimeConfigProposalsRequestSchema
 >;
 
+type PersistRuntimeConfigProposalsCommand = Schema.Schema.Type<
+  typeof PersistRuntimeConfigProposalsCommandSchema
+>;
+
+type UpsertRuntimeConfigOverrideCommand = Schema.Schema.Type<
+  typeof UpsertRuntimeConfigOverrideCommandSchema
+>;
+
 export type UpsertRuntimeConfigOverrideRequest = Schema.Schema.Type<
   typeof UpsertRuntimeConfigOverrideRequestSchema
 >;
+
+export const AdminGovernanceUpsertRuntimeConfigOverrideResponseSchema =
+  Schema.Struct({
+    override: AdminGovernanceRuntimeConfigOverrideViewSchema,
+    auditEvent: AdminGovernanceAuditEventViewSchema,
+  });
+
+export type AdminGovernanceUpsertRuntimeConfigOverrideResponse =
+  Schema.Schema.Type<
+    typeof AdminGovernanceUpsertRuntimeConfigOverrideResponseSchema
+  >;
 
 export type AdminGovernanceProjectionConfigurationError = {
   readonly _tag: "AdminGovernanceProjectionConfigurationError";
@@ -223,6 +258,11 @@ export type AdminGovernanceReadAccessDeniedError = {
   readonly actorType: RequestContext["actorType"];
 };
 
+export type AdminGovernanceMutationAccessDeniedError = {
+  readonly _tag: "AdminGovernanceMutationAccessDeniedError";
+  readonly actorType: RequestContext["actorType"];
+};
+
 export type AdminGovernanceServiceError =
   | ParseResult.ParseError
   | RuntimeConfigModulePersistenceError
@@ -235,7 +275,12 @@ export type AdminGovernanceServiceError =
   | AdminGovernanceRequestContextMalformedError
   | AdminGovernanceReadUnauthenticatedActorError
   | AdminGovernanceReadAccessDeniedError
+  | AdminGovernanceMutationAccessDeniedError
   | AdminGovernanceUnauthenticatedActorError;
+
+type AuthenticatedAdminGovernanceRequestContext = RequestContext & {
+  readonly actorId: string;
+};
 
 export type AdminGovernanceService = {
   readonly resolveRequestContext: (
@@ -254,19 +299,16 @@ export type AdminGovernanceService = {
     AdminGovernanceServiceError
   >;
   readonly upsertRuntimeConfigOverride: (
-    input: UpsertRuntimeConfigOverrideRequest,
+    input: UpsertRuntimeConfigOverrideCommand,
   ) => Effect.Effect<
-    {
-      readonly override: RuntimeConfigOverrideRecord;
-      readonly auditEvent: AuditEvent;
-    },
+    AdminGovernanceUpsertRuntimeConfigOverrideResponse,
     AdminGovernanceServiceError
   >;
   readonly persistRuntimeConfigProposals: (
-    input: PersistRuntimeConfigProposalsRequest,
+    input: PersistRuntimeConfigProposalsCommand,
   ) => Effect.Effect<
-    readonly RuntimeConfigSyncArtifactRecord[],
-    RuntimeConfigModulePersistenceError | ParseResult.ParseError
+    readonly AdminGovernanceRuntimeConfigProposalView[],
+    AdminGovernanceServiceError
   >;
   readonly listRuntimeConfigProposals: (
     input: AdminGovernanceListByModuleRequest,
@@ -290,10 +332,12 @@ const buildRuntimeConfigOverrideTarget = (
 ) =>
   `${override.moduleId}:${override.key}:${override.scope}:${override.scopeId}`;
 
-const requireAuthenticatedActorId = (
-  requestContext: UpsertRuntimeConfigOverrideRequest["requestContext"],
-) =>
+const requireAuthenticatedActorId = (requestContext: RequestContext) =>
   Effect.fromNullable(requestContext.actorId).pipe(
+    Effect.map((actorId) => ({
+      ...requestContext,
+      actorId,
+    })),
     Effect.mapError(
       (): AdminGovernanceUnauthenticatedActorError => ({
         _tag: "AdminGovernanceUnauthenticatedActorError",
@@ -302,7 +346,7 @@ const requireAuthenticatedActorId = (
   );
 
 const buildStoredRuntimeConfigOverride = (
-  request: UpsertRuntimeConfigOverrideRequest,
+  request: UpsertRuntimeConfigOverrideCommand,
   actorId: string,
 ) =>
   Schema.decodeUnknown(RuntimeConfigOverrideRecordSchema)({
@@ -347,24 +391,50 @@ const resolveAdminGovernanceRequestContext = (
 const ensureAdminGovernanceReadAccess = (
   requestContext: RequestContext,
 ): Effect.Effect<
-  RequestContext,
+  AuthenticatedAdminGovernanceRequestContext,
   | AdminGovernanceReadUnauthenticatedActorError
   | AdminGovernanceReadAccessDeniedError
 > => {
-  if (requestContext.actorId === undefined) {
-    return Effect.fail({
-      _tag: "AdminGovernanceReadUnauthenticatedActorError",
-    } satisfies AdminGovernanceReadUnauthenticatedActorError);
-  }
-
-  return requestContext.actorType === actorType.platformOperator ||
-    requestContext.actorType === actorType.supportOperator
-    ? Effect.succeed(requestContext)
-    : Effect.fail({
-        _tag: "AdminGovernanceReadAccessDeniedError",
-        actorType: requestContext.actorType,
-      } satisfies AdminGovernanceReadAccessDeniedError);
+  return Effect.fromNullable(requestContext.actorId).pipe(
+    Effect.map((actorId) => ({
+      ...requestContext,
+      actorId,
+    })),
+    Effect.mapError(
+      (): AdminGovernanceReadUnauthenticatedActorError => ({
+        _tag: "AdminGovernanceReadUnauthenticatedActorError",
+      }),
+    ),
+    Effect.flatMap((authenticatedRequestContext) =>
+      authenticatedRequestContext.actorType === actorType.platformOperator ||
+      authenticatedRequestContext.actorType === actorType.supportOperator
+        ? Effect.succeed(authenticatedRequestContext)
+        : Effect.fail({
+            _tag: "AdminGovernanceReadAccessDeniedError",
+            actorType: authenticatedRequestContext.actorType,
+          } satisfies AdminGovernanceReadAccessDeniedError),
+    ),
+  );
 };
+
+const ensureAdminGovernanceMutationAccess = (
+  requestContext: RequestContext,
+): Effect.Effect<
+  AuthenticatedAdminGovernanceRequestContext,
+  | AdminGovernanceUnauthenticatedActorError
+  | AdminGovernanceMutationAccessDeniedError
+> =>
+  requireAuthenticatedActorId(requestContext).pipe(
+    Effect.flatMap((authenticatedRequestContext) =>
+      authenticatedRequestContext.actorType === actorType.platformOperator ||
+      authenticatedRequestContext.actorType === actorType.supportOperator
+        ? Effect.succeed(authenticatedRequestContext)
+        : Effect.fail({
+            _tag: "AdminGovernanceMutationAccessDeniedError",
+            actorType: authenticatedRequestContext.actorType,
+          } satisfies AdminGovernanceMutationAccessDeniedError),
+    ),
+  );
 
 type AdminGovernanceFieldSecurity = FieldSecurityModuleService;
 
@@ -629,22 +699,123 @@ const listProjectedAuditEvents = (input: {
     }),
   );
 
+const projectUpsertRuntimeConfigOverrideResponse = (input: {
+  readonly auditLog: AuditLogModuleService;
+  readonly fieldSecurity: AdminGovernanceFieldSecurity;
+  readonly requestContext: UpsertRuntimeConfigOverrideCommand["requestContext"];
+  readonly runtimeConfigProjection: ProjectionDescriptor;
+  readonly auditLogProjection: ProjectionDescriptor;
+  readonly result: {
+    readonly override: RuntimeConfigOverrideRecord;
+    readonly auditEvent: AuditEvent;
+  };
+}): Effect.Effect<
+  AdminGovernanceUpsertRuntimeConfigOverrideResponse,
+  AdminGovernanceServiceError
+> =>
+  Effect.all({
+    projectedOverride: applyProjectedAdminGovernanceRecord({
+      fieldSecurity: input.fieldSecurity,
+      moduleId: platformModuleId.runtimeConfig,
+      requestContext: input.requestContext,
+      projection: input.runtimeConfigProjection,
+      record: input.result.override,
+      recordType: "runtimeConfigOverride",
+      decode: decodeAdminGovernanceRuntimeConfigOverrideView,
+    }),
+    projectedAuditEvent: applyProjectedAdminGovernanceRecord({
+      fieldSecurity: input.fieldSecurity,
+      moduleId: platformModuleId.auditLog,
+      requestContext: input.requestContext,
+      projection: input.auditLogProjection,
+      record: input.result.auditEvent,
+      recordType: "auditEvent",
+      decode: decodeAdminGovernanceAuditEventView,
+    }),
+  }).pipe(
+    Effect.flatMap(({ projectedOverride, projectedAuditEvent }) =>
+      Effect.all([
+        appendSensitiveReadAudit(input.auditLog, {
+          requestContext: input.requestContext,
+          target: `${platformModuleId.runtimeConfig}:${input.result.override.moduleId}:override:${projectedOverride.auditedFields.join(",")}`,
+          reason: `Inspect projected runtime-config override mutation response for ${input.result.override.moduleId}.`,
+          auditedFields: projectedOverride.auditedFields,
+        }),
+        appendSensitiveReadAudit(input.auditLog, {
+          requestContext: input.requestContext,
+          target: `${platformModuleId.auditLog}:${input.result.override.moduleId}:override:${projectedAuditEvent.auditedFields.join(",")}`,
+          reason: `Inspect projected audit-log mutation response for ${input.result.override.moduleId}.`,
+          auditedFields: projectedAuditEvent.auditedFields,
+        }),
+      ]).pipe(
+        Effect.map(() => ({
+          override: projectedOverride.record,
+          auditEvent: projectedAuditEvent.record,
+        })),
+      ),
+    ),
+  );
+
+const persistProjectedRuntimeConfigProposals = (input: {
+  readonly runtimeConfig: RuntimeConfigModule["Type"];
+  readonly auditLog: AuditLogModuleService;
+  readonly fieldSecurity: AdminGovernanceFieldSecurity;
+  readonly projection: ProjectionDescriptor;
+  readonly request: PersistRuntimeConfigProposalsCommand;
+}): Effect.Effect<
+  readonly AdminGovernanceRuntimeConfigProposalView[],
+  AdminGovernanceServiceError
+> =>
+  input.runtimeConfig
+    .persistChangeProposals({
+      moduleId: input.request.moduleId,
+      renameMap: input.request.renameMap,
+    })
+    .pipe(
+      Effect.flatMap((records) =>
+        projectAdminGovernanceRecords({
+          fieldSecurity: input.fieldSecurity,
+          moduleId: platformModuleId.runtimeConfig,
+          requestContext: input.request.requestContext,
+          projection: input.projection,
+          records,
+          recordType: "runtimeConfigProposal",
+          decode: decodeAdminGovernanceRuntimeConfigProposalView,
+        }),
+      ),
+      Effect.flatMap((projectedRecords) => {
+        const auditedFields = collectAuditedFields(projectedRecords);
+
+        return appendSensitiveReadAudit(input.auditLog, {
+          requestContext: input.request.requestContext,
+          target: `${platformModuleId.runtimeConfig}:${input.request.moduleId}:persisted-proposals:${auditedFields.join(",")}`,
+          reason: `Inspect projected persisted runtime-config proposals for ${input.request.moduleId}.`,
+          auditedFields,
+        }).pipe(
+          Effect.map(() => projectedRecords.map((record) => record.record)),
+        );
+      }),
+    );
+
 const upsertRuntimeConfigOverride = (
   runtimeConfig: RuntimeConfigModule["Type"],
   auditLog: AuditLogModuleService,
-  input: UpsertRuntimeConfigOverrideRequest,
+  fieldSecurity: AdminGovernanceFieldSecurity,
+  runtimeConfigProjection: ProjectionDescriptor,
+  auditLogProjection: ProjectionDescriptor,
+  input: UpsertRuntimeConfigOverrideCommand,
 ): Effect.Effect<
-  {
-    readonly override: RuntimeConfigOverrideRecord;
-    readonly auditEvent: AuditEvent;
-  },
+  AdminGovernanceUpsertRuntimeConfigOverrideResponse,
   AdminGovernanceServiceError
 > =>
-  Schema.decodeUnknown(UpsertRuntimeConfigOverrideRequestSchema)(input).pipe(
+  Schema.decodeUnknown(UpsertRuntimeConfigOverrideCommandSchema)(input).pipe(
     Effect.flatMap((request) =>
-      requireAuthenticatedActorId(request.requestContext).pipe(
-        Effect.flatMap((actorId) =>
-          buildStoredRuntimeConfigOverride(request, actorId).pipe(
+      ensureAdminGovernanceMutationAccess(request.requestContext).pipe(
+        Effect.flatMap((requestContext) =>
+          buildStoredRuntimeConfigOverride(
+            request,
+            requestContext.actorId,
+          ).pipe(
             Effect.flatMap((override) =>
               runtimeConfig.upsertOverride(override),
             ),
@@ -652,7 +823,7 @@ const upsertRuntimeConfigOverride = (
               auditLog
                 .append({
                   requestContext: {
-                    ...request.requestContext,
+                    ...requestContext,
                     reason: request.approvalReason,
                   },
                   moduleId: request.moduleId,
@@ -661,10 +832,19 @@ const upsertRuntimeConfigOverride = (
                   reason: request.approvalReason,
                 })
                 .pipe(
-                  Effect.map((auditEvent) => ({
-                    override: storedOverride,
-                    auditEvent,
-                  })),
+                  Effect.flatMap((auditEvent) =>
+                    projectUpsertRuntimeConfigOverrideResponse({
+                      auditLog,
+                      fieldSecurity,
+                      requestContext,
+                      runtimeConfigProjection,
+                      auditLogProjection,
+                      result: {
+                        override: storedOverride,
+                        auditEvent,
+                      },
+                    }),
+                  ),
                 ),
             ),
           ),
@@ -709,25 +889,43 @@ export const makeAdminGovernanceService = () =>
           ),
         ),
       upsertRuntimeConfigOverride: (
-        input: UpsertRuntimeConfigOverrideRequest,
+        input: UpsertRuntimeConfigOverrideCommand,
       ): Effect.Effect<
-        {
-          readonly override: RuntimeConfigOverrideRecord;
-          readonly auditEvent: AuditEvent;
-        },
+        AdminGovernanceUpsertRuntimeConfigOverrideResponse,
         AdminGovernanceServiceError
-      > => upsertRuntimeConfigOverride(runtimeConfig, auditLog, input),
-      persistRuntimeConfigProposals: (
-        input: PersistRuntimeConfigProposalsRequest,
-      ): Effect.Effect<
-        readonly RuntimeConfigSyncArtifactRecord[],
-        RuntimeConfigModulePersistenceError | ParseResult.ParseError
       > =>
-        Schema.decodeUnknown(PersistRuntimeConfigProposalsRequestSchema)(
+        upsertRuntimeConfigOverride(
+          runtimeConfig,
+          auditLog,
+          fieldSecurity,
+          runtimeConfigAdminProjection,
+          auditLogAdminProjection,
+          input,
+        ),
+      persistRuntimeConfigProposals: (
+        input: PersistRuntimeConfigProposalsCommand,
+      ): Effect.Effect<
+        readonly AdminGovernanceRuntimeConfigProposalView[],
+        AdminGovernanceServiceError
+      > =>
+        Schema.decodeUnknown(PersistRuntimeConfigProposalsCommandSchema)(
           input,
         ).pipe(
           Effect.flatMap((request) =>
-            runtimeConfig.persistChangeProposals(request),
+            ensureAdminGovernanceMutationAccess(request.requestContext).pipe(
+              Effect.flatMap((requestContext) =>
+                persistProjectedRuntimeConfigProposals({
+                  runtimeConfig,
+                  auditLog,
+                  fieldSecurity,
+                  projection: runtimeConfigAdminProjection,
+                  request: {
+                    ...request,
+                    requestContext,
+                  },
+                }),
+              ),
+            ),
           ),
         ),
       listRuntimeConfigProposals: (input: AdminGovernanceListByModuleRequest) =>

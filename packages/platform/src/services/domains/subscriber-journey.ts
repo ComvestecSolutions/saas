@@ -164,6 +164,7 @@ const PublicAuthStartTenantScopeHintSchema = Schema.Literal(
 );
 
 export const PublicAuthStartPreparationInputSchema = Schema.Struct({
+  correlationId: Schema.optional(Schema.NonEmptyString),
   host: Schema.NonEmptyString,
   tenantScopeHint: Schema.optional(PublicAuthStartTenantScopeHintSchema),
 });
@@ -381,7 +382,8 @@ export const preparePublicAuthStart = (
 ): Effect.Effect<PublicAuthStartPreparation, ParseResult.ParseError, never> =>
   Schema.decodeUnknown(PublicAuthStartPreparationInputSchema)(input).pipe(
     Effect.flatMap((request) => {
-      const correlationId = buildPublicAuthStartCorrelationId();
+      const correlationId =
+        request.correlationId ?? buildPublicAuthStartCorrelationId();
       const enabledModules = resolveDefaultTenantOnboardingEnabledModules();
 
       return Effect.all({

@@ -2,8 +2,16 @@ import { Effect, Schema } from "effect";
 import { platformScope } from "@comvestec/contracts";
 import {
   buildPublicWebAuthStartInputFromEnvironment,
+  createJsonResponse,
+  createObservedPlatformRequestBoundary,
+  isTaggedError,
+  matchHttpEffect,
+  platformRequestCorrelationIdHeaderName,
+  readOptionalSearchParam,
   startSubscriberAuthenticationFromEnvironment,
 } from "@comvestec/platform";
+
+const publicWebAuthStartTelemetryServiceName = "public-web-auth-start";
 
 const PublicWebAuthStartQuerySchema = Schema.Struct({
   tenantHint: Schema.optional(Schema.NonEmptyString),
@@ -24,28 +32,14 @@ type StartSubscriberAuthentication = (
   input: Parameters<typeof startSubscriberAuthenticationFromEnvironment>[1],
 ) => Effect.Effect<{ readonly redirect: { readonly url: string } }, unknown>;
 
-const readOptionalSearchParam = (url: URL, key: string) => {
-  const value = url.searchParams.get(key);
-
-  return value === null ? undefined : value;
-};
-
 const decodePublicWebAuthStartQuery = (url: URL) =>
   Schema.decodeUnknown(PublicWebAuthStartQuerySchema)({
     tenantHint: readOptionalSearchParam(url, "tenantHint"),
     tenantScopeHint: readOptionalSearchParam(url, "tenantScopeHint"),
   });
 
-const createJsonResponse = (body: unknown, status: number) =>
-  Response.json(body, { status });
-
 const buildAuthStartRouteErrorResponse = (error: unknown) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    typeof error._tag === "string"
-  ) {
+  if (isTaggedError(error)) {
     switch (error._tag) {
       case "PublicWebAuthStartQueryParseError":
         return createJsonResponse(
@@ -81,36 +75,66 @@ const buildAuthStartRouteErrorResponse = (error: unknown) => {
   return createJsonResponse({ error: "Public auth start failed." }, 500);
 };
 
+const buildAuthStartUnhandledErrorResponse = (input: {
+  readonly correlationHeaderName: string;
+  readonly correlationId: string;
+}) =>
+  Response.json(
+    { error: "Public auth start failed." },
+    {
+      status: 500,
+      headers: {
+        [input.correlationHeaderName]: input.correlationId,
+      },
+    },
+  );
+
 export const handlePublicWebAuthStartRequest = (
   environment: unknown,
   request: Request,
   startAuthentication: StartSubscriberAuthentication = (input) =>
     startSubscriberAuthenticationFromEnvironment(environment, input),
 ) => {
-  const requestUrl = new URL(request.url);
+  const requestBoundary = createObservedPlatformRequestBoundary({
+    environment,
+    serviceName: publicWebAuthStartTelemetryServiceName,
+    buildUnhandledErrorResponse: buildAuthStartUnhandledErrorResponse,
+  });
 
-  return decodePublicWebAuthStartQuery(requestUrl).pipe(
-    Effect.mapError(
-      (): PublicWebAuthStartQueryParseError => ({
-        _tag: "PublicWebAuthStartQueryParseError",
+  return requestBoundary.wrap((currentRequest) => {
+    const requestUrl = new URL(currentRequest.url);
+    const correlationId = currentRequest.headers.get(
+      platformRequestCorrelationIdHeaderName,
+    );
+
+    return Effect.runPromise(
+      matchHttpEffect({
+        effect: decodePublicWebAuthStartQuery(requestUrl).pipe(
+          Effect.mapError(
+            (): PublicWebAuthStartQueryParseError => ({
+              _tag: "PublicWebAuthStartQueryParseError",
+            }),
+          ),
+          Effect.flatMap((query) =>
+            buildPublicWebAuthStartInputFromEnvironment(environment, {
+              ...(correlationId !== null ? { correlationId } : {}),
+              host: requestUrl.host,
+              ...(query.tenantHint !== undefined
+                ? { tenantHint: query.tenantHint }
+                : {}),
+              ...(query.tenantScopeHint !== undefined
+                ? { tenantScopeHint: query.tenantScopeHint }
+                : {}),
+            }).pipe(
+              Effect.flatMap((authStartInput) =>
+                startAuthentication(authStartInput),
+              ),
+            ),
+          ),
+        ),
+        onFailure: buildAuthStartRouteErrorResponse,
+        onSuccess: (result) => Response.redirect(result.redirect.url, 302),
       }),
-    ),
-    Effect.flatMap((query) =>
-      buildPublicWebAuthStartInputFromEnvironment(environment, {
-        host: requestUrl.host,
-        ...(query.tenantHint !== undefined
-          ? { tenantHint: query.tenantHint }
-          : {}),
-        ...(query.tenantScopeHint !== undefined
-          ? { tenantScopeHint: query.tenantScopeHint }
-          : {}),
-      }).pipe(
-        Effect.flatMap((authStartInput) => startAuthentication(authStartInput)),
-      ),
-    ),
-    Effect.match({
-      onFailure: buildAuthStartRouteErrorResponse,
-      onSuccess: (result) => Response.redirect(result.redirect.url, 302),
-    }),
-  );
+    );
+  })(request);
 };

@@ -680,6 +680,68 @@ describe("platform admin governance http", () => {
     });
   });
 
+  it("returns route-level Allow headers for unsupported admin governance methods", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminGovernanceApiPath.listRuntimeConfigOverrides}`,
+          {
+            method: "GET",
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("POST");
+    await expect(response.json()).resolves.toEqual({
+      error: "Method not allowed.",
+    });
+  });
+
+  it("returns 404 for unknown admin governance routes", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          "http://localhost/api/admin/governance/runtime-config/unknown",
+          {
+            method: "POST",
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Admin governance route not found.",
+    });
+  });
+
+  it("returns 404 for unknown admin governance routes even when the method is unsupported", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          "http://localhost/api/admin/governance/runtime-config/unknown",
+          {
+            method: "GET",
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Allow")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: "Admin governance route not found.",
+    });
+  });
+
   it("returns 403 when governance reads resolve to a non-operator actor", async () => {
     const listRuntimeConfigOverrides = jest.fn((input) =>
       Effect.fail({
@@ -941,33 +1003,48 @@ describe("platform admin governance http", () => {
   });
 
   it("upserts runtime-config overrides and returns the audit envelope", async () => {
+    const resolveRequestContext = jest.fn(() =>
+      Effect.succeed({
+        actorType: actorType.platformOperator,
+        actorId: "usr_operator_1",
+        sessionId: "sess_admin_governance",
+        correlationId: "corr_admin_governance",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+      }),
+    );
+    const upsertRuntimeConfigOverride = jest.fn((input) =>
+      Effect.succeed({
+        override: {
+          moduleId: input.moduleId,
+          key: input.key,
+          scope: input.scope,
+          scopeId: input.scopeId,
+          value: input.value,
+          source: runtimeResolutionSource.runtimeOverride,
+          changedBy: input.requestContext.actorId ?? "usr_operator_1",
+          changedAt: "2026-04-17T10:00:00.000Z",
+          approvalReason: input.approvalReason,
+        },
+        auditEvent: {
+          eventId: "runtime-config:override:1",
+          timestamp: "2026-04-17T10:00:00.000Z",
+          actorId: input.requestContext.actorId ?? "usr_operator_1",
+          tenantScope: input.requestContext.tenant.scope,
+          tenantScopeId: input.requestContext.tenant.scopeId,
+          moduleId: input.moduleId,
+          action: runtimeConfigAuditAction.overrideChanged,
+          target: `${input.moduleId}:${input.key}:${input.scope}:${input.scopeId}`,
+          reason: input.approvalReason,
+          correlationId: input.requestContext.correlationId,
+        },
+      }),
+    );
     const handler = createTestHandler({
-      upsertRuntimeConfigOverride: (input) =>
-        Effect.succeed({
-          override: {
-            moduleId: input.moduleId,
-            key: input.key,
-            scope: input.scope,
-            scopeId: input.scopeId,
-            value: input.value,
-            source: runtimeResolutionSource.runtimeOverride,
-            changedBy: input.requestContext.actorId ?? "usr_operator_1",
-            changedAt: "2026-04-17T10:00:00.000Z",
-            approvalReason: input.approvalReason,
-          },
-          auditEvent: {
-            eventId: "runtime-config:override:1",
-            timestamp: "2026-04-17T10:00:00.000Z",
-            actorId: input.requestContext.actorId ?? "usr_operator_1",
-            tenantScope: input.requestContext.tenant.scope,
-            tenantScopeId: input.requestContext.tenant.scopeId,
-            moduleId: input.moduleId,
-            action: runtimeConfigAuditAction.overrideChanged,
-            target: `${input.moduleId}:${input.key}:${input.scope}:${input.scopeId}`,
-            reason: input.approvalReason,
-            correlationId: input.requestContext.correlationId,
-          },
-        }),
+      resolveRequestContext,
+      upsertRuntimeConfigOverride,
     });
 
     const response = await Effect.runPromise(
@@ -980,16 +1057,7 @@ describe("platform admin governance http", () => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              requestContext: {
-                actorType: actorType.platformOperator,
-                actorId: "usr_operator_1",
-                sessionId: "sess_admin_governance",
-                correlationId: "corr_admin_governance",
-                tenant: {
-                  scope: platformScope.platform,
-                  scopeId: platformScope.platform,
-                },
-              },
+              sessionId: "sess_admin_governance",
               moduleId: platformModuleId.tenantBranding,
               key: "tenant-branding.companyName",
               scope: platformScope.organization,
@@ -1003,6 +1071,17 @@ describe("platform admin governance http", () => {
     );
 
     expect(response.status).toBe(202);
+    expect(resolveRequestContext).toHaveBeenCalledWith({
+      sessionId: "sess_admin_governance",
+    });
+    expect(upsertRuntimeConfigOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          actorId: "usr_operator_1",
+          correlationId: "corr_admin_governance",
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
         override: expect.objectContaining({
@@ -1017,22 +1096,37 @@ describe("platform admin governance http", () => {
   });
 
   it("persists runtime-config proposals through the admin governance surface", async () => {
+    const resolveRequestContext = jest.fn(() =>
+      Effect.succeed({
+        actorType: actorType.supportOperator,
+        actorId: "usr_support_operator",
+        sessionId: "sess_admin_governance_proposals_mutation",
+        correlationId: "corr_admin_governance_proposals_mutation",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+      }),
+    );
+    const persistRuntimeConfigProposals = jest.fn(() =>
+      Effect.succeed([
+        {
+          proposalId: "tenant-branding:companyName:rename",
+          moduleId: platformModuleId.tenantBranding,
+          key: tenantBrandingConfigKey.companyName,
+          action: runtimeChangeProposalAction.rename,
+          artifactPath:
+            "specs/00-governance/runtime-config-proposals/tenant-branding.tenant-branding-companyName.json",
+          codeValue: tenantBrandingConfigKey.themePrimary,
+          runtimeValue: "legacy",
+          status: runtimeConfigSyncArtifactStatus.pending,
+          generatedAt: "2026-04-17T10:00:00.000Z",
+        },
+      ]),
+    );
     const handler = createTestHandler({
-      persistRuntimeConfigProposals: () =>
-        Effect.succeed([
-          {
-            proposalId: "tenant-branding:legacyTheme:rename",
-            moduleId: platformModuleId.tenantBranding,
-            key: "tenant-branding.legacyTheme",
-            action: runtimeChangeProposalAction.rename,
-            artifactPath:
-              "specs/00-governance/runtime-config-proposals/tenant-branding.tenant-branding-legacyTheme.json",
-            codeValue: "tenant-branding.themePrimary",
-            runtimeValue: "legacy",
-            status: runtimeConfigSyncArtifactStatus.pending,
-            generatedAt: "2026-04-17T10:00:00.000Z",
-          },
-        ]),
+      resolveRequestContext,
+      persistRuntimeConfigProposals,
     });
 
     const response = await Effect.runPromise(
@@ -1045,9 +1139,11 @@ describe("platform admin governance http", () => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
+              sessionId: "sess_admin_governance_proposals_mutation",
               moduleId: platformModuleId.tenantBranding,
               renameMap: {
-                "tenant-branding.legacyTheme": "tenant-branding.themePrimary",
+                [tenantBrandingConfigKey.companyName]:
+                  tenantBrandingConfigKey.themePrimary,
               },
             }),
           },
@@ -1056,6 +1152,17 @@ describe("platform admin governance http", () => {
     );
 
     expect(response.status).toBe(202);
+    expect(resolveRequestContext).toHaveBeenCalledWith({
+      sessionId: "sess_admin_governance_proposals_mutation",
+    });
+    expect(persistRuntimeConfigProposals).toHaveBeenCalledWith(
+      expect.objectContaining({
+        moduleId: platformModuleId.tenantBranding,
+        requestContext: expect.objectContaining({
+          actorId: "usr_support_operator",
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1067,7 +1174,19 @@ describe("platform admin governance http", () => {
   });
 
   it("returns 401 when runtime-config mutation lacks an authenticated actor", async () => {
+    const resolveRequestContext = jest.fn(() =>
+      Effect.succeed({
+        actorType: actorType.platformOperator,
+        sessionId: "sess_admin_governance",
+        correlationId: "corr_admin_governance",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+      }),
+    );
     const handler = createTestHandler({
+      resolveRequestContext,
       upsertRuntimeConfigOverride: () =>
         Effect.fail({
           _tag: "AdminGovernanceUnauthenticatedActorError",
@@ -1084,15 +1203,7 @@ describe("platform admin governance http", () => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              requestContext: {
-                actorType: actorType.platformOperator,
-                sessionId: "sess_admin_governance",
-                correlationId: "corr_admin_governance",
-                tenant: {
-                  scope: platformScope.platform,
-                  scopeId: platformScope.platform,
-                },
-              },
+              sessionId: "sess_admin_governance",
               moduleId: platformModuleId.tenantBranding,
               key: "tenant-branding.companyName",
               scope: platformScope.organization,
@@ -1106,8 +1217,105 @@ describe("platform admin governance http", () => {
     );
 
     expect(response.status).toBe(401);
+    expect(resolveRequestContext).toHaveBeenCalledWith({
+      sessionId: "sess_admin_governance",
+    });
     await expect(response.json()).resolves.toEqual({
       error: "Runtime-config mutations require an authenticated actor.",
+    });
+  });
+
+  it("returns 401 when runtime-config mutation lacks a valid session", async () => {
+    const handler = createTestHandler({
+      resolveRequestContext: () =>
+        Effect.fail({
+          _tag: "AdminGovernanceRequestContextNotFoundError",
+          sessionId: "sess_missing_mutation",
+        }),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminGovernanceApiPath.upsertRuntimeConfigOverride}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sessionId: "sess_missing_mutation",
+              moduleId: platformModuleId.tenantBranding,
+              key: tenantBrandingConfigKey.companyName,
+              scope: platformScope.organization,
+              scopeId: "org_1",
+              value: "Acme Organization",
+              approvalReason: "Operator-approved tenant override",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Runtime-config mutations require a valid authenticated session.",
+    });
+  });
+
+  it("returns 403 when runtime-config mutation resolves to a non-operator actor", async () => {
+    const resolveRequestContext = jest.fn(() =>
+      Effect.succeed({
+        actorType: actorType.organizationAdmin,
+        actorId: "usr_org_admin",
+        sessionId: "sess_org_admin_mutation",
+        correlationId: "corr_org_admin_mutation",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_demo",
+          organizationId: "org_demo",
+        },
+      }),
+    );
+    const handler = createTestHandler({
+      resolveRequestContext,
+      upsertRuntimeConfigOverride: () =>
+        Effect.fail({
+          _tag: "AdminGovernanceMutationAccessDeniedError",
+          actorType: actorType.organizationAdmin,
+        }),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminGovernanceApiPath.upsertRuntimeConfigOverride}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sessionId: "sess_org_admin_mutation",
+              moduleId: platformModuleId.tenantBranding,
+              key: tenantBrandingConfigKey.companyName,
+              scope: platformScope.organization,
+              scopeId: "org_demo",
+              value: "Acme Organization",
+              approvalReason: "Operator-approved tenant override",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    expect(resolveRequestContext).toHaveBeenCalledWith({
+      sessionId: "sess_org_admin_mutation",
+    });
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Runtime-config mutations are restricted to platform and support operators.",
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { subscriberJourneyApiPath } from "@comvestec/platform";
+import { webhooksApiPath } from "@comvestec/platform";
 import {
   printToolingScriptError,
   requireConfiguredValue,
@@ -72,7 +72,7 @@ const createPolarApiUrl = (apiBaseUrl: string, pathname: string) =>
 
 const createLocalWebhookUrl = (port: string) =>
   new URL(
-    subscriberJourneyApiPath.processBillingWebhook,
+    webhooksApiPath.processPolarWebhook,
     `http://127.0.0.1:${port}`,
   ).toString();
 

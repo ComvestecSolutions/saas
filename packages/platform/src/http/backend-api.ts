@@ -7,6 +7,11 @@ import {
   handleBackendApiDocumentationRequest,
 } from "./openapi";
 import {
+  createBackendApiObservabilityTelemetryEmitter,
+  createBackendApiRequestMiddleware,
+  type BackendApiRequestMiddleware,
+} from "./request-middleware";
+import {
   adminBillingApiBasePath,
   handleAdminBillingHttpRequest,
 } from "../services/domains/admin-billing-http";
@@ -29,6 +34,7 @@ export type BackendApiAppOptions = {
   readonly adminGovernanceHandler: BackendApiWebHandler;
   readonly webhooksHandler: BackendApiWebHandler;
   readonly subscriberJourneyHandler: BackendApiWebHandler;
+  readonly requestMiddleware?: BackendApiRequestMiddleware;
 };
 
 const fromEffectResponseHandler =
@@ -61,44 +67,63 @@ const registerExactPathWebHandler = (
 
 export const createBackendApiApp = (options: BackendApiAppOptions): H3 => {
   const app = new H3();
+  const wrapHandler = (handler: BackendApiWebHandler) =>
+    options.requestMiddleware?.wrap(handler) ?? handler;
 
   registerExactPathWebHandler(app, backendApiOpenApiPath, (request) =>
-    handleBackendApiDocumentationRequest(request),
+    wrapHandler((currentRequest) =>
+      handleBackendApiDocumentationRequest(currentRequest),
+    )(request),
   );
   registerExactPathWebHandler(app, backendApiDocsPath, (request) =>
-    handleBackendApiDocumentationRequest(request),
+    wrapHandler((currentRequest) =>
+      handleBackendApiDocumentationRequest(currentRequest),
+    )(request),
   );
   registerExactPathWebHandler(
     app,
     backendApiDocsAssetPath.swaggerUiCss,
-    (request) => handleBackendApiDocumentationRequest(request),
+    (request) =>
+      wrapHandler((currentRequest) =>
+        handleBackendApiDocumentationRequest(currentRequest),
+      )(request),
   );
   registerExactPathWebHandler(
     app,
     backendApiDocsAssetPath.swaggerUiBundle,
-    (request) => handleBackendApiDocumentationRequest(request),
+    (request) =>
+      wrapHandler((currentRequest) =>
+        handleBackendApiDocumentationRequest(currentRequest),
+      )(request),
   );
   registerExactPathWebHandler(
     app,
     backendApiDocsAssetPath.swaggerUiStandalonePreset,
-    (request) => handleBackendApiDocumentationRequest(request),
+    (request) =>
+      wrapHandler((currentRequest) =>
+        handleBackendApiDocumentationRequest(currentRequest),
+      )(request),
   );
 
   registerFullPathWebHandler(
     app,
     adminBillingApiBasePath,
-    options.adminBillingHandler,
+    wrapHandler(options.adminBillingHandler),
   );
   registerFullPathWebHandler(
     app,
     adminGovernanceApiBasePath,
-    options.adminGovernanceHandler,
+    wrapHandler(options.adminGovernanceHandler),
   );
-  registerFullPathWebHandler(app, webhooksApiBasePath, options.webhooksHandler);
+  registerFullPathWebHandler(
+    app,
+    webhooksApiBasePath,
+    wrapHandler(options.webhooksHandler),
+  );
   app.all(
     "/**",
     fromWebHandler(async (request) =>
-      options.subscriberJourneyHandler(request),
+      wrapHandler(options.subscriberJourneyHandler)(request),
     ),
   );
 
@@ -106,6 +131,13 @@ export const createBackendApiApp = (options: BackendApiAppOptions): H3 => {
 };
 
 export const createBackendApiRequestHandler = (environment: unknown) => {
+  const telemetryEmitter =
+    createBackendApiObservabilityTelemetryEmitter(environment);
+  const requestMiddleware = createBackendApiRequestMiddleware({
+    ...(telemetryEmitter !== undefined
+      ? { emitRequestTelemetry: telemetryEmitter }
+      : {}),
+  });
   const app = createBackendApiApp({
     adminBillingHandler: fromEffectResponseHandler((request) =>
       handleAdminBillingHttpRequest(environment, request),
@@ -119,6 +151,7 @@ export const createBackendApiRequestHandler = (environment: unknown) => {
     subscriberJourneyHandler: fromEffectResponseHandler((request) =>
       handleSubscriberJourneyHttpRequest(environment, request),
     ),
+    requestMiddleware,
   });
 
   return (request: Request) => app.request(request);

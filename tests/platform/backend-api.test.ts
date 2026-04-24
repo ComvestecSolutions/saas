@@ -49,10 +49,18 @@ console.log(JSON.stringify({
   hasGovernancePath: Boolean(openApiDocument.paths['/api/admin/governance/runtime-config/overrides/list']),
   governanceRead401Description: openApiDocument.paths['/api/admin/governance/runtime-config/overrides/list']?.post?.responses?.['401']?.description,
   governanceRead403Description: openApiDocument.paths['/api/admin/governance/runtime-config/overrides/list']?.post?.responses?.['403']?.description,
+  governanceMutation401Description: openApiDocument.paths['/api/admin/governance/runtime-config/overrides/upsert']?.post?.responses?.['401']?.description,
+  governanceMutation403Description: openApiDocument.paths['/api/admin/governance/runtime-config/overrides/upsert']?.post?.responses?.['403']?.description,
   governanceProposalRead401Description: openApiDocument.paths['/api/admin/governance/runtime-config/proposals/list']?.post?.responses?.['401']?.description,
   governanceProposalRead403Description: openApiDocument.paths['/api/admin/governance/runtime-config/proposals/list']?.post?.responses?.['403']?.description,
+  governanceProposalPersist401Description: openApiDocument.paths['/api/admin/governance/runtime-config/proposals/persist']?.post?.responses?.['401']?.description,
+  governanceProposalPersist403Description: openApiDocument.paths['/api/admin/governance/runtime-config/proposals/persist']?.post?.responses?.['403']?.description,
   governanceAuditRead401Description: openApiDocument.paths['/api/admin/governance/audit-log/query-by-module']?.post?.responses?.['401']?.description,
   governanceAuditRead403Description: openApiDocument.paths['/api/admin/governance/audit-log/query-by-module']?.post?.responses?.['403']?.description,
+  governanceMutationRequestRequired: openApiDocument.components.schemas.UpsertRuntimeConfigOverrideRequest?.required ?? [],
+  governanceMutationRequestProperties: Object.keys(openApiDocument.components.schemas.UpsertRuntimeConfigOverrideRequest?.properties ?? {}),
+  governanceProposalPersistRequestRequired: openApiDocument.components.schemas.PersistRuntimeConfigProposalsRequest?.required ?? [],
+  governanceProposalPersistRequestProperties: Object.keys(openApiDocument.components.schemas.PersistRuntimeConfigProposalsRequest?.properties ?? {}),
   docsStatus: docsResponse.status,
   docsContentType: docsResponse.headers.get('Content-Type'),
   docsHtml,
@@ -110,10 +118,18 @@ console.log(JSON.stringify({
     readonly hasGovernancePath: boolean;
     readonly governanceRead401Description?: string;
     readonly governanceRead403Description?: string;
+    readonly governanceMutation401Description?: string;
+    readonly governanceMutation403Description?: string;
     readonly governanceProposalRead401Description?: string;
     readonly governanceProposalRead403Description?: string;
+    readonly governanceProposalPersist401Description?: string;
+    readonly governanceProposalPersist403Description?: string;
     readonly governanceAuditRead401Description?: string;
     readonly governanceAuditRead403Description?: string;
+    readonly governanceMutationRequestRequired: readonly string[];
+    readonly governanceMutationRequestProperties: readonly string[];
+    readonly governanceProposalPersistRequestRequired: readonly string[];
+    readonly governanceProposalPersistRequestProperties: readonly string[];
     readonly docsStatus: number;
     readonly docsContentType: string;
     readonly docsHtml: string;
@@ -192,17 +208,53 @@ describe("platform backend api", () => {
     expect(probe.governanceRead403Description).toBe(
       "Admin governance reads are restricted to platform and support operators.",
     );
+    expect(probe.governanceMutation401Description).toBe(
+      "Runtime-config mutations require a valid authenticated session with an authenticated operator.",
+    );
+    expect(probe.governanceMutation403Description).toBe(
+      "Runtime-config mutations are restricted to platform and support operators.",
+    );
     expect(probe.governanceProposalRead401Description).toBe(
       "Admin governance reads require a valid authenticated session with an authenticated operator.",
     );
     expect(probe.governanceProposalRead403Description).toBe(
       "Admin governance reads are restricted to platform and support operators.",
     );
+    expect(probe.governanceProposalPersist401Description).toBe(
+      "Runtime-config mutations require a valid authenticated session with an authenticated operator.",
+    );
+    expect(probe.governanceProposalPersist403Description).toBe(
+      "Runtime-config mutations are restricted to platform and support operators.",
+    );
     expect(probe.governanceAuditRead401Description).toBe(
       "Admin governance reads require a valid authenticated session with an authenticated operator.",
     );
     expect(probe.governanceAuditRead403Description).toBe(
       "Admin governance reads are restricted to platform and support operators.",
+    );
+    expect(probe.governanceMutationRequestRequired).toEqual(
+      expect.arrayContaining([
+        "sessionId",
+        "moduleId",
+        "key",
+        "scope",
+        "scopeId",
+        "value",
+        "approvalReason",
+      ]),
+    );
+    expect(probe.governanceMutationRequestProperties).toContain("sessionId");
+    expect(probe.governanceMutationRequestProperties).not.toContain(
+      "requestContext",
+    );
+    expect(probe.governanceProposalPersistRequestRequired).toEqual(
+      expect.arrayContaining(["sessionId", "moduleId", "renameMap"]),
+    );
+    expect(probe.governanceProposalPersistRequestProperties).toContain(
+      "sessionId",
+    );
+    expect(probe.governanceProposalPersistRequestProperties).not.toContain(
+      "requestContext",
     );
 
     // Swagger UI HTML route

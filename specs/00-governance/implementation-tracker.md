@@ -33,7 +33,7 @@ Status: accepted
 
 ## Snapshot
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 Roadmap: [Backend Readiness Roadmap](backend-readiness-roadmap.md)
 
@@ -106,9 +106,9 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 
 - Governing spec: [Backend Readiness Roadmap](backend-readiness-roadmap.md), [013 Technology Stack](../01-platform/architecture/013-technology-stack.md), [ADR-018](../03-adr/architecture/ADR-018-h3-backend-http-layer.md)
 - Status: implemented
-- Evidence: [packages/platform/src/http/backend-api.ts](../../packages/platform/src/http/backend-api.ts), [packages/platform/src/http/index.ts](../../packages/platform/src/http/index.ts), [packages/platform/src/http/openapi-document.ts](../../packages/platform/src/http/openapi-document.ts), [packages/platform/src/http/openapi.ts](../../packages/platform/src/http/openapi.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [packages/platform/src/services/domains/admin-billing-http.ts](../../packages/platform/src/services/domains/admin-billing-http.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [tests/platform/backend-api.test.ts](../../tests/platform/backend-api.test.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts)
-- Cleanup: the standalone backend entrypoint now mounts the existing Request/Response handlers through one shared H3 app so backend-owned APIs keep Effect business logic while gaining an explicit routing boundary for external callers, and its OpenAPI JSON plus Swagger UI are generated from the same Effect request and response schemas that define the transport boundary.
-- Next gap: Move correlation, authorization, audit, webhook, and observability middleware into the shared H3 boundary while keeping transport-neutral security and governance logic below both direct and HTTP edges.
+- Evidence: [packages/platform/src/http/backend-api.ts](../../packages/platform/src/http/backend-api.ts), [packages/platform/src/http/request-middleware.ts](../../packages/platform/src/http/request-middleware.ts), [packages/platform/src/http/index.ts](../../packages/platform/src/http/index.ts), [packages/platform/src/http/openapi-document.ts](../../packages/platform/src/http/openapi-document.ts), [packages/platform/src/http/openapi.ts](../../packages/platform/src/http/openapi.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [packages/platform/src/services/domains/admin-billing-http.ts](../../packages/platform/src/services/domains/admin-billing-http.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [tests/platform/backend-api.test.ts](../../tests/platform/backend-api.test.ts), [tests/platform/backend-api-request-middleware.test.ts](../../tests/platform/backend-api-request-middleware.test.ts), [tooling/scripts/run-subscriber-journey-api.ts](../../tooling/scripts/run-subscriber-journey-api.ts)
+- Cleanup: the standalone backend entrypoint now mounts the existing Request/Response handlers through one shared H3 app so backend-owned APIs keep Effect business logic while gaining an explicit routing boundary for external callers, its OpenAPI JSON plus Swagger UI are generated from the same Effect request and response schemas that define the transport boundary, the shared request wrapper now injects or preserves correlation IDs, emits request-scoped telemetry, and returns a correlation-aware fallback response for uncaught handler failures, and the communication-layer HTTP helpers now centralize shared JSON decoding, tagged-error guards, method routing responses, and Effect-to-Response matching across backend-owned handlers while first-party auth edges reuse the same request-boundary and response helpers.
+- Next gap: Move authorization and webhook verification into the same H3 boundary so those cross-cutting concerns stop living in per-handler adapters, while keeping future domain-specific error mapping from drifting back into local transport shells.
 
 #### Security hygiene automation
 
@@ -193,8 +193,8 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 - Governing manifest: [Manifest](../02-modules/access/field-security/manifest.md)
 - Status: implemented
 - Evidence: [packages/modules/src/access/field-security.ts](../../packages/modules/src/access/field-security.ts), [packages/platform/src/services/domains/subscriber-journey.ts](../../packages/platform/src/services/domains/subscriber-journey.ts), [packages/platform/src/services/governance/admin-governance.ts](../../packages/platform/src/services/governance/admin-governance.ts), [packages/platform/src/services/governance/admin-governance-http.ts](../../packages/platform/src/services/governance/admin-governance-http.ts), [packages/platform/src/services/apps/app-snapshots.ts](../../packages/platform/src/services/apps/app-snapshots.ts), [tests/modules/access.test.ts](../../tests/modules/access.test.ts), [tests/platform/admin-governance.test.ts](../../tests/platform/admin-governance.test.ts), [tests/platform/admin-governance-http.test.ts](../../tests/platform/admin-governance-http.test.ts)
-- Security hardening: `regulated-sensitive` fields redacted for non-privileged actors, `secret` fields always redacted, anonymous actors see only `public` fields, product bootstrap and admin-governance read surfaces now return manifest-projected payloads, admin-governance HTTP reads resolve request context from session-backed Valkey state instead of caller-asserted request bodies, direct and HTTP governance reads both enforce platform/support-operator access, and sensitive projected governance reads emit field-security audit events when audited fields remain visible.
-- Next gap: Extend projection enforcement to remaining mutation envelopes and remove remaining caller-supplied request-context trust from legacy governance mutation routes.
+- Security hardening: `regulated-sensitive` fields redacted for non-privileged actors, `secret` fields always redacted, anonymous actors see only `public` fields, product bootstrap and admin-governance read surfaces now return manifest-projected payloads, admin-governance HTTP reads and mutations resolve request context from session-backed Valkey state instead of caller-asserted request bodies, direct and HTTP governance reads plus runtime-config mutations enforce platform/support-operator access, mutation responses now return projected envelopes, and sensitive projected governance reads plus mutation responses emit field-security audit events when audited fields remain visible.
+- Next gap: Carry the same trusted-session, projected-envelope mutation pattern into future admin governance approval workflows beyond the current runtime-config surfaces.
 
 #### Audit log
 
@@ -279,8 +279,8 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 
 - Governing manifest: [Manifest](../02-modules/communication/webhooks-api-access/manifest.md)
 - Status: implemented
-- Evidence: [packages/config/src/manifests/communication/webhooks-api-access.ts](../../packages/config/src/manifests/communication/webhooks-api-access.ts), [packages/modules/src/domains/webhooks-api-access.ts](../../packages/modules/src/domains/webhooks-api-access.ts), [packages/modules/src/persistence/postgres/domains/billing-webhook-replay-repository.ts](../../packages/modules/src/persistence/postgres/domains/billing-webhook-replay-repository.ts), [packages/platform/src/services/communication/webhooks-api-access-http.ts](../../packages/platform/src/services/communication/webhooks-api-access-http.ts), [packages/platform/src/services/domains/subscriber-journey-http.ts](../../packages/platform/src/services/domains/subscriber-journey-http.ts), [tests/modules/webhooks-api-access.test.ts](../../tests/modules/webhooks-api-access.test.ts), [tests/platform/subscriber-journey-http.test.ts](../../tests/platform/subscriber-journey-http.test.ts)
-- Cleanup: inbound provider webhook processing and replay now route through a dedicated module service instead of remaining embedded only in subscriber-journey orchestration, while keeping the backend-owned HTTP surface unchanged.
+- Evidence: [packages/config/src/manifests/communication/webhooks-api-access.ts](../../packages/config/src/manifests/communication/webhooks-api-access.ts), [packages/modules/src/domains/webhooks-api-access.ts](../../packages/modules/src/domains/webhooks-api-access.ts), [packages/modules/src/persistence/postgres/domains/billing-webhook-replay-repository.ts](../../packages/modules/src/persistence/postgres/domains/billing-webhook-replay-repository.ts), [packages/platform/src/services/communication/webhooks-api-access-http.ts](../../packages/platform/src/services/communication/webhooks-api-access-http.ts), [tests/modules/webhooks-api-access.test.ts](../../tests/modules/webhooks-api-access.test.ts), [tests/platform/webhooks-api-access-http.test.ts](../../tests/platform/webhooks-api-access-http.test.ts)
+- Cleanup: inbound provider webhook processing and replay now route through a dedicated module service and dedicated communication HTTP boundary instead of remaining embedded only in subscriber-journey orchestration, while the public URL surface stays unchanged and the subscriber-journey route registry remains scoped to subscriber-owned paths.
 - Next gap: Add outbound webhook subscription management, delivery retry or backoff flows, and API key lifecycle beyond the current billing-provider intake slice.
 
 #### Import export
@@ -308,7 +308,7 @@ Use this tracker, not the surrounding module or app catalog docs, to determine w
 ### Validation Baseline
 
 1. Repository validation for `validated` work currently means `bun run format:check`, `bun run typecheck`, and `bun run test` are green.
-2. The current snapshot reflects those commands running green on 2026-04-22.
-3. Test suite: 219 tests across 21 suites.
+2. The current snapshot reflects those commands running green on 2026-04-23.
+3. Test suite: 260 tests across 23 suites.
 4. All source modules and test files use shared constants instead of raw vocabulary strings.
 5. Security invariants (break-glass expiry, regulated-sensitive redaction, tenant isolation, cache eviction) all have explicit test coverage.

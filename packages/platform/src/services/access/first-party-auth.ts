@@ -57,6 +57,14 @@ const invalidStateError = (
   reason,
 });
 
+const decodeProductAppAuthCallbackEnvironment = Schema.decodeUnknown(
+  ProductAppAuthCallbackEnvironmentSchema,
+);
+
+const decodeProductAppAuthStateEnvironment = Schema.decodeUnknown(
+  ProductAppAuthStateEnvironmentSchema,
+);
+
 // Import a secret string as an HMAC-SHA-256 key via the global Web Crypto API.
 // Available in Bun, Node.js ≥ 18, and all modern browsers — no imports required.
 const importHmacKey = (secret: string) =>
@@ -155,16 +163,59 @@ const decodeStatePayload = (encodedPayload: string) =>
     Effect.mapError(() => invalidStateError("State token payload is invalid.")),
   );
 
-export const resolveProductAppAuthCallbackRedirectUriFromEnvironment = (
+const validateApprovedProductAppAuthCallbackRedirectUri = (
+  approvedRedirectUri: string,
+  redirectUri: string,
+) =>
+  Schema.decodeUnknown(AbsoluteRedirectUriSchema)(redirectUri).pipe(
+    Effect.flatMap((decodedRedirectUri) =>
+      decodedRedirectUri === approvedRedirectUri
+        ? Effect.succeed(decodedRedirectUri)
+        : Effect.fail({
+            _tag: "ProductAppAuthCallbackRedirectNotAllowedError",
+            redirectUri: decodedRedirectUri,
+            expectedRedirectUri: approvedRedirectUri,
+          } satisfies ProductAppAuthCallbackRedirectNotAllowedError),
+    ),
+  );
+
+const resolveProductAppAuthCallbackEnvironmentFromUnknown = (
   environment: unknown,
 ) =>
-  Schema.decodeUnknown(ProductAppAuthCallbackEnvironmentSchema)(
-    environment,
-  ).pipe(
+  decodeProductAppAuthCallbackEnvironment(environment).pipe(
     Effect.flatMap((decodedEnvironment) =>
       resolveApprovedProductAppAuthCallbackRedirectUri(
         decodedEnvironment.PRODUCT_APP_BASE_URL,
+      ).pipe(
+        Effect.map((approvedRedirectUri) => ({
+          approvedRedirectUri,
+        })),
       ),
+    ),
+  );
+
+const resolveProductAppAuthStateEnvironmentFromUnknown = (
+  environment: unknown,
+) =>
+  decodeProductAppAuthStateEnvironment(environment).pipe(
+    Effect.flatMap((decodedEnvironment) =>
+      resolveApprovedProductAppAuthCallbackRedirectUri(
+        decodedEnvironment.PRODUCT_APP_BASE_URL,
+      ).pipe(
+        Effect.map((approvedRedirectUri) => ({
+          approvedRedirectUri,
+          keycloakClientSecret: decodedEnvironment.KEYCLOAK_CLIENT_SECRET,
+        })),
+      ),
+    ),
+  );
+
+export const resolveProductAppAuthCallbackRedirectUriFromEnvironment = (
+  environment: unknown,
+) =>
+  resolveProductAppAuthCallbackEnvironmentFromUnknown(environment).pipe(
+    Effect.map(
+      (resolvedEnvironment) => resolvedEnvironment.approvedRedirectUri,
     ),
   );
 
@@ -172,27 +223,11 @@ export const validateProductAppAuthCallbackRedirectUriFromEnvironment = (
   environment: unknown,
   redirectUri: string,
 ) =>
-  Schema.decodeUnknown(ProductAppAuthCallbackEnvironmentSchema)(
-    environment,
-  ).pipe(
-    Effect.flatMap((decodedEnvironment) =>
-      Effect.all({
-        approvedRedirectUri: resolveApprovedProductAppAuthCallbackRedirectUri(
-          decodedEnvironment.PRODUCT_APP_BASE_URL,
-        ),
-        decodedRedirectUri: Schema.decodeUnknown(AbsoluteRedirectUriSchema)(
-          redirectUri,
-        ),
-      }).pipe(
-        Effect.flatMap(({ approvedRedirectUri, decodedRedirectUri }) =>
-          decodedRedirectUri === approvedRedirectUri
-            ? Effect.succeed(decodedRedirectUri)
-            : Effect.fail({
-                _tag: "ProductAppAuthCallbackRedirectNotAllowedError",
-                redirectUri: decodedRedirectUri,
-                expectedRedirectUri: approvedRedirectUri,
-              } satisfies ProductAppAuthCallbackRedirectNotAllowedError),
-        ),
+  resolveProductAppAuthCallbackEnvironmentFromUnknown(environment).pipe(
+    Effect.flatMap((resolvedEnvironment) =>
+      validateApprovedProductAppAuthCallbackRedirectUri(
+        resolvedEnvironment.approvedRedirectUri,
+        redirectUri,
       ),
     ),
   );
@@ -206,14 +241,14 @@ export const createProductAppAuthCallbackStateFromEnvironment = (
   | ProductAppAuthCallbackRedirectNotAllowedError
   | ProductAppAuthCallbackStateInvalidError
 > =>
-  Schema.decodeUnknown(ProductAppAuthStateEnvironmentSchema)(environment).pipe(
-    Effect.flatMap((decodedEnvironment) =>
+  resolveProductAppAuthStateEnvironmentFromUnknown(environment).pipe(
+    Effect.flatMap((resolvedEnvironment) =>
       Schema.decodeUnknown(ProductAppAuthCallbackStatePayloadSchema)(
         payload,
       ).pipe(
         Effect.flatMap((decodedPayload) =>
-          validateProductAppAuthCallbackRedirectUriFromEnvironment(
-            decodedEnvironment,
+          validateApprovedProductAppAuthCallbackRedirectUri(
+            resolvedEnvironment.approvedRedirectUri,
             decodedPayload.redirectUri,
           ).pipe(
             Effect.flatMap(() => {
@@ -222,7 +257,7 @@ export const createProductAppAuthCallbackStateFromEnvironment = (
                 "utf8",
               ).toString("base64url");
               return signStatePayload(
-                decodedEnvironment.KEYCLOAK_CLIENT_SECRET,
+                resolvedEnvironment.keycloakClientSecret,
                 encodedPayload,
               ).pipe(Effect.map((sig) => `${encodedPayload}.${sig}`));
             }),
@@ -240,12 +275,53 @@ export const decodeProductAppAuthCallbackStateFromEnvironment = (
   ProductAppAuthCallbackStatePayload,
   ProductAppAuthCallbackStateError
 > =>
-  Schema.decodeUnknown(ProductAppAuthStateEnvironmentSchema)(environment).pipe(
-    Effect.flatMap((decodedEnvironment) =>
+  decodeProductAppAuthCallbackStatePayloadFromEnvironment(
+    environment,
+    stateToken,
+  ).pipe(
+    Effect.flatMap(
+      (
+        decodedPayload,
+      ): Effect.Effect<
+        ProductAppAuthCallbackStatePayload,
+        | ProductAppAuthCallbackStateExpiredError
+        | ProductAppAuthCallbackStateInvalidError
+      > => {
+        const expiresAt = Date.parse(decodedPayload.expiresAt);
+
+        if (!Number.isFinite(expiresAt)) {
+          return Effect.fail(
+            invalidStateError("State token expiry is invalid."),
+          );
+        }
+
+        if (expiresAt <= now.getTime()) {
+          return Effect.fail({
+            _tag: "ProductAppAuthCallbackStateExpiredError",
+            expiresAt: decodedPayload.expiresAt,
+          } satisfies ProductAppAuthCallbackStateExpiredError);
+        }
+
+        return Effect.succeed(decodedPayload);
+      },
+    ),
+  );
+
+export const decodeProductAppAuthCallbackStatePayloadFromEnvironment = (
+  environment: unknown,
+  stateToken: string,
+): Effect.Effect<
+  ProductAppAuthCallbackStatePayload,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  resolveProductAppAuthStateEnvironmentFromUnknown(environment).pipe(
+    Effect.flatMap((resolvedEnvironment) =>
       decodeStateToken(stateToken).pipe(
         Effect.flatMap(({ encodedPayload, signature }) =>
           verifyStatePayloadSignature(
-            decodedEnvironment.KEYCLOAK_CLIENT_SECRET,
+            resolvedEnvironment.keycloakClientSecret,
             encodedPayload,
             signature,
           ).pipe(
@@ -253,40 +329,10 @@ export const decodeProductAppAuthCallbackStateFromEnvironment = (
               isValid
                 ? decodeStatePayload(encodedPayload).pipe(
                     Effect.flatMap((decodedPayload) =>
-                      validateProductAppAuthCallbackRedirectUriFromEnvironment(
-                        decodedEnvironment,
+                      validateApprovedProductAppAuthCallbackRedirectUri(
+                        resolvedEnvironment.approvedRedirectUri,
                         decodedPayload.redirectUri,
-                      ).pipe(
-                        Effect.flatMap(
-                          (): Effect.Effect<
-                            ProductAppAuthCallbackStatePayload,
-                            | ProductAppAuthCallbackRedirectNotAllowedError
-                            | ProductAppAuthCallbackStateInvalidError
-                            | ProductAppAuthCallbackStateExpiredError
-                          > => {
-                            const expiresAt = Date.parse(
-                              decodedPayload.expiresAt,
-                            );
-
-                            if (!Number.isFinite(expiresAt)) {
-                              return Effect.fail(
-                                invalidStateError(
-                                  "State token expiry is invalid.",
-                                ),
-                              );
-                            }
-
-                            if (expiresAt <= now.getTime()) {
-                              return Effect.fail({
-                                _tag: "ProductAppAuthCallbackStateExpiredError",
-                                expiresAt: decodedPayload.expiresAt,
-                              } satisfies ProductAppAuthCallbackStateExpiredError);
-                            }
-
-                            return Effect.succeed(decodedPayload);
-                          },
-                        ),
-                      ),
+                      ).pipe(Effect.as(decodedPayload)),
                     ),
                   )
                 : Effect.fail(

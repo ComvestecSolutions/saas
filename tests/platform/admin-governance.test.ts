@@ -141,6 +141,124 @@ const createAdminGovernanceHarness = async (input?: {
 };
 
 describe("platform admin governance", () => {
+  it("denies runtime-config override mutations for non-operator actors", async () => {
+    const { service } = await createAdminGovernanceHarness();
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        service.upsertRuntimeConfigOverride({
+          requestContext: {
+            actorType: actorType.organizationAdmin,
+            actorId: "usr_org_admin",
+            sessionId: "sess_org_admin_mutation",
+            correlationId: "corr_org_admin_mutation",
+            tenant: {
+              scope: platformScope.organization,
+              scopeId: "org_demo",
+              organizationId: "org_demo",
+            },
+          },
+          moduleId: platformModuleId.tenantBranding,
+          key: tenantBrandingConfigKey.companyName,
+          scope: platformScope.organization,
+          scopeId: "org_demo",
+          value: "Acme Organization",
+          approvalReason: "Operator-approved tenant override",
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        _tag: "AdminGovernanceMutationAccessDeniedError",
+        actorType: actorType.organizationAdmin,
+      },
+    });
+  });
+
+  it("denies runtime-config proposal persistence for non-operator actors", async () => {
+    const { service } = await createAdminGovernanceHarness();
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        service.persistRuntimeConfigProposals({
+          requestContext: {
+            actorType: actorType.organizationAdmin,
+            actorId: "usr_org_admin",
+            sessionId: "sess_org_admin_persist",
+            correlationId: "corr_org_admin_persist",
+            tenant: {
+              scope: platformScope.organization,
+              scopeId: "org_demo",
+              organizationId: "org_demo",
+            },
+          },
+          moduleId: platformModuleId.tenantBranding,
+          renameMap: {
+            [tenantBrandingConfigKey.companyName]:
+              tenantBrandingConfigKey.themePrimary,
+          },
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        _tag: "AdminGovernanceMutationAccessDeniedError",
+        actorType: actorType.organizationAdmin,
+      },
+    });
+  });
+
+  it("returns a projected runtime-config override mutation envelope for support operators", async () => {
+    const { insertedAuditEvents, service } =
+      await createAdminGovernanceHarness();
+
+    const result = await Effect.runPromise(
+      service.upsertRuntimeConfigOverride({
+        requestContext: supportOperatorGovernanceRequestContext,
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        scope: platformScope.organization,
+        scopeId: "org_demo",
+        value: "Acme Organization",
+        approvalReason: "Approved override",
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        override: expect.objectContaining({
+          moduleId: platformModuleId.tenantBranding,
+          key: tenantBrandingConfigKey.companyName,
+          value: "Acme Organization",
+          approvalReason: "Approved override",
+        }),
+        auditEvent: expect.objectContaining({
+          moduleId: platformModuleId.tenantBranding,
+          action: runtimeConfigAuditAction.overrideChanged,
+          correlationId: supportOperatorGovernanceRequestContext.correlationId,
+          reason: "Approved override",
+        }),
+      }),
+    );
+    expect(insertedAuditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: platformModuleId.tenantBranding,
+          action: runtimeConfigAuditAction.overrideChanged,
+        }),
+        expect.objectContaining({
+          moduleId: platformModuleId.fieldSecurity,
+          action: fieldSecurityAuditAction.sensitiveRead,
+          target: `${platformModuleId.runtimeConfig}:${platformModuleId.tenantBranding}:override:value,approvalReason`,
+        }),
+      ]),
+    );
+  });
+
   it("denies governance reads for non-operator actors", async () => {
     const { service } = await createAdminGovernanceHarness();
 

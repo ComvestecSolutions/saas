@@ -43,6 +43,7 @@ export const workflowJobsConfigKey = defineModuleConfigKeys(
     retryMaxAttempts: "retry.maxAttempts",
     reconciliationDeadlineSeconds: "reconciliation.deadlineSeconds",
     reconciliationSweepIntervalMinutes: "reconciliation.sweepIntervalMins",
+    claimTimeoutSeconds: "claim.timeoutSeconds",
   },
 );
 

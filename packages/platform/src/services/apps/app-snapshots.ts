@@ -32,6 +32,7 @@ import type {
   AdminGovernanceRuntimeConfigProposalView,
   AdminGovernanceService,
 } from "../governance/admin-governance";
+import { loadRuntimeModuleOrDie } from "./runtime-loader";
 
 export type MissingModuleManifestError = {
   readonly _tag: "MissingModuleManifestError";
@@ -425,10 +426,7 @@ export const getAdminAppSnapshotForRequestWithGovernanceService = (
   );
 
 const loadAdminGovernanceRuntime = () =>
-  Effect.tryPromise({
-    try: () => import("../governance/admin-governance"),
-    catch: (cause) => cause,
-  }).pipe(Effect.orDie);
+  loadRuntimeModuleOrDie(() => import("../governance/admin-governance"));
 
 export const getAdminAppSnapshotForRequestFromEnvironment = (
   environment: unknown,

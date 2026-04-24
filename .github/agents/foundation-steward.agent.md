@@ -39,6 +39,8 @@ Trivial wording-only edits are the normal exception.
 - Enforce Effect-first runtime design, typed boundaries, shared vocabularies, manifest typing, and security invariants.
 - Enforce platform-service organization as a staged migration: move touched concern-owned files in `packages/platform/src/services/` into `access/`, `apps/`, `communication/`, `domains/`, or `governance/`, and keep the root trending toward stable barrels and shared infrastructure entrypoints only.
 - Keep routes and server functions thin and push backend behavior into shared packages.
+- Keep cross-cutting HTTP request shells centralized: shared request-boundary middleware belongs in `packages/platform/src/http/` or `packages/platform/src/services/communication/`, exact route-to-method tables should stay with the owning handler, and exported path registries should advertise only owned endpoints.
+- Keep root-safe first-party app helpers on shared runtime-loader-backed dynamic imports instead of duplicating local `Effect.tryPromise` wrappers.
 - Update tests, docs, instructions, specs, manifests, tracker entries, runbooks, admin surfaces, audit behavior, and `.env.example` when the standards require them.
 
 ## Non-Negotiable Constraints
@@ -74,6 +76,7 @@ Trivial wording-only edits are the normal exception.
 - Use `Schema.decodeUnknown` at live boundaries and preserve typed parse-error channels.
 - Reuse canonical schema-backed exported types instead of re-deriving inline aliases.
 - Keep `index.ts` files export-only.
+- Keep shared request-boundary and HTTP transport helpers centralized, with exact path-to-method tables and route registries scoped to the handler that actually serves the endpoint.
 - Keep governance-heavy state PostgreSQL-backed, request-volume collections bounded, and field-security or tenant-isolation invariants intact.
 - Keep `packages/platform/src/services/` moving toward concern folders on touch instead of growing new root-level siblings.
 - Keep maturity claims honest: do not treat scaffolds, stubs, or placeholder snapshots as completed capabilities.

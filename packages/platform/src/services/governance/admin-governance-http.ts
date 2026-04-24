@@ -1,4 +1,4 @@
-import { Effect, ParseResult, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   AdminGovernanceReadBySessionRequestSchema,
   type AdminGovernanceServiceError,
@@ -7,6 +7,14 @@ import {
   runAdminGovernanceFromEnvironment,
   UpsertRuntimeConfigOverrideRequestSchema,
 } from "./admin-governance";
+import {
+  createJsonResponse,
+  createMethodNotAllowedResponse,
+  createNotFoundResponse,
+  isTaggedError,
+  matchHttpEffect,
+  readRequestJson,
+} from "../communication/http-transport";
 
 export type { AdminGovernanceService } from "./admin-governance";
 
@@ -16,7 +24,9 @@ type AdminGovernanceServiceRunner = <A, E>(
 
 type JsonRequestErrorTag =
   | "AdminGovernanceJsonInvalidError"
-  | "AdminGovernanceJsonRequestParseError";
+  | "AdminGovernanceJsonRequestParseError"
+  | "AdminGovernanceMutationRequestContextNotFoundError"
+  | "AdminGovernanceMutationRequestContextMalformedError";
 
 type JsonRequestError = {
   readonly _tag: JsonRequestErrorTag;
@@ -32,49 +42,18 @@ export const adminGovernanceApiPath = {
   queryAuditEventsByModule: `${adminGovernanceApiBasePath}/audit-log/query-by-module`,
 } as const;
 
-const createJsonResponse = (
-  body: unknown,
-  status = 200,
-  headers?: HeadersInit,
-) =>
-  Response.json(body, {
-    status,
-    ...(headers !== undefined ? { headers } : {}),
-  });
-
-const parseRequestJson = (request: Request) =>
-  Effect.tryPromise({
-    try: () => request.json(),
-    catch: () =>
-      ({
-        _tag: "AdminGovernanceJsonInvalidError",
-      }) satisfies JsonRequestError,
-  });
-
-const readRequestJson = <A, R = never>(
-  request: Request,
-  decode: (payload: unknown) => Effect.Effect<A, ParseResult.ParseError, R>,
-): Effect.Effect<A, JsonRequestError, R> =>
-  parseRequestJson(request).pipe(
-    Effect.flatMap((payload) =>
-      decode(payload).pipe(
-        Effect.mapError(
-          () =>
-            ({
-              _tag: "AdminGovernanceJsonRequestParseError",
-            }) satisfies JsonRequestError,
-        ),
-      ),
-    ),
-  );
+const adminGovernanceAllowedMethodsByPath: Readonly<
+  Record<string, readonly string[]>
+> = {
+  [adminGovernanceApiPath.listRuntimeConfigOverrides]: ["POST"],
+  [adminGovernanceApiPath.upsertRuntimeConfigOverride]: ["POST"],
+  [adminGovernanceApiPath.persistRuntimeConfigProposals]: ["POST"],
+  [adminGovernanceApiPath.listRuntimeConfigProposals]: ["POST"],
+  [adminGovernanceApiPath.queryAuditEventsByModule]: ["POST"],
+};
 
 const buildErrorResponse = (error: unknown) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    typeof error._tag === "string"
-  ) {
+  if (isTaggedError(error)) {
     switch (error._tag) {
       case "AdminGovernanceJsonInvalidError":
         return createJsonResponse(
@@ -106,6 +85,19 @@ const buildErrorResponse = (error: unknown) => {
           { error: "A backend dependency request failed." },
           502,
         );
+      case "AdminGovernanceMutationRequestContextNotFoundError":
+        return createJsonResponse(
+          {
+            error:
+              "Runtime-config mutations require a valid authenticated session.",
+          },
+          401,
+        );
+      case "AdminGovernanceMutationRequestContextMalformedError":
+        return createJsonResponse(
+          { error: "A backend dependency request failed." },
+          502,
+        );
       case "AdminGovernanceReadUnauthenticatedActorError":
         return createJsonResponse(
           {
@@ -126,6 +118,14 @@ const buildErrorResponse = (error: unknown) => {
           { error: "Runtime-config mutations require an authenticated actor." },
           401,
         );
+      case "AdminGovernanceMutationAccessDeniedError":
+        return createJsonResponse(
+          {
+            error:
+              "Runtime-config mutations are restricted to platform and support operators.",
+          },
+          403,
+        );
       case "ValkeyAdapterOperationError":
       case "PostgresAdapterConnectionError":
       case "RuntimeConfigPostgresRepositoryPersistenceError":
@@ -145,143 +145,204 @@ const buildErrorResponse = (error: unknown) => {
   return createJsonResponse({ error: "Admin governance request failed." }, 500);
 };
 
-const runRequest = <A, E>(
-  effect: Effect.Effect<A, E>,
-  onSuccess: (value: A) => Response,
-) =>
-  effect.pipe(
-    Effect.match({
-      onFailure: buildErrorResponse,
-      onSuccess,
-    }),
-  );
+const mapMutationRequestContextError = (error: unknown) => {
+  if (isTaggedError(error)) {
+    switch (error._tag) {
+      case "AdminGovernanceRequestContextNotFoundError":
+        return {
+          _tag: "AdminGovernanceMutationRequestContextNotFoundError",
+        } satisfies JsonRequestError;
+      case "AdminGovernanceRequestContextMalformedError":
+        return {
+          _tag: "AdminGovernanceMutationRequestContextMalformedError",
+        } satisfies JsonRequestError;
+    }
+  }
 
-const methodNotAllowedResponse = () =>
-  createJsonResponse({ error: "Method not allowed." }, 405, {
-    Allow: "POST",
+  return error;
+};
+
+type AdminGovernanceRequestContext = Parameters<
+  AdminGovernanceService["listRuntimeConfigOverrides"]
+>[0]["requestContext"];
+
+const withResolvedAdminGovernanceRequestContext = <A, E>(input: {
+  readonly service: AdminGovernanceService;
+  readonly sessionId: string;
+  readonly use: (
+    requestContext: AdminGovernanceRequestContext,
+  ) => Effect.Effect<A, E>;
+  readonly mapError?: (error: unknown) => unknown;
+}) => {
+  const requestContextEffect = input.service.resolveRequestContext({
+    sessionId: input.sessionId,
   });
 
-const notFoundResponse = () =>
-  createJsonResponse({ error: "Admin governance route not found." }, 404);
+  return (
+    input.mapError === undefined
+      ? requestContextEffect
+      : requestContextEffect.pipe(Effect.mapError(input.mapError))
+  ).pipe(Effect.flatMap(input.use));
+};
 
 export const createAdminGovernanceHttpHandler =
   (runWithService: AdminGovernanceServiceRunner) => (request: Request) => {
     const url = new URL(request.url);
+    const allowedMethods = adminGovernanceAllowedMethodsByPath[url.pathname];
 
-    if (request.method !== "POST") {
+    if (allowedMethods === undefined) {
       return Effect.succeed(
-        url.pathname.startsWith(adminGovernanceApiBasePath)
-          ? methodNotAllowedResponse()
-          : notFoundResponse(),
+        createNotFoundResponse("Admin governance route not found."),
       );
+    }
+
+    if (!allowedMethods.includes(request.method)) {
+      return Effect.succeed(createMethodNotAllowedResponse(allowedMethods));
     }
 
     switch (url.pathname) {
       case adminGovernanceApiPath.listRuntimeConfigOverrides:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(AdminGovernanceReadBySessionRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminGovernanceJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              AdminGovernanceReadBySessionRequestSchema,
+            ),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
-                service
-                  .resolveRequestContext({
-                    sessionId: input.sessionId,
-                  })
-                  .pipe(
-                    Effect.flatMap((requestContext) =>
-                      service.listRuntimeConfigOverrides({
-                        requestContext,
-                        moduleId: input.moduleId,
-                      }),
-                    ),
-                  ),
+                withResolvedAdminGovernanceRequestContext({
+                  service,
+                  sessionId: input.sessionId,
+                  use: (requestContext) =>
+                    service.listRuntimeConfigOverrides({
+                      requestContext,
+                      moduleId: input.moduleId,
+                    }),
+                }),
               ),
             ),
           ),
-          (result) => createJsonResponse(result),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result),
+        });
       case adminGovernanceApiPath.upsertRuntimeConfigOverride:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(UpsertRuntimeConfigOverrideRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminGovernanceJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              UpsertRuntimeConfigOverrideRequestSchema,
+            ),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
-                service.upsertRuntimeConfigOverride(input),
+                withResolvedAdminGovernanceRequestContext({
+                  service,
+                  sessionId: input.sessionId,
+                  mapError: mapMutationRequestContextError,
+                  use: (requestContext) =>
+                    service.upsertRuntimeConfigOverride({
+                      requestContext,
+                      moduleId: input.moduleId,
+                      key: input.key,
+                      scope: input.scope,
+                      scopeId: input.scopeId,
+                      value: input.value,
+                      approvalReason: input.approvalReason,
+                    }),
+                }),
               ),
             ),
           ),
-          (result) => createJsonResponse(result, 202),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result, 202),
+        });
       case adminGovernanceApiPath.persistRuntimeConfigProposals:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(PersistRuntimeConfigProposalsRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminGovernanceJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              PersistRuntimeConfigProposalsRequestSchema,
+            ),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
-                service.persistRuntimeConfigProposals(input),
+                withResolvedAdminGovernanceRequestContext({
+                  service,
+                  sessionId: input.sessionId,
+                  mapError: mapMutationRequestContextError,
+                  use: (requestContext) =>
+                    service.persistRuntimeConfigProposals({
+                      requestContext,
+                      moduleId: input.moduleId,
+                      renameMap: input.renameMap,
+                    }),
+                }),
               ),
             ),
           ),
-          (result) => createJsonResponse(result, 202),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result, 202),
+        });
       case adminGovernanceApiPath.listRuntimeConfigProposals:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(AdminGovernanceReadBySessionRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminGovernanceJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              AdminGovernanceReadBySessionRequestSchema,
+            ),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
-                service
-                  .resolveRequestContext({
-                    sessionId: input.sessionId,
-                  })
-                  .pipe(
-                    Effect.flatMap((requestContext) =>
-                      service.listRuntimeConfigProposals({
-                        requestContext,
-                        moduleId: input.moduleId,
-                      }),
-                    ),
-                  ),
+                withResolvedAdminGovernanceRequestContext({
+                  service,
+                  sessionId: input.sessionId,
+                  use: (requestContext) =>
+                    service.listRuntimeConfigProposals({
+                      requestContext,
+                      moduleId: input.moduleId,
+                    }),
+                }),
               ),
             ),
           ),
-          (result) => createJsonResponse(result),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result),
+        });
       case adminGovernanceApiPath.queryAuditEventsByModule:
-        return runRequest(
-          readRequestJson(
+        return matchHttpEffect({
+          effect: readRequestJson({
             request,
-            Schema.decodeUnknown(AdminGovernanceReadBySessionRequestSchema),
-          ).pipe(
+            invalidJsonTag: "AdminGovernanceJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              AdminGovernanceReadBySessionRequestSchema,
+            ),
+          }).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
-                service
-                  .resolveRequestContext({
-                    sessionId: input.sessionId,
-                  })
-                  .pipe(
-                    Effect.flatMap((requestContext) =>
-                      service.queryAuditEventsByModule({
-                        requestContext,
-                        moduleId: input.moduleId,
-                      }),
-                    ),
-                  ),
+                withResolvedAdminGovernanceRequestContext({
+                  service,
+                  sessionId: input.sessionId,
+                  use: (requestContext) =>
+                    service.queryAuditEventsByModule({
+                      requestContext,
+                      moduleId: input.moduleId,
+                    }),
+                }),
               ),
             ),
           ),
-          (result) => createJsonResponse(result),
-        );
+          onFailure: buildErrorResponse,
+          onSuccess: (result) => createJsonResponse(result),
+        });
       default:
-        return Effect.succeed(notFoundResponse());
+        return Effect.succeed(
+          createNotFoundResponse("Admin governance route not found."),
+        );
     }
   };
 

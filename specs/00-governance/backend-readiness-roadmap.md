@@ -18,7 +18,7 @@ This roadmap defines the intended backend-ready slice. Use [implementation-track
 
 The backend-ready milestone is reached only when the platform supports the following without operator hand-editing of runtime state:
 
-1. Anonymous plan discovery through backend-owned HTTP routes, with public-web acting only as an optional shell consumer and first-party app routes remaining thin server-function edges over shared backend services.
+1. Anonymous plan discovery through backend-owned HTTP routes, with public-web acting only as an optional shell consumer and first-party app routes remaining thin request-boundary server-function edges over shared backend services and app helpers.
 2. Keycloak-backed auth start and callback handling with auditable session activation.
 3. Tenant provisioning and owner membership creation after validated authentication.
 4. Polar hosted checkout session creation and return or cancel handling.
@@ -32,7 +32,7 @@ The backend-ready milestone is reached only when the platform supports the follo
 1. Update governing specs, manifests, and the implementation tracker so the first slice is explicit and reviewable.
 2. Add durable PostgreSQL-backed state for customer account mapping, subscription lifecycle, webhook receipts, onboarding runs, and billing event history.
 3. Extend shared contracts and module services around plan catalog, checkout, tenant provisioning, entitlement activation, and access bootstrap.
-4. Expose plan listing, auth start, auth callback, checkout start, and billing webhook intake through backend-owned HTTP handlers independent of public-web and product-app runtimes; first-party app routes should prefer direct shared-service calls through TanStack Start server functions, while true external callers continue to use the backend-owned HTTP layer.
+4. Expose plan listing, auth start, auth callback, checkout start, and billing webhook intake through backend-owned HTTP handlers independent of public-web and product-app runtimes, composed from shared request-boundary and transport helpers; first-party app routes should prefer direct shared-service calls through TanStack Start server functions and shared app helpers, while true external callers continue to use the backend-owned HTTP layer.
 5. Replace caller-supplied demo entitlement inputs with persisted entitlement lookup in runtime config and feature-flag resolution.
 6. Enforce authorized product bootstrap through request-context resolution, authorization, and field-security before exposing product data.
 7. Wire metering, quota enforcement, audit persistence, replay, checkout-intent recovery, and operator recovery flows.
@@ -43,7 +43,7 @@ The backend-ready milestone is reached only when the platform supports the follo
 ### Phase 1: Governance First
 
 1. Update [implementation-tracker.md](implementation-tracker.md) with the backend-readiness priority and honest next gaps.
-2. Align [../02-apps/public-web/spec.md](../02-apps/public-web/spec.md), [../02-apps/product-app/spec.md](../02-apps/product-app/spec.md), [../02-apps/admin-app/spec.md](../02-apps/admin-app/spec.md), and [../03-adr/architecture/ADR-018-h3-backend-http-layer.md](../03-adr/architecture/ADR-018-h3-backend-http-layer.md) so first-party apps consume shared backend services directly through server functions while H3 remains the external caller boundary.
+2. Align [../02-apps/public-web/spec.md](../02-apps/public-web/spec.md), [../02-apps/product-app/spec.md](../02-apps/product-app/spec.md), [../02-apps/admin-app/spec.md](../02-apps/admin-app/spec.md), and [../03-adr/architecture/ADR-018-h3-backend-http-layer.md](../03-adr/architecture/ADR-018-h3-backend-http-layer.md) so first-party apps consume shared backend services directly through server functions and shared app helpers while H3 remains the external caller boundary and the request-boundary or transport shell stays centralized.
 3. Align the [identity-session](../02-modules/access/identity-session/manifest.md), [tenant-management](../02-modules/domains/tenant-management/manifest.md), [billing-and-metering](../02-modules/domains/billing-and-metering/manifest.md), and [webhooks-api-access](../02-modules/communication/webhooks-api-access/manifest.md) manifests with the first slice.
 
 ### Phase 2: Durable State

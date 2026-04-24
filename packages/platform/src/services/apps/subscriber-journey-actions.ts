@@ -9,10 +9,7 @@ import {
   IdentitySessionStartResult,
   IdentitySessionStartInput,
 } from "@comvestec/modules";
-import type {
-  SubscriberJourneyBootstrapInput,
-  SubscriberJourneyService,
-} from "../domains/subscriber-journey";
+import type { SubscriberJourneyBootstrapInput } from "../domains/subscriber-journey";
 import {
   createProductAppAuthCallbackStateFromEnvironment,
   type ProductAppAuthCallbackRedirectNotAllowedError,
@@ -20,6 +17,7 @@ import {
   resolveProductAppAuthCallbackRedirectUriFromEnvironment,
   validateProductAppAuthCallbackRedirectUriFromEnvironment,
 } from "../access/first-party-auth";
+import { loadRuntimeModule } from "./runtime-loader";
 
 const PublicWebAuthStartTenantScopeHintSchema = Schema.Literal(
   platformScope.organization,
@@ -27,6 +25,7 @@ const PublicWebAuthStartTenantScopeHintSchema = Schema.Literal(
 );
 
 const PublicWebAuthStartInputSchema = Schema.Struct({
+  correlationId: Schema.optional(Schema.NonEmptyString),
   host: Schema.NonEmptyString,
   tenantHint: Schema.optional(Schema.NonEmptyString),
   tenantScopeHint: Schema.optional(PublicWebAuthStartTenantScopeHintSchema),
@@ -42,7 +41,10 @@ export type SubscriberJourneyRuntimeLoadError = {
 };
 
 export const preparePublicAuthStartFromEnvironment = (
-  input: Pick<PublicWebAuthStartInput, "host" | "tenantScopeHint">,
+  input: Pick<
+    PublicWebAuthStartInput,
+    "correlationId" | "host" | "tenantScopeHint"
+  >,
 ) =>
   loadSubscriberJourneyRuntime().pipe(
     Effect.flatMap(({ preparePublicAuthStart }) =>
@@ -68,6 +70,9 @@ export const buildPublicWebAuthStartInputFromEnvironment = (
         redirectUri:
           resolveProductAppAuthCallbackRedirectUriFromEnvironment(environment),
         authStartPreparation: preparePublicAuthStartFromEnvironment({
+          ...(decodedInput.correlationId !== undefined
+            ? { correlationId: decodedInput.correlationId }
+            : {}),
           host: decodedInput.host,
           ...(decodedInput.tenantScopeHint !== undefined
             ? {
@@ -99,9 +104,9 @@ export const buildPublicWebAuthStartInputFromEnvironment = (
   );
 
 const loadSubscriberJourneyRuntime = () =>
-  Effect.tryPromise({
-    try: () => import("../domains/subscriber-journey"),
-    catch: (cause) =>
+  loadRuntimeModule({
+    load: () => import("../domains/subscriber-journey"),
+    mapError: (cause): SubscriberJourneyRuntimeLoadError =>
       ({
         _tag: "SubscriberJourneyRuntimeLoadError",
         cause,

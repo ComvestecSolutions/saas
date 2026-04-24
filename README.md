@@ -83,9 +83,9 @@ flowchart LR
 
 The accepted specs describe the intended platform. Current delivery maturity for each area lives in [specs/00-governance/implementation-tracker.md](specs/00-governance/implementation-tracker.md).
 
-- Apps: TanStack Start shells for the public web, product app, and admin app, with backend-owned services and HTTP routes treated as the delivery gate for the first slice.
+- Apps: TanStack Start shells for the public web, product app, and admin app, with first-party auth routes kept as thin request-boundary edges over shared platform helpers while backend-owned H3 routes remain the delivery gate for external callers, tooling, smoke coverage, and webhook providers.
 - Shared backend: Effect-based contracts, runtime services, backend-owned HTTP APIs, typed config helpers, and a 19-manifest module catalog with per-capability maturity tracked in the implementation tracker.
-- Governance: Core specs, backend-readiness roadmap, 16 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync.
+- Governance: Core specs, backend-readiness roadmap, 19 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync.
 - Platform adapters: 14 adapter service boundaries across identity, storage, messaging, observability, search, and billing or metering concerns.
 - Local ops baseline: Pinned Compose services for PostgreSQL, Keycloak, Convex, Valkey, Ory Keto, Unleash, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, Prometheus, Loki, Tempo, Grafana, and the OpenTelemetry Collector.
 - Validation: Jest through Bun, Playwright scaffold, path-based labels, PR auto-assignment, and Trivy-backed security hygiene.
@@ -139,7 +139,7 @@ See [ops/docker/README.md](ops/docker/README.md) for the compose file split, pro
 - `packages/contracts/`: shared contracts, access rules, runtime schemas, and domain types
 - `packages/config/`: typed defaults, environment modeling, and the module manifest registry
 - `packages/modules/`: backend module implementations organized by concern
-- `packages/platform/`: app snapshot services, backend-owned HTTP APIs, platform environment helpers, and adapter boundaries
+- `packages/platform/`: app snapshot and route-helper services, backend-owned HTTP APIs with shared request middleware, communication-layer request-boundary and transport helpers, platform environment helpers, and adapter boundaries
 - `specs/`: governance docs, platform specs, module specs, ADRs, and ops guidance
 - `tests/`: contracts, modules, and platform validation
 - `ops/`: local infrastructure composition, compose profiles, and operational assets

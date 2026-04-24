@@ -1,6 +1,5 @@
 import { Effect, JSONSchema, Schema } from "effect";
 import {
-  AuditEventSchema,
   BillingCheckoutSessionInputSchema,
   BillingCheckoutSessionSchema,
   BillingReconciliationManualRunResultSchema,
@@ -19,8 +18,6 @@ import {
   BillingWebhookProcessingResultSchema,
   IdentitySessionCompletionResultSchema,
   IdentitySessionStartResultSchema,
-  RuntimeConfigOverrideRecordSchema,
-  RuntimeConfigSyncArtifactRecordSchema,
 } from "@comvestec/modules";
 import { ProductAppSnapshotSchema } from "../services/apps/app-snapshots";
 import {
@@ -46,6 +43,7 @@ import {
   AdminGovernanceReadBySessionRequestSchema,
   AdminGovernanceRuntimeConfigOverrideViewListSchema,
   AdminGovernanceRuntimeConfigProposalViewListSchema,
+  AdminGovernanceUpsertRuntimeConfigOverrideResponseSchema,
   PersistRuntimeConfigProposalsRequestSchema,
   UpsertRuntimeConfigOverrideRequestSchema,
 } from "../services/governance/admin-governance";
@@ -133,15 +131,6 @@ const PublicBillingPlanCatalogResponseSchema = Schema.Struct({
 
 const ResolveRequestContextResponseSchema = Schema.Struct({
   requestContext: RequestContextSchema,
-});
-
-const RuntimeConfigSyncArtifactRecordListSchema = Schema.Array(
-  RuntimeConfigSyncArtifactRecordSchema,
-);
-
-const UpsertRuntimeConfigOverrideResponseSchema = Schema.Struct({
-  override: RuntimeConfigOverrideRecordSchema,
-  auditEvent: AuditEventSchema,
 });
 
 const RawWebhookPayloadSchema = Schema.Record({
@@ -263,10 +252,6 @@ const backendApiDocumentSchemas = [
     schema: PersistRuntimeConfigProposalsRequestSchema,
   },
   {
-    name: "RuntimeConfigSyncArtifactRecordList",
-    schema: RuntimeConfigSyncArtifactRecordListSchema,
-  },
-  {
     name: "AdminGovernanceRuntimeConfigOverrideViewList",
     schema: AdminGovernanceRuntimeConfigOverrideViewListSchema,
   },
@@ -280,7 +265,7 @@ const backendApiDocumentSchemas = [
   },
   {
     name: "UpsertRuntimeConfigOverrideResponse",
-    schema: UpsertRuntimeConfigOverrideResponseSchema,
+    schema: AdminGovernanceUpsertRuntimeConfigOverrideResponseSchema,
   },
   {
     name: "BillingWebhookReplayRequest",
@@ -815,7 +800,10 @@ export const createBackendApiOpenApiDocument = (
             "Request payload did not match the expected schema.",
           ),
           "401": errorResponse(
-            "Runtime-config mutations require an authenticated actor.",
+            "Runtime-config mutations require a valid authenticated session with an authenticated operator.",
+          ),
+          "403": errorResponse(
+            "Runtime-config mutations are restricted to platform and support operators.",
           ),
           "500": errorResponse("Admin governance request failed."),
           "502": errorResponse("A backend dependency request failed."),
@@ -831,11 +819,17 @@ export const createBackendApiOpenApiDocument = (
         requestBody: jsonRequestBody("PersistRuntimeConfigProposalsRequest"),
         responses: {
           "202": jsonResponse(
-            ref("RuntimeConfigSyncArtifactRecordList"),
+            ref("AdminGovernanceRuntimeConfigProposalViewList"),
             "Persisted runtime-config proposal artifacts.",
           ),
           "400": errorResponse(
             "Request payload did not match the expected schema.",
+          ),
+          "401": errorResponse(
+            "Runtime-config mutations require a valid authenticated session with an authenticated operator.",
+          ),
+          "403": errorResponse(
+            "Runtime-config mutations are restricted to platform and support operators.",
           ),
           "500": errorResponse("Admin governance request failed."),
           "502": errorResponse("A backend dependency request failed."),
