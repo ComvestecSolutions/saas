@@ -10,11 +10,41 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BillingSuccessRouteImport } from './routes/billing/success'
+import { Route as BillingCheckoutRouteImport } from './routes/billing/checkout'
+import { Route as BillingCancelRouteImport } from './routes/billing/cancel'
+import { Route as AuthStaleSessionRouteImport } from './routes/auth/stale-session'
+import { Route as AuthLogoutRouteImport } from './routes/auth/logout'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingSuccessRoute = BillingSuccessRouteImport.update({
+  id: '/billing/success',
+  path: '/billing/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingCheckoutRoute = BillingCheckoutRouteImport.update({
+  id: '/billing/checkout',
+  path: '/billing/checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingCancelRoute = BillingCancelRouteImport.update({
+  id: '/billing/cancel',
+  path: '/billing/cancel',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthStaleSessionRoute = AuthStaleSessionRouteImport.update({
+  id: '/auth/stale-session',
+  path: '/auth/stale-session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthLogoutRoute = AuthLogoutRouteImport.update({
+  id: '/auth/logout',
+  path: '/auth/logout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
@@ -26,27 +56,69 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/auth/logout': typeof AuthLogoutRoute
+  '/auth/stale-session': typeof AuthStaleSessionRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/checkout': typeof BillingCheckoutRoute
+  '/billing/success': typeof BillingSuccessRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/auth/logout': typeof AuthLogoutRoute
+  '/auth/stale-session': typeof AuthStaleSessionRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/checkout': typeof BillingCheckoutRoute
+  '/billing/success': typeof BillingSuccessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/auth/logout': typeof AuthLogoutRoute
+  '/auth/stale-session': typeof AuthStaleSessionRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/checkout': typeof BillingCheckoutRoute
+  '/billing/success': typeof BillingSuccessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth/callback'
+  fullPaths:
+    | '/'
+    | '/auth/callback'
+    | '/auth/logout'
+    | '/auth/stale-session'
+    | '/billing/cancel'
+    | '/billing/checkout'
+    | '/billing/success'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth/callback'
-  id: '__root__' | '/' | '/auth/callback'
+  to:
+    | '/'
+    | '/auth/callback'
+    | '/auth/logout'
+    | '/auth/stale-session'
+    | '/billing/cancel'
+    | '/billing/checkout'
+    | '/billing/success'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth/callback'
+    | '/auth/logout'
+    | '/auth/stale-session'
+    | '/billing/cancel'
+    | '/billing/checkout'
+    | '/billing/success'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  AuthLogoutRoute: typeof AuthLogoutRoute
+  AuthStaleSessionRoute: typeof AuthStaleSessionRoute
+  BillingCancelRoute: typeof BillingCancelRoute
+  BillingCheckoutRoute: typeof BillingCheckoutRoute
+  BillingSuccessRoute: typeof BillingSuccessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -56,6 +128,41 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/success': {
+      id: '/billing/success'
+      path: '/billing/success'
+      fullPath: '/billing/success'
+      preLoaderRoute: typeof BillingSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/checkout': {
+      id: '/billing/checkout'
+      path: '/billing/checkout'
+      fullPath: '/billing/checkout'
+      preLoaderRoute: typeof BillingCheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/cancel': {
+      id: '/billing/cancel'
+      path: '/billing/cancel'
+      fullPath: '/billing/cancel'
+      preLoaderRoute: typeof BillingCancelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/stale-session': {
+      id: '/auth/stale-session'
+      path: '/auth/stale-session'
+      fullPath: '/auth/stale-session'
+      preLoaderRoute: typeof AuthStaleSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/logout': {
+      id: '/auth/logout'
+      path: '/auth/logout'
+      fullPath: '/auth/logout'
+      preLoaderRoute: typeof AuthLogoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/callback': {
@@ -71,6 +178,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  AuthLogoutRoute: AuthLogoutRoute,
+  AuthStaleSessionRoute: AuthStaleSessionRoute,
+  BillingCancelRoute: BillingCancelRoute,
+  BillingCheckoutRoute: BillingCheckoutRoute,
+  BillingSuccessRoute: BillingSuccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

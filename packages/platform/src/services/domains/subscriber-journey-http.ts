@@ -5,8 +5,10 @@ import {
   PlatformModuleIdSchema,
   RequestContextSchema,
   TenantContextSchema,
+  platformScope,
 } from "@comvestec/contracts";
 import { KeycloakSessionInputSchema } from "../../adapters";
+import { extractRequiredSubscriberJourneySessionIdFromHeader } from "../access/request-context-transport";
 import {
   decodeProductAppAuthCallbackStateFromEnvironment,
   validateProductAppAuthCallbackRedirectUriFromEnvironment,
@@ -27,10 +29,13 @@ import {
 export const StartAuthenticationRequestSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   tenantHint: Schema.optional(Schema.NonEmptyString),
-  displayNameHint: Schema.optional(Schema.NonEmptyString),
   redirectUri: AbsoluteRedirectUriSchema,
   state: Schema.optional(Schema.NonEmptyString),
 });
+
+type StartAuthenticationRequest = Schema.Schema.Type<
+  typeof StartAuthenticationRequestSchema
+>;
 
 export const CompleteAuthenticationRequestSchema = Schema.Struct({
   session: KeycloakSessionInputSchema,
@@ -38,17 +43,47 @@ export const CompleteAuthenticationRequestSchema = Schema.Struct({
   host: Schema.optional(Schema.NonEmptyString),
 });
 
-export const ResolveRequestContextRequestSchema = Schema.Struct({
-  sessionId: Schema.NonEmptyString,
-});
+type SubscriberJourneyDomainRuntimeError = {
+  readonly _tag: "SubscriberJourneyRuntimeError";
+  readonly cause: unknown;
+};
 
-export const ProductBootstrapRequestSchema = Schema.Struct({
-  sessionId: Schema.NonEmptyString,
-});
+type SubscriberJourneyRuntimeError = {
+  readonly _tag: "SubscriberJourneyRuntimeError";
+  readonly cause: unknown;
+};
 
 type SubscriberJourneyServiceRunner = <A, E>(
   use: (service: SubscriberJourneyService) => Effect.Effect<A, E>,
-) => Effect.Effect<A, E | ParseResult.ParseError>;
+) => Effect.Effect<
+  A,
+  E | ParseResult.ParseError | SubscriberJourneyRuntimeError
+>;
+
+const mapSubscriberJourneyRuntimeError = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<
+  A,
+  | Exclude<E, SubscriberJourneyDomainRuntimeError>
+  | SubscriberJourneyRuntimeError
+> =>
+  effect.pipe(
+    Effect.mapError((cause) =>
+      typeof cause === "object" &&
+      cause !== null &&
+      "_tag" in cause &&
+      cause._tag === "SubscriberJourneyRuntimeError"
+        ? ({
+            _tag: "SubscriberJourneyRuntimeError",
+            cause,
+          } satisfies SubscriberJourneyRuntimeError)
+        : (cause as Exclude<E, SubscriberJourneyDomainRuntimeError>),
+    ),
+  ) as Effect.Effect<
+    A,
+    | Exclude<E, SubscriberJourneyDomainRuntimeError>
+    | SubscriberJourneyRuntimeError
+  >;
 
 type SubscriberJourneyHttpHandlerOptions = {
   readonly validateStartAuthentication?: (
@@ -77,6 +112,29 @@ type JsonRequestErrorTag =
 type JsonRequestError = {
   readonly _tag: JsonRequestErrorTag;
 };
+
+const readSubscriberJourneyRequestJson = <A, R = never>(input: {
+  readonly request: Request;
+  readonly decode: (
+    payload: unknown,
+  ) => Effect.Effect<A, ParseResult.ParseError, R>;
+}) =>
+  readRequestJson({
+    request: input.request,
+    invalidJsonTag: "SubscriberJourneyJsonInvalidError",
+    decode: input.decode,
+  }).pipe(
+    Effect.mapError((cause) =>
+      typeof cause === "object" &&
+      cause !== null &&
+      "_tag" in cause &&
+      cause._tag === "ParseError"
+        ? ({
+            _tag: "SubscriberJourneyJsonRequestParseError",
+          } satisfies JsonRequestError)
+        : cause,
+    ),
+  );
 
 export const subscriberJourneyApiBasePath = "/api/subscriber-journey";
 
@@ -109,18 +167,32 @@ const buildErrorResponse = (error: unknown) => {
           400,
         );
       case "SubscriberJourneyJsonRequestParseError":
-      case "ParseError":
       case "ProductAppAuthCallbackRedirectNotAllowedError":
       case "ProductAppAuthCallbackStateInvalidError":
         return createJsonResponse(
           { error: "Request payload did not match the expected schema." },
           400,
         );
+      case "ParseError":
+        return createJsonResponse(
+          { error: "Subscriber journey request failed." },
+          500,
+        );
+      case "SubscriberJourneyRuntimeError":
+        return createJsonResponse(
+          { error: "Subscriber journey request failed." },
+          500,
+        );
       case "PolarWebhookSignatureError":
       case "KeycloakSessionInactiveError":
       case "ProductAppAuthCallbackStateExpiredError":
         return createJsonResponse(
           { error: "Authentication or signature validation failed." },
+          401,
+        );
+      case "SubscriberJourneySessionIdMissingError":
+        return createJsonResponse(
+          { error: "Authenticated session is required." },
           401,
         );
       case "IdentitySessionRequestContextNotFoundError":
@@ -145,10 +217,12 @@ const buildErrorResponse = (error: unknown) => {
       case "KeycloakAdapterRequestError":
       case "KeycloakPasswordGrantIdTokenMissingError":
       case "AuthorizationDelegatedCheckError":
+      case "BillingStatePostgresRepositoryQueryError":
       case "OryKetoAdapterRequestError":
       case "PolarAdapterRequestError":
       case "ConvexAdapterRequestError":
       case "SubscriberJourneyRepairQueryError":
+      case "RuntimeConfigModulePersistenceError":
       case "TenantOnboardingPostgresRepositoryPersistenceError":
       case "TenantProvisioningPostgresRepositoryPersistenceError":
       case "ValkeyAdapterOperationError":
@@ -166,6 +240,47 @@ const buildErrorResponse = (error: unknown) => {
     500,
   );
 };
+
+const buildSubscriberJourneySessionLookupInput = (request: Request) =>
+  extractRequiredSubscriberJourneySessionIdFromHeader(request).pipe(
+    Effect.map((sessionId) => ({ sessionId })),
+  );
+
+const buildStartAuthenticationPreparationInput = (input: {
+  readonly request: StartAuthenticationRequest;
+  readonly requestUrlHost: string;
+}) => {
+  const scope = input.request.requestContext.tenant.scope;
+
+  return {
+    correlationId: input.request.requestContext.correlationId,
+    host: input.request.requestContext.host ?? input.requestUrlHost,
+    ...(input.request.tenantHint !== undefined
+      ? { tenantHint: input.request.tenantHint }
+      : scope === platformScope.platform
+        ? {}
+        : {
+            tenantHint: input.request.requestContext.tenant.scopeId,
+            ...(scope === platformScope.organization ||
+            scope === platformScope.individual
+              ? { tenantScopeHint: scope }
+              : {}),
+          }),
+  };
+};
+
+const buildPreparedStartAuthenticationInput = (input: {
+  readonly request: StartAuthenticationRequest;
+  readonly preparation: Awaited<
+    Effect.Effect.Success<
+      ReturnType<SubscriberJourneyService["preparePublicAuthStart"]>
+    >
+  >;
+}) => ({
+  ...input.request,
+  displayNameHint: input.preparation.snapshot.branding.companyName,
+  themeHint: input.preparation.snapshot.branding.projection.themeTokens.primary,
+});
 
 export const createSubscriberJourneyHttpHandler =
   (
@@ -197,9 +312,8 @@ export const createSubscriberJourneyHttpHandler =
     switch (url.pathname) {
       case subscriberJourneyApiPath.startAuthentication:
         return matchHttpEffect({
-          effect: readRequestJson({
+          effect: readSubscriberJourneyRequestJson({
             request,
-            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
             decode: Schema.decodeUnknown(StartAuthenticationRequestSchema),
           }).pipe(
             Effect.flatMap((input) =>
@@ -210,7 +324,25 @@ export const createSubscriberJourneyHttpHandler =
                     .pipe(Effect.map(() => input)),
             ),
             Effect.flatMap((input) =>
-              runWithService((service) => service.startAuthentication(input)),
+              runWithService((service) =>
+                service
+                  .preparePublicAuthStart(
+                    buildStartAuthenticationPreparationInput({
+                      request: input,
+                      requestUrlHost: url.host,
+                    }),
+                  )
+                  .pipe(
+                    Effect.flatMap((preparation) =>
+                      service.startAuthentication(
+                        buildPreparedStartAuthenticationInput({
+                          request: input,
+                          preparation,
+                        }),
+                      ),
+                    ),
+                  ),
+              ),
             ),
           ),
           onFailure: buildErrorResponse,
@@ -218,9 +350,8 @@ export const createSubscriberJourneyHttpHandler =
         });
       case subscriberJourneyApiPath.completeAuthentication:
         return matchHttpEffect({
-          effect: readRequestJson({
+          effect: readSubscriberJourneyRequestJson({
             request,
-            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
             decode: Schema.decodeUnknown(CompleteAuthenticationRequestSchema),
           }).pipe(
             Effect.flatMap((input) =>
@@ -241,11 +372,7 @@ export const createSubscriberJourneyHttpHandler =
         });
       case subscriberJourneyApiPath.resolveRequestContext:
         return matchHttpEffect({
-          effect: readRequestJson({
-            request,
-            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
-            decode: Schema.decodeUnknown(ResolveRequestContextRequestSchema),
-          }).pipe(
+          effect: buildSubscriberJourneySessionLookupInput(request).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.resolveRequestContext(input)),
             ),
@@ -255,9 +382,8 @@ export const createSubscriberJourneyHttpHandler =
         });
       case subscriberJourneyApiPath.createCheckoutSession:
         return matchHttpEffect({
-          effect: readRequestJson({
+          effect: readSubscriberJourneyRequestJson({
             request,
-            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
             decode: Schema.decodeUnknown(BillingCheckoutSessionInputSchema),
           }).pipe(
             Effect.flatMap((input) =>
@@ -270,11 +396,7 @@ export const createSubscriberJourneyHttpHandler =
         });
       case subscriberJourneyApiPath.buildProductBootstrap:
         return matchHttpEffect({
-          effect: readRequestJson({
-            request,
-            invalidJsonTag: "SubscriberJourneyJsonInvalidError",
-            decode: Schema.decodeUnknown(ProductBootstrapRequestSchema),
-          }).pipe(
+          effect: buildSubscriberJourneySessionLookupInput(request).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.buildProductBootstrap(input)),
             ),
@@ -294,7 +416,10 @@ export const handleSubscriberJourneyHttpRequest = (
   request: Request,
 ) =>
   createSubscriberJourneyHttpHandler(
-    (use) => runSubscriberJourneyFromEnvironment(environment, use),
+    (use) =>
+      mapSubscriberJourneyRuntimeError(
+        runSubscriberJourneyFromEnvironment(environment, use),
+      ),
     {
       validateStartAuthentication: (input) =>
         validateProductAppAuthCallbackRedirectUriFromEnvironment(

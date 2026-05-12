@@ -21,10 +21,11 @@ The platform should remain Kubernetes-ready without forcing Kubernetes complexit
 7. Custom-domain hostname mapping, certificate issuance, and TLS termination are deployment-edge responsibilities. App routes consume resolved host context and effective branding, but they do not own domain verification or certificate management.
 8. Concern-owned included Compose files may group related services, but current platform dependencies should not rely on profile gating when the runtime environment requires them.
 9. A shared local PostgreSQL engine may host multiple services, but each platform-owned or third-party service must use a dedicated logical database. Do not point Keycloak, Ory Keto, Unleash, Convex, OpenMeter, GlitchTip, or similar service-owned state at the platform system-of-record database.
+10. The checked-in local Compose project currently represents vendor-managed infrastructure only. When the repository begins shipping first-party application or backend containers, place them in a separate project grouping from the vendor-infrastructure baseline so operators can distinguish vendor services from repo-owned runtimes at a glance.
 
 ## Default Compose Services
 
-Convex, PostgreSQL, Keycloak, Ory Keto, Unleash, Valkey, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana.
+Convex, PostgreSQL, Keycloak, Ory Keto, Unleash, Valkey, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana, OpenPanel, Kong, and Vault.
 
 Convex-native workflow jobs use the same Convex deployment and do not require a separate Compose profile.
 

@@ -1,5 +1,5 @@
 import { Cause, Effect, ParseResult, Schema } from "effect";
-import { and, asc, desc, eq, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import {
   findModuleManifest,
   resolveDefaultTenantOnboardingEnabledModules,
@@ -13,6 +13,8 @@ import {
   actorType,
   authorizationNamespace,
   authorizationRelation,
+  billingAndMeteringFeatureFlag,
+  billingMeteringMode,
   workflowJobGapReason,
   workflowJobKind,
   workflowJobStatus,
@@ -37,6 +39,7 @@ import {
   PlatformModuleIdSchema,
   platformScope,
   projectionProfile,
+  retentionLegalHoldStatus,
   RequestContextSchema,
   TenantContextSchema,
   type RequestContext,
@@ -57,25 +60,46 @@ import {
   BillingWebhookReplayPostgresRepository,
   BillingWebhookService,
   billingEntitlementsTable,
+  billingPaymentEventsTable,
   billingSubscriptionsTable,
   billingCustomerAccountsTable,
+  auditLogEventsTable,
   identitySessionLifecycleEventType,
   identitySessionAuditTable,
+  retentionLegalHoldsTable,
+  retentionPoliciesTable,
   webhookReceiptsTable,
+  webhookApiKeysTable,
+  webhookOutboundDeliveriesTable,
+  webhookSubscriptionsTable,
   workflowJobRuntime,
+  type AuditLogPostgresQueryable,
+  makeAuditLogModule,
+  makeAuditLogPostgresRepository,
   WorkflowJobsPostgresRepository,
-  type WorkflowJobsPostgresQueryable,
   type WorkflowJobsPostgresRepositoryError,
+  buildWorkflowJobsPostgresQueryable,
   makeWorkflowJobsPostgresRepository,
-  workflowJobsTable,
   type BillingWebhookProcessingResult,
   type BillingWebhookReplayPostgresQueryable,
   type BillingStatePostgresRepositoryError,
   type BillingStatePostgresQueryable,
+  type RetentionLegalHoldPostgresQueryable,
+  RetentionLegalHoldPostgresRepository,
+  type RetentionLegalHoldPostgresRepositoryError,
+  type WebhookApiKeyPostgresQueryable,
+  WebhookApiKeyPostgresRepository,
+  type WebhookOutboundDeliveryPostgresQueryable,
+  WebhookOutboundDeliveryPostgresRepository,
+  type WebhookSubscriptionPostgresQueryable,
+  WebhookSubscriptionPostgresRepository,
   type BillingWebhookProcessingError,
   type IdentitySessionCompletionInput,
   type IdentitySessionCompletionResult,
+  type IdentitySessionInvalidationInput,
+  type IdentitySessionInvalidationResult,
   type IdentitySessionModuleError,
+  type IdentitySessionPostgresRepositoryError,
   type IdentitySessionRequestContextLookup,
   identitySessionRunIdPrefix,
   type IdentitySessionStartInput,
@@ -85,8 +109,17 @@ import {
   makeBillingMeteringModule,
   makeBillingWebhookReplayPostgresRepository,
   makeBillingStatePostgresRepository,
+  buildEmailDeliveryPostgresQueryable,
   makeBillingWebhookPostgresRepository,
+  makeEmailDeliveryPostgresRepository,
+  makeWebhookApiKeyPostgresRepository,
+  makeWebhookOutboundDeliveryPostgresRepository,
+  makeWebhookSubscriptionPostgresRepository,
   makeBillingWebhookService,
+  makeRetentionLegalHoldModule,
+  makeRetentionLegalHoldPostgresRepository,
+  makeRuntimeConfigModule,
+  makeRuntimeConfigPostgresRepository,
   makeIdentitySessionModule,
   makeIdentitySessionPostgresRepository,
   makeFieldSecurityModule,
@@ -100,6 +133,7 @@ import {
   makeAuthorizationModule,
   makeWebhooksApiAccessModule,
   actorSupportsPrivilegedSupportEscalation,
+  hasPrivilegedBreakGlassAccess,
   type TenantOnboardingPostgresRepositoryError,
   TenantOnboardingPostgresRepository,
   tenantOnboardingRunStatus,
@@ -109,23 +143,35 @@ import {
   TenantManagementModule,
   tenantProvisioningReceiptsTable,
   tenantProvisioningStatus,
+  type RetentionLegalHoldModuleError,
   type WebhooksApiAccessModuleError,
   WebhooksApiAccessModule,
   type AuthorizationDecision,
   type BillingEntitlementRecord,
   type BillingWebhookPersistenceProjection,
+  type RuntimeConfigModulePersistenceError,
+  type RuntimeConfigModuleService,
+  type RuntimeConfigPostgresQueryable,
   type TenantProvisioningPostgresRepositoryError,
+  type UnknownConfigKeyError,
+  runtimeConfigOverrideProposalsTable,
+  runtimeConfigOverridesTable,
+  runtimeConfigSyncArtifactsTable,
 } from "@comvestec/modules";
 import {
   makeConvexAdapter,
   makeKeycloakAdapter,
+  makeOpenmeterAdapter,
   makeOryKetoAdapter,
   makePolarAdapter,
   makePostgresAdapter,
+  makeUnleashAdapter,
   makeValkeyAdapter,
   ConvexAdapter,
   type ConvexAdapterService,
   type ConvexWorkflowExecutionError,
+  type OpenmeterAdapterError,
+  type OpenmeterAdapterService,
   PolarAdapter,
   type PolarAdapterRequestError,
   type PolarCatalogMetadataError,
@@ -141,14 +187,23 @@ import {
   platformAdapterServiceName,
   PlatformAdapterServiceNameSchema,
   ValkeyAdapter,
+  type ValkeyAdapterOperationError,
 } from "../../adapters";
-import { createOryKetoAuthorizationDelegatedCheck } from "../access";
 import {
+  createOryKetoAuthorizationDelegatedCheck,
+  createOryKetoAuthorizationDelegatedTupleLookup,
+} from "../access";
+import {
+  type AppSnapshotBrandingResolutionError,
   type MissingModuleManifestError,
+  PublicWebSnapshotSchema,
+  getPublicWebSnapshotForRequestContextWithRuntimeConfig,
   type ProductAppSnapshot,
-  getProductAppSnapshotForRequest,
+  getProductAppSnapshotForRequestContextWithRuntimeConfig,
 } from "../apps/app-snapshots";
+import { makeRuntimeFeatureFlagRollout } from "../governance/runtime-feature-flag-rollout";
 import { buildWriteDatabase } from "../postgres-write-database";
+import { executeWorkflowJobRecord } from "./workflow-jobs";
 
 export const SubscriberJourneyBootstrapInputSchema = Schema.Struct({
   sessionId: Schema.NonEmptyString,
@@ -166,6 +221,7 @@ const PublicAuthStartTenantScopeHintSchema = Schema.Literal(
 export const PublicAuthStartPreparationInputSchema = Schema.Struct({
   correlationId: Schema.optional(Schema.NonEmptyString),
   host: Schema.NonEmptyString,
+  tenantHint: Schema.optional(Schema.NonEmptyString),
   tenantScopeHint: Schema.optional(PublicAuthStartTenantScopeHintSchema),
 });
 
@@ -178,11 +234,17 @@ export const PublicAuthStartPreparationSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   tenant: TenantContextSchema,
   enabledModules: Schema.Array(PlatformModuleIdSchema),
+  snapshot: PublicWebSnapshotSchema,
 });
 
 export type PublicAuthStartPreparation = Schema.Schema.Type<
   typeof PublicAuthStartPreparationSchema
 >;
+
+export type PublicAuthStartPreparationError =
+  | MissingModuleManifestError
+  | AppSnapshotBrandingResolutionError
+  | BillingStatePostgresRepositoryError;
 
 const SubscriberJourneyWebhookReplayInputSchema = Schema.Struct({
   provider: PlatformAdapterServiceNameSchema,
@@ -206,7 +268,11 @@ export const SubscriberJourneyRuntimeOptionsSchema = Schema.Struct({
   keycloakConvexServiceActorPassword: Schema.NonEmptyString,
   polarAccessToken: Schema.NonEmptyString,
   polarApiUrl: Schema.NonEmptyString,
+  openmeterUrl: Schema.optional(Schema.NonEmptyString),
+  openmeterApiKey: Schema.optional(Schema.NonEmptyString),
   valkeyUrl: Schema.NonEmptyString,
+  unleashUrl: Schema.NonEmptyString,
+  unleashApiKey: Schema.NonEmptyString,
   ketoReadUrl: Schema.NonEmptyString,
   ketoWriteUrl: Schema.NonEmptyString,
 });
@@ -241,7 +307,11 @@ const SubscriberJourneyProcessEnvironmentSchema = Schema.Struct({
   KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD: Schema.NonEmptyString,
   POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_API_URL: Schema.NonEmptyString,
+  OPENMETER_URL: Schema.optional(Schema.NonEmptyString),
+  OPENMETER_API_KEY: Schema.optional(Schema.NonEmptyString),
   VALKEY_URL: Schema.NonEmptyString,
+  UNLEASH_URL: Schema.NonEmptyString,
+  UNLEASH_API_KEY: Schema.NonEmptyString,
   KETO_READ_URL: Schema.NonEmptyString,
   KETO_WRITE_URL: Schema.NonEmptyString,
 });
@@ -258,8 +328,15 @@ const SubscriberJourneyConvexProcessEnvironmentSchema = Schema.Struct({
   POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_API_URL: Schema.NonEmptyString,
   VALKEY_URL_INTERNAL: Schema.NonEmptyString,
+  UNLEASH_URL_INTERNAL: Schema.NonEmptyString,
+  UNLEASH_API_KEY: Schema.NonEmptyString,
   KETO_READ_URL_INTERNAL: Schema.NonEmptyString,
   KETO_WRITE_URL_INTERNAL: Schema.NonEmptyString,
+});
+
+const SubscriberJourneyOpenmeterRuntimeOptionsSchema = Schema.Struct({
+  url: Schema.NonEmptyString,
+  apiKey: Schema.NonEmptyString,
 });
 
 export const ProductBootstrapBillingStatusSchema = Schema.Struct({
@@ -295,11 +372,15 @@ export type SubscriberJourneyServiceError =
   | AuthorizationDelegatedCheckError
   | IdentitySessionModuleError
   | BillingStatePostgresRepositoryError
+  | SubscriberJourneyRepairQueryError
+  | RuntimeConfigModulePersistenceError
   | WorkflowJobsPostgresRepositoryError
   | BillingWebhookProcessingError
+  | RetentionLegalHoldPostgresRepositoryError
   | KeycloakAdapterRequestError
   | KeycloakSessionInactiveError
   | KeycloakSessionIdentifierMissingError
+  | OpenmeterAdapterError
   | PolarAdapterRequestError
   | PolarCatalogMetadataError
   | PolarPlanNotFoundError
@@ -308,7 +389,9 @@ export type SubscriberJourneyServiceError =
   | OryKetoAdapterRequestError
   | TenantOnboardingPostgresRepositoryError
   | TenantOwnerProvisioningActorMissingError
-  | TenantProvisioningPostgresRepositoryError;
+  | UnknownConfigKeyError
+  | TenantProvisioningPostgresRepositoryError
+  | RetentionLegalHoldModuleError;
 
 const decodeBootstrapBillingStatus = Schema.decodeUnknown(
   ProductBootstrapBillingStatusSchema,
@@ -330,6 +413,7 @@ const decodeSubscriberJourneyRuntimeOptions = Schema.decodeUnknown(
 
 const subscriberJourneyRepairSource = "billing-webhook.repair";
 const subscriberJourneyWorkflowRepairSource = "workflow-jobs.repair";
+const subscriberJourneyBootstrapRepairSource = "product-bootstrap.repair";
 
 const hasExhaustedWorkflowJobRecoveryBudget = (attempts: number) =>
   attempts > workflowJobsRetryMaxAttempts;
@@ -377,31 +461,67 @@ const buildPublicAuthStartRequestContext = (input: {
     },
   });
 
-export const preparePublicAuthStart = (
-  input: PublicAuthStartPreparationInput,
-): Effect.Effect<PublicAuthStartPreparation, ParseResult.ParseError, never> =>
-  Schema.decodeUnknown(PublicAuthStartPreparationInputSchema)(input).pipe(
-    Effect.flatMap((request) => {
-      const correlationId =
-        request.correlationId ?? buildPublicAuthStartCorrelationId();
-      const enabledModules = resolveDefaultTenantOnboardingEnabledModules();
+const buildPublicAuthStartBrandingRequestContext = (input: {
+  readonly host: string;
+  readonly correlationId: string;
+  readonly tenantHint: string;
+  readonly tenantScopeHint?: Schema.Schema.Type<
+    typeof PublicAuthStartTenantScopeHintSchema
+  >;
+}) =>
+  decodeRequestContext({
+    actorType: actorType.anonymous,
+    correlationId: input.correlationId,
+    host: input.host,
+    tenant:
+      input.tenantScopeHint === platformScope.individual
+        ? {
+            scope: platformScope.individual,
+            scopeId: input.tenantHint,
+            individualId: input.tenantHint,
+          }
+        : {
+            scope: platformScope.organization,
+            scopeId: input.tenantHint,
+            organizationId: input.tenantHint,
+          },
+  });
 
-      return Effect.all({
-        requestContext: buildPublicAuthStartRequestContext({
-          host: request.host,
-          correlationId,
-        }),
-        tenant: createProvisioningTenantContext({
-          scope: request.tenantScopeHint ?? platformScope.organization,
-        }),
+const buildPublicAuthStartSnapshot = <E>(input: {
+  readonly requestContext: RequestContext;
+  readonly host: string;
+  readonly correlationId: string;
+  readonly tenantHint?: string;
+  readonly tenantScopeHint?: Schema.Schema.Type<
+    typeof PublicAuthStartTenantScopeHintSchema
+  >;
+  readonly loadSnapshot: (
+    requestContext: RequestContext,
+  ) => Effect.Effect<Schema.Schema.Type<typeof PublicWebSnapshotSchema>, E>;
+}) =>
+  input.loadSnapshot(input.requestContext).pipe(
+    Effect.flatMap((snapshot) => {
+      if (input.tenantHint === undefined) {
+        return Effect.succeed(snapshot);
+      }
+
+      return buildPublicAuthStartBrandingRequestContext({
+        host: input.host,
+        correlationId: input.correlationId,
+        tenantHint: input.tenantHint,
+        ...(input.tenantScopeHint !== undefined
+          ? { tenantScopeHint: input.tenantScopeHint }
+          : {}),
       }).pipe(
-        Effect.flatMap(({ requestContext, tenant }) =>
-          Schema.decodeUnknown(PublicAuthStartPreparationSchema)({
-            correlationId,
-            requestContext,
-            tenant,
-            enabledModules,
-          }),
+        Effect.flatMap((brandingRequestContext) =>
+          input.loadSnapshot(brandingRequestContext).pipe(
+            Effect.flatMap((brandingSnapshot) =>
+              Schema.decodeUnknown(PublicWebSnapshotSchema)({
+                ...snapshot,
+                branding: brandingSnapshot.branding,
+              }),
+            ),
+          ),
         ),
       );
     }),
@@ -430,10 +550,18 @@ type SubscriberJourneyRepairReadModel = {
     scope: RequestContext["tenant"]["scope"],
     scopeId: string,
   ) => Promise<BillingCustomerAccountRecord | undefined>;
+  readonly getCustomerAccountById: (
+    accountId: string,
+  ) => Promise<BillingCustomerAccountRecord | undefined>;
 };
 
 type MakeSubscriberJourneyServiceOptions = {
   readonly repairReadModel: SubscriberJourneyRepairReadModel;
+  readonly runtimeConfig: Pick<
+    RuntimeConfigModuleService,
+    "listOverridesByModule" | "resolveConfigValue"
+  >;
+  readonly usageMeter: Pick<OpenmeterAdapterService, "ingestUsage"> | undefined;
 };
 
 export type SubscriberJourneyRepairQueryError = {
@@ -441,7 +569,8 @@ export type SubscriberJourneyRepairQueryError = {
   readonly operation:
     | "getProvisioningReceiptByTenant"
     | "getOnboardingRunByTenant"
-    | "getCustomerAccountByTenant";
+    | "getCustomerAccountByTenant"
+    | "getCustomerAccountById";
   readonly cause: unknown;
 };
 
@@ -543,6 +672,117 @@ const resolveSubscriberJourneyEnabledModules = (
     ),
   ]);
 
+const resolveTenantHierarchyCandidates = (input: {
+  readonly scope: RequestContext["tenant"]["scope"];
+  readonly scopeId: string;
+  readonly enterpriseId?: string;
+  readonly organizationId?: string;
+  readonly individualId?: string;
+}) => {
+  const candidates: Array<{
+    scope: RequestContext["tenant"]["scope"];
+    scopeId: string;
+  }> = [];
+
+  const addCandidate = (
+    scope: RequestContext["tenant"]["scope"],
+    scopeId: string,
+  ) => {
+    if (
+      candidates.some(
+        (candidate) =>
+          candidate.scope === scope && candidate.scopeId === scopeId,
+      )
+    ) {
+      return;
+    }
+
+    candidates.push({ scope, scopeId });
+  };
+
+  switch (input.scope) {
+    case platformScope.individual:
+      addCandidate(
+        platformScope.individual,
+        input.individualId ?? input.scopeId,
+      );
+
+      if (input.organizationId !== undefined) {
+        addCandidate(platformScope.organization, input.organizationId);
+      }
+
+      if (input.enterpriseId !== undefined) {
+        addCandidate(platformScope.enterprise, input.enterpriseId);
+      }
+
+      break;
+    case platformScope.organization:
+      addCandidate(
+        platformScope.organization,
+        input.organizationId ?? input.scopeId,
+      );
+
+      if (input.enterpriseId !== undefined) {
+        addCandidate(platformScope.enterprise, input.enterpriseId);
+      }
+
+      break;
+    case platformScope.enterprise:
+      addCandidate(
+        platformScope.enterprise,
+        input.enterpriseId ?? input.scopeId,
+      );
+
+      break;
+    case platformScope.platform:
+      break;
+  }
+
+  addCandidate(platformScope.platform, platformScope.platform);
+
+  return candidates;
+};
+
+const resolveRepairEntitlementsForCustomerAccount = (input: {
+  readonly tenant: {
+    readonly scope: RequestContext["tenant"]["scope"];
+    readonly scopeId: string;
+    readonly enterpriseId?: string;
+    readonly organizationId?: string;
+    readonly individualId?: string;
+  };
+  readonly customerAccount: BillingCustomerAccountRecord;
+  readonly entitlements: readonly BillingEntitlementRecord[];
+}) => {
+  const hierarchyCandidates = resolveTenantHierarchyCandidates(input.tenant);
+  const matchedCandidateIndex = hierarchyCandidates.findIndex(
+    (candidate) =>
+      candidate.scope === input.customerAccount.scope &&
+      candidate.scopeId === input.customerAccount.scopeId,
+  );
+  const alignedCandidates =
+    matchedCandidateIndex === -1
+      ? [
+          {
+            scope: input.customerAccount.scope,
+            scopeId: input.customerAccount.scopeId,
+          },
+          {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        ]
+      : hierarchyCandidates.slice(matchedCandidateIndex);
+
+  return input.entitlements.filter((entitlement) =>
+    alignedCandidates.some(
+      (candidate) =>
+        candidate.scope === entitlement.scope &&
+        candidate.scopeId === entitlement.scopeId,
+    ),
+  );
+};
+
 const buildSubscriberJourneyRepairRequestContext = (input: {
   readonly customerAccount: BillingCustomerAccountRecord;
   readonly correlationId: string;
@@ -583,6 +823,41 @@ const buildBootstrapAuthorizationDecision = (input: {
     : {}),
 });
 
+const emitProductBootstrapUsage = (input: {
+  readonly usageMeter: Pick<OpenmeterAdapterService, "ingestUsage"> | undefined;
+  readonly requestContext: RequestContext;
+  readonly entitlements: readonly BillingEntitlementRecord[];
+  readonly capturedAt: string;
+}) => {
+  const meteredApiRequestsEntitlement = input.entitlements.find(
+    (entitlement) =>
+      entitlement.featureKey === billingAndMeteringFeatureFlag.apiRequests &&
+      entitlement.quotaSnapshot !== undefined &&
+      entitlement.quotaSnapshot.meteringMode !== billingMeteringMode.none,
+  );
+
+  if (
+    input.usageMeter === undefined ||
+    meteredApiRequestsEntitlement?.quotaSnapshot === undefined
+  ) {
+    return Effect.void;
+  }
+
+  return input.usageMeter
+    .ingestUsage({
+      subject: [
+        input.requestContext.tenant.scope,
+        input.requestContext.tenant.scopeId,
+      ].join(":"),
+      eventName:
+        meteredApiRequestsEntitlement.quotaSnapshot.meterKey ??
+        meteredApiRequestsEntitlement.featureKey,
+      quantity: 1,
+      capturedAt: input.capturedAt,
+    })
+    .pipe(Effect.asVoid);
+};
+
 export type SubscriberJourneyService = {
   readonly listPublicPlans: Effect.Effect<
     PublicBillingPlanCatalog,
@@ -592,7 +867,10 @@ export type SubscriberJourneyService = {
   >;
   readonly preparePublicAuthStart: (
     input: PublicAuthStartPreparationInput,
-  ) => Effect.Effect<PublicAuthStartPreparation, ParseResult.ParseError>;
+  ) => Effect.Effect<
+    PublicAuthStartPreparation,
+    PublicAuthStartPreparationError
+  >;
   readonly resolveRequestContext: (
     input: IdentitySessionRequestContextLookup,
   ) => Effect.Effect<RequestContext, IdentitySessionModuleError>;
@@ -604,6 +882,14 @@ export type SubscriberJourneyService = {
   ) => Effect.Effect<
     IdentitySessionCompletionResult,
     IdentitySessionModuleError
+  >;
+  readonly invalidateSession: (
+    input: IdentitySessionInvalidationInput,
+  ) => Effect.Effect<
+    IdentitySessionInvalidationResult,
+    | ParseResult.ParseError
+    | IdentitySessionPostgresRepositoryError
+    | ValkeyAdapterOperationError
   >;
   readonly createCheckoutSession: (
     input: BillingCheckoutSessionInput,
@@ -658,6 +944,8 @@ export const makeSubscriberJourneyService = (
       cacheTtlSeconds: 60,
       maxCacheSize: 256,
       delegatedCheck: createOryKetoAuthorizationDelegatedCheck(oryKeto),
+      delegatedTupleLookup:
+        createOryKetoAuthorizationDelegatedTupleLookup(oryKeto),
     });
     const identitySession = yield* IdentitySessionModule;
     const tenantManagement = yield* TenantManagementModule;
@@ -670,6 +958,95 @@ export const makeSubscriberJourneyService = (
     const workflowJobs = yield* WorkflowJobsPostgresRepository;
     const billingWebhookRepository = yield* BillingWebhookPostgresRepository;
     const customerAccountResolver = yield* BillingCustomerAccountResolver;
+    const runtimeConfig = options.runtimeConfig;
+
+    const buildWorkflowJobTenantLookup = (
+      job: BillingReconciliationWorkflowJobRecord,
+    ) => ({
+      scope: job.tenantScope,
+      scopeId: job.tenantScopeId,
+      ...(job.payload.enterpriseId !== undefined
+        ? { enterpriseId: job.payload.enterpriseId }
+        : {}),
+      ...(job.payload.organizationId !== undefined
+        ? { organizationId: job.payload.organizationId }
+        : {}),
+      ...(job.payload.individualId !== undefined
+        ? { individualId: job.payload.individualId }
+        : {}),
+    });
+
+    const getCustomerAccountByTenantHierarchy = (input: {
+      readonly tenant: {
+        readonly scope: RequestContext["tenant"]["scope"];
+        readonly scopeId: string;
+        readonly enterpriseId?: string;
+        readonly organizationId?: string;
+        readonly individualId?: string;
+      };
+      readonly expectedAccountId?: string;
+    }) =>
+      Effect.tryPromise({
+        try: async () => {
+          const hierarchyCandidates = resolveTenantHierarchyCandidates(
+            input.tenant,
+          );
+          const matchesHierarchy = (
+            customerAccount: BillingCustomerAccountRecord,
+          ) =>
+            hierarchyCandidates.some(
+              (candidate) =>
+                candidate.scope === customerAccount.scope &&
+                candidate.scopeId === customerAccount.scopeId,
+            );
+
+          if (input.expectedAccountId !== undefined) {
+            const customerAccount =
+              await options.repairReadModel.getCustomerAccountById(
+                input.expectedAccountId,
+              );
+
+            return customerAccount !== undefined &&
+              matchesHierarchy(customerAccount)
+              ? customerAccount
+              : undefined;
+          }
+
+          for (const candidate of hierarchyCandidates) {
+            const customerAccount =
+              await options.repairReadModel.getCustomerAccountByTenant(
+                candidate.scope,
+                candidate.scopeId,
+              );
+
+            if (customerAccount !== undefined) {
+              return customerAccount;
+            }
+          }
+
+          return undefined;
+        },
+        catch: (cause) =>
+          ({
+            _tag: "SubscriberJourneyRepairQueryError",
+            operation:
+              input.expectedAccountId !== undefined
+                ? "getCustomerAccountById"
+                : "getCustomerAccountByTenant",
+            cause,
+          }) satisfies SubscriberJourneyRepairQueryError,
+      });
+
+    const getCustomerAccountByWorkflowTenant = (input: {
+      readonly job: BillingReconciliationWorkflowJobRecord;
+      readonly expectedAccountId?: string;
+    }) =>
+      getCustomerAccountByTenantHierarchy({
+        tenant: buildWorkflowJobTenantLookup(input.job),
+        ...(input.expectedAccountId !== undefined
+          ? { expectedAccountId: input.expectedAccountId }
+          : {}),
+      });
 
     const persistWorkflowJobRecord = (
       record: BillingReconciliationWorkflowJobRecord,
@@ -718,6 +1095,31 @@ export const makeSubscriberJourneyService = (
       );
     };
 
+    const buildWorkflowJobDispatchedRecord = (input: {
+      readonly job: BillingReconciliationWorkflowJobRecord;
+      readonly now: string;
+      readonly scheduledFunctionId: string;
+      readonly scheduledFunctionIds: readonly string[];
+      readonly primaryScheduled: boolean;
+      readonly scheduledRecoveryAttemptCount: number;
+      readonly expectedRecoveryAttemptCount: number;
+    }) =>
+      Schema.decodeUnknown(BillingReconciliationWorkflowJobRecordSchema)({
+        ...input.job,
+        payload: {
+          ...input.job.payload,
+          dispatch: {
+            scheduledAt: input.job.scheduledAt,
+            scheduledFunctionId: input.scheduledFunctionId,
+            scheduledFunctionIds: input.scheduledFunctionIds,
+            primaryScheduled: input.primaryScheduled,
+            scheduledRecoveryAttemptCount: input.scheduledRecoveryAttemptCount,
+            expectedRecoveryAttemptCount: input.expectedRecoveryAttemptCount,
+          },
+        },
+        updatedAt: input.now,
+      });
+
     const dispatchWorkflowJobRecord = (
       record: BillingReconciliationWorkflowJobRecord,
     ) =>
@@ -740,6 +1142,24 @@ export const makeSubscriberJourneyService = (
           ),
         );
 
+    const persistWorkflowJobDispatchFailureRecord = <Failure>(input: {
+      readonly job: BillingReconciliationWorkflowJobRecord;
+      readonly cause: Cause.Cause<Failure>;
+    }) => {
+      const now = new Date().toISOString();
+
+      return buildWorkflowJobDispatchFailureRecord({
+        job: input.job,
+        cause: input.cause,
+        now,
+      }).pipe(
+        Effect.flatMap((failedRecord) =>
+          persistWorkflowJobRecord(failedRecord),
+        ),
+        Effect.flatMap(() => Effect.failCause(input.cause)),
+      );
+    };
+
     const persistAndDispatchWorkflowJobRecord = (
       record: BillingReconciliationWorkflowJobRecord,
     ) =>
@@ -747,39 +1167,68 @@ export const makeSubscriberJourneyService = (
         Effect.flatMap((persistedRecord) =>
           persistedRecord.status === workflowJobStatus.scheduled
             ? dispatchWorkflowJobRecord(persistedRecord).pipe(
-                Effect.flatMap((dispatchResult) =>
-                  !dispatchResult.primaryScheduled ||
-                  dispatchResult.scheduledRecoveryAttemptCount <
-                    dispatchResult.expectedRecoveryAttemptCount
-                    ? buildWorkflowJobDispatchCoverageWarningRecord({
-                        job: persistedRecord,
-                        now: new Date().toISOString(),
-                        primaryScheduled: dispatchResult.primaryScheduled,
-                        scheduledRecoveryAttemptCount:
-                          dispatchResult.scheduledRecoveryAttemptCount,
-                        expectedRecoveryAttemptCount:
-                          dispatchResult.expectedRecoveryAttemptCount,
-                      }).pipe(
-                        Effect.flatMap((degradedRecord) =>
-                          persistWorkflowJobRecord(degradedRecord),
-                        ),
-                      )
-                    : Effect.succeed(persistedRecord),
-                ),
-                Effect.catchAllCause((cause) => {
-                  const now = new Date().toISOString();
-
-                  return buildWorkflowJobDispatchFailureRecord({
+                Effect.catchAllCause((cause) =>
+                  persistWorkflowJobDispatchFailureRecord({
                     job: persistedRecord,
                     cause,
-                    now,
+                  }),
+                ),
+                Effect.flatMap((dispatchResult) =>
+                  buildWorkflowJobDispatchedRecord({
+                    job: persistedRecord,
+                    now: new Date().toISOString(),
+                    scheduledFunctionId: dispatchResult.scheduledFunctionId,
+                    scheduledFunctionIds: dispatchResult.scheduledFunctionIds,
+                    primaryScheduled: dispatchResult.primaryScheduled,
+                    scheduledRecoveryAttemptCount:
+                      dispatchResult.scheduledRecoveryAttemptCount,
+                    expectedRecoveryAttemptCount:
+                      dispatchResult.expectedRecoveryAttemptCount,
                   }).pipe(
-                    Effect.flatMap((failedRecord) =>
-                      persistWorkflowJobRecord(failedRecord),
+                    Effect.catchAllCause((cause) =>
+                      persistWorkflowJobDispatchFailureRecord({
+                        job: persistedRecord,
+                        cause,
+                      }),
                     ),
-                    Effect.flatMap(() => Effect.failCause(cause)),
-                  );
-                }),
+                    Effect.flatMap((dispatchedRecord) =>
+                      persistWorkflowJobRecord(dispatchedRecord).pipe(
+                        Effect.catchAllCause((cause) =>
+                          persistWorkflowJobDispatchFailureRecord({
+                            job: dispatchedRecord,
+                            cause,
+                          }),
+                        ),
+                        Effect.flatMap((scheduledRecord) =>
+                          !dispatchResult.primaryScheduled ||
+                          dispatchResult.scheduledRecoveryAttemptCount <
+                            dispatchResult.expectedRecoveryAttemptCount
+                            ? buildWorkflowJobDispatchCoverageWarningRecord({
+                                job: scheduledRecord,
+                                now: new Date().toISOString(),
+                                primaryScheduled:
+                                  dispatchResult.primaryScheduled,
+                                scheduledRecoveryAttemptCount:
+                                  dispatchResult.scheduledRecoveryAttemptCount,
+                                expectedRecoveryAttemptCount:
+                                  dispatchResult.expectedRecoveryAttemptCount,
+                              }).pipe(
+                                Effect.flatMap((degradedRecord) =>
+                                  persistWorkflowJobRecord(degradedRecord),
+                                ),
+                                Effect.catchAllCause((cause) =>
+                                  persistWorkflowJobDispatchFailureRecord({
+                                    job: scheduledRecord,
+                                    cause,
+                                  }),
+                                ),
+                              )
+                            : Effect.succeed(scheduledRecord),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               )
             : Effect.succeed(persistedRecord),
         ),
@@ -921,132 +1370,151 @@ export const makeSubscriberJourneyService = (
         ).getTime();
 
     const recoverMissingBillingStateFromPolar = (input: {
-      readonly scope: RequestContext["tenant"]["scope"];
-      readonly scopeId: string;
+      readonly tenant: {
+        readonly scope: RequestContext["tenant"]["scope"];
+        readonly scopeId: string;
+        readonly enterpriseId?: string;
+        readonly organizationId?: string;
+        readonly individualId?: string;
+      };
       readonly correlationId: string;
     }) =>
       Effect.gen(function* () {
-        const lookup = yield* polar
-          .lookupActiveSubscriptionByExternalCustomerId(input.scopeId)
-          .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-        if (lookup === undefined) {
-          return undefined;
-        }
-
         const plans = yield* polar.listPlans.pipe(
           Effect.catchAll(() => Effect.succeed([] as PublicBillingPlanCatalog)),
         );
-        const matchingPlan = plans.find(
-          (plan) => plan.planId === lookup.planId,
-        );
-        const matchingPrice = matchingPlan?.prices.find(
-          (price) => price.priceId === lookup.priceId,
-        );
 
-        const customerAccount = yield* customerAccountResolver
-          .resolveCustomerAccount({
-            provider: platformAdapterServiceName.polar,
-            customerId: lookup.customerId,
-            scope: input.scope,
-            scopeId: input.scopeId,
-            subscriptionStatus: lookup.status,
-            subscriptionId: lookup.subscriptionId,
-            action: billingWebhookReconciliationAction.activate,
-          })
-          .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+        for (const candidate of resolveTenantHierarchyCandidates(
+          input.tenant,
+        )) {
+          const lookup = yield* polar
+            .lookupActiveSubscriptionByExternalCustomerId(candidate.scopeId)
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
-        if (customerAccount === undefined) {
-          return undefined;
-        }
+          if (lookup === undefined) {
+            continue;
+          }
 
-        const now = new Date().toISOString();
-        const syntheticDeliveryId = [
-          "polar-recovery",
-          input.scope,
-          input.scopeId,
-          lookup.subscriptionId,
-        ].join(":");
+          const matchingPlan = plans.find(
+            (plan) => plan.planId === lookup.planId,
+          );
+          const matchingPrice = matchingPlan?.prices.find(
+            (price) => price.priceId === lookup.priceId,
+          );
 
-        const projection: BillingWebhookPersistenceProjection = {
-          webhookReceipt: {
-            receiptId: syntheticDeliveryId,
-            provider: platformAdapterServiceName.polar,
-            deliveryId: syntheticDeliveryId,
-            eventType: billingWebhookEventType.checkoutCompleted,
-            processingState: billingWebhookReceiptProcessingState.processed,
-            verifiedSignature: true,
-            scope: input.scope,
-            scopeId: input.scopeId,
-            payload: {
-              eventId: syntheticDeliveryId,
+          const customerAccount = yield* customerAccountResolver
+            .resolveCustomerAccount({
+              provider: platformAdapterServiceName.polar,
+              customerId: lookup.customerId,
+              scope: candidate.scope,
+              scopeId: candidate.scopeId,
+              subscriptionStatus: lookup.status,
               subscriptionId: lookup.subscriptionId,
+              action: billingWebhookReconciliationAction.activate,
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+          if (customerAccount === undefined) {
+            continue;
+          }
+
+          const now = new Date().toISOString();
+          const syntheticDeliveryId = [
+            "polar-recovery",
+            candidate.scope,
+            candidate.scopeId,
+            lookup.subscriptionId,
+          ].join(":");
+
+          const projection: BillingWebhookPersistenceProjection = {
+            webhookReceipt: {
+              receiptId: syntheticDeliveryId,
+              provider: platformAdapterServiceName.polar,
+              deliveryId: syntheticDeliveryId,
+              eventType: billingWebhookEventType.checkoutCompleted,
+              processingState: billingWebhookReceiptProcessingState.processed,
+              verifiedSignature: true,
+              scope: candidate.scope,
+              scopeId: candidate.scopeId,
+              payload: {
+                eventId: syntheticDeliveryId,
+                subscriptionId: lookup.subscriptionId,
+                planId: lookup.planId,
+                priceId: lookup.priceId,
+                occurredAt: now,
+                action: billingWebhookReconciliationAction.activate,
+                customerId: lookup.customerId,
+                entitlementsActive:
+                  lookup.status === billingSubscriptionStatus.active,
+                ...(lookup.currentPeriodEnd !== undefined
+                  ? { currentPeriodEnd: lookup.currentPeriodEnd }
+                  : {}),
+              },
+              receivedAt: now,
+              processedAt: now,
+            },
+            subscription: {
+              subscriptionId: lookup.subscriptionId,
+              provider: platformAdapterServiceName.polar,
+              providerSubscriptionId: lookup.subscriptionId,
+              scope: candidate.scope,
+              scopeId: candidate.scopeId,
               planId: lookup.planId,
               priceId: lookup.priceId,
-              occurredAt: now,
-              action: billingWebhookReconciliationAction.activate,
-              customerId: lookup.customerId,
-              entitlementsActive:
-                lookup.status === billingSubscriptionStatus.active,
+              status: lookup.status,
               ...(lookup.currentPeriodEnd !== undefined
                 ? { currentPeriodEnd: lookup.currentPeriodEnd }
                 : {}),
+              metadata: {
+                action: billingWebhookReconciliationAction.activate,
+                interval: matchingPrice?.interval ?? billingPlanInterval.month,
+                entitlementsActive:
+                  lookup.status === billingSubscriptionStatus.active,
+                customerId: lookup.customerId,
+              },
             },
-            receivedAt: now,
-            processedAt: now,
-          },
-          subscription: {
-            subscriptionId: lookup.subscriptionId,
-            provider: platformAdapterServiceName.polar,
-            providerSubscriptionId: lookup.subscriptionId,
-            scope: input.scope,
-            scopeId: input.scopeId,
-            planId: lookup.planId,
-            priceId: lookup.priceId,
-            status: lookup.status,
-            ...(lookup.currentPeriodEnd !== undefined
-              ? { currentPeriodEnd: lookup.currentPeriodEnd }
-              : {}),
-            metadata: {
-              action: billingWebhookReconciliationAction.activate,
-              interval: matchingPrice?.interval ?? billingPlanInterval.month,
-              entitlementsActive:
-                lookup.status === billingSubscriptionStatus.active,
-              customerId: lookup.customerId,
+            paymentEvent: {
+              eventId: syntheticDeliveryId,
+              provider: platformAdapterServiceName.polar,
+              providerEventId: syntheticDeliveryId,
+              subscriptionId: lookup.subscriptionId,
+              scope: candidate.scope,
+              scopeId: candidate.scopeId,
+              eventType: billingWebhookEventType.checkoutCompleted,
+              status: billingPaymentEventStatus.synced,
+              effectiveAt: now,
+              payload: {
+                planId: lookup.planId,
+                priceId: lookup.priceId,
+                action: billingWebhookReconciliationAction.activate,
+                customerId: lookup.customerId,
+              },
             },
-          },
-          paymentEvent: {
-            eventId: syntheticDeliveryId,
-            provider: platformAdapterServiceName.polar,
-            providerEventId: syntheticDeliveryId,
-            subscriptionId: lookup.subscriptionId,
-            scope: input.scope,
-            scopeId: input.scopeId,
-            eventType: billingWebhookEventType.checkoutCompleted,
-            status: billingPaymentEventStatus.synced,
-            effectiveAt: now,
-            payload: {
-              planId: lookup.planId,
-              priceId: lookup.priceId,
-              action: billingWebhookReconciliationAction.activate,
-              customerId: lookup.customerId,
-            },
-          },
-          entitlements: [],
-          customerAccount,
-        };
+            entitlements: [],
+            customerAccount,
+          };
 
-        yield* billingWebhookRepository
-          .persistWebhookProjection(projection)
-          .pipe(Effect.ignore);
+          yield* billingWebhookRepository
+            .persistWebhookProjection(projection)
+            .pipe(Effect.ignore);
 
-        return {
-          customerAccount,
-          entitlements: [] as readonly BillingEntitlementRecord[],
-        };
+          return {
+            customerAccount,
+            entitlements: [] as readonly BillingEntitlementRecord[],
+          };
+        }
+
+        return undefined;
       });
 
     const repairTenantStateFromBillingContext = (input: {
+      readonly tenant: {
+        readonly scope: RequestContext["tenant"]["scope"];
+        readonly scopeId: string;
+        readonly enterpriseId?: string;
+        readonly organizationId?: string;
+        readonly individualId?: string;
+      };
       readonly customerAccount: BillingCustomerAccountRecord;
       readonly entitlements: readonly BillingEntitlementRecord[];
       readonly provider: string;
@@ -1152,11 +1620,18 @@ export const makeSubscriberJourneyService = (
         }
 
         if (needsOnboardingRepair) {
+          const alignedEntitlements =
+            resolveRepairEntitlementsForCustomerAccount({
+              tenant: input.tenant,
+              customerAccount: input.customerAccount,
+              entitlements: input.entitlements,
+            });
           const onboardingPlan = yield* tenantManagement.buildOnboardingPlan({
             requestContext,
-            enabledModules: yield* resolveSubscriberJourneyEnabledModules(
-              input.entitlements,
-            ),
+            enabledModules:
+              yield* resolveSubscriberJourneyEnabledModules(
+                alignedEntitlements,
+              ),
           });
 
           yield* tenantOnboardingRepository.persistOnboardingRun({
@@ -1203,6 +1678,10 @@ export const makeSubscriberJourneyService = (
         });
 
         yield* repairTenantStateFromBillingContext({
+          tenant: {
+            scope: result.reconciliation.event.tenantScope,
+            scopeId: result.reconciliation.event.tenantScopeId,
+          },
           customerAccount,
           entitlements: result.projection.entitlements,
           provider: result.reconciliation.event.provider,
@@ -1214,6 +1693,70 @@ export const makeSubscriberJourneyService = (
         return result;
       });
 
+    const repairTenantStateFromBootstrap = (input: {
+      readonly requestContext: RequestContext;
+      readonly entitlements: readonly BillingEntitlementRecord[];
+      readonly provider?: string;
+      readonly subscriptionAccountId?: string;
+    }) =>
+      Effect.gen(function* () {
+        if (hasPrivilegedBreakGlassAccess(input.requestContext)) {
+          return;
+        }
+
+        const customerAccount = yield* getCustomerAccountByTenantHierarchy({
+          tenant: {
+            scope: input.requestContext.tenant.scope,
+            scopeId: input.requestContext.tenant.scopeId,
+            ...(input.requestContext.tenant.enterpriseId !== undefined
+              ? { enterpriseId: input.requestContext.tenant.enterpriseId }
+              : {}),
+            ...(input.requestContext.tenant.organizationId !== undefined
+              ? { organizationId: input.requestContext.tenant.organizationId }
+              : {}),
+            ...(input.requestContext.tenant.individualId !== undefined
+              ? { individualId: input.requestContext.tenant.individualId }
+              : {}),
+          },
+          ...(input.subscriptionAccountId !== undefined
+            ? { expectedAccountId: input.subscriptionAccountId }
+            : {}),
+        });
+
+        if (customerAccount === undefined) {
+          return;
+        }
+
+        if (
+          (customerAccount.scope !== input.requestContext.tenant.scope ||
+            customerAccount.scopeId !== input.requestContext.tenant.scopeId) &&
+          input.requestContext.actorId !== customerAccount.actorId
+        ) {
+          return;
+        }
+
+        yield* repairTenantStateFromBillingContext({
+          tenant: {
+            scope: input.requestContext.tenant.scope,
+            scopeId: input.requestContext.tenant.scopeId,
+            ...(input.requestContext.tenant.enterpriseId !== undefined
+              ? { enterpriseId: input.requestContext.tenant.enterpriseId }
+              : {}),
+            ...(input.requestContext.tenant.organizationId !== undefined
+              ? { organizationId: input.requestContext.tenant.organizationId }
+              : {}),
+            ...(input.requestContext.tenant.individualId !== undefined
+              ? { individualId: input.requestContext.tenant.individualId }
+              : {}),
+          },
+          customerAccount,
+          entitlements: input.entitlements,
+          provider: input.provider ?? customerAccount.provider,
+          correlationId: input.requestContext.correlationId,
+          source: subscriberJourneyBootstrapRepairSource,
+        });
+      });
+
     const runBillingConvergenceJobRecord = ({
       jobId,
       now,
@@ -1221,198 +1764,174 @@ export const makeSubscriberJourneyService = (
       readonly jobId: string;
       readonly now: string;
     }) =>
-      Effect.gen(function* () {
-        const existingJob = yield* workflowJobs.getWorkflowJob({ jobId });
-
-        if (existingJob === undefined) {
-          return undefined;
-        }
-
-        if (
+      executeWorkflowJobRecord({
+        jobId,
+        loadJob: ({ jobId: workflowJobId }) =>
+          workflowJobs.getWorkflowJob({ jobId: workflowJobId }),
+        shouldBlockStaleRunningJob: ({ job }) =>
           shouldBlockStaleRunningWorkflowJob({
-            job: existingJob,
+            job,
             now,
-          })
-        ) {
-          const blockedJob = yield* blockWorkflowJob({
-            job: existingJob,
+          }),
+        blockStaleRunningJob: ({ job }) =>
+          blockWorkflowJob({
+            job,
             now,
             gapReason: workflowJobGapReason.repairFailed,
             lastError:
-              existingJob.lastError ??
+              job.lastError ??
               "Automatic billing reconciliation recovery attempts were exhausted before the job completed.",
-          });
-          const persistedBlockedJob =
-            yield* persistWorkflowJobRecord(blockedJob);
-
-          return yield* buildWorkflowJobSummary({
-            record: persistedBlockedJob,
-          });
-        }
-
-        const attemptedJob = yield* workflowJobs.claimScheduledWorkflowJob({
-          jobId,
-          now,
-        });
-
-        if (attemptedJob === undefined) {
-          return undefined;
-        }
-
-        return yield* Effect.gen(function* () {
-          const tenantAccessState = yield* billingState.getTenantAccessState({
-            scope: attemptedJob.tenantScope,
-            scopeId: attemptedJob.tenantScopeId,
-          });
-
-          if (tenantAccessState.subscription === undefined) {
-            const recovered = yield* recoverMissingBillingStateFromPolar({
-              scope: attemptedJob.tenantScope,
-              scopeId: attemptedJob.tenantScopeId,
-              correlationId: attemptedJob.payload.correlationId,
-            }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-            if (recovered !== undefined) {
-              yield* repairTenantStateFromBillingContext({
-                customerAccount: recovered.customerAccount,
-                entitlements: recovered.entitlements,
-                provider: platformAdapterServiceName.polar,
-                correlationId: attemptedJob.payload.correlationId,
-                source: subscriberJourneyWorkflowRepairSource,
-                ...(attemptedJob.payload.deliveryId !== undefined
-                  ? { deliveryId: attemptedJob.payload.deliveryId }
-                  : {}),
-              });
-              const completedJob = yield* completeWorkflowJob({
-                job: attemptedJob,
-                now,
-              });
-              const persistedJob =
-                yield* persistWorkflowJobRecord(completedJob);
-              return yield* buildWorkflowJobSummary({ record: persistedJob });
-            }
-
-            const rescheduledJob = yield* rescheduleWorkflowJob({
-              job: attemptedJob,
-              now,
-              gapReason: workflowJobGapReason.missingSubscriptionState,
-            });
-            const persistedJob =
-              yield* persistAndDispatchWorkflowJobRecord(rescheduledJob);
-
-            return yield* buildWorkflowJobSummary({ record: persistedJob });
-          }
-
-          const customerAccount = yield* Effect.tryPromise({
-            try: () =>
-              options.repairReadModel.getCustomerAccountByTenant(
-                attemptedJob.tenantScope,
-                attemptedJob.tenantScopeId,
-              ),
-            catch: (cause) =>
-              ({
-                _tag: "SubscriberJourneyRepairQueryError",
-                operation: "getCustomerAccountByTenant",
-                cause,
-              }) satisfies SubscriberJourneyRepairQueryError,
-          });
-
-          if (customerAccount === undefined) {
-            const recovered = yield* recoverMissingBillingStateFromPolar({
-              scope: attemptedJob.tenantScope,
-              scopeId: attemptedJob.tenantScopeId,
-              correlationId: attemptedJob.payload.correlationId,
-            }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-            if (recovered !== undefined) {
-              yield* repairTenantStateFromBillingContext({
-                customerAccount: recovered.customerAccount,
-                entitlements:
-                  tenantAccessState.entitlements.length > 0
-                    ? tenantAccessState.entitlements
-                    : recovered.entitlements,
-                provider: tenantAccessState.subscription.provider,
-                correlationId: attemptedJob.payload.correlationId,
-                source: subscriberJourneyWorkflowRepairSource,
-                ...(attemptedJob.payload.deliveryId !== undefined
-                  ? { deliveryId: attemptedJob.payload.deliveryId }
-                  : {}),
-              });
-              const completedJob = yield* completeWorkflowJob({
-                job: attemptedJob,
-                now,
-              });
-              const persistedJob =
-                yield* persistWorkflowJobRecord(completedJob);
-
-              return yield* buildWorkflowJobSummary({ record: persistedJob });
-            }
-
-            const rescheduledJob = yield* rescheduleWorkflowJob({
-              job: attemptedJob,
-              now,
-              gapReason: workflowJobGapReason.missingCustomerAccount,
-            });
-            const persistedJob =
-              yield* persistAndDispatchWorkflowJobRecord(rescheduledJob);
-
-            return yield* buildWorkflowJobSummary({ record: persistedJob });
-          }
-
-          yield* repairTenantStateFromBillingContext({
-            customerAccount,
-            entitlements: tenantAccessState.entitlements,
-            provider: tenantAccessState.subscription.provider,
-            correlationId: attemptedJob.payload.correlationId,
-            source: subscriberJourneyWorkflowRepairSource,
-            ...(attemptedJob.payload.deliveryId !== undefined
-              ? { deliveryId: attemptedJob.payload.deliveryId }
-              : {}),
-          });
-
-          const completedJob = yield* completeWorkflowJob({
-            job: {
-              ...attemptedJob,
-              payload: {
-                ...attemptedJob.payload,
-                providerCustomerId: customerAccount.providerCustomerId,
-                subscriptionId:
-                  customerAccount.metadata.subscriptionId ??
-                  attemptedJob.payload.subscriptionId,
-              },
-            },
-            now,
-          });
-          const persistedJob = yield* persistWorkflowJobRecord(completedJob);
-
-          return yield* buildWorkflowJobSummary({ record: persistedJob });
-        }).pipe(
-          Effect.catchAllCause((cause) =>
-            getBlockedDispatchFailureWorkflowJobRecord({
-              jobId: attemptedJob.jobId,
-            }).pipe(
-              Effect.flatMap((blockedDispatchFailureJob) =>
-                blockedDispatchFailureJob !== undefined
-                  ? buildWorkflowJobSummary({
-                      record: blockedDispatchFailureJob,
-                    })
-                  : rescheduleWorkflowJob({
-                      job: attemptedJob,
-                      now,
-                      gapReason: workflowJobGapReason.repairFailed,
-                      lastError: Cause.pretty(cause),
-                    }).pipe(
-                      Effect.flatMap((rescheduledJob) =>
-                        persistAndDispatchWorkflowJobRecord(rescheduledJob),
-                      ),
-                      Effect.flatMap((persistedJob) =>
-                        buildWorkflowJobSummary({ record: persistedJob }),
-                      ),
-                    ),
-              ),
+          }).pipe(
+            Effect.flatMap((blockedJob) =>
+              persistWorkflowJobRecord(blockedJob),
             ),
           ),
-        );
+        claimScheduledJob: ({ jobId: workflowJobId }) =>
+          workflowJobs.claimScheduledWorkflowJob({
+            jobId: workflowJobId,
+            now,
+          }),
+        runClaimedJob: ({ job: attemptedJob }) =>
+          Effect.gen(function* () {
+            const tenantLookup = buildWorkflowJobTenantLookup(attemptedJob);
+            const tenantAccessState =
+              yield* billingState.getTenantAccessState(tenantLookup);
+
+            if (tenantAccessState.subscription === undefined) {
+              const recovered = yield* recoverMissingBillingStateFromPolar({
+                tenant: tenantLookup,
+                correlationId: attemptedJob.payload.correlationId,
+              }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+              if (recovered !== undefined) {
+                yield* repairTenantStateFromBillingContext({
+                  tenant: tenantLookup,
+                  customerAccount: recovered.customerAccount,
+                  entitlements: recovered.entitlements,
+                  provider: platformAdapterServiceName.polar,
+                  correlationId: attemptedJob.payload.correlationId,
+                  source: subscriberJourneyWorkflowRepairSource,
+                  ...(attemptedJob.payload.deliveryId !== undefined
+                    ? { deliveryId: attemptedJob.payload.deliveryId }
+                    : {}),
+                });
+                const completedJob = yield* completeWorkflowJob({
+                  job: attemptedJob,
+                  now,
+                });
+
+                return yield* persistWorkflowJobRecord(completedJob);
+              }
+
+              const rescheduledJob = yield* rescheduleWorkflowJob({
+                job: attemptedJob,
+                now,
+                gapReason: workflowJobGapReason.missingSubscriptionState,
+              });
+
+              return yield* persistAndDispatchWorkflowJobRecord(rescheduledJob);
+            }
+
+            const customerAccount = yield* getCustomerAccountByWorkflowTenant({
+              job: attemptedJob,
+              ...(tenantAccessState.subscription.accountId !== undefined
+                ? {
+                    expectedAccountId: tenantAccessState.subscription.accountId,
+                  }
+                : {}),
+            });
+
+            if (customerAccount === undefined) {
+              const recovered = yield* recoverMissingBillingStateFromPolar({
+                tenant: tenantLookup,
+                correlationId: attemptedJob.payload.correlationId,
+              }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+              if (recovered !== undefined) {
+                yield* repairTenantStateFromBillingContext({
+                  tenant: tenantLookup,
+                  customerAccount: recovered.customerAccount,
+                  entitlements:
+                    tenantAccessState.entitlements.length > 0
+                      ? tenantAccessState.entitlements
+                      : recovered.entitlements,
+                  provider: tenantAccessState.subscription.provider,
+                  correlationId: attemptedJob.payload.correlationId,
+                  source: subscriberJourneyWorkflowRepairSource,
+                  ...(attemptedJob.payload.deliveryId !== undefined
+                    ? { deliveryId: attemptedJob.payload.deliveryId }
+                    : {}),
+                });
+                const completedJob = yield* completeWorkflowJob({
+                  job: attemptedJob,
+                  now,
+                });
+
+                return yield* persistWorkflowJobRecord(completedJob);
+              }
+
+              const rescheduledJob = yield* rescheduleWorkflowJob({
+                job: attemptedJob,
+                now,
+                gapReason: workflowJobGapReason.missingCustomerAccount,
+              });
+
+              return yield* persistAndDispatchWorkflowJobRecord(rescheduledJob);
+            }
+
+            yield* repairTenantStateFromBillingContext({
+              tenant: tenantLookup,
+              customerAccount,
+              entitlements: tenantAccessState.entitlements,
+              provider: tenantAccessState.subscription.provider,
+              correlationId: attemptedJob.payload.correlationId,
+              source: subscriberJourneyWorkflowRepairSource,
+              ...(attemptedJob.payload.deliveryId !== undefined
+                ? { deliveryId: attemptedJob.payload.deliveryId }
+                : {}),
+            });
+
+            const completedJob = yield* completeWorkflowJob({
+              job: {
+                ...attemptedJob,
+                payload: {
+                  ...attemptedJob.payload,
+                  providerCustomerId: customerAccount.providerCustomerId,
+                  subscriptionId:
+                    customerAccount.metadata.subscriptionId ??
+                    attemptedJob.payload.subscriptionId,
+                },
+              },
+              now,
+            });
+
+            return yield* persistWorkflowJobRecord(completedJob);
+          }),
+        recoverClaimedJobFailure: ({ job: attemptedJob, cause }) =>
+          getBlockedDispatchFailureWorkflowJobRecord({
+            jobId: attemptedJob.jobId,
+          }).pipe(
+            Effect.flatMap((blockedDispatchFailureJob) =>
+              blockedDispatchFailureJob !== undefined
+                ? buildWorkflowJobSummary({
+                    record: blockedDispatchFailureJob,
+                  })
+                : rescheduleWorkflowJob({
+                    job: attemptedJob,
+                    now,
+                    gapReason: workflowJobGapReason.repairFailed,
+                    lastError: Cause.pretty(cause),
+                  }).pipe(
+                    Effect.flatMap((rescheduledJob) =>
+                      persistAndDispatchWorkflowJobRecord(rescheduledJob),
+                    ),
+                    Effect.flatMap((persistedJob) =>
+                      buildWorkflowJobSummary({ record: persistedJob }),
+                    ),
+                  ),
+            ),
+          ),
+        summarize: ({ record }) => buildWorkflowJobSummary({ record }),
       });
 
     const runBillingConvergenceJob = (
@@ -1463,12 +1982,74 @@ export const makeSubscriberJourneyService = (
         input: PublicAuthStartPreparationInput,
       ): Effect.Effect<
         PublicAuthStartPreparation,
-        ParseResult.ParseError,
+        PublicAuthStartPreparationError,
         never
-      > => preparePublicAuthStart(input),
+      > =>
+        Schema.decodeUnknown(PublicAuthStartPreparationInputSchema)(input).pipe(
+          Effect.flatMap((request) => {
+            const correlationId =
+              request.correlationId ?? buildPublicAuthStartCorrelationId();
+            const enabledModules =
+              resolveDefaultTenantOnboardingEnabledModules();
+
+            return Effect.all({
+              requestContext: buildPublicAuthStartRequestContext({
+                host: request.host,
+                correlationId,
+              }),
+              tenant: createProvisioningTenantContext({
+                scope: request.tenantScopeHint ?? platformScope.organization,
+              }),
+            }).pipe(
+              Effect.flatMap(({ requestContext, tenant }) =>
+                buildPublicAuthStartSnapshot({
+                  requestContext,
+                  host: request.host,
+                  correlationId,
+                  ...(request.tenantHint !== undefined
+                    ? { tenantHint: request.tenantHint }
+                    : {}),
+                  ...(request.tenantScopeHint !== undefined
+                    ? { tenantScopeHint: request.tenantScopeHint }
+                    : {}),
+                  loadSnapshot: (snapshotRequestContext) =>
+                    billingState
+                      .getTenantAccessState({
+                        ...snapshotRequestContext.tenant,
+                      })
+                      .pipe(
+                        Effect.map(
+                          (tenantAccessState) => tenantAccessState.entitlements,
+                        ),
+                      )
+                      .pipe(
+                        Effect.flatMap((entitlements) =>
+                          getPublicWebSnapshotForRequestContextWithRuntimeConfig(
+                            snapshotRequestContext,
+                            runtimeConfig,
+                            entitlements,
+                          ),
+                        ),
+                      ),
+                }).pipe(
+                  Effect.flatMap((snapshot) =>
+                    Schema.decodeUnknown(PublicAuthStartPreparationSchema)({
+                      correlationId,
+                      requestContext,
+                      tenant,
+                      enabledModules,
+                      snapshot,
+                    }),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
       resolveRequestContext: identitySession.resolveRequestContext,
       startAuthentication: identitySession.startAuthentication,
       completeAuthentication: identitySession.completeAuthentication,
+      invalidateSession: identitySession.invalidateSession,
       createCheckoutSession: (input: BillingCheckoutSessionInput) =>
         Effect.gen(function* () {
           const request = yield* Schema.decodeUnknown(
@@ -1498,6 +2079,15 @@ export const makeSubscriberJourneyService = (
               sourceModuleId: platformModuleId.billingAndMetering,
               tenantScope: request.tenantScope,
               tenantScopeId: request.tenantScopeId,
+              ...(request.enterpriseId !== undefined
+                ? { enterpriseId: request.enterpriseId }
+                : {}),
+              ...(request.organizationId !== undefined
+                ? { organizationId: request.organizationId }
+                : {}),
+              ...(request.individualId !== undefined
+                ? { individualId: request.individualId }
+                : {}),
               provider: platformAdapterServiceName.polar,
               correlationId: buildSubscriberJourneyWorkflowCorrelationId(jobId),
               checkoutSessionId: checkoutSession.checkoutSessionId,
@@ -1531,7 +2121,9 @@ export const makeSubscriberJourneyService = (
         ),
       runBillingConvergenceJob,
       runDueBillingConvergenceJobs,
-      buildProductBootstrap: (input: SubscriberJourneyBootstrapInput) =>
+      buildProductBootstrap: (
+        input: SubscriberJourneyBootstrapInput,
+      ): Effect.Effect<ProductBootstrapResult, SubscriberJourneyServiceError> =>
         Schema.decodeUnknown(SubscriberJourneyBootstrapInputSchema)(input).pipe(
           Effect.flatMap((request) =>
             Effect.gen(function* () {
@@ -1571,11 +2163,27 @@ export const makeSubscriberJourneyService = (
 
               const tenantAccessState =
                 yield* billingState.getTenantAccessState({
-                  scope: requestContext.tenant.scope,
-                  scopeId: requestContext.tenant.scopeId,
+                  ...requestContext.tenant,
                 });
+              yield* repairTenantStateFromBootstrap({
+                requestContext,
+                entitlements: tenantAccessState.entitlements,
+                ...(tenantAccessState.subscription?.accountId !== undefined
+                  ? {
+                      subscriptionAccountId:
+                        tenantAccessState.subscription.accountId,
+                    }
+                  : {}),
+                ...(tenantAccessState.subscription?.provider !== undefined
+                  ? { provider: tenantAccessState.subscription.provider }
+                  : {}),
+              });
               const snapshot =
-                yield* getProductAppSnapshotForRequest(requestContext);
+                yield* getProductAppSnapshotForRequestContextWithRuntimeConfig(
+                  requestContext,
+                  runtimeConfig,
+                  tenantAccessState.entitlements,
+                );
               const fieldSecurity = yield* makeFieldSecurityModule();
               const billingProjection = findModuleManifest(
                 platformModuleId.billingAndMetering,
@@ -1610,6 +2218,12 @@ export const makeSubscriberJourneyService = (
                     })).projectedRecord;
               const billingStatus =
                 yield* decodeBootstrapBillingStatus(projectedBilling);
+              yield* emitProductBootstrapUsage({
+                usageMeter: options.usageMeter,
+                requestContext,
+                entitlements: tenantAccessState.entitlements,
+                capturedAt: new Date().toISOString(),
+              });
 
               return {
                 requestContext,
@@ -1619,14 +2233,19 @@ export const makeSubscriberJourneyService = (
                 enabledModules: yield* resolveSubscriberJourneyEnabledModules(
                   tenantAccessState.entitlements,
                 ),
-              };
+              } satisfies ProductBootstrapResult;
             }),
           ),
         ),
     } satisfies SubscriberJourneyService;
   });
 
-const makeSubscriberJourneyRuntime = (
+export type SubscriberJourneyRuntimeError = {
+  readonly _tag: "SubscriberJourneyRuntimeError";
+  readonly cause: unknown;
+};
+
+export const makeSubscriberJourneyRuntime = (
   options: MakeSubscriberJourneyRuntimeOptions,
 ) =>
   Effect.gen(function* () {
@@ -1654,6 +2273,26 @@ const makeSubscriberJourneyRuntime = (
     }
 
     const writeDatabase = buildWriteDatabase(postgres.database);
+    const runtimeConfigQueryable: RuntimeConfigPostgresQueryable = {
+      listOverridesByModule: (moduleId) =>
+        postgres.database
+          .select()
+          .from(runtimeConfigOverridesTable)
+          .where(eq(runtimeConfigOverridesTable.moduleId, moduleId))
+          .orderBy(desc(runtimeConfigOverridesTable.changedAt)),
+      listOverrideProposalsByModule: (moduleId) =>
+        postgres.database
+          .select()
+          .from(runtimeConfigOverrideProposalsTable)
+          .where(eq(runtimeConfigOverrideProposalsTable.moduleId, moduleId))
+          .orderBy(desc(runtimeConfigOverrideProposalsTable.changedAt)),
+      listSyncArtifactsByModule: (moduleId) =>
+        postgres.database
+          .select()
+          .from(runtimeConfigSyncArtifactsTable)
+          .where(eq(runtimeConfigSyncArtifactsTable.moduleId, moduleId))
+          .orderBy(desc(runtimeConfigSyncArtifactsTable.generatedAt)),
+    };
     const keycloak = yield* makeKeycloakAdapter({
       baseUrl: options.keycloakBaseUrl,
       realm: options.keycloakRealm,
@@ -1667,12 +2306,38 @@ const makeSubscriberJourneyRuntime = (
     const valkey = yield* makeValkeyAdapter({
       url: options.valkeyUrl,
     });
+    const unleash = yield* makeUnleashAdapter({
+      url: options.unleashUrl,
+      apiKey: options.unleashApiKey,
+    });
     const polar = yield* makePolarAdapter({
       apiKey: options.polarAccessToken,
       apiUrl: options.polarApiUrl,
     });
+    const openmeterRuntimeOptions =
+      options.openmeterUrl === undefined &&
+      options.openmeterApiKey === undefined
+        ? undefined
+        : yield* Schema.decodeUnknown(
+            SubscriberJourneyOpenmeterRuntimeOptionsSchema,
+          )({
+            url: options.openmeterUrl,
+            apiKey: options.openmeterApiKey,
+          });
+    const openmeter =
+      openmeterRuntimeOptions === undefined
+        ? undefined
+        : yield* makeOpenmeterAdapter(openmeterRuntimeOptions);
     const tenantManagement = yield* makeTenantManagementModule();
     const billingMetering = yield* makeBillingMeteringModule();
+    const runtimeConfigRepository = yield* makeRuntimeConfigPostgresRepository({
+      ...writeDatabase,
+      ...runtimeConfigQueryable,
+    });
+    const runtimeConfig = yield* makeRuntimeConfigModule(
+      runtimeConfigRepository,
+      makeRuntimeFeatureFlagRollout(unleash),
+    );
     const identityRepository =
       yield* makeIdentitySessionPostgresRepository(writeDatabase);
     const onboardingRepository =
@@ -1713,7 +2378,48 @@ const makeSubscriberJourneyRuntime = (
               eq(billingEntitlementsTable.active, true),
             ),
           ),
+      listPaymentEventsByScope: (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(billingPaymentEventsTable)
+          .where(
+            and(
+              eq(billingPaymentEventsTable.scope, scope),
+              eq(billingPaymentEventsTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(billingPaymentEventsTable.recordedAt)),
       getLatestSubscriptionByScope: async (scope, scopeId) => {
+        const liveRows = await postgres.database
+          .select()
+          .from(billingSubscriptionsTable)
+          .where(
+            and(
+              eq(billingSubscriptionsTable.scope, scope),
+              eq(billingSubscriptionsTable.scopeId, scopeId),
+              or(
+                eq(
+                  billingSubscriptionsTable.status,
+                  billingSubscriptionStatus.pending,
+                ),
+                eq(
+                  billingSubscriptionsTable.status,
+                  billingSubscriptionStatus.active,
+                ),
+                eq(
+                  billingSubscriptionsTable.status,
+                  billingSubscriptionStatus.pastDue,
+                ),
+              ),
+            ),
+          )
+          .orderBy(desc(billingSubscriptionsTable.updatedAt))
+          .limit(1);
+
+        if (liveRows[0] !== undefined) {
+          return liveRows[0];
+        }
+
         const rows = await postgres.database
           .select()
           .from(billingSubscriptionsTable)
@@ -1729,13 +2435,553 @@ const makeSubscriberJourneyRuntime = (
         return rows[0];
       },
     };
+    const auditLogQueryable: AuditLogPostgresQueryable = {
+      listEventsByModule: (moduleId) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(eq(auditLogEventsTable.moduleId, moduleId))
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
+      listEventsByTarget: (input) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(
+            and(
+              eq(auditLogEventsTable.moduleId, input.moduleId),
+              eq(auditLogEventsTable.target, input.target),
+            ),
+          )
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
+      listEventsByActor: (actorId) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(eq(auditLogEventsTable.actorId, actorId))
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
+      listEventsByTenant: (input) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(
+            and(
+              eq(auditLogEventsTable.tenantScope, input.tenantScope),
+              eq(auditLogEventsTable.tenantScopeId, input.tenantScopeId),
+            ),
+          )
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
+    };
     const billingStateRepository = yield* makeBillingStatePostgresRepository(
       billingStateQueryable,
     );
+    const auditLogRepository = yield* makeAuditLogPostgresRepository({
+      ...writeDatabase,
+      ...auditLogQueryable,
+    });
+    const auditLog = yield* makeAuditLogModule(auditLogRepository);
+    const retentionLegalHoldQueryable: RetentionLegalHoldPostgresQueryable = {
+      upsertRetentionPolicy: async (record) => {
+        const rows = await postgres.database
+          .insert(retentionPoliciesTable)
+          .values(record)
+          .onConflictDoUpdate({
+            target: [
+              retentionPoliciesTable.scope,
+              retentionPoliciesTable.scopeId,
+              retentionPoliciesTable.dataType,
+            ],
+            set: {
+              policyId: record.policyId,
+              retentionDays: record.retentionDays,
+              changedBy: record.changedBy,
+              updatedAt: record.updatedAt ?? new Date(),
+            },
+          })
+          .returning();
+
+        return (
+          rows[0] ?? {
+            policyId: record.policyId,
+            scope: record.scope,
+            scopeId: record.scopeId,
+            dataType: record.dataType,
+            retentionDays: record.retentionDays,
+            changedBy: record.changedBy,
+            createdAt: record.createdAt ?? new Date(),
+            updatedAt: record.updatedAt ?? new Date(),
+          }
+        );
+      },
+      findRetentionPolicy: async (scope, scopeId, dataType) => {
+        const rows = await postgres.database
+          .select()
+          .from(retentionPoliciesTable)
+          .where(
+            and(
+              eq(retentionPoliciesTable.scope, scope),
+              eq(retentionPoliciesTable.scopeId, scopeId),
+              eq(retentionPoliciesTable.dataType, dataType),
+            ),
+          )
+          .limit(1);
+
+        return rows[0];
+      },
+      listRetentionPoliciesByScope: async (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(retentionPoliciesTable)
+          .where(
+            and(
+              eq(retentionPoliciesTable.scope, scope),
+              eq(retentionPoliciesTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(retentionPoliciesTable.updatedAt)),
+      createRetentionLegalHold: async (record) => {
+        const rows = await postgres.database
+          .insert(retentionLegalHoldsTable)
+          .values(record)
+          .returning();
+
+        return (
+          rows[0] ?? {
+            legalHoldId: record.legalHoldId,
+            scope: record.scope,
+            scopeId: record.scopeId,
+            dataType: record.dataType,
+            targetId: record.targetId,
+            reason: record.reason,
+            evidence: record.evidence,
+            status: record.status ?? retentionLegalHoldStatus.active,
+            placedBy: record.placedBy,
+            placedAt: record.placedAt ?? new Date(),
+            releasedBy: record.releasedBy ?? null,
+            releasedAt: record.releasedAt ?? null,
+          }
+        );
+      },
+      getRetentionLegalHoldById: async (legalHoldId) => {
+        const rows = await postgres.database
+          .select()
+          .from(retentionLegalHoldsTable)
+          .where(eq(retentionLegalHoldsTable.legalHoldId, legalHoldId))
+          .limit(1);
+
+        return rows[0];
+      },
+      findActiveRetentionLegalHold: async (
+        scope,
+        scopeId,
+        dataType,
+        targetId,
+      ) => {
+        const rows = await postgres.database
+          .select()
+          .from(retentionLegalHoldsTable)
+          .where(
+            and(
+              eq(retentionLegalHoldsTable.scope, scope),
+              eq(retentionLegalHoldsTable.scopeId, scopeId),
+              eq(retentionLegalHoldsTable.dataType, dataType),
+              eq(retentionLegalHoldsTable.targetId, targetId),
+              eq(
+                retentionLegalHoldsTable.status,
+                retentionLegalHoldStatus.active,
+              ),
+            ),
+          )
+          .limit(1);
+
+        return rows[0];
+      },
+      listRetentionLegalHoldsByScope: async (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(retentionLegalHoldsTable)
+          .where(
+            and(
+              eq(retentionLegalHoldsTable.scope, scope),
+              eq(retentionLegalHoldsTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(retentionLegalHoldsTable.placedAt)),
+      releaseRetentionLegalHold: async (
+        legalHoldId,
+        releasedBy,
+        releasedAt,
+      ) => {
+        const rows = await postgres.database
+          .update(retentionLegalHoldsTable)
+          .set({
+            status: retentionLegalHoldStatus.released,
+            releasedBy,
+            releasedAt,
+          })
+          .where(
+            and(
+              eq(retentionLegalHoldsTable.legalHoldId, legalHoldId),
+              eq(
+                retentionLegalHoldsTable.status,
+                retentionLegalHoldStatus.active,
+              ),
+            ),
+          )
+          .returning();
+
+        return rows[0];
+      },
+    };
+    const retentionLegalHoldRepository =
+      yield* makeRetentionLegalHoldPostgresRepository(
+        retentionLegalHoldQueryable,
+      );
     const billingWebhookReplayRepository =
       yield* makeBillingWebhookReplayPostgresRepository(
         billingWebhookReplayQueryable,
       );
+    const emailDeliveryRepository = yield* makeEmailDeliveryPostgresRepository(
+      buildEmailDeliveryPostgresQueryable(writeDatabase),
+    );
+    const webhookSubscriptionQueryable: WebhookSubscriptionPostgresQueryable = {
+      createWebhookSubscription: async (record) => {
+        const rows = await postgres.database
+          .insert(webhookSubscriptionsTable)
+          .values(record)
+          .returning();
+
+        return (
+          rows[0] ?? {
+            subscriptionId: record.subscriptionId,
+            scope: record.scope,
+            scopeId: record.scopeId,
+            url: record.url,
+            events: record.events ?? [],
+            status: record.status ?? "active",
+            lastDeliveryAt: record.lastDeliveryAt ?? null,
+            createdAt: record.createdAt ?? new Date(),
+            updatedAt: record.updatedAt ?? new Date(),
+          }
+        );
+      },
+      listWebhookSubscriptionsByScope: async (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(webhookSubscriptionsTable)
+          .where(
+            and(
+              eq(webhookSubscriptionsTable.scope, scope),
+              eq(webhookSubscriptionsTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(webhookSubscriptionsTable.updatedAt)),
+    };
+    const webhookSubscriptionRepository =
+      yield* makeWebhookSubscriptionPostgresRepository(
+        webhookSubscriptionQueryable,
+      );
+    const webhookOutboundDeliveryQueryable: WebhookOutboundDeliveryPostgresQueryable =
+      {
+        createWebhookOutboundDelivery: async (record) => {
+          const rows = await postgres.database
+            .insert(webhookOutboundDeliveriesTable)
+            .values(record)
+            .returning();
+
+          return (
+            rows[0] ?? {
+              deliveryId: record.deliveryId,
+              subscriptionId: record.subscriptionId,
+              scope: record.scope,
+              scopeId: record.scopeId,
+              eventType: record.eventType,
+              payload: record.payload,
+              status: record.status ?? "pending",
+              attemptCount: record.attemptCount ?? 0,
+              maxAttempts: record.maxAttempts,
+              nextAttemptAt: record.nextAttemptAt ?? null,
+              deliveredAt: record.deliveredAt ?? null,
+              exhaustedAt: record.exhaustedAt ?? null,
+              lastError: record.lastError ?? null,
+              createdAt: record.createdAt ?? new Date(),
+              updatedAt: record.updatedAt ?? new Date(),
+            }
+          );
+        },
+        getWebhookOutboundDelivery: async (deliveryId) => {
+          const rows = await postgres.database
+            .select()
+            .from(webhookOutboundDeliveriesTable)
+            .where(eq(webhookOutboundDeliveriesTable.deliveryId, deliveryId))
+            .limit(1);
+
+          return rows[0];
+        },
+        listWebhookOutboundDeliveriesByScope: async (scope, scopeId) =>
+          postgres.database
+            .select()
+            .from(webhookOutboundDeliveriesTable)
+            .where(
+              and(
+                eq(webhookOutboundDeliveriesTable.scope, scope),
+                eq(webhookOutboundDeliveriesTable.scopeId, scopeId),
+              ),
+            )
+            .orderBy(desc(webhookOutboundDeliveriesTable.updatedAt)),
+        updateWebhookOutboundDelivery: async (input) =>
+          postgres.database.transaction(async (transaction) => {
+            const rows = await transaction
+              .update(webhookOutboundDeliveriesTable)
+              .set({
+                status: input.record.status,
+                attemptCount: input.record.attemptCount,
+                maxAttempts: input.record.maxAttempts,
+                nextAttemptAt: input.record.nextAttemptAt ?? null,
+                deliveredAt: input.record.deliveredAt ?? null,
+                exhaustedAt: input.record.exhaustedAt ?? null,
+                lastError: input.record.lastError ?? null,
+                updatedAt: input.record.updatedAt,
+              })
+              .where(
+                and(
+                  eq(
+                    webhookOutboundDeliveriesTable.deliveryId,
+                    input.expectedCurrentRecord.deliveryId,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.subscriptionId,
+                    input.expectedCurrentRecord.subscriptionId,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.scope,
+                    input.expectedCurrentRecord.scope,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.scopeId,
+                    input.expectedCurrentRecord.scopeId,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.eventType,
+                    input.expectedCurrentRecord.eventType,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.payload,
+                    input.expectedCurrentRecord.payload,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.status,
+                    input.expectedCurrentRecord.status,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.attemptCount,
+                    input.expectedCurrentRecord.attemptCount,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.maxAttempts,
+                    input.expectedCurrentRecord.maxAttempts,
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.createdAt,
+                    new Date(input.expectedCurrentRecord.createdAt),
+                  ),
+                  eq(
+                    webhookOutboundDeliveriesTable.updatedAt,
+                    new Date(input.expectedCurrentRecord.updatedAt),
+                  ),
+                  input.expectedCurrentRecord.nextAttemptAt === undefined
+                    ? isNull(webhookOutboundDeliveriesTable.nextAttemptAt)
+                    : eq(
+                        webhookOutboundDeliveriesTable.nextAttemptAt,
+                        new Date(input.expectedCurrentRecord.nextAttemptAt),
+                      ),
+                  input.expectedCurrentRecord.deliveredAt === undefined
+                    ? isNull(webhookOutboundDeliveriesTable.deliveredAt)
+                    : eq(
+                        webhookOutboundDeliveriesTable.deliveredAt,
+                        new Date(input.expectedCurrentRecord.deliveredAt),
+                      ),
+                  input.expectedCurrentRecord.exhaustedAt === undefined
+                    ? isNull(webhookOutboundDeliveriesTable.exhaustedAt)
+                    : eq(
+                        webhookOutboundDeliveriesTable.exhaustedAt,
+                        new Date(input.expectedCurrentRecord.exhaustedAt),
+                      ),
+                  input.expectedCurrentRecord.lastError === undefined
+                    ? isNull(webhookOutboundDeliveriesTable.lastError)
+                    : eq(
+                        webhookOutboundDeliveriesTable.lastError,
+                        input.expectedCurrentRecord.lastError,
+                      ),
+                ),
+              )
+              .returning();
+
+            const updatedRecord = rows[0];
+
+            if (updatedRecord === undefined) {
+              return undefined;
+            }
+
+            if (input.touchSubscriptionLastDeliveryAt !== undefined) {
+              await transaction
+                .update(webhookSubscriptionsTable)
+                .set({
+                  lastDeliveryAt: input.touchSubscriptionLastDeliveryAt,
+                  updatedAt: input.touchSubscriptionLastDeliveryAt,
+                })
+                .where(
+                  eq(
+                    webhookSubscriptionsTable.subscriptionId,
+                    updatedRecord.subscriptionId,
+                  ),
+                );
+            }
+
+            return updatedRecord;
+          }),
+      };
+    const webhookOutboundDeliveryRepository =
+      yield* makeWebhookOutboundDeliveryPostgresRepository(
+        webhookOutboundDeliveryQueryable,
+      );
+    const webhookApiKeyQueryable: WebhookApiKeyPostgresQueryable = {
+      createWebhookApiKey: async (record) => {
+        const rows = await postgres.database
+          .insert(webhookApiKeysTable)
+          .values(record)
+          .returning();
+
+        return (
+          rows[0] ?? {
+            apiKeyId: record.apiKeyId,
+            scope: record.scope,
+            scopeId: record.scopeId,
+            label: record.label,
+            secretHash: record.secretHash,
+            prefix: record.prefix,
+            status: record.status ?? "active",
+            createdAt: record.createdAt ?? new Date(),
+            updatedAt: record.updatedAt ?? new Date(),
+            rotatedAt: record.rotatedAt ?? null,
+            revokedAt: record.revokedAt ?? null,
+          }
+        );
+      },
+      listWebhookApiKeysByScope: async (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(webhookApiKeysTable)
+          .where(
+            and(
+              eq(webhookApiKeysTable.scope, scope),
+              eq(webhookApiKeysTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(webhookApiKeysTable.updatedAt)),
+      getWebhookApiKey: async (scope, scopeId, apiKeyId) => {
+        const rows = await postgres.database
+          .select()
+          .from(webhookApiKeysTable)
+          .where(
+            and(
+              eq(webhookApiKeysTable.scope, scope),
+              eq(webhookApiKeysTable.scopeId, scopeId),
+              eq(webhookApiKeysTable.apiKeyId, apiKeyId),
+            ),
+          )
+          .limit(1);
+
+        return rows[0];
+      },
+      rotateWebhookApiKey: async (input) => {
+        const rows = await postgres.database
+          .update(webhookApiKeysTable)
+          .set({
+            secretHash: input.secretHash,
+            prefix: input.prefix,
+            rotatedAt: input.rotatedAt,
+            updatedAt: input.updatedAt,
+          })
+          .where(
+            and(
+              eq(webhookApiKeysTable.scope, input.scope),
+              eq(webhookApiKeysTable.scopeId, input.scopeId),
+              eq(webhookApiKeysTable.apiKeyId, input.apiKeyId),
+              eq(webhookApiKeysTable.updatedAt, input.expectedUpdatedAt),
+              eq(webhookApiKeysTable.status, input.expectedStatus),
+              isNull(webhookApiKeysTable.revokedAt),
+            ),
+          )
+          .returning();
+
+        return rows[0];
+      },
+      revokeWebhookApiKey: async (input) => {
+        const rows = await postgres.database
+          .update(webhookApiKeysTable)
+          .set({
+            status: "revoked",
+            revokedAt: input.revokedAt,
+            updatedAt: input.updatedAt,
+          })
+          .where(
+            and(
+              eq(webhookApiKeysTable.scope, input.scope),
+              eq(webhookApiKeysTable.scopeId, input.scopeId),
+              eq(webhookApiKeysTable.apiKeyId, input.apiKeyId),
+              eq(webhookApiKeysTable.updatedAt, input.expectedUpdatedAt),
+              eq(webhookApiKeysTable.status, input.expectedStatus),
+              eq(webhookApiKeysTable.secretHash, input.expectedSecretHash),
+              eq(webhookApiKeysTable.prefix, input.expectedPrefix),
+              input.expectedRotatedAt === null
+                ? isNull(webhookApiKeysTable.rotatedAt)
+                : eq(webhookApiKeysTable.rotatedAt, input.expectedRotatedAt),
+              input.expectedRevokedAt === null
+                ? isNull(webhookApiKeysTable.revokedAt)
+                : eq(webhookApiKeysTable.revokedAt, input.expectedRevokedAt),
+            ),
+          )
+          .returning();
+
+        return rows[0];
+      },
+      restoreWebhookApiKey: async (input) => {
+        const rows = await postgres.database
+          .update(webhookApiKeysTable)
+          .set({
+            label: input.label,
+            secretHash: input.secretHash,
+            prefix: input.prefix,
+            status: input.status,
+            updatedAt: input.updatedAt,
+            rotatedAt: input.rotatedAt,
+            revokedAt: input.revokedAt,
+          })
+          .where(
+            and(
+              eq(webhookApiKeysTable.scope, input.scope),
+              eq(webhookApiKeysTable.scopeId, input.scopeId),
+              eq(webhookApiKeysTable.apiKeyId, input.apiKeyId),
+              eq(webhookApiKeysTable.updatedAt, input.expectedUpdatedAt),
+              eq(webhookApiKeysTable.status, input.expectedStatus),
+              eq(webhookApiKeysTable.secretHash, input.expectedSecretHash),
+              eq(webhookApiKeysTable.prefix, input.expectedPrefix),
+              input.expectedRotatedAt === null
+                ? isNull(webhookApiKeysTable.rotatedAt)
+                : eq(webhookApiKeysTable.rotatedAt, input.expectedRotatedAt),
+              input.expectedRevokedAt === null
+                ? isNull(webhookApiKeysTable.revokedAt)
+                : eq(webhookApiKeysTable.revokedAt, input.expectedRevokedAt),
+            ),
+          )
+          .returning();
+
+        return rows[0];
+      },
+    };
+    const webhookApiKeyRepository = yield* makeWebhookApiKeyPostgresRepository(
+      webhookApiKeyQueryable,
+    );
     const repairReadModel: SubscriberJourneyRepairReadModel = {
       getProvisioningReceiptByTenant: async (scope, scopeId) => {
         const rows = await postgres.database
@@ -1806,144 +3052,38 @@ const makeSubscriberJourneyRuntime = (
           }),
         );
       },
-    };
-    const workflowJobsQueryable: WorkflowJobsPostgresQueryable = {
-      getWorkflowJobById: async (jobId) => {
+      getCustomerAccountById: async (accountId) => {
         const rows = await postgres.database
           .select()
-          .from(workflowJobsTable)
-          .where(eq(workflowJobsTable.jobId, jobId))
+          .from(billingCustomerAccountsTable)
+          .where(eq(billingCustomerAccountsTable.accountId, accountId))
           .limit(1);
 
-        return rows[0];
-      },
-      claimScheduledWorkflowJob: async (jobId, now) => {
-        const staleRunningBefore = subtractSecondsFromDate(
-          now,
-          workflowJobsRunningClaimTimeoutSeconds,
+        const row = rows[0];
+
+        if (row === undefined) {
+          return undefined;
+        }
+
+        return await Effect.runPromise(
+          Schema.decodeUnknown(BillingCustomerAccountRecordSchema)({
+            accountId: row.accountId,
+            provider: row.provider,
+            providerCustomerId: row.providerCustomerId,
+            actorId: row.actorId,
+            scope: row.scope,
+            scopeId: row.scopeId,
+            ...(row.email != null ? { email: row.email } : {}),
+            status: row.status,
+            metadata: row.metadata,
+          }),
         );
-        const rows = await postgres.database
-          .update(workflowJobsTable)
-          .set({
-            status: workflowJobStatus.running,
-            attempts: sql`${workflowJobsTable.attempts} + 1`,
-            completedAt: null,
-            gapReason: null,
-            lastError: null,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(workflowJobsTable.jobId, jobId),
-              or(
-                and(
-                  eq(workflowJobsTable.status, workflowJobStatus.scheduled),
-                  lte(workflowJobsTable.scheduledAt, now),
-                ),
-                and(
-                  eq(workflowJobsTable.status, workflowJobStatus.running),
-                  lte(workflowJobsTable.updatedAt, staleRunningBefore),
-                ),
-              ),
-            ),
-          )
-          .returning();
-
-        return rows[0];
       },
-      restoreWorkflowJobIfUpdatedAtMatches: async (
-        jobId,
-        expectedUpdatedAt,
-        record,
-      ) => {
-        const rows = await postgres.database
-          .update(workflowJobsTable)
-          .set({
-            runtime: record.runtime,
-            sourceModuleId: record.sourceModuleId,
-            kind: record.kind,
-            trigger: record.trigger,
-            status: record.status,
-            tenantScope: record.tenantScope,
-            tenantScopeId: record.tenantScopeId,
-            attempts: record.attempts,
-            scheduledAt: new Date(record.scheduledAt),
-            completedAt:
-              record.completedAt === undefined
-                ? null
-                : new Date(record.completedAt),
-            lastError: record.lastError ?? null,
-            gapReason: record.gapReason ?? null,
-            payload: record.payload,
-            updatedAt: new Date(record.updatedAt),
-          })
-          .where(
-            and(
-              eq(workflowJobsTable.jobId, jobId),
-              eq(workflowJobsTable.status, workflowJobStatus.scheduled),
-              eq(workflowJobsTable.updatedAt, expectedUpdatedAt),
-            ),
-          )
-          .returning();
-
-        return rows[0];
-      },
-      listDueWorkflowJobs: async (sourceModuleId, scheduledBefore) =>
-        postgres.database
-          .select()
-          .from(workflowJobsTable)
-          .where(
-            and(
-              eq(workflowJobsTable.sourceModuleId, sourceModuleId),
-              or(
-                and(
-                  eq(workflowJobsTable.status, workflowJobStatus.scheduled),
-                  lte(workflowJobsTable.scheduledAt, scheduledBefore),
-                ),
-                and(
-                  eq(workflowJobsTable.status, workflowJobStatus.running),
-                  lte(
-                    workflowJobsTable.updatedAt,
-                    subtractSecondsFromDate(
-                      scheduledBefore,
-                      workflowJobsRunningClaimTimeoutSeconds,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          )
-          .orderBy(asc(workflowJobsTable.scheduledAt)),
-      listRepairGapWorkflowJobs: async (sourceModuleId) =>
-        postgres.database
-          .select()
-          .from(workflowJobsTable)
-          .where(
-            and(
-              eq(workflowJobsTable.sourceModuleId, sourceModuleId),
-              or(
-                and(
-                  isNotNull(workflowJobsTable.gapReason),
-                  or(
-                    eq(workflowJobsTable.status, workflowJobStatus.scheduled),
-                    eq(workflowJobsTable.status, workflowJobStatus.blocked),
-                  ),
-                ),
-                and(
-                  eq(workflowJobsTable.status, workflowJobStatus.running),
-                  lte(
-                    workflowJobsTable.updatedAt,
-                    subtractSecondsFromDate(
-                      new Date(),
-                      workflowJobsRunningClaimTimeoutSeconds,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          )
-          .orderBy(desc(workflowJobsTable.updatedAt)),
     };
+    const workflowJobsQueryable =
+      buildWorkflowJobsPostgresQueryable<BillingReconciliationWorkflowJobRecord>(
+        writeDatabase,
+      );
     const workflowJobsRepository = yield* makeWorkflowJobsPostgresRepository(
       writeDatabase,
       workflowJobsQueryable,
@@ -2061,9 +3201,29 @@ const makeSubscriberJourneyRuntime = (
         BillingWebhookReplayPostgresRepository,
         billingWebhookReplayRepository,
       ),
+      Effect.provideService(
+        WebhookOutboundDeliveryPostgresRepository,
+        webhookOutboundDeliveryRepository,
+      ),
+      Effect.provideService(
+        WebhookApiKeyPostgresRepository,
+        webhookApiKeyRepository,
+      ),
+      Effect.provideService(
+        WebhookSubscriptionPostgresRepository,
+        webhookSubscriptionRepository,
+      ),
+    );
+    const retentionLegalHold = yield* makeRetentionLegalHoldModule().pipe(
+      Effect.provideService(
+        RetentionLegalHoldPostgresRepository,
+        retentionLegalHoldRepository,
+      ),
     );
     const subscriberJourney = yield* makeSubscriberJourneyService({
       repairReadModel,
+      runtimeConfig,
+      usageMeter: openmeter,
     }).pipe(
       Effect.provideService(ConvexAdapter, convex),
       Effect.provideService(TenantManagementModule, tenantManagement),
@@ -2098,13 +3258,29 @@ const makeSubscriberJourneyRuntime = (
     );
 
     return {
+      auditLog,
+      billingState: billingStateRepository,
+      emailDeliveryRepository,
+      identitySession,
+      oryKeto,
+      retentionLegalHold,
+      runtimeConfig,
       service: subscriberJourney,
+      webhooksApiAccess,
       close: Effect.all([
         Effect.ignore(postgres.close),
+        Effect.ignore(unleash.close),
         Effect.ignore(valkey.close),
       ]).pipe(Effect.asVoid),
     };
-  });
+  }).pipe(
+    Effect.mapError(
+      (cause): SubscriberJourneyRuntimeError => ({
+        _tag: "SubscriberJourneyRuntimeError",
+        cause,
+      }),
+    ),
+  );
 
 const runSubscriberJourneyWithResolvedOptions = <A, E>(
   options: MakeSubscriberJourneyRuntimeOptions,
@@ -2139,7 +3315,15 @@ export const resolveSubscriberJourneyRuntimeOptionsFromEnvironment = (
             resolvedEnvironment.KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD,
           polarAccessToken: resolvedEnvironment.POLAR_ACCESS_TOKEN,
           polarApiUrl: resolvedEnvironment.POLAR_API_URL,
+          ...(resolvedEnvironment.OPENMETER_URL !== undefined
+            ? { openmeterUrl: resolvedEnvironment.OPENMETER_URL }
+            : {}),
+          ...(resolvedEnvironment.OPENMETER_API_KEY !== undefined
+            ? { openmeterApiKey: resolvedEnvironment.OPENMETER_API_KEY }
+            : {}),
           valkeyUrl: resolvedEnvironment.VALKEY_URL,
+          unleashUrl: resolvedEnvironment.UNLEASH_URL,
+          unleashApiKey: resolvedEnvironment.UNLEASH_API_KEY,
           ketoReadUrl: resolvedEnvironment.KETO_READ_URL,
           ketoWriteUrl: resolvedEnvironment.KETO_WRITE_URL,
         }) satisfies SubscriberJourneyRuntimeOptions,
@@ -2165,6 +3349,8 @@ export const resolveSubscriberJourneyRuntimeOptionsFromConvexEnvironment = (
           polarAccessToken: resolvedEnvironment.POLAR_ACCESS_TOKEN,
           polarApiUrl: resolvedEnvironment.POLAR_API_URL,
           valkeyUrl: resolvedEnvironment.VALKEY_URL_INTERNAL,
+          unleashUrl: resolvedEnvironment.UNLEASH_URL_INTERNAL,
+          unleashApiKey: resolvedEnvironment.UNLEASH_API_KEY,
           ketoReadUrl: resolvedEnvironment.KETO_READ_URL_INTERNAL,
           ketoWriteUrl: resolvedEnvironment.KETO_WRITE_URL_INTERNAL,
         }) satisfies SubscriberJourneyRuntimeCoreOptions,

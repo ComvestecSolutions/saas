@@ -4,6 +4,7 @@ import {
   type PolarWebhookValidationError,
   validateAndNormalizePolarWebhookRequest,
 } from "../../adapters";
+import { readPreparedBackendApiPolarWebhookRequest } from "../../http/request-middleware";
 import {
   createJsonResponse,
   createMethodNotAllowedResponse,
@@ -35,9 +36,19 @@ type WebhooksApiService = Pick<
   "processBillingWebhook" | "replayBillingWebhook"
 >;
 
+type SubscriberJourneyDomainRuntimeError = {
+  readonly _tag: "SubscriberJourneyRuntimeError";
+  readonly cause: unknown;
+};
+
+type WebhooksApiRuntimeError = {
+  readonly _tag: "WebhooksApiRuntimeError";
+  readonly cause: unknown;
+};
+
 type WebhooksApiServiceRunner = <A, E>(
   use: (service: WebhooksApiService) => Effect.Effect<A, E>,
-) => Effect.Effect<A, E | ParseResult.ParseError>;
+) => Effect.Effect<A, E | ParseResult.ParseError | WebhooksApiRuntimeError>;
 
 type JsonRequestErrorTag =
   | "WebhooksApiJsonInvalidError"
@@ -55,6 +66,47 @@ type WebhooksApiParserError =
   | ParseResult.ParseError
   | WebhooksApiEnvironmentError
   | PolarWebhookValidationError;
+
+const readWebhookReplayRequestJson = (request: Request) =>
+  readRequestJson({
+    request,
+    invalidJsonTag: "WebhooksApiJsonInvalidError",
+    decode: Schema.decodeUnknown(BillingWebhookReplayRequestSchema),
+  }).pipe(
+    Effect.mapError((cause) =>
+      typeof cause === "object" &&
+      cause !== null &&
+      "_tag" in cause &&
+      cause._tag === "ParseError"
+        ? ({
+            _tag: "WebhooksApiJsonRequestParseError",
+          } satisfies JsonRequestError)
+        : cause,
+    ),
+  );
+
+const mapWebhooksApiRuntimeError = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<
+  A,
+  Exclude<E, SubscriberJourneyDomainRuntimeError> | WebhooksApiRuntimeError
+> =>
+  effect.pipe(
+    Effect.mapError((cause) =>
+      typeof cause === "object" &&
+      cause !== null &&
+      "_tag" in cause &&
+      cause._tag === "SubscriberJourneyRuntimeError"
+        ? ({
+            _tag: "WebhooksApiRuntimeError",
+            cause,
+          } satisfies WebhooksApiRuntimeError)
+        : (cause as Exclude<E, SubscriberJourneyDomainRuntimeError>),
+    ),
+  ) as Effect.Effect<
+    A,
+    Exclude<E, SubscriberJourneyDomainRuntimeError> | WebhooksApiRuntimeError
+  >;
 
 export const webhooksApiBasePath = "/api/subscriber-journey/billing/webhooks";
 
@@ -79,15 +131,24 @@ const buildErrorResponse = (error: unknown) => {
           400,
         );
       case "WebhooksApiJsonRequestParseError":
-      case "ParseError":
         return createJsonResponse(
           { error: "Request payload did not match the expected schema." },
           400,
+        );
+      case "ParseError":
+        return createJsonResponse(
+          { error: "Webhook API request failed." },
+          500,
         );
       case "WebhooksApiEnvironmentError":
         return createJsonResponse(
           { error: "Webhook verification is not configured for this backend." },
           500,
+        );
+      case "WebhooksApiRuntimeError":
+        return createJsonResponse(
+          { error: "A backend dependency request failed." },
+          502,
         );
       case "PolarWebhookSignatureError":
         return createJsonResponse(
@@ -131,6 +192,35 @@ type WebhooksApiHttpHandlerOptions = {
   >;
 };
 
+type VerifiedPolarWebhookRequest =
+  | Parameters<WebhooksApiService["processBillingWebhook"]>[0]
+  | null;
+
+const readVerifiedPolarWebhookRequest = (input: {
+  readonly request: Request;
+  readonly parsePolarWebhookRequest?: (
+    request: Request,
+  ) => Effect.Effect<VerifiedPolarWebhookRequest, WebhooksApiParserError>;
+}): Effect.Effect<VerifiedPolarWebhookRequest, WebhooksApiParserError> =>
+  Effect.flatMap(
+    readPreparedBackendApiPolarWebhookRequest(input.request),
+    (
+      preparedRequest,
+    ): Effect.Effect<VerifiedPolarWebhookRequest, WebhooksApiParserError> => {
+      if (preparedRequest !== undefined) {
+        return Effect.succeed(preparedRequest);
+      }
+
+      if (input.parsePolarWebhookRequest !== undefined) {
+        return input.parsePolarWebhookRequest(input.request);
+      }
+
+      return Effect.fail({
+        _tag: "WebhooksApiEnvironmentError",
+      } satisfies WebhooksApiEnvironmentError);
+    },
+  );
+
 export const createWebhooksApiHttpHandler = (
   runWithService: WebhooksApiServiceRunner,
   options?: WebhooksApiHttpHandlerOptions,
@@ -151,47 +241,32 @@ export const createWebhooksApiHttpHandler = (
 
     switch (url.pathname) {
       case webhooksApiPath.processPolarWebhook:
-        if (options?.parsePolarWebhookRequest !== undefined) {
-          return options.parsePolarWebhookRequest(request).pipe(
-            Effect.flatMap((input) => {
-              if (input === null) {
-                return Effect.succeed(
-                  createJsonResponse(
-                    { acknowledged: true, ignored: true },
-                    202,
-                  ),
-                );
-              }
+        return readVerifiedPolarWebhookRequest({
+          request,
+          ...(options?.parsePolarWebhookRequest !== undefined
+            ? { parsePolarWebhookRequest: options.parsePolarWebhookRequest }
+            : {}),
+        }).pipe(
+          Effect.flatMap((input) => {
+            if (input === null) {
+              return Effect.succeed(
+                createJsonResponse({ acknowledged: true, ignored: true }, 202),
+              );
+            }
 
-              return matchHttpEffect({
-                effect: runWithService((service) =>
-                  service.processBillingWebhook(input),
-                ),
-                onFailure: buildErrorResponse,
-                onSuccess: (result) => createJsonResponse(result, 202),
-              });
-            }),
-            Effect.catchAll((error) =>
-              Effect.succeed(buildErrorResponse(error)),
-            ),
-          );
-        }
-
-        return Effect.succeed(
-          createJsonResponse(
-            {
-              error: "Webhook verification is not configured for this backend.",
-            },
-            500,
-          ),
+            return matchHttpEffect({
+              effect: runWithService((service) =>
+                service.processBillingWebhook(input),
+              ),
+              onFailure: buildErrorResponse,
+              onSuccess: (result) => createJsonResponse(result, 202),
+            });
+          }),
+          Effect.catchAll((error) => Effect.succeed(buildErrorResponse(error))),
         );
       case webhooksApiPath.replayPolarWebhook:
         return matchHttpEffect({
-          effect: readRequestJson({
-            request,
-            invalidJsonTag: "WebhooksApiJsonInvalidError",
-            decode: Schema.decodeUnknown(BillingWebhookReplayRequestSchema),
-          }).pipe(
+          effect: readWebhookReplayRequestJson(request).pipe(
             Effect.flatMap((input) =>
               runWithService((service) =>
                 service.replayBillingWebhook({
@@ -217,7 +292,10 @@ export const handleWebhooksApiHttpRequest = (
   request: Request,
 ) =>
   createWebhooksApiHttpHandler(
-    (use) => runSubscriberJourneyFromEnvironment(environment, use),
+    (use) =>
+      mapWebhooksApiRuntimeError(
+        runSubscriberJourneyFromEnvironment(environment, use),
+      ),
     {
       parsePolarWebhookRequest: (webhookRequest) =>
         Schema.decodeUnknown(WebhooksApiEnvironmentSchema)(environment).pipe(

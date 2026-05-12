@@ -1,0 +1,1009 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Tenant Repair Console</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-dim": "#10131a",
+              "tertiary-fixed": "#ffdcc6",
+              "surface-variant": "#32353c",
+              background: "#10131a",
+              "tertiary-fixed-dim": "#ffb786",
+              "surface-container-highest": "#32353c",
+              "on-primary-fixed": "#001a42",
+              primary: "#adc6ff",
+              secondary: "#bcc7de",
+              "surface-container-low": "#191b23",
+              "secondary-fixed": "#d8e3fb",
+              "primary-fixed": "#d8e2ff",
+              "on-primary-container": "#00285d",
+              tertiary: "#ffb786",
+              "secondary-fixed-dim": "#bcc7de",
+              "on-secondary-fixed-variant": "#3c475a",
+              "secondary-container": "#3e495d",
+              "on-error": "#690005",
+              "on-tertiary-container": "#461f00",
+              "surface-bright": "#363941",
+              surface: "#10131a",
+              "tertiary-container": "#df7412",
+              "on-secondary": "#263143",
+              "inverse-surface": "#e1e2ec",
+              "surface-container-high": "#272a31",
+              "surface-container-lowest": "#0b0e15",
+              "on-error-container": "#ffdad6",
+              "on-tertiary-fixed": "#311400",
+              "on-tertiary": "#502400",
+              outline: "#8c909f",
+              "primary-container": "#4d8eff",
+              "on-primary-fixed-variant": "#004395",
+              "outline-variant": "#424754",
+              "surface-container": "#1d2027",
+              "on-surface": "#e1e2ec",
+              "error-container": "#93000a",
+              "on-background": "#e1e2ec",
+              "on-tertiary-fixed-variant": "#723600",
+              "primary-fixed-dim": "#adc6ff",
+              "inverse-primary": "#005ac2",
+              error: "#ffb4ab",
+              "on-surface-variant": "#c2c6d6",
+              "inverse-on-surface": "#2e3038",
+              "on-primary": "#002e6a",
+              "surface-tint": "#adc6ff",
+              "on-secondary-container": "#aeb9d0",
+              "on-secondary-fixed": "#111c2d",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              unit: "4px",
+              "drawer-width": "480px",
+              "container-padding": "16px",
+              "sidebar-width": "240px",
+              gutter: "12px",
+            },
+            fontFamily: {
+              "headline-md": ["Inter"],
+              "body-sm": ["Inter"],
+              "label-caps": ["JetBrains Mono"],
+              "code-sm": ["JetBrains Mono"],
+              "headline-lg": ["Inter"],
+            },
+            fontSize: {
+              "headline-md": [
+                "18px",
+                {
+                  lineHeight: "24px",
+                  letterSpacing: "-0.01em",
+                  fontWeight: "600",
+                },
+              ],
+              "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+              "label-caps": [
+                "10px",
+                {
+                  lineHeight: "12px",
+                  letterSpacing: "0.05em",
+                  fontWeight: "700",
+                },
+              ],
+              "code-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+              "headline-lg": [
+                "24px",
+                {
+                  lineHeight: "32px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "600",
+                },
+              ],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Hide scrollbar for a cleaner industrial look while keeping functionality */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #424754;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #8c909f;
+      }
+
+      /* Redacted stripe pattern */
+      .redacted-pattern {
+        background-image: repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 4px,
+          #475569 4px,
+          #475569 8px
+        );
+      }
+    </style>
+  </head>
+  <body
+    class="bg-background text-on-background h-screen w-screen overflow-hidden flex flex-col font-body-sm text-body-sm"
+  >
+    <!-- TopAppBar -->
+    <header
+      class="bg-surface-dim dark:bg-surface-dim border-b border-outline-variant/20 bg-surface-container-low dark:bg-surface-container-low flex justify-between items-center w-full px-container-padding h-12 z-50 absolute top-0 left-0 right-0"
+    >
+      <!-- Brand/Product -->
+      <div class="flex items-center gap-4">
+        <span
+          class="text-headline-md font-headline-md font-black tracking-tighter text-primary dark:text-primary-fixed"
+          >GOV_CORE_VX</span
+        >
+        <!-- Navigation Links (Silos) -->
+        <div
+          class="hidden md:flex items-center gap-3 border-l border-outline-variant/30 pl-4"
+        >
+          <div
+            class="flex items-center gap-1.5 px-2 py-1 bg-surface-variant/40 rounded border border-outline-variant/20"
+          >
+            <span
+              class="material-symbols-outlined text-[14px] text-on-surface-variant"
+              >person</span
+            >
+            <span class="text-code-sm font-code-sm text-on-surface"
+              >ACTOR: ADMIN_01</span
+            >
+          </div>
+          <div
+            class="flex items-center gap-1.5 px-2 py-1 bg-surface-variant/40 rounded border border-outline-variant/20"
+          >
+            <span
+              class="material-symbols-outlined text-[14px] text-on-surface-variant"
+              >dns</span
+            >
+            <span class="text-code-sm font-code-sm text-on-surface"
+              >ENV: PROD</span
+            >
+          </div>
+          <div
+            class="flex items-center gap-1.5 px-2 py-1 bg-surface-variant/40 rounded border border-outline-variant/20"
+          >
+            <span
+              class="material-symbols-outlined text-[14px] text-on-surface-variant"
+              >tag</span
+            >
+            <span class="text-code-sm font-code-sm text-on-surface"
+              >CID: 88A2-X</span
+            >
+          </div>
+        </div>
+      </div>
+      <!-- Search Bar -->
+      <div class="flex-1 max-w-md mx-8">
+        <div class="relative flex items-center w-full">
+          <span
+            class="material-symbols-outlined absolute left-3 text-on-surface-variant text-[18px]"
+            >search</span
+          >
+          <input
+            class="w-full bg-surface-container text-on-surface text-body-sm font-body-sm border border-outline-variant/30 rounded pl-9 pr-3 py-1.5 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-on-surface-variant/50 transition-colors"
+            placeholder="Search operational index..."
+            type="text"
+          />
+          <div class="absolute right-2 flex items-center gap-1">
+            <kbd
+              class="text-label-caps font-label-caps text-on-surface-variant bg-surface-variant/50 px-1.5 py-0.5 rounded border border-outline-variant/20"
+              >⌘</kbd
+            >
+            <kbd
+              class="text-label-caps font-label-caps text-on-surface-variant bg-surface-variant/50 px-1.5 py-0.5 rounded border border-outline-variant/20"
+              >K</kbd
+            >
+          </div>
+        </div>
+      </div>
+      <!-- Trailing Icon Actions -->
+      <div class="flex items-center gap-2">
+        <button
+          class="text-primary dark:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors duration-150 p-1.5 rounded scale-95 active:bg-surface-container-highest transition-all flex items-center justify-center"
+        >
+          <span class="material-symbols-outlined text-[20px]">settings</span>
+        </button>
+        <button
+          class="text-primary dark:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors duration-150 p-1.5 rounded scale-95 active:bg-surface-container-highest transition-all flex items-center justify-center relative"
+        >
+          <span class="material-symbols-outlined text-[20px]"
+            >notifications_active</span
+          >
+          <span
+            class="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-error rounded-full"
+          ></span>
+        </button>
+        <button
+          class="text-primary dark:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors duration-150 p-1.5 rounded scale-95 active:bg-surface-container-highest transition-all flex items-center justify-center border border-outline-variant/20 bg-surface-variant/20 ml-2"
+        >
+          <span class="material-symbols-outlined text-[20px]"
+            >account_circle</span
+          >
+        </button>
+      </div>
+    </header>
+    <!-- Main Workspace Container (offsets TopAppBar) -->
+    <div class="flex-1 flex overflow-hidden relative pt-12">
+      <!-- SideNavBar -->
+      <nav
+        class="bg-surface-container dark:bg-surface-container border-r border-outline-variant/15 w-sidebar-width fixed left-0 top-12 bottom-0 flex flex-col z-40"
+      >
+        <!-- Header section (System Operator) -->
+        <div
+          class="p-4 border-b border-outline-variant/10 flex items-center gap-3 mb-2"
+        >
+          <div
+            class="w-8 h-8 rounded bg-primary-container text-on-primary-container flex items-center justify-center font-headline-md text-headline-md font-bold"
+          >
+            S
+          </div>
+          <div class="flex flex-col">
+            <span
+              class="text-headline-md font-headline-md text-[14px] leading-tight text-on-surface"
+              >CONTROL_PLANE</span
+            >
+            <span
+              class="text-body-sm font-body-sm text-[11px] text-on-surface-variant mt-0.5 tracking-wider uppercase"
+              >V2.4.0-STABLE</span
+            >
+          </div>
+        </div>
+        <!-- Tabs -->
+        <div class="flex-1 flex flex-col gap-0.5 overflow-y-auto py-2">
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]">dashboard</span>
+            Home
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps bg-secondary-container text-on-secondary-container border-l-4 border-primary px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]"
+              >build_circle</span
+            >
+            Repair Console
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]">hub</span>
+            Tenant Workspace
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]"
+              >settings_input_component</span
+            >
+            Runtime Config
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]">toggle_on</span>
+            Feature Flags
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]"
+              >history_edu</span
+            >
+            Audit
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[18px]"
+              >help_center</span
+            >
+            Support
+          </button>
+        </div>
+        <!-- Footer Tabs -->
+        <div
+          class="border-t border-outline-variant/10 py-2 mt-auto bg-surface-container-low"
+        >
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[16px]"
+              >monitor_heart</span
+            >
+            Diagnostics
+          </button>
+          <button
+            class="flex items-center gap-3 text-label-caps font-label-caps text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 text-left w-full"
+          >
+            <span class="material-symbols-outlined text-[16px]">terminal</span>
+            Terminal
+          </button>
+        </div>
+      </nav>
+      <!-- Main Content Area (Split Pane) -->
+      <main class="flex-1 ml-[240px] flex overflow-hidden bg-surface relative">
+        <!-- Left Pane (List View) -->
+        <section
+          class="flex-1 flex flex-col min-w-0 border-r border-outline-variant/15 z-10"
+        >
+          <!-- Header Toolbar -->
+          <div
+            class="h-14 border-b border-outline-variant/15 flex items-center justify-between px-6 bg-surface-container-lowest shrink-0"
+          >
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-outline"
+                >build_circle</span
+              >
+              <h1 class="text-headline-md font-headline-md text-on-surface">
+                Infrastructure Repair Gaps
+              </h1>
+              <div class="h-4 w-[1px] bg-outline-variant/30 mx-2"></div>
+              <span class="text-body-sm font-body-sm text-on-surface-variant"
+                >Showing 24 active alerts</span
+              >
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                class="flex items-center gap-2 px-3 py-1.5 rounded border border-outline-variant/30 text-on-surface text-body-sm font-body-sm hover:bg-surface-variant/30 transition-colors"
+              >
+                <span class="material-symbols-outlined text-[16px]"
+                  >filter_list</span
+                >
+                Filter
+              </button>
+              <button
+                class="flex items-center gap-2 px-3 py-1.5 rounded bg-primary text-on-primary text-body-sm font-body-sm font-bold hover:bg-primary-fixed transition-colors"
+              >
+                <span class="material-symbols-outlined text-[16px]"
+                  >play_arrow</span
+                >
+                Run Batch Replay
+              </button>
+            </div>
+          </div>
+          <!-- Data Table Container -->
+          <div class="flex-1 overflow-auto bg-surface relative">
+            <table class="w-full text-left border-collapse">
+              <thead
+                class="sticky top-0 bg-surface-container-low border-b border-outline-variant/20 z-10 shadow-sm"
+              >
+                <tr>
+                  <th
+                    class="py-2 px-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider w-[120px]"
+                  >
+                    Job ID
+                  </th>
+                  <th
+                    class="py-2 px-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider"
+                  >
+                    Tenant
+                  </th>
+                  <th
+                    class="py-2 px-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider"
+                  >
+                    Type
+                  </th>
+                  <th
+                    class="py-2 px-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider"
+                  >
+                    Status
+                  </th>
+                  <th
+                    class="py-2 px-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider"
+                  >
+                    Last Attempt
+                  </th>
+                  <th
+                    class="py-2 px-4 text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider text-right"
+                  >
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody
+                class="text-body-sm font-body-sm divide-y divide-outline-variant/10"
+              >
+                <!-- Row 1: Blocked -->
+                <tr
+                  class="hover:bg-surface-variant/20 transition-colors group h-[36px] bg-error-container/5"
+                >
+                  <td
+                    class="py-1 px-4 text-code-sm font-code-sm text-on-surface"
+                  >
+                    RPR-882A-9
+                  </td>
+                  <td class="py-1 px-4 text-on-surface flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                    acme-corp-prod
+                  </td>
+                  <td class="py-1 px-4 text-on-surface-variant">
+                    node-reconciliation
+                  </td>
+                  <td class="py-1 px-4">
+                    <span
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-error/10 text-error text-[10px] font-label-caps border border-error/20"
+                    >
+                      <span class="material-symbols-outlined text-[12px]"
+                        >block</span
+                      >
+                      BLOCKED
+                    </span>
+                  </td>
+                  <td
+                    class="py-1 px-4 text-on-surface-variant text-code-sm font-code-sm"
+                  >
+                    2m ago
+                  </td>
+                  <td class="py-1 px-4 text-right">
+                    <div
+                      class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface"
+                        title="Replay"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >replay</span
+                        >
+                      </button>
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface"
+                        title="Cancel"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >cancel</span
+                        >
+                      </button>
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-primary"
+                        title="Inspect"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >visibility</span
+                        >
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <!-- Row 2: Stale (Selected State) -->
+                <tr
+                  class="hover:bg-surface-variant/20 transition-colors group h-[36px] bg-secondary-container/20 border-l-2 border-l-secondary"
+                >
+                  <td
+                    class="py-1 px-4 text-code-sm font-code-sm text-secondary font-bold"
+                  >
+                    RPR-910C-2
+                  </td>
+                  <td class="py-1 px-4 text-on-surface flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                    globex-eu-west
+                  </td>
+                  <td class="py-1 px-4 text-on-surface-variant">
+                    db-failover-sync
+                  </td>
+                  <td class="py-1 px-4">
+                    <span
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tertiary/10 text-tertiary text-[10px] font-label-caps border border-tertiary/20"
+                    >
+                      <span class="material-symbols-outlined text-[12px]"
+                        >hourglass_empty</span
+                      >
+                      STALE
+                    </span>
+                  </td>
+                  <td
+                    class="py-1 px-4 text-on-surface-variant text-code-sm font-code-sm"
+                  >
+                    45m ago
+                  </td>
+                  <td class="py-1 px-4 text-right">
+                    <div class="flex justify-end gap-1">
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface"
+                        title="Replay"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >replay</span
+                        >
+                      </button>
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface"
+                        title="Cancel"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >cancel</span
+                        >
+                      </button>
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-primary"
+                        title="Inspect"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >visibility</span
+                        >
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <!-- Row 3: Retrying -->
+                <tr
+                  class="hover:bg-surface-variant/20 transition-colors group h-[36px]"
+                >
+                  <td
+                    class="py-1 px-4 text-code-sm font-code-sm text-on-surface"
+                  >
+                    RPR-441F-0
+                  </td>
+                  <td class="py-1 px-4 text-on-surface flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                    startupltd-dev
+                  </td>
+                  <td class="py-1 px-4 text-on-surface-variant">cache-flush</td>
+                  <td class="py-1 px-4">
+                    <span
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-outline/10 text-on-surface-variant text-[10px] font-label-caps border border-outline/20"
+                    >
+                      <span
+                        class="material-symbols-outlined text-[12px] animate-spin"
+                        >sync</span
+                      >
+                      RETRYING (3/5)
+                    </span>
+                  </td>
+                  <td
+                    class="py-1 px-4 text-on-surface-variant text-code-sm font-code-sm"
+                  >
+                    15s ago
+                  </td>
+                  <td class="py-1 px-4 text-right">
+                    <div
+                      class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface"
+                        disabled=""
+                        title="Replay"
+                      >
+                        <span
+                          class="material-symbols-outlined text-[16px] opacity-50"
+                          >replay</span
+                        >
+                      </button>
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface"
+                        title="Cancel"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >cancel</span
+                        >
+                      </button>
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-primary"
+                        title="Inspect"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >visibility</span
+                        >
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <!-- Row 4: Success (Recent) -->
+                <tr
+                  class="hover:bg-surface-variant/20 transition-colors group h-[36px] opacity-60"
+                >
+                  <td
+                    class="py-1 px-4 text-code-sm font-code-sm text-on-surface"
+                  >
+                    RPR-112B-4
+                  </td>
+                  <td class="py-1 px-4 text-on-surface flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                    globex-eu-west
+                  </td>
+                  <td class="py-1 px-4 text-on-surface-variant">
+                    volume-attach
+                  </td>
+                  <td class="py-1 px-4">
+                    <span
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary-container/10 text-primary text-[10px] font-label-caps border border-primary-container/20"
+                    >
+                      <span class="material-symbols-outlined text-[12px]"
+                        >check_circle</span
+                      >
+                      SUCCESS
+                    </span>
+                  </td>
+                  <td
+                    class="py-1 px-4 text-on-surface-variant text-code-sm font-code-sm"
+                  >
+                    1h ago
+                  </td>
+                  <td class="py-1 px-4 text-right">
+                    <div
+                      class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <button
+                        class="p-1 rounded hover:bg-surface-variant/50 text-primary"
+                        title="Inspect"
+                      >
+                        <span class="material-symbols-outlined text-[16px]"
+                          >visibility</span
+                        >
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <!-- Right Pane (Detail Drawer) -->
+        <aside
+          class="w-drawer-width bg-surface-container-lowest flex flex-col z-20 shrink-0 shadow-[-4px_0_24px_-4px_rgba(0,0,0,0.5)] border-l border-outline-variant/20"
+        >
+          <!-- Drawer Header -->
+          <div
+            class="h-14 border-b border-outline-variant/15 flex items-center justify-between px-4 bg-surface-container-low shrink-0"
+          >
+            <div class="flex items-center gap-3">
+              <span
+                class="text-label-caps font-label-caps text-on-surface-variant"
+                >INSPECT JOB</span
+              >
+              <span
+                class="text-code-sm font-code-sm text-secondary font-bold bg-secondary-container/20 px-2 py-0.5 rounded border border-secondary/20"
+                >RPR-910C-2</span
+              >
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                class="p-1.5 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface transition-colors"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >open_in_new</span
+                >
+              </button>
+              <button
+                class="p-1.5 rounded hover:bg-surface-variant/50 text-outline hover:text-on-surface transition-colors"
+              >
+                <span class="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+          </div>
+          <!-- Drawer Content Scrollable -->
+          <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+            <!-- Top Metadata Grid -->
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1">
+                <span
+                  class="text-label-caps font-label-caps text-on-surface-variant"
+                  >Tenant ID</span
+                >
+                <span class="text-body-sm font-body-sm text-on-surface"
+                  >globex-eu-west</span
+                >
+              </div>
+              <div class="flex flex-col gap-1">
+                <span
+                  class="text-label-caps font-label-caps text-on-surface-variant"
+                  >Job Type</span
+                >
+                <span class="text-body-sm font-body-sm text-on-surface"
+                  >db-failover-sync</span
+                >
+              </div>
+              <div class="flex flex-col gap-1">
+                <span
+                  class="text-label-caps font-label-caps text-on-surface-variant"
+                  >Execution Node</span
+                >
+                <span class="text-code-sm font-code-sm text-on-surface"
+                  >wrk-eu-1a-992</span
+                >
+              </div>
+              <div class="flex flex-col gap-1">
+                <span
+                  class="text-label-caps font-label-caps text-on-surface-variant"
+                  >Workflow Token</span
+                >
+                <div class="flex items-center gap-2">
+                  <span
+                    class="text-code-sm font-code-sm text-on-surface truncate w-32"
+                    >tk_98124xza...</span
+                  >
+                  <button class="text-primary hover:text-primary-fixed p-0.5">
+                    <span class="material-symbols-outlined text-[14px]"
+                      >content_copy</span
+                    >
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="h-[1px] w-full bg-outline-variant/10"></div>
+            <!-- Sensitive Context / Action Gateway -->
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span
+                  class="text-headline-md font-headline-md text-[14px] text-on-surface flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] text-tertiary"
+                    >lock</span
+                  >
+                  Execution Context Logs
+                </span>
+                <span
+                  class="text-label-caps font-label-caps text-outline bg-surface-variant/30 px-1.5 py-0.5 rounded border border-outline-variant/20"
+                  >REDACTED</span
+                >
+              </div>
+              <p
+                class="text-body-sm font-body-sm text-on-surface-variant leading-relaxed"
+              >
+                Full execution traces and failure payloads may contain PII or
+                sensitive infrastructure topology details. You must assert a
+                valid governance reason to unmask this payload.
+              </p>
+              <!-- Redacted Mock Block -->
+              <div
+                class="mt-2 h-32 rounded border border-outline-variant/20 bg-surface-dim relative overflow-hidden flex items-center justify-center group cursor-pointer border-dashed border-2 hover:border-primary/50 transition-colors"
+                onclick="
+                  document
+                    .getElementById('inspection-modal')
+                    .classList.remove('hidden')
+                "
+              >
+                <div
+                  class="absolute inset-0 redacted-pattern opacity-20 group-hover:opacity-10 transition-opacity"
+                ></div>
+                <div
+                  class="z-10 flex flex-col items-center gap-2 bg-surface-container px-4 py-2 rounded-full border border-outline-variant/30 shadow-lg shadow-black/50"
+                >
+                  <span
+                    class="material-symbols-outlined text-primary text-[20px]"
+                    >visibility</span
+                  >
+                  <span
+                    class="text-label-caps font-label-caps text-primary tracking-widest"
+                    >REQUEST UNMASK</span
+                  >
+                </div>
+              </div>
+            </div>
+            <!-- Timeline Rail -->
+            <div class="flex flex-col gap-3 mt-4">
+              <span
+                class="text-label-caps font-label-caps text-on-surface-variant border-b border-outline-variant/10 pb-1 mb-2"
+                >EVENT TIMELINE</span
+              >
+              <div
+                class="relative pl-4 border-l-2 border-outline-variant/20 flex flex-col gap-4"
+              >
+                <!-- Event 1 -->
+                <div class="relative">
+                  <div
+                    class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-tertiary border-2 border-surface-container-lowest"
+                  ></div>
+                  <div class="flex justify-between items-start">
+                    <span class="text-body-sm font-body-sm text-on-surface"
+                      >Job marked STALE by Watchdog</span
+                    >
+                    <span
+                      class="text-code-sm font-code-sm text-on-surface-variant text-[10px]"
+                      >10:45:01Z</span
+                    >
+                  </div>
+                </div>
+                <!-- Event 2 -->
+                <div class="relative">
+                  <div
+                    class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-outline-variant border-2 border-surface-container-lowest"
+                  ></div>
+                  <div class="flex justify-between items-start">
+                    <span
+                      class="text-body-sm font-body-sm text-on-surface-variant"
+                      >Attempt 2 Failed: Timeout</span
+                    >
+                    <span
+                      class="text-code-sm font-code-sm text-on-surface-variant text-[10px]"
+                      >10:00:15Z</span
+                    >
+                  </div>
+                </div>
+                <!-- Event 3 -->
+                <div class="relative">
+                  <div
+                    class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-outline-variant border-2 border-surface-container-lowest"
+                  ></div>
+                  <div class="flex justify-between items-start">
+                    <span
+                      class="text-body-sm font-body-sm text-on-surface-variant"
+                      >Job initialized</span
+                    >
+                    <span
+                      class="text-code-sm font-code-sm text-on-surface-variant text-[10px]"
+                      >09:58:22Z</span
+                    >
+                  </div>
+                  <span
+                    class="text-code-sm font-code-sm text-on-surface-variant opacity-70 mt-1 block"
+                    >Actor: SYSTEM_SCHEDULER</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Drawer Footer Actions -->
+          <div
+            class="p-4 border-t border-outline-variant/15 bg-surface-container-low flex justify-between shrink-0"
+          >
+            <button
+              class="px-4 py-2 text-body-sm font-body-sm text-on-surface-variant hover:text-error hover:bg-error-container/10 rounded transition-colors flex items-center gap-2"
+            >
+              <span class="material-symbols-outlined text-[16px]"
+                >delete_forever</span
+              >
+              Force Kill
+            </button>
+            <button
+              class="px-4 py-2 text-body-sm font-body-sm text-surface-container-lowest bg-on-surface hover:bg-on-surface-variant rounded font-bold transition-colors flex items-center gap-2"
+            >
+              <span class="material-symbols-outlined text-[16px]">replay</span>
+              Replay Job
+            </button>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <!-- High-Risk Action Modal: Inspection Reason -->
+    <div
+      class="hidden fixed inset-0 z-[100] flex items-center justify-center"
+      id="inspection-modal"
+    >
+      <!-- Backdrop -->
+      <div
+        class="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity"
+        onclick="
+          document.getElementById('inspection-modal').classList.add('hidden')
+        "
+      ></div>
+      <!-- Modal Panel -->
+      <div
+        class="relative bg-surface border border-outline-variant/20 rounded shadow-2xl w-[520px] flex flex-col overflow-hidden border-t-2 border-t-tertiary"
+      >
+        <!-- Header -->
+        <div
+          class="px-6 py-4 border-b border-outline-variant/15 flex items-center gap-3 bg-surface-container-lowest"
+        >
+          <div
+            class="w-8 h-8 rounded bg-tertiary/10 text-tertiary flex items-center justify-center"
+          >
+            <span class="material-symbols-outlined">policy</span>
+          </div>
+          <div>
+            <h2 class="text-headline-md font-headline-md text-on-surface">
+              Inspection Gateway Challenge
+            </h2>
+            <p class="text-body-sm font-body-sm text-on-surface-variant mt-0.5">
+              Audit log requirement for accessing sensitive payloads.
+            </p>
+          </div>
+        </div>
+        <!-- Body -->
+        <div class="p-6 flex flex-col gap-5">
+          <div
+            class="p-3 bg-surface-variant/30 border border-outline-variant/20 rounded flex items-center gap-3"
+          >
+            <span class="material-symbols-outlined text-outline">info</span>
+            <span class="text-body-sm font-body-sm text-on-surface"
+              >You are requesting to unmask the execution context for Job
+              <span class="font-bold text-secondary">RPR-910C-2</span> on tenant
+              <span class="font-bold text-on-surface">globex-eu-west</span
+              >.</span
+            >
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label
+              class="text-label-caps font-label-caps text-on-surface-variant"
+              >REASON FOR INSPECTION <span class="text-error">*</span></label
+            >
+            <div class="relative">
+              <select
+                class="w-full appearance-none bg-surface-container text-on-surface text-body-sm font-body-sm border border-outline-variant/40 rounded px-3 py-2.5 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer pr-10"
+              >
+                <option disabled="" selected="" value="">
+                  Select an approved governance reason...
+                </option>
+                <option value="1">Incident Triage (Sev-1/Sev-2)</option>
+                <option value="2">Customer Support Request</option>
+                <option value="3">Proactive Health Check / Drift</option>
+                <option value="4">Security Audit</option>
+              </select>
+              <span
+                class="material-symbols-outlined absolute right-3 top-2.5 text-on-surface-variant pointer-events-none text-[20px]"
+                >arrow_drop_down</span
+              >
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <div class="flex justify-between items-end">
+              <label
+                class="text-label-caps font-label-caps text-on-surface-variant"
+                >AUDIT COMMENT <span class="text-error">*</span></label
+              >
+              <span class="text-label-caps font-label-caps text-outline"
+                >Min 15 chars</span
+              >
+            </div>
+            <textarea
+              class="w-full bg-surface-container text-on-surface text-body-sm font-body-sm border border-outline-variant/40 rounded px-3 py-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder-on-surface-variant/40 resize-none"
+              placeholder="Provide context for this inspection..."
+              rows="3"
+            ></textarea>
+          </div>
+        </div>
+        <!-- Footer -->
+        <div
+          class="px-6 py-4 bg-surface-container-low border-t border-outline-variant/15 flex justify-end gap-3"
+        >
+          <button
+            class="px-4 py-2 text-body-sm font-body-sm text-on-surface-variant border border-outline-variant/30 rounded hover:bg-surface-variant/50 transition-colors"
+            onclick="
+              document
+                .getElementById('inspection-modal')
+                .classList.add('hidden')
+            "
+          >
+            Cancel Request
+          </button>
+          <button
+            class="px-4 py-2 text-body-sm font-body-sm bg-primary text-on-primary rounded font-bold hover:bg-primary-fixed transition-colors flex items-center gap-2"
+            onclick="
+              document
+                .getElementById('inspection-modal')
+                .classList.add('hidden')
+            "
+          >
+            <span class="material-symbols-outlined text-[16px]">key</span>
+            Authorize &amp; Unmask
+          </button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

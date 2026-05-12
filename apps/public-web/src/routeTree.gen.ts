@@ -10,11 +10,29 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BillingSuccessRouteImport } from './routes/billing/success'
+import { Route as BillingCheckoutRouteImport } from './routes/billing/checkout'
+import { Route as BillingCancelRouteImport } from './routes/billing/cancel'
 import { Route as AuthStartRouteImport } from './routes/auth/start'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingSuccessRoute = BillingSuccessRouteImport.update({
+  id: '/billing/success',
+  path: '/billing/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingCheckoutRoute = BillingCheckoutRouteImport.update({
+  id: '/billing/checkout',
+  path: '/billing/checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingCancelRoute = BillingCancelRouteImport.update({
+  id: '/billing/cancel',
+  path: '/billing/cancel',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthStartRoute = AuthStartRouteImport.update({
@@ -26,27 +44,55 @@ const AuthStartRoute = AuthStartRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth/start': typeof AuthStartRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/checkout': typeof BillingCheckoutRoute
+  '/billing/success': typeof BillingSuccessRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/start': typeof AuthStartRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/checkout': typeof BillingCheckoutRoute
+  '/billing/success': typeof BillingSuccessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth/start': typeof AuthStartRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/checkout': typeof BillingCheckoutRoute
+  '/billing/success': typeof BillingSuccessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth/start'
+  fullPaths:
+    | '/'
+    | '/auth/start'
+    | '/billing/cancel'
+    | '/billing/checkout'
+    | '/billing/success'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth/start'
-  id: '__root__' | '/' | '/auth/start'
+  to:
+    | '/'
+    | '/auth/start'
+    | '/billing/cancel'
+    | '/billing/checkout'
+    | '/billing/success'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth/start'
+    | '/billing/cancel'
+    | '/billing/checkout'
+    | '/billing/success'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthStartRoute: typeof AuthStartRoute
+  BillingCancelRoute: typeof BillingCancelRoute
+  BillingCheckoutRoute: typeof BillingCheckoutRoute
+  BillingSuccessRoute: typeof BillingSuccessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -56,6 +102,27 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/success': {
+      id: '/billing/success'
+      path: '/billing/success'
+      fullPath: '/billing/success'
+      preLoaderRoute: typeof BillingSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/checkout': {
+      id: '/billing/checkout'
+      path: '/billing/checkout'
+      fullPath: '/billing/checkout'
+      preLoaderRoute: typeof BillingCheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/cancel': {
+      id: '/billing/cancel'
+      path: '/billing/cancel'
+      fullPath: '/billing/cancel'
+      preLoaderRoute: typeof BillingCancelRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/start': {
@@ -71,6 +138,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthStartRoute: AuthStartRoute,
+  BillingCancelRoute: BillingCancelRoute,
+  BillingCheckoutRoute: BillingCheckoutRoute,
+  BillingSuccessRoute: BillingSuccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

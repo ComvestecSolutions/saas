@@ -1,0 +1,645 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Compliance and Retention Controls</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary": "#263143",
+              "on-error-container": "#ffdad6",
+              tertiary: "#ffb786",
+              "on-primary-fixed-variant": "#004395",
+              "inverse-on-surface": "#2e3038",
+              "surface-container-highest": "#32353c",
+              "tertiary-fixed-dim": "#ffb786",
+              "on-background": "#e1e2ec",
+              "secondary-fixed": "#d8e3fb",
+              "primary-fixed": "#d8e2ff",
+              "on-primary-fixed": "#001a42",
+              "tertiary-fixed": "#ffdcc6",
+              "secondary-fixed-dim": "#bcc7de",
+              "on-tertiary-container": "#461f00",
+              "on-primary": "#002e6a",
+              "on-tertiary-fixed": "#311400",
+              "on-tertiary": "#502400",
+              "primary-container": "#4d8eff",
+              "surface-bright": "#363941",
+              "primary-fixed-dim": "#adc6ff",
+              "on-primary-container": "#00285d",
+              "error-container": "#93000a",
+              "on-surface-variant": "#c2c6d6",
+              "outline-variant": "#424754",
+              background: "#10131a",
+              "inverse-primary": "#005ac2",
+              "surface-container-lowest": "#0b0e15",
+              "on-secondary-fixed": "#111c2d",
+              "secondary-container": "#3e495d",
+              secondary: "#bcc7de",
+              "tertiary-container": "#df7412",
+              "surface-variant": "#32353c",
+              primary: "#adc6ff",
+              "on-tertiary-fixed-variant": "#723600",
+              "surface-container-high": "#272a31",
+              "on-secondary-container": "#aeb9d0",
+              "on-error": "#690005",
+              "surface-container-low": "#191b23",
+              "on-secondary-fixed-variant": "#3c475a",
+              "on-surface": "#e1e2ec",
+              error: "#ffb4ab",
+              "inverse-surface": "#e1e2ec",
+              "surface-container": "#1d2027",
+              "surface-tint": "#adc6ff",
+              surface: "#10131a",
+              "surface-dim": "#10131a",
+              outline: "#8c909f",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              "container-padding": "16px",
+              gutter: "12px",
+              unit: "4px",
+              "sidebar-width": "240px",
+              "drawer-width": "480px",
+            },
+            fontFamily: {
+              "label-caps": ["JetBrains Mono"],
+              "headline-md": ["Inter"],
+              "headline-lg": ["Inter"],
+              "code-sm": ["JetBrains Mono"],
+              "body-sm": ["Inter"],
+            },
+            fontSize: {
+              "label-caps": [
+                "10px",
+                {
+                  lineHeight: "12px",
+                  letterSpacing: "0.05em",
+                  fontWeight: "700",
+                },
+              ],
+              "headline-md": [
+                "18px",
+                {
+                  lineHeight: "24px",
+                  letterSpacing: "-0.01em",
+                  fontWeight: "600",
+                },
+              ],
+              "headline-lg": [
+                "24px",
+                {
+                  lineHeight: "32px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "600",
+                },
+              ],
+              "code-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+              "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      .redacted-pattern {
+        background-image: repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 10px,
+          #475569 10px,
+          #475569 20px
+        );
+      }
+    </style>
+  </head>
+  <body
+    class="bg-background text-on-surface font-body-sm text-body-sm antialiased overflow-hidden flex flex-col h-screen"
+  >
+    <!-- TopAppBar -->
+    <header
+      class="flex justify-between items-center w-full px-container-padding h-12 z-50 bg-surface-dim border-b border-outline-variant/20"
+    >
+      <div class="flex items-center gap-4">
+        <span
+          class="text-headline-md font-headline-md font-black tracking-tighter text-primary"
+          >GOV_CORE_VX</span
+        >
+      </div>
+      <div
+        class="flex-1 flex justify-center items-center gap-4 text-code-sm font-code-sm text-on-surface-variant"
+      >
+        <div
+          class="flex items-center gap-2 bg-surface-container-low px-2 py-1 rounded border border-outline-variant/15"
+        >
+          <span class="text-primary">ACTOR:</span> ADMIN_01
+        </div>
+        <div
+          class="flex items-center gap-2 bg-surface-container-low px-2 py-1 rounded border border-outline-variant/15"
+        >
+          <span class="text-primary">ENV:</span> PROD
+        </div>
+        <div
+          class="flex items-center gap-2 bg-surface-container-low px-2 py-1 rounded border border-outline-variant/15"
+        >
+          <span class="text-primary">CID:</span> 88A2-X
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-primary">
+        <button
+          class="p-1 hover:bg-surface-variant/50 transition-colors duration-150 rounded scale-95 active:bg-surface-container-highest transition-all"
+        >
+          <span class="material-symbols-outlined text-[20px]" data-icon="search"
+            >search</span
+          >
+        </button>
+        <button
+          class="p-1 hover:bg-surface-variant/50 transition-colors duration-150 rounded scale-95 active:bg-surface-container-highest transition-all"
+        >
+          <span
+            class="material-symbols-outlined text-[20px]"
+            data-icon="terminal"
+            >terminal</span
+          >
+        </button>
+        <button
+          class="p-1 hover:bg-surface-variant/50 transition-colors duration-150 rounded scale-95 active:bg-surface-container-highest transition-all"
+        >
+          <span
+            class="material-symbols-outlined text-[20px]"
+            data-icon="notifications"
+            >notifications</span
+          >
+        </button>
+        <button
+          class="p-1 hover:bg-surface-variant/50 transition-colors duration-150 rounded scale-95 active:bg-surface-container-highest transition-all"
+        >
+          <span
+            class="material-symbols-outlined text-[20px]"
+            data-icon="account_circle"
+            >account_circle</span
+          >
+        </button>
+      </div>
+    </header>
+    <div class="flex flex-1 overflow-hidden">
+      <!-- SideNavBar -->
+      <nav
+        class="fixed left-0 top-12 bottom-0 flex flex-col z-40 bg-surface-container text-primary border-r border-outline-variant/15 w-sidebar-width"
+      >
+        <div class="p-4 border-b border-outline-variant/15">
+          <h2 class="text-headline-lg font-headline-lg font-bold text-primary">
+            CONTROL_PLANE
+          </h2>
+          <p class="text-body-sm font-body-sm text-on-surface-variant mt-1">
+            V2.4.0-STABLE
+          </p>
+        </div>
+        <div class="flex-1 overflow-y-auto py-2 flex flex-col gap-1">
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="home">home</span>
+            <span class="text-label-caps font-label-caps">Home</span>
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="build_circle"
+              >build_circle</span
+            >
+            <span class="text-label-caps font-label-caps">Repair Console</span>
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="hub">hub</span>
+            <span class="text-label-caps font-label-caps"
+              >Tenant Workspace</span
+            >
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 flex items-center gap-3"
+            href="#"
+          >
+            <span
+              class="material-symbols-outlined"
+              data-icon="settings_input_component"
+              >settings_input_component</span
+            >
+            <span class="text-label-caps font-label-caps">Runtime Config</span>
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="toggle_on"
+              >toggle_on</span
+            >
+            <span class="text-label-caps font-label-caps">Feature Flags</span>
+          </a>
+          <a
+            class="bg-secondary-container text-on-secondary-container border-l-4 border-primary px-4 py-2 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="history_edu"
+              >history_edu</span
+            >
+            <span class="text-label-caps font-label-caps">Audit</span>
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="help_center"
+              >help_center</span
+            >
+            <span class="text-label-caps font-label-caps">Support</span>
+          </a>
+        </div>
+        <div class="p-2 border-t border-outline-variant/15 flex flex-col gap-1">
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="monitor_heart"
+              >monitor_heart</span
+            >
+            <span class="text-label-caps font-label-caps">Diagnostics</span>
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 hover:bg-surface-container-highest/40 transition-all duration-200 flex items-center gap-3"
+            href="#"
+          >
+            <span class="material-symbols-outlined" data-icon="terminal"
+              >terminal</span
+            >
+            <span class="text-label-caps font-label-caps">Terminal</span>
+          </a>
+        </div>
+      </nav>
+      <!-- Main Content Canvas -->
+      <main
+        class="flex-1 ml-[240px] p-container-padding overflow-y-auto bg-background"
+      >
+        <div
+          class="mb-6 flex justify-between items-end border-b border-outline-variant/20 pb-4"
+        >
+          <div>
+            <h1
+              class="text-headline-lg font-headline-lg text-on-surface flex items-center gap-2"
+            >
+              <span
+                class="material-symbols-outlined text-error"
+                data-icon="gavel"
+                style="font-variation-settings: &quot;FILL&quot; 1"
+                >gavel</span
+              >
+              Compliance &amp; Retention Controls
+            </h1>
+            <p class="text-body-sm font-body-sm text-on-surface-variant mt-1">
+              Data sovereignty and legal hold management.
+            </p>
+          </div>
+          <button
+            class="bg-error/10 text-error border border-error/30 px-4 py-2 rounded text-label-caps font-label-caps hover:bg-error/20 transition-colors flex items-center gap-2"
+          >
+            <span class="material-symbols-outlined text-[16px]" data-icon="lock"
+              >lock</span
+            >
+            INITIATE LEGAL HOLD
+          </button>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+          <!-- Active Holds -->
+          <div class="lg:col-span-2 flex flex-col gap-gutter">
+            <div
+              class="bg-surface border border-outline-variant/15 rounded flex flex-col"
+            >
+              <div
+                class="p-3 border-b border-outline-variant/15 flex justify-between items-center bg-surface-container-lowest"
+              >
+                <h3
+                  class="text-label-caps font-label-caps text-on-surface flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px]"
+                    data-icon="policy"
+                    >policy</span
+                  >
+                  ACTIVE LEGAL HOLDS
+                </h3>
+                <span
+                  class="bg-error/20 text-error px-2 py-0.5 rounded text-[10px] font-bold"
+                  >2 ACTIVE</span
+                >
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead
+                    class="bg-surface-container-low text-on-surface-variant text-label-caps font-label-caps border-b border-outline-variant/15"
+                  >
+                    <tr>
+                      <th class="p-2 font-normal">TARGET (TENANT ID)</th>
+                      <th class="p-2 font-normal">REASON</th>
+                      <th class="p-2 font-normal">ACTOR</th>
+                      <th class="p-2 font-normal">ISSUED</th>
+                      <th class="p-2 font-normal text-right">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody class="text-code-sm font-code-sm">
+                    <tr
+                      class="border-b border-outline-variant/10 hover:bg-surface-container-highest/20"
+                    >
+                      <td class="p-2 font-bold text-primary">TN-992-ALPHA</td>
+                      <td class="p-2">Subpoena Req #882</td>
+                      <td class="p-2 text-on-surface-variant">SYS_ADMIN_04</td>
+                      <td class="p-2 text-on-surface-variant">
+                        2023-10-12T08:00Z
+                      </td>
+                      <td class="p-2 text-right">
+                        <button
+                          class="text-primary hover:text-primary-fixed-dim uppercase text-[10px] font-bold border border-primary/30 px-2 py-1 rounded"
+                        >
+                          Release
+                        </button>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-surface-container-highest/20">
+                      <td class="p-2 font-bold text-primary">TN-104-BETA</td>
+                      <td class="p-2 text-error">Internal Investigation</td>
+                      <td class="p-2 text-on-surface-variant">
+                        COMPLIANCE_DIR
+                      </td>
+                      <td class="p-2 text-on-surface-variant">
+                        2023-11-01T14:30Z
+                      </td>
+                      <td class="p-2 text-right">
+                        <button
+                          class="text-primary hover:text-primary-fixed-dim uppercase text-[10px] font-bold border border-primary/30 px-2 py-1 rounded"
+                        >
+                          Release
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <!-- Retention Policies -->
+            <div
+              class="bg-surface border border-outline-variant/15 rounded flex flex-col"
+            >
+              <div
+                class="p-3 border-b border-outline-variant/15 bg-surface-container-lowest"
+              >
+                <h3
+                  class="text-label-caps font-label-caps text-on-surface flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px]"
+                    data-icon="inventory_2"
+                    >inventory_2</span
+                  >
+                  RETENTION POLICIES BY DATA TYPE
+                </h3>
+              </div>
+              <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div
+                  class="border border-outline-variant/20 rounded p-3 bg-surface-container-low flex flex-col justify-between h-24 relative overflow-hidden"
+                >
+                  <div class="absolute right-[-10px] top-[-10px] opacity-5">
+                    <span
+                      class="material-symbols-outlined text-[80px]"
+                      data-icon="history"
+                      >history</span
+                    >
+                  </div>
+                  <span
+                    class="text-code-sm font-code-sm text-on-surface-variant uppercase"
+                    >Audit Logs</span
+                  >
+                  <div
+                    class="text-headline-lg font-headline-lg text-on-surface font-bold"
+                  >
+                    7 YEARS
+                  </div>
+                </div>
+                <div
+                  class="border border-outline-variant/20 rounded p-3 bg-surface-container-low flex flex-col justify-between h-24 relative overflow-hidden"
+                >
+                  <div class="absolute right-[-10px] top-[-10px] opacity-5">
+                    <span
+                      class="material-symbols-outlined text-[80px]"
+                      data-icon="monitoring"
+                      >monitoring</span
+                    >
+                  </div>
+                  <span
+                    class="text-code-sm font-code-sm text-on-surface-variant uppercase"
+                    >Metrics</span
+                  >
+                  <div
+                    class="text-headline-lg font-headline-lg text-on-surface font-bold"
+                  >
+                    90 DAYS
+                  </div>
+                </div>
+                <div
+                  class="border border-error/30 border-t-2 border-t-error rounded p-3 bg-surface-container-low flex flex-col justify-between h-24 relative overflow-hidden"
+                >
+                  <div class="absolute right-[-10px] top-[-10px] opacity-5">
+                    <span
+                      class="material-symbols-outlined text-[80px] text-error"
+                      data-icon="fingerprint"
+                      >fingerprint</span
+                    >
+                  </div>
+                  <div class="flex justify-between items-start">
+                    <span
+                      class="text-code-sm font-code-sm text-on-surface-variant uppercase"
+                      >PII Data</span
+                    >
+                    <span
+                      class="material-symbols-outlined text-error text-[16px]"
+                      data-icon="lock"
+                      >lock</span
+                    >
+                  </div>
+                  <div class="flex flex-col">
+                    <span
+                      class="text-headline-md font-headline-md text-on-surface font-bold"
+                      >3 YEARS</span
+                    >
+                    <span class="text-[10px] text-error mt-1 uppercase"
+                      >Hold Active</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Right Column: Status & Evidence -->
+          <div class="flex flex-col gap-gutter">
+            <!-- Purge Guard -->
+            <div class="bg-surface border border-outline-variant/15 rounded">
+              <div
+                class="p-3 border-b border-outline-variant/15 bg-surface-container-lowest"
+              >
+                <h3
+                  class="text-label-caps font-label-caps text-on-surface flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px]"
+                    data-icon="cleaning_services"
+                    >cleaning_services</span
+                  >
+                  PURGE GUARD STATUS
+                </h3>
+              </div>
+              <div class="p-4 flex flex-col gap-3">
+                <div
+                  class="flex justify-between items-center text-code-sm font-code-sm border-b border-outline-variant/10 pb-2"
+                >
+                  <span class="text-on-surface-variant">Job ID: CLN-402</span>
+                  <span class="text-primary flex items-center gap-1"
+                    ><span
+                      class="w-2 h-2 rounded-full bg-primary animate-pulse"
+                    ></span>
+                    RUNNING</span
+                  >
+                </div>
+                <div
+                  class="flex justify-between items-center text-code-sm font-code-sm border-b border-outline-variant/10 pb-2"
+                >
+                  <span class="text-on-surface-variant">Safety Locks</span>
+                  <span class="text-error font-bold">ENGAGED (2)</span>
+                </div>
+                <div
+                  class="flex justify-between items-center text-code-sm font-code-sm"
+                >
+                  <span class="text-on-surface-variant">Next Cycle</span>
+                  <span>23:00 UTC</span>
+                </div>
+              </div>
+            </div>
+            <!-- Evidence Log -->
+            <div
+              class="bg-surface border border-outline-variant/15 rounded flex-1 flex flex-col"
+            >
+              <div
+                class="p-3 border-b border-outline-variant/15 bg-surface-container-lowest"
+              >
+                <h3
+                  class="text-label-caps font-label-caps text-on-surface flex items-center gap-2"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px]"
+                    data-icon="receipt_long"
+                    >receipt_long</span
+                  >
+                  EVIDENCE LOG
+                </h3>
+              </div>
+              <div class="p-0 flex-1 overflow-y-auto relative">
+                <!-- Timeline Rail -->
+                <div
+                  class="absolute left-[20px] top-0 bottom-0 w-[2px] bg-outline-variant/20 z-0"
+                ></div>
+                <div class="flex flex-col p-4 gap-4 relative z-10">
+                  <div class="flex gap-3">
+                    <div
+                      class="w-3 h-3 rounded-full bg-primary mt-1 shadow-[0_0_0_4px_#10131a]"
+                    ></div>
+                    <div class="flex-1 flex flex-col gap-1">
+                      <div class="text-code-sm font-code-sm text-on-surface">
+                        Policy Update: PII Retention
+                      </div>
+                      <div
+                        class="text-[10px] font-label-caps text-on-surface-variant"
+                      >
+                        ACTOR: ADMIN_01 • 10m ago
+                      </div>
+                      <div
+                        class="bg-surface-container p-2 rounded text-[10px] font-mono text-outline border border-outline-variant/10 break-all"
+                      >
+                        SHA256:
+                        8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex gap-3">
+                    <div
+                      class="w-3 h-3 rounded-full bg-error mt-1 shadow-[0_0_0_4px_#10131a]"
+                    ></div>
+                    <div class="flex-1 flex flex-col gap-1">
+                      <div class="text-code-sm font-code-sm text-error">
+                        Legal Hold Initiated
+                      </div>
+                      <div
+                        class="text-[10px] font-label-caps text-on-surface-variant"
+                      >
+                        ACTOR: COMPLIANCE_DIR • 2h ago
+                      </div>
+                      <div
+                        class="bg-surface-container p-2 rounded text-[10px] font-mono border border-outline-variant/10 flex justify-between items-center"
+                      >
+                        <div class="h-2 w-24 redacted-pattern"></div>
+                        <span
+                          class="material-symbols-outlined text-[14px] text-outline cursor-pointer hover:text-primary"
+                          data-icon="visibility"
+                          >visibility</span
+                        >
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex gap-3">
+                    <div
+                      class="w-3 h-3 rounded-full bg-outline-variant mt-1 shadow-[0_0_0_4px_#10131a]"
+                    ></div>
+                    <div class="flex-1 flex flex-col gap-1">
+                      <div class="text-code-sm font-code-sm text-on-surface">
+                        Purge Cycle Completed
+                      </div>
+                      <div
+                        class="text-[10px] font-label-caps text-on-surface-variant"
+                      >
+                        ACTOR: SYSTEM • 1d ago
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

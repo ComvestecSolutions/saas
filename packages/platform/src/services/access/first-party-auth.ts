@@ -15,9 +15,14 @@ const ProductAppAuthStateEnvironmentSchema = Schema.Struct({
   KEYCLOAK_CLIENT_SECRET: Schema.NonEmptyString,
 });
 
+export const ProductAppPostAuthRedirectPathSchema = Schema.NonEmptyString.pipe(
+  Schema.pattern(/^\/(?!\/).*/),
+);
+
 export const ProductAppAuthCallbackStatePayloadSchema = Schema.Struct({
   correlationId: Schema.NonEmptyString,
   redirectUri: AbsoluteRedirectUriSchema,
+  postAuthRedirectPath: Schema.optional(ProductAppPostAuthRedirectPathSchema),
   tenant: TenantContextSchema,
   enabledModules: Schema.Array(PlatformModuleIdSchema),
   expiresAt: IsoTimestampSchema,

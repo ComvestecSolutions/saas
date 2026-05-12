@@ -1,0 +1,860 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>CONTROL_PLANE - Webhooks and API Access</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;family=Inter:wght@400;600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary": "#263143",
+              "on-error-container": "#ffdad6",
+              tertiary: "#ffb786",
+              "on-primary-fixed-variant": "#004395",
+              "inverse-on-surface": "#2e3038",
+              "surface-container-highest": "#32353c",
+              "tertiary-fixed-dim": "#ffb786",
+              "on-background": "#e1e2ec",
+              "secondary-fixed": "#d8e3fb",
+              "primary-fixed": "#d8e2ff",
+              "on-primary-fixed": "#001a42",
+              "tertiary-fixed": "#ffdcc6",
+              "secondary-fixed-dim": "#bcc7de",
+              "on-tertiary-container": "#461f00",
+              "on-primary": "#002e6a",
+              "on-tertiary-fixed": "#311400",
+              "on-tertiary": "#502400",
+              "primary-container": "#4d8eff",
+              "surface-bright": "#363941",
+              "primary-fixed-dim": "#adc6ff",
+              "on-primary-container": "#00285d",
+              "error-container": "#93000a",
+              "on-surface-variant": "#c2c6d6",
+              "outline-variant": "#424754",
+              background: "#10131a",
+              "inverse-primary": "#005ac2",
+              "surface-container-lowest": "#0b0e15",
+              "on-secondary-fixed": "#111c2d",
+              "secondary-container": "#3e495d",
+              secondary: "#bcc7de",
+              "tertiary-container": "#df7412",
+              "surface-variant": "#32353c",
+              primary: "#adc6ff",
+              "on-tertiary-fixed-variant": "#723600",
+              "surface-container-high": "#272a31",
+              "on-secondary-container": "#aeb9d0",
+              "on-error": "#690005",
+              "surface-container-low": "#191b23",
+              "on-secondary-fixed-variant": "#3c475a",
+              "on-surface": "#e1e2ec",
+              error: "#ffb4ab",
+              "inverse-surface": "#e1e2ec",
+              "surface-container": "#1d2027",
+              "surface-tint": "#adc6ff",
+              surface: "#10131a",
+              "surface-dim": "#10131a",
+              outline: "#8c909f",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              "container-padding": "16px",
+              gutter: "12px",
+              unit: "4px",
+              "sidebar-width": "240px",
+              "drawer-width": "480px",
+            },
+            fontFamily: {
+              "label-caps": ["JetBrains Mono"],
+              "headline-md": ["Inter"],
+              "headline-lg": ["Inter"],
+              "code-sm": ["JetBrains Mono"],
+              "body-sm": ["Inter"],
+            },
+            fontSize: {
+              "label-caps": [
+                "10px",
+                {
+                  lineHeight: "12px",
+                  letterSpacing: "0.05em",
+                  fontWeight: "700",
+                },
+              ],
+              "headline-md": [
+                "18px",
+                {
+                  lineHeight: "24px",
+                  letterSpacing: "-0.01em",
+                  fontWeight: "600",
+                },
+              ],
+              "headline-lg": [
+                "24px",
+                {
+                  lineHeight: "32px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "600",
+                },
+              ],
+              "code-sm": [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  fontWeight: "400",
+                },
+              ],
+              "body-sm": [
+                "13px",
+                {
+                  lineHeight: "18px",
+                  fontWeight: "400",
+                },
+              ],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      .stripe-pattern {
+        background-image: repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 4px,
+          #475569 4px,
+          #475569 8px
+        );
+      }
+    </style>
+  </head>
+  <body
+    class="bg-background text-on-surface h-screen w-screen overflow-hidden flex flex-col font-body-sm"
+  >
+    <!-- TopAppBar -->
+    <header
+      class="flex justify-between items-center w-full px-container-padding h-12 z-50 bg-surface-dim border-b border-outline-variant/20 bg-surface-container-low"
+    >
+      <div class="flex items-center gap-4">
+        <h1
+          class="text-headline-md font-headline-md font-black tracking-tighter text-primary"
+        >
+          GOV_CORE_VX
+        </h1>
+      </div>
+      <div class="flex items-center space-x-6">
+        <span
+          class="text-code-sm font-code-sm text-on-surface-variant flex items-center gap-1"
+          ><span class="material-symbols-outlined text-[16px]">person</span>
+          ACTOR: ADMIN_01</span
+        >
+        <span
+          class="text-code-sm font-code-sm text-on-surface-variant flex items-center gap-1"
+          ><span class="material-symbols-outlined text-[16px]">cloud</span> ENV:
+          PROD</span
+        >
+        <span
+          class="text-code-sm font-code-sm text-on-surface-variant flex items-center gap-1"
+          ><span class="material-symbols-outlined text-[16px]">badge</span> CID:
+          88A2-X</span
+        >
+      </div>
+      <div class="flex items-center gap-4">
+        <button
+          class="text-primary scale-95 active:bg-surface-container-highest transition-all hover:bg-surface-variant/50 duration-150 p-1 rounded"
+        >
+          <span class="material-symbols-outlined" data-icon="settings"
+            >settings</span
+          >
+        </button>
+        <button
+          class="text-primary scale-95 active:bg-surface-container-highest transition-all hover:bg-surface-variant/50 duration-150 p-1 rounded"
+        >
+          <span
+            class="material-symbols-outlined"
+            data-icon="notifications_active"
+            >notifications_active</span
+          >
+        </button>
+        <button
+          class="text-primary scale-95 active:bg-surface-container-highest transition-all hover:bg-surface-variant/50 duration-150 p-1 rounded"
+        >
+          <span class="material-symbols-outlined" data-icon="account_circle"
+            >account_circle</span
+          >
+        </button>
+      </div>
+    </header>
+    <div class="flex flex-1 overflow-hidden">
+      <!-- SideNavBar -->
+      <nav
+        class="fixed left-0 top-12 bottom-0 flex flex-col z-40 bg-surface-container border-r border-outline-variant/15 w-sidebar-width h-full justify-between"
+      >
+        <div>
+          <div
+            class="p-4 border-b border-outline-variant/15 flex items-center gap-3"
+          >
+            <div
+              class="w-8 h-8 rounded bg-surface-variant flex items-center justify-center text-primary"
+            >
+              <span class="material-symbols-outlined">dns</span>
+            </div>
+            <div>
+              <div
+                class="text-headline-md font-headline-md font-bold text-primary"
+              >
+                GOV_CORE_VX
+              </div>
+              <div class="text-body-sm font-body-sm text-on-surface-variant">
+                V2.4.0-STABLE
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col py-2">
+            <a
+              class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="dashboard"
+                >dashboard</span
+              >
+              <span class="text-label-caps font-label-caps">Home</span>
+            </a>
+            <a
+              class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="build_circle"
+                >build_circle</span
+              >
+              <span class="text-label-caps font-label-caps"
+                >Repair Console</span
+              >
+            </a>
+            <a
+              class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="hub"
+                >hub</span
+              >
+              <span class="text-label-caps font-label-caps"
+                >Tenant Workspace</span
+              >
+            </a>
+            <a
+              class="bg-secondary-container text-on-secondary-container border-l-4 border-primary px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="settings_input_component"
+                >settings_input_component</span
+              >
+              <span class="text-label-caps font-label-caps"
+                >Runtime Config</span
+              >
+            </a>
+            <a
+              class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="toggle_on"
+                >toggle_on</span
+              >
+              <span class="text-label-caps font-label-caps">Feature Flags</span>
+            </a>
+            <a
+              class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="history_edu"
+                >history_edu</span
+              >
+              <span class="text-label-caps font-label-caps">Audit</span>
+            </a>
+            <a
+              class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="help_center"
+                >help_center</span
+              >
+              <span class="text-label-caps font-label-caps">Support</span>
+            </a>
+          </div>
+        </div>
+        <div class="border-t border-outline-variant/15 py-2">
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+            href="#"
+          >
+            <span
+              class="material-symbols-outlined text-[18px]"
+              data-icon="monitor_heart"
+              >monitor_heart</span
+            >
+            <span class="text-label-caps font-label-caps">Diagnostics</span>
+          </a>
+          <a
+            class="text-on-surface-variant hover:text-on-surface px-4 py-2 flex items-center gap-3 hover:bg-surface-container-highest/40 transition-all duration-200 active:translate-x-1"
+            href="#"
+          >
+            <span
+              class="material-symbols-outlined text-[18px]"
+              data-icon="terminal"
+              >terminal</span
+            >
+            <span class="text-label-caps font-label-caps">Terminal</span>
+          </a>
+        </div>
+      </nav>
+      <!-- Main Content Canvas -->
+      <main class="flex-1 ml-[240px] flex overflow-hidden">
+        <!-- Left Pane: API Keys & Webhooks -->
+        <div
+          class="flex-1 flex flex-col min-w-0 border-r border-outline-variant/15 bg-surface-dim"
+        >
+          <!-- Section Header -->
+          <div
+            class="p-6 border-b border-outline-variant/15 bg-surface flex justify-between items-center shrink-0"
+          >
+            <div>
+              <h2
+                class="text-headline-lg font-headline-lg text-on-surface flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-primary">api</span>
+                Connectivity Infrastructure
+              </h2>
+              <p class="text-body-sm font-body-sm text-on-surface-variant mt-1">
+                Manage API credentials and event subscription endpoints.
+              </p>
+            </div>
+            <div class="flex gap-3">
+              <button
+                class="bg-surface-variant text-on-surface px-4 py-2 rounded text-body-sm font-bold flex items-center gap-2 hover:bg-surface-container-highest border border-outline-variant/30"
+              >
+                <span class="material-symbols-outlined text-[16px]">add</span>
+                New Webhook
+              </button>
+              <button
+                class="bg-primary text-on-primary px-4 py-2 rounded text-body-sm font-bold flex items-center gap-2 hover:bg-primary-fixed"
+              >
+                <span class="material-symbols-outlined text-[16px]">key</span>
+                Generate Key
+              </button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6 space-y-8">
+            <!-- API Keys Section -->
+            <section>
+              <h3
+                class="text-headline-md font-headline-md text-on-surface mb-4 flex items-center gap-2"
+              >
+                <span
+                  class="material-symbols-outlined text-on-surface-variant text-[20px]"
+                  >vpn_key</span
+                >
+                Active Credentials
+              </h3>
+              <div
+                class="bg-surface-container rounded border border-outline-variant/15 overflow-hidden"
+              >
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="bg-surface border-b border-outline-variant/15">
+                      <th
+                        class="px-4 py-2 text-label-caps font-label-caps text-on-surface-variant font-bold w-1/4"
+                      >
+                        Label
+                      </th>
+                      <th
+                        class="px-4 py-2 text-label-caps font-label-caps text-on-surface-variant font-bold w-1/4"
+                      >
+                        Prefix
+                      </th>
+                      <th
+                        class="px-4 py-2 text-label-caps font-label-caps text-on-surface-variant font-bold w-1/6"
+                      >
+                        Status
+                      </th>
+                      <th
+                        class="px-4 py-2 text-label-caps font-label-caps text-on-surface-variant font-bold w-1/6"
+                      >
+                        Last Used
+                      </th>
+                      <th
+                        class="px-4 py-2 text-label-caps font-label-caps text-on-surface-variant font-bold w-1/6 text-right"
+                      >
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      class="border-b border-outline-variant/10 hover:bg-surface-variant/30 transition-colors h-9"
+                    >
+                      <td
+                        class="px-4 py-1 text-body-sm font-body-sm text-on-surface font-medium"
+                      >
+                        Production Gateway
+                      </td>
+                      <td
+                        class="px-4 py-1 text-code-sm font-code-sm text-primary"
+                      >
+                        cvs_live_8f92...
+                      </td>
+                      <td class="px-4 py-1">
+                        <span
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-label-caps font-label-caps bg-primary/10 text-primary border border-primary/20"
+                          >Active</span
+                        >
+                      </td>
+                      <td
+                        class="px-4 py-1 text-body-sm font-body-sm text-on-surface-variant"
+                      >
+                        2 mins ago
+                      </td>
+                      <td class="px-4 py-1 text-right">
+                        <button
+                          class="text-on-surface-variant hover:text-error transition-colors p-1"
+                        >
+                          <span class="material-symbols-outlined text-[16px]"
+                            >delete</span
+                          >
+                        </button>
+                      </td>
+                    </tr>
+                    <tr
+                      class="border-b border-outline-variant/10 hover:bg-surface-variant/30 transition-colors h-9"
+                    >
+                      <td
+                        class="px-4 py-1 text-body-sm font-body-sm text-on-surface font-medium"
+                      >
+                        Staging Internal
+                      </td>
+                      <td
+                        class="px-4 py-1 text-code-sm font-code-sm text-primary"
+                      >
+                        cvs_test_4a1b...
+                      </td>
+                      <td class="px-4 py-1">
+                        <span
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-label-caps font-label-caps bg-primary/10 text-primary border border-primary/20"
+                          >Active</span
+                        >
+                      </td>
+                      <td
+                        class="px-4 py-1 text-body-sm font-body-sm text-on-surface-variant"
+                      >
+                        1 hr ago
+                      </td>
+                      <td class="px-4 py-1 text-right">
+                        <button
+                          class="text-on-surface-variant hover:text-error transition-colors p-1"
+                        >
+                          <span class="material-symbols-outlined text-[16px]"
+                            >delete</span
+                          >
+                        </button>
+                      </td>
+                    </tr>
+                    <tr
+                      class="hover:bg-surface-variant/30 transition-colors h-9 opacity-60"
+                    >
+                      <td
+                        class="px-4 py-1 text-body-sm font-body-sm text-on-surface line-through"
+                      >
+                        Legacy Auth Service
+                      </td>
+                      <td
+                        class="px-4 py-1 text-code-sm font-code-sm text-on-surface-variant"
+                      >
+                        cvs_live_99xx...
+                      </td>
+                      <td class="px-4 py-1">
+                        <span
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-label-caps font-label-caps bg-error/10 text-error border border-error/20"
+                          >Revoked</span
+                        >
+                      </td>
+                      <td
+                        class="px-4 py-1 text-body-sm font-body-sm text-on-surface-variant"
+                      >
+                        Oct 12, 2023
+                      </td>
+                      <td class="px-4 py-1 text-right"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <!-- Webhook Subscriptions -->
+            <section>
+              <h3
+                class="text-headline-md font-headline-md text-on-surface mb-4 flex items-center gap-2"
+              >
+                <span
+                  class="material-symbols-outlined text-on-surface-variant text-[20px]"
+                  >webhook</span
+                >
+                Event Subscriptions
+              </h3>
+              <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <!-- Webhook Card 1 -->
+                <div
+                  class="bg-surface-container rounded border border-outline-variant/20 p-4 relative group cursor-pointer hover:border-primary/50 transition-colors"
+                >
+                  <div class="absolute top-4 right-4 flex gap-2">
+                    <span
+                      class="inline-flex items-center px-1.5 py-0.5 rounded text-label-caps font-label-caps bg-primary/10 text-primary border border-primary/20"
+                      >Active</span
+                    >
+                  </div>
+                  <div class="flex items-center gap-3 mb-3">
+                    <div
+                      class="w-8 h-8 rounded bg-surface-variant flex items-center justify-center text-on-surface"
+                    >
+                      <span class="material-symbols-outlined text-[18px]"
+                        >call_received</span
+                      >
+                    </div>
+                    <div>
+                      <div class="text-body-sm font-bold text-on-surface">
+                        Billing Sync Service
+                      </div>
+                      <div
+                        class="text-code-sm font-code-sm text-on-surface-variant truncate w-48"
+                      >
+                        https://api.internal.corp/webhooks/stripe
+                      </div>
+                    </div>
+                  </div>
+                  <div class="space-y-2 mb-4">
+                    <div
+                      class="text-label-caps font-label-caps text-on-surface-variant"
+                    >
+                      Events (2)
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      <span
+                        class="px-2 py-0.5 bg-surface text-on-surface border border-outline-variant/30 rounded text-code-sm font-code-sm"
+                        >tenant.created</span
+                      >
+                      <span
+                        class="px-2 py-0.5 bg-surface text-on-surface border border-outline-variant/30 rounded text-code-sm font-code-sm"
+                        >billing.failed</span
+                      >
+                    </div>
+                  </div>
+                  <div
+                    class="bg-surface p-2 rounded border border-outline-variant/15 flex justify-between items-center"
+                  >
+                    <div class="flex items-center gap-2 w-full">
+                      <span
+                        class="material-symbols-outlined text-[14px] text-on-surface-variant"
+                        >key</span
+                      >
+                      <div
+                        class="h-4 flex-1 stripe-pattern rounded"
+                        title="Redacted Secret Key"
+                      ></div>
+                    </div>
+                    <button
+                      class="ml-2 text-on-surface-variant hover:text-primary p-1"
+                    >
+                      <span class="material-symbols-outlined text-[16px]"
+                        >visibility</span
+                      >
+                    </button>
+                  </div>
+                </div>
+                <!-- Webhook Card 2 -->
+                <div
+                  class="bg-surface-container rounded border border-outline-variant/20 p-4 relative group cursor-pointer hover:border-primary/50 transition-colors"
+                >
+                  <div class="absolute top-4 right-4 flex gap-2">
+                    <span
+                      class="inline-flex items-center px-1.5 py-0.5 rounded text-label-caps font-label-caps bg-tertiary/10 text-tertiary border border-tertiary/20"
+                      >Verifying</span
+                    >
+                  </div>
+                  <div class="flex items-center gap-3 mb-3">
+                    <div
+                      class="w-8 h-8 rounded bg-surface-variant flex items-center justify-center text-on-surface"
+                    >
+                      <span class="material-symbols-outlined text-[18px]"
+                        >call_made</span
+                      >
+                    </div>
+                    <div>
+                      <div class="text-body-sm font-bold text-on-surface">
+                        Audit Log Export
+                      </div>
+                      <div
+                        class="text-code-sm font-code-sm text-on-surface-variant truncate w-48"
+                      >
+                        https://siem.sec-ops.net/v1/ingest
+                      </div>
+                    </div>
+                  </div>
+                  <div class="space-y-2 mb-4">
+                    <div
+                      class="text-label-caps font-label-caps text-on-surface-variant"
+                    >
+                      Events (1)
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      <span
+                        class="px-2 py-0.5 bg-surface text-on-surface border border-outline-variant/30 rounded text-code-sm font-code-sm"
+                        >audit.high_risk</span
+                      >
+                    </div>
+                  </div>
+                  <div
+                    class="bg-surface p-2 rounded border border-outline-variant/15 flex justify-between items-center"
+                  >
+                    <div class="flex items-center gap-2 w-full">
+                      <span
+                        class="material-symbols-outlined text-[14px] text-on-surface-variant"
+                        >key</span
+                      >
+                      <div
+                        class="h-4 flex-1 stripe-pattern rounded"
+                        title="Redacted Secret Key"
+                      ></div>
+                    </div>
+                    <button
+                      class="ml-2 text-on-surface-variant hover:text-primary p-1"
+                    >
+                      <span class="material-symbols-outlined text-[16px]"
+                        >visibility</span
+                      >
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <!-- Right Drawer: Delivery Logs -->
+        <div
+          class="w-drawer-width bg-surface-container border-l border-outline-variant/15 flex flex-col shrink-0"
+        >
+          <div
+            class="p-4 border-b border-outline-variant/15 flex justify-between items-center bg-surface"
+          >
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[20px]"
+                >receipt_long</span
+              >
+              <h3 class="text-headline-md font-headline-md text-on-surface">
+                Delivery Log
+              </h3>
+            </div>
+            <button class="text-on-surface-variant hover:text-on-surface p-1">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          <div
+            class="p-4 border-b border-outline-variant/10 bg-surface-variant/30 flex items-center justify-between"
+          >
+            <div>
+              <div
+                class="text-label-caps font-label-caps text-on-surface-variant"
+              >
+                Event ID
+              </div>
+              <div class="text-code-sm font-code-sm text-primary">
+                evt_9x8f7a6b5c
+              </div>
+            </div>
+            <div class="text-right">
+              <div
+                class="text-label-caps font-label-caps text-on-surface-variant"
+              >
+                Status
+              </div>
+              <div class="flex items-center gap-1 text-error">
+                <span class="material-symbols-outlined text-[14px]">error</span>
+                <span class="text-code-sm font-code-sm font-bold"
+                  >500 Internal Server Error</span
+                >
+              </div>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-6">
+            <!-- Timeline Rail -->
+            <div
+              class="relative pl-4 border-l-2 border-outline-variant/20 ml-2 space-y-6"
+            >
+              <!-- Attempt 1 -->
+              <div class="relative">
+                <div
+                  class="absolute -left-[23px] top-1 w-3 h-3 rounded-full bg-error border-[2px] border-surface-container"
+                ></div>
+                <div class="flex justify-between items-start mb-1">
+                  <div class="text-body-sm font-bold text-on-surface">
+                    Initial Attempt
+                  </div>
+                  <div
+                    class="text-code-sm font-code-sm text-on-surface-variant"
+                  >
+                    10:42:01 UTC
+                  </div>
+                </div>
+                <div
+                  class="bg-surface border border-outline-variant/15 rounded p-3"
+                >
+                  <div
+                    class="flex justify-between items-center mb-2 border-b border-outline-variant/10 pb-2"
+                  >
+                    <span
+                      class="text-code-sm font-code-sm text-on-surface-variant"
+                      >POST /webhooks/stripe</span
+                    >
+                    <span class="text-code-sm font-code-sm text-error"
+                      >HTTP 500</span
+                    >
+                  </div>
+                  <div
+                    class="text-code-sm font-code-sm text-on-surface opacity-80 whitespace-pre font-mono overflow-x-auto text-xs"
+                  >
+                    { "error": "Connection Timeout", "detail": "Upstream service
+                    unreachable after 3000ms" }
+                  </div>
+                </div>
+              </div>
+              <!-- Attempt 2 -->
+              <div class="relative">
+                <div
+                  class="absolute -left-[23px] top-1 w-3 h-3 rounded-full bg-error border-[2px] border-surface-container"
+                ></div>
+                <div class="flex justify-between items-start mb-1">
+                  <div class="text-body-sm font-bold text-on-surface">
+                    Retry 1/3
+                  </div>
+                  <div
+                    class="text-code-sm font-code-sm text-on-surface-variant"
+                  >
+                    10:43:05 UTC
+                  </div>
+                </div>
+                <div
+                  class="text-code-sm font-code-sm text-on-surface-variant italic"
+                >
+                  Identical failure. Auto-retry backoff triggered.
+                </div>
+              </div>
+            </div>
+            <!-- Payload Details -->
+            <div>
+              <h4
+                class="text-label-caps font-label-caps text-on-surface-variant mb-2 border-b border-outline-variant/10 pb-1"
+              >
+                Request Payload
+              </h4>
+              <div
+                class="bg-[#0b0e15] border border-outline-variant/20 rounded p-3 relative group"
+              >
+                <button
+                  class="absolute top-2 right-2 text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <span class="material-symbols-outlined text-[16px]"
+                    >content_copy</span
+                  >
+                </button>
+                <pre
+                  class="text-code-sm font-code-sm text-primary-fixed-dim whitespace-pre-wrap text-xs"
+                >
+{
+  "id": "evt_9x8f7a6b5c",
+  "object": "event",
+  "api_version": "2023-10-18",
+  "created": 1698057721,
+  "type": "billing.failed",
+  "data": {
+    "object": {
+      "id": "in_1N...",
+      "amount_due": 4500,
+      "currency": "usd"
+    }
+  }
+}
+                            </pre
+                >
+              </div>
+            </div>
+            <!-- Signature State -->
+            <div
+              class="bg-surface border border-outline-variant/15 rounded p-3 flex items-start gap-3"
+            >
+              <span
+                class="material-symbols-outlined text-primary mt-0.5 text-[18px]"
+                >verified_user</span
+              >
+              <div>
+                <div class="text-body-sm font-bold text-on-surface">
+                  Signature Computed
+                </div>
+                <div
+                  class="text-code-sm font-code-sm text-on-surface-variant truncate w-64 mt-1"
+                  title="sha256=a8f5f167f44f4964e6c998dee827110c... "
+                >
+                  sha256=a8f5f167f44f4964e6c998dee827110c...
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="p-4 border-t border-outline-variant/15 bg-surface flex justify-end gap-3"
+          >
+            <button
+              class="bg-surface-variant text-on-surface px-4 py-2 rounded text-body-sm font-bold hover:bg-surface-container-highest border border-outline-variant/30"
+            >
+              Ignore
+            </button>
+            <button
+              class="bg-primary text-on-primary px-4 py-2 rounded text-body-sm font-bold flex items-center gap-2 hover:bg-primary-fixed"
+            >
+              <span class="material-symbols-outlined text-[16px]">replay</span>
+              Replay Delivery
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

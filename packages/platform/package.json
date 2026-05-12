@@ -17,7 +17,8 @@
     "h3-v2": "npm:h3@2.0.1-rc.20",
     "postgres": "^3.4.7",
     "redis": "^5.12.1",
-    "swagger-ui-dist": "^5.32.4"
+    "swagger-ui-dist": "^5.32.4",
+    "unleash-client": "^6.10.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

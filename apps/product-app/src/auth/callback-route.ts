@@ -1,15 +1,15 @@
 import { Effect, Schema } from "effect";
 import {
+  buildSubscriberAuthenticationCompletionInputFromEnvironment,
   buildSubscriberJourneySessionCookieHeader,
   completeSubscriberAuthenticationFromEnvironment,
   createJsonResponse,
   createObservedPlatformRequestBoundary,
-  decodeProductAppAuthCallbackStateFromEnvironment,
-  decodeProductAppAuthCallbackStatePayloadFromEnvironment,
   isTaggedError,
   matchHttpEffect,
   platformRequestCorrelationIdHeaderName,
   readOptionalSearchParam,
+  resolveProductAuthCallbackCorrelationIdFromEnvironment,
 } from "@comvestec/platform";
 
 const productAuthCallbackTelemetryServiceName = "product-app-auth-callback";
@@ -136,26 +136,11 @@ const buildAuthCallbackUnhandledErrorResponse = (input: {
 const resolveAuthCallbackCorrelationId = (
   environment: unknown,
   request: Request,
-) => {
-  const requestUrl = new URL(request.url);
-  const state = readOptionalSearchParam(requestUrl, "state");
-
-  if (state === undefined) {
-    return Promise.resolve(undefined);
-  }
-
-  return Effect.runPromise(
-    decodeProductAppAuthCallbackStatePayloadFromEnvironment(
-      environment,
-      state,
-    ).pipe(
-      Effect.match({
-        onFailure: () => undefined,
-        onSuccess: (statePayload) => statePayload.correlationId,
-      }),
-    ),
+) =>
+  resolveProductAuthCallbackCorrelationIdFromEnvironment(
+    environment,
+    readOptionalSearchParam(new URL(request.url), "state"),
   );
-};
 
 export const handleProductAuthCallbackRequest = (
   environment: unknown,
@@ -186,38 +171,38 @@ export const handleProductAuthCallbackRequest = (
         effect: detectProviderError(requestUrl).pipe(
           Effect.flatMap(() => decodeProductAuthCallbackQuery(requestUrl)),
           Effect.flatMap((query) =>
-            decodeProductAppAuthCallbackStateFromEnvironment(
+            buildSubscriberAuthenticationCompletionInputFromEnvironment(
               environment,
-              query.state,
+              {
+                authorizationCode: query.code,
+                state: query.state,
+                callbackRequestUri,
+                host: requestUrl.host,
+                ...(correlationId !== null ? { correlationId } : {}),
+              },
             ).pipe(
-              Effect.flatMap((statePayload) =>
-                statePayload.redirectUri === callbackRequestUri
-                  ? completeAuthentication({
-                      session: {
-                        authorizationCode: query.code,
-                        redirectUri: statePayload.redirectUri,
-                      },
-                      correlationId:
-                        correlationId ?? statePayload.correlationId,
-                      host: requestUrl.host,
-                      tenant: statePayload.tenant,
-                      enabledModules: [...statePayload.enabledModules],
-                    })
-                  : Effect.fail({
-                      _tag: "ProductAppAuthCallbackStateInvalidError",
-                      reason:
-                        "State redirect URI did not match the callback request.",
-                    } as const),
+              Effect.flatMap(({ completionInput, postAuthRedirectPath }) =>
+                completeAuthentication(completionInput).pipe(
+                  Effect.map((result) => ({
+                    result,
+                    ...(postAuthRedirectPath !== undefined
+                      ? { postAuthRedirectPath }
+                      : {}),
+                  })),
+                ),
               ),
             ),
           ),
         ),
         onFailure: buildAuthCallbackRouteErrorResponse,
-        onSuccess: (result) =>
+        onSuccess: ({ result, postAuthRedirectPath }) =>
           new Response(null, {
             status: 302,
             headers: {
-              Location: new URL("/", requestUrl.origin).toString(),
+              Location: new URL(
+                postAuthRedirectPath ?? "/",
+                requestUrl.origin,
+              ).toString(),
               "Set-Cookie": buildSubscriberJourneySessionCookieHeader(
                 result.session.sessionId,
                 {

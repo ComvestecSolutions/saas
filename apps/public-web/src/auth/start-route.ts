@@ -32,6 +32,10 @@ type StartSubscriberAuthentication = (
   input: Parameters<typeof startSubscriberAuthenticationFromEnvironment>[1],
 ) => Effect.Effect<{ readonly redirect: { readonly url: string } }, unknown>;
 
+type PreparePublicAuthStart = NonNullable<
+  Parameters<typeof buildPublicWebAuthStartInputFromEnvironment>[2]
+>;
+
 const decodePublicWebAuthStartQuery = (url: URL) =>
   Schema.decodeUnknown(PublicWebAuthStartQuerySchema)({
     tenantHint: readOptionalSearchParam(url, "tenantHint"),
@@ -52,6 +56,9 @@ const buildAuthStartRouteErrorResponse = (error: unknown) => {
       case "ProductAppAuthCallbackStateInvalidError":
       case "ProductAppAuthCallbackRedirectNotAllowedError":
       case "SubscriberJourneyRuntimeLoadError":
+      case "MissingModuleManifestError":
+      case "RuntimeConfigPersistenceNotConfiguredError":
+      case "UnknownConfigKeyError":
         return createJsonResponse(
           {
             error:
@@ -61,7 +68,10 @@ const buildAuthStartRouteErrorResponse = (error: unknown) => {
         );
       case "KeycloakAdapterRequestError":
       case "ValkeyAdapterOperationError":
+      case "BillingStatePostgresRepositoryQueryError":
       case "PostgresAdapterConnectionError":
+      case "RuntimeConfigModulePersistenceError":
+      case "RuntimeConfigPostgresRepositoryPersistenceError":
         return createJsonResponse(
           {
             error:
@@ -94,6 +104,7 @@ export const handlePublicWebAuthStartRequest = (
   request: Request,
   startAuthentication: StartSubscriberAuthentication = (input) =>
     startSubscriberAuthenticationFromEnvironment(environment, input),
+  preparePublicAuthStart?: PreparePublicAuthStart,
 ) => {
   const requestBoundary = createObservedPlatformRequestBoundary({
     environment,
@@ -116,16 +127,20 @@ export const handlePublicWebAuthStartRequest = (
             }),
           ),
           Effect.flatMap((query) =>
-            buildPublicWebAuthStartInputFromEnvironment(environment, {
-              ...(correlationId !== null ? { correlationId } : {}),
-              host: requestUrl.host,
-              ...(query.tenantHint !== undefined
-                ? { tenantHint: query.tenantHint }
-                : {}),
-              ...(query.tenantScopeHint !== undefined
-                ? { tenantScopeHint: query.tenantScopeHint }
-                : {}),
-            }).pipe(
+            buildPublicWebAuthStartInputFromEnvironment(
+              environment,
+              {
+                ...(correlationId !== null ? { correlationId } : {}),
+                host: requestUrl.host,
+                ...(query.tenantHint !== undefined
+                  ? { tenantHint: query.tenantHint }
+                  : {}),
+                ...(query.tenantScopeHint !== undefined
+                  ? { tenantScopeHint: query.tenantScopeHint }
+                  : {}),
+              },
+              preparePublicAuthStart,
+            ).pipe(
               Effect.flatMap((authStartInput) =>
                 startAuthentication(authStartInput),
               ),

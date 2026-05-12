@@ -1,16 +1,24 @@
-import { Schema } from "effect";
 import type { AuthConfig } from "convex/server";
 
-const ConvexAuthEnvironmentSchema = Schema.Struct({
-  KEYCLOAK_REALM: Schema.NonEmptyString,
-  KEYCLOAK_CLIENT_ID: Schema.NonEmptyString,
-  KEYCLOAK_BASE_URL: Schema.NonEmptyString,
-  KEYCLOAK_BASE_URL_INTERNAL: Schema.NonEmptyString,
-});
+type ConvexAuthEnvironment = {
+  readonly KEYCLOAK_REALM: string;
+  readonly KEYCLOAK_CLIENT_ID: string;
+  readonly KEYCLOAK_BASE_URL: string;
+  readonly KEYCLOAK_BASE_URL_INTERNAL: string;
+};
 
-const decodeConvexAuthEnvironment = Schema.decodeUnknownSync(
-  ConvexAuthEnvironmentSchema,
-);
+const requireNonEmptyEnvironmentValue = (
+  name: keyof ConvexAuthEnvironment,
+  value: string | undefined,
+) => {
+  const trimmedValue = value?.trim();
+
+  if (trimmedValue === undefined || trimmedValue.length === 0) {
+    throw new Error(`${name} must be set to a non-empty string.`);
+  }
+
+  return trimmedValue;
+};
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
@@ -21,12 +29,24 @@ const buildIssuerUrl = (input: {
 
 const deduplicate = <A>(values: ReadonlyArray<A>) => [...new Set(values)];
 
-const convexAuthEnvironment = decodeConvexAuthEnvironment({
-  KEYCLOAK_REALM: process.env.KEYCLOAK_REALM?.trim(),
-  KEYCLOAK_CLIENT_ID: process.env.KEYCLOAK_CLIENT_ID?.trim(),
-  KEYCLOAK_BASE_URL: process.env.KEYCLOAK_BASE_URL?.trim(),
-  KEYCLOAK_BASE_URL_INTERNAL: process.env.KEYCLOAK_BASE_URL_INTERNAL?.trim(),
-});
+const convexAuthEnvironment: ConvexAuthEnvironment = {
+  KEYCLOAK_REALM: requireNonEmptyEnvironmentValue(
+    "KEYCLOAK_REALM",
+    process.env.KEYCLOAK_REALM,
+  ),
+  KEYCLOAK_CLIENT_ID: requireNonEmptyEnvironmentValue(
+    "KEYCLOAK_CLIENT_ID",
+    process.env.KEYCLOAK_CLIENT_ID,
+  ),
+  KEYCLOAK_BASE_URL: requireNonEmptyEnvironmentValue(
+    "KEYCLOAK_BASE_URL",
+    process.env.KEYCLOAK_BASE_URL,
+  ),
+  KEYCLOAK_BASE_URL_INTERNAL: requireNonEmptyEnvironmentValue(
+    "KEYCLOAK_BASE_URL_INTERNAL",
+    process.env.KEYCLOAK_BASE_URL_INTERNAL,
+  ),
+};
 
 const keycloakRealm = convexAuthEnvironment.KEYCLOAK_REALM;
 

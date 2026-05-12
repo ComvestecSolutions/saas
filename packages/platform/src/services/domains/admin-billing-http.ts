@@ -1,12 +1,19 @@
 import { Effect, ParseResult, Schema } from "effect";
 import {
+  type AdminBillingExplanationRequest,
+  BillingPlanCreateInputSchema,
+  TenantContextSchema,
+  type BillingRepairGapCancelRequest,
+  type BillingRepairGapListRequest,
+  type BillingPlanCreateRequest,
   IsoTimestampSchema,
   type BillingRepairGapReplayRequest,
   type BillingReconciliationManualRunRequest,
-  BillingPlanCreateRequestSchema,
-  BillingRepairGapListRequestSchema,
 } from "@comvestec/contracts";
-import { extractSubscriberJourneySessionId } from "../access/request-context-transport";
+import {
+  extractAuthenticatedWorkflowExecutionContextFromHeaders,
+  extractRequiredSubscriberJourneySessionIdFromHeader,
+} from "../access/request-context-transport";
 import {
   createJsonResponse,
   createMethodNotAllowedResponse,
@@ -14,10 +21,9 @@ import {
   isTaggedError,
   matchHttpEffect,
   readRequestJson,
-  readRequestQuery,
 } from "../communication/http-transport";
 import {
-  type AdminBillingProjectionConfigurationError,
+  type AdminBillingRuntimeError,
   runAdminBillingFromEnvironment,
   type AdminBillingService,
 } from "./admin-billing";
@@ -26,19 +32,11 @@ export type { AdminBillingService } from "./admin-billing";
 
 type AdminBillingServiceRunner = <A, E>(
   use: (service: AdminBillingService) => Effect.Effect<A, E>,
-) => Effect.Effect<
-  A,
-  | E
-  | AdminBillingProjectionConfigurationError
-  | ParseResult.ParseError
-  | { readonly _tag: "PostgresAdapterConnectionError" }
->;
+) => Effect.Effect<A, E | AdminBillingRuntimeError | ParseResult.ParseError>;
 
 type JsonRequestErrorTag =
   | "AdminBillingJsonInvalidError"
-  | "AdminBillingJsonRequestParseError"
-  | "AdminBillingSessionIdMissingError"
-  | "AdminBillingBearerTokenMissingError";
+  | "AdminBillingJsonRequestParseError";
 
 type JsonRequestError = {
   readonly _tag: JsonRequestErrorTag;
@@ -48,7 +46,9 @@ export const adminBillingApiBasePath = "/api/admin/billing";
 
 export const adminBillingApiPath = {
   createManagedPlan: `${adminBillingApiBasePath}/plans`,
+  inspectBillingState: `${adminBillingApiBasePath}/inspections`,
   listRepairGaps: `${adminBillingApiBasePath}/repair-gaps`,
+  cancelRepairGap: `${adminBillingApiBasePath}/repair-gaps/cancellations`,
   replayRepairGap: `${adminBillingApiBasePath}/repair-gaps/replays`,
   runManualReconciliation: `${adminBillingApiBasePath}/reconciliation/runs`,
 } as const;
@@ -59,6 +59,21 @@ export const RunManualBillingReconciliationHttpRequestSchema = Schema.Struct({
 
 export const ReplayBillingRepairGapHttpRequestSchema = Schema.Struct({
   jobId: Schema.NonEmptyString,
+  inspectionReason: Schema.optional(Schema.NonEmptyString),
+});
+
+export const CancelBillingRepairGapHttpRequestSchema = Schema.Struct({
+  jobId: Schema.NonEmptyString,
+  inspectionReason: Schema.optional(Schema.NonEmptyString),
+});
+
+export const CreateManagedBillingPlanHttpRequestSchema = Schema.Struct({
+  plan: BillingPlanCreateInputSchema,
+});
+
+export const InspectBillingStateHttpRequestSchema = Schema.Struct({
+  tenant: TenantContextSchema,
+  inspectionReason: Schema.optional(Schema.NonEmptyString),
 });
 
 const buildErrorResponse = (error: unknown) => {
@@ -75,12 +90,12 @@ const buildErrorResponse = (error: unknown) => {
           { error: "Request payload did not match the expected schema." },
           400,
         );
-      case "AdminBillingSessionIdMissingError":
+      case "SubscriberJourneySessionIdMissingError":
         return createJsonResponse(
           { error: "Authenticated operator session is required." },
           401,
         );
-      case "AdminBillingBearerTokenMissingError":
+      case "BearerTokenMissingError":
         return createJsonResponse(
           { error: "Keycloak bearer token is required." },
           401,
@@ -109,6 +124,13 @@ const buildErrorResponse = (error: unknown) => {
           { error: "Billing repair gap is no longer eligible for replay." },
           409,
         );
+      case "AdminBillingRepairGapCancelUnavailableError":
+        return createJsonResponse(
+          {
+            error: "Billing repair gap is no longer eligible for cancellation.",
+          },
+          409,
+        );
       case "ManagedBillingPlanAccessDeniedError":
         return createJsonResponse(
           { error: "Billing plan management is not allowed for this session." },
@@ -121,6 +143,7 @@ const buildErrorResponse = (error: unknown) => {
         );
       case "AuditLogPostgresRepositoryPersistenceError":
       case "AuthorizationDelegatedCheckError":
+      case "BillingStatePostgresRepositoryQueryError":
       case "WorkflowJobsPostgresRepositoryQueryError":
         return createJsonResponse(
           { error: "A backend dependency request failed." },
@@ -185,56 +208,22 @@ const buildAccessDeniedResponse = (message: string) => (error: unknown) => {
   return buildErrorResponse(error);
 };
 
-const extractBearerToken = (request: Request) => {
-  const authorizationHeader = request.headers.get("authorization")?.trim();
+const normalizeInspectionReason = (inspectionReason: string | undefined) => {
+  const trimmedInspectionReason = inspectionReason?.trim();
 
-  if (authorizationHeader === undefined) {
-    return Effect.succeed<string | undefined>(undefined);
-  }
-
-  const [scheme, ...tokenSegments] = authorizationHeader.split(/\s+/);
-
-  if (scheme?.toLowerCase() !== "bearer") {
-    return Effect.succeed<string | undefined>(undefined);
-  }
-
-  const token = tokenSegments.join(" ").trim();
-
-  return Effect.succeed<string | undefined>(
-    token.length === 0 ? undefined : token,
-  );
+  return trimmedInspectionReason !== undefined &&
+    trimmedInspectionReason.length > 0
+    ? trimmedInspectionReason
+    : undefined;
 };
-
-const extractAuthenticatedWorkflowExecutionContext = (request: Request) =>
-  Effect.gen(function* () {
-    const sessionId = yield* extractSubscriberJourneySessionId(request);
-    const convexAuthToken = yield* extractBearerToken(request);
-
-    if (sessionId === undefined) {
-      return yield* Effect.fail({
-        _tag: "AdminBillingSessionIdMissingError",
-      } satisfies JsonRequestError);
-    }
-
-    if (convexAuthToken === undefined || convexAuthToken.length === 0) {
-      return yield* Effect.fail({
-        _tag: "AdminBillingBearerTokenMissingError",
-      } satisfies JsonRequestError);
-    }
-
-    return {
-      sessionId,
-      convexAuthToken,
-    };
-  });
 
 const buildManualBillingReconciliationRequest = (
   request: Request,
   body: Schema.Schema.Type<
     typeof RunManualBillingReconciliationHttpRequestSchema
   >,
-): Effect.Effect<BillingReconciliationManualRunRequest, JsonRequestError> =>
-  extractAuthenticatedWorkflowExecutionContext(request).pipe(
+) =>
+  extractAuthenticatedWorkflowExecutionContextFromHeaders(request).pipe(
     Effect.map(
       (context) =>
         ({
@@ -247,32 +236,116 @@ const buildManualBillingReconciliationRequest = (
 const buildBillingRepairGapReplayRequest = (
   request: Request,
   body: Schema.Schema.Type<typeof ReplayBillingRepairGapHttpRequestSchema>,
-): Effect.Effect<BillingRepairGapReplayRequest, JsonRequestError> =>
-  extractAuthenticatedWorkflowExecutionContext(request).pipe(
+) =>
+  extractAuthenticatedWorkflowExecutionContextFromHeaders(request).pipe(
+    Effect.map((context) => {
+      const inspectionReason = normalizeInspectionReason(body.inspectionReason);
+
+      return {
+        ...context,
+        jobId: body.jobId,
+        ...(inspectionReason === undefined ? {} : { inspectionReason }),
+      } satisfies BillingRepairGapReplayRequest;
+    }),
+  );
+
+const buildBillingRepairGapCancelRequest = (
+  request: Request,
+  body: Schema.Schema.Type<typeof CancelBillingRepairGapHttpRequestSchema>,
+) =>
+  extractAuthenticatedWorkflowExecutionContextFromHeaders(request).pipe(
+    Effect.map((context) => {
+      const inspectionReason = normalizeInspectionReason(body.inspectionReason);
+
+      return {
+        ...context,
+        jobId: body.jobId,
+        ...(inspectionReason === undefined ? {} : { inspectionReason }),
+      } satisfies BillingRepairGapCancelRequest;
+    }),
+  );
+
+const buildCreateManagedBillingPlanRequest = (
+  request: Request,
+  body: Schema.Schema.Type<typeof CreateManagedBillingPlanHttpRequestSchema>,
+) =>
+  extractRequiredSubscriberJourneySessionIdFromHeader(request).pipe(
     Effect.map(
-      (context) =>
+      (sessionId) =>
         ({
-          ...context,
-          jobId: body.jobId,
-        }) satisfies BillingRepairGapReplayRequest,
+          sessionId,
+          plan: body.plan,
+        }) satisfies BillingPlanCreateRequest,
     ),
   );
+
+const buildInspectBillingStateRequest = (
+  request: Request,
+  body: Schema.Schema.Type<typeof InspectBillingStateHttpRequestSchema>,
+) =>
+  extractRequiredSubscriberJourneySessionIdFromHeader(request).pipe(
+    Effect.map((sessionId) => {
+      const inspectionReason = normalizeInspectionReason(body.inspectionReason);
+
+      return {
+        sessionId,
+        tenant: body.tenant,
+        ...(inspectionReason === undefined ? {} : { inspectionReason }),
+      } satisfies AdminBillingExplanationRequest;
+    }),
+  );
+
+const buildListBillingRepairGapsRequest = (request: Request) => {
+  const inspectionReason = normalizeInspectionReason(
+    new URL(request.url).searchParams.get("inspectionReason") ?? undefined,
+  );
+
+  return extractRequiredSubscriberJourneySessionIdFromHeader(request).pipe(
+    Effect.map(
+      (sessionId) =>
+        ({
+          sessionId,
+          ...(inspectionReason === undefined ? {} : { inspectionReason }),
+        }) satisfies BillingRepairGapListRequest,
+    ),
+  );
+};
 
 export const createAdminBillingHttpHandler =
   (runWithService: AdminBillingServiceRunner) => (request: Request) => {
     const url = new URL(request.url);
 
     switch (url.pathname) {
+      case adminBillingApiPath.inspectBillingState:
+        if (request.method !== "POST") {
+          return Effect.succeed(createMethodNotAllowedResponse(["POST"]));
+        }
+
+        return matchHttpEffect({
+          effect: readRequestJson({
+            request,
+            invalidJsonTag: "AdminBillingJsonInvalidError",
+            decode: Schema.decodeUnknown(InspectBillingStateHttpRequestSchema),
+          }).pipe(
+            Effect.flatMap((body) =>
+              buildInspectBillingStateRequest(request, body),
+            ),
+            Effect.flatMap((input) =>
+              runWithService((service) => service.inspectBillingState(input)),
+            ),
+          ),
+          onSuccess: (result) => createJsonResponse(result),
+          onFailure: buildAccessDeniedResponse(
+            "Billing state inspection is not allowed for this session.",
+          ),
+        });
       case adminBillingApiPath.listRepairGaps:
         if (request.method !== "GET") {
           return Effect.succeed(createMethodNotAllowedResponse(["GET"]));
         }
 
         return matchHttpEffect({
-          effect: readRequestQuery({
-            url,
-            decode: Schema.decodeUnknown(BillingRepairGapListRequestSchema),
-          }).pipe(
+          effect: buildListBillingRepairGapsRequest(request).pipe(
             Effect.flatMap((input) =>
               runWithService((service) => service.listBillingRepairGaps(input)),
             ),
@@ -291,8 +364,13 @@ export const createAdminBillingHttpHandler =
           effect: readRequestJson({
             request,
             invalidJsonTag: "AdminBillingJsonInvalidError",
-            decode: Schema.decodeUnknown(BillingPlanCreateRequestSchema),
+            decode: Schema.decodeUnknown(
+              CreateManagedBillingPlanHttpRequestSchema,
+            ),
           }).pipe(
+            Effect.flatMap((body) =>
+              buildCreateManagedBillingPlanRequest(request, body),
+            ),
             Effect.flatMap((input) =>
               runWithService((service) =>
                 service.createManagedBillingPlan(input),
@@ -302,6 +380,33 @@ export const createAdminBillingHttpHandler =
           onSuccess: (result) => createJsonResponse(result, 202),
           onFailure: buildAccessDeniedResponse(
             "Billing plan management is not allowed for this session.",
+          ),
+        });
+      case adminBillingApiPath.cancelRepairGap:
+        if (request.method !== "POST") {
+          return Effect.succeed(createMethodNotAllowedResponse(["POST"]));
+        }
+
+        return matchHttpEffect({
+          effect: readRequestJson({
+            request,
+            invalidJsonTag: "AdminBillingJsonInvalidError",
+            decode: Schema.decodeUnknown(
+              CancelBillingRepairGapHttpRequestSchema,
+            ),
+          }).pipe(
+            Effect.flatMap((body) =>
+              buildBillingRepairGapCancelRequest(request, body),
+            ),
+            Effect.flatMap((input) =>
+              runWithService((service) =>
+                service.cancelBillingRepairGap(input),
+              ),
+            ),
+          ),
+          onSuccess: (result) => createJsonResponse(result),
+          onFailure: buildAccessDeniedResponse(
+            "Billing repair cancellation is not allowed for this session.",
           ),
         });
       case adminBillingApiPath.replayRepairGap:

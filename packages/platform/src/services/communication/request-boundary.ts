@@ -1,13 +1,40 @@
 import { Effect, Schema } from "effect";
 import { telemetryKind } from "@comvestec/contracts";
-import { makeObservabilityAdapter } from "../../adapters";
+import {
+  makeGlitchtipAdapter,
+  makeObservabilityAdapter,
+  resolveGlitchtipSecurityReportEndpoint,
+} from "../../adapters";
 
 export const platformRequestCorrelationIdHeaderName = "x-correlation-id";
 
-const RequestBoundaryObservabilityEnvironmentSchema = Schema.Struct({
+const RequestBoundaryRawObservabilityEnvironmentSchema = Schema.Struct({
   OTEL_EXPORTER_OTLP_ENDPOINT: Schema.NonEmptyString,
   GRAFANA_BASE_URL: Schema.NonEmptyString,
 });
+
+const RequestBoundaryRuntimeObservabilityEnvironmentSchema = Schema.Struct({
+  otelEndpoint: Schema.NonEmptyString,
+  grafanaBaseUrl: Schema.NonEmptyString,
+});
+
+const RequestBoundaryObservabilityEnvironmentSchema = Schema.Union(
+  RequestBoundaryRawObservabilityEnvironmentSchema,
+  RequestBoundaryRuntimeObservabilityEnvironmentSchema,
+);
+
+const RequestBoundaryRawErrorTrackingEnvironmentSchema = Schema.Struct({
+  ERROR_TRACKING_DSN: Schema.NonEmptyString,
+});
+
+const RequestBoundaryRuntimeErrorTrackingEnvironmentSchema = Schema.Struct({
+  errorTrackingDsn: Schema.NonEmptyString,
+});
+
+const RequestBoundaryErrorTrackingEnvironmentSchema = Schema.Union(
+  RequestBoundaryRawErrorTrackingEnvironmentSchema,
+  RequestBoundaryRuntimeErrorTrackingEnvironmentSchema,
+);
 
 export type PlatformRequestHandler = (
   request: Request,
@@ -22,14 +49,40 @@ export type PlatformRequestTelemetry = {
   readonly outcome: "response" | "uncaught-error";
 };
 
+type PlatformUnhandledRequestError = {
+  readonly correlationId: string;
+  readonly method: string;
+  readonly path: string;
+  readonly status: number;
+  readonly durationMs: number;
+  readonly errorName: string;
+  readonly errorMessage: string;
+  readonly errorStack?: string;
+};
+
 type PlatformRequestTelemetryEmitter = (
   input: PlatformRequestTelemetry,
+) => Promise<void>;
+
+type PlatformUnhandledRequestErrorReporter = (
+  input: PlatformUnhandledRequestError,
 ) => Promise<void>;
 
 type PlatformUnhandledErrorResponseBuilder = (input: {
   readonly correlationHeaderName: string;
   readonly correlationId: string;
 }) => Response;
+
+type PlatformRequestTransformer = (
+  request: Request,
+) => Request | Promise<Request>;
+
+export type PlatformRequestResponseHeadersResolver = (input: {
+  readonly request: Request;
+  readonly response: Response;
+  readonly correlationHeaderName: string;
+  readonly correlationId: string;
+}) => HeadersInit | undefined | Promise<HeadersInit | undefined>;
 
 type PlatformRequestCorrelationIdResolver = (input: {
   readonly request: Request;
@@ -42,14 +95,17 @@ export type PlatformRequestBoundary = {
 
 export type PlatformRequestBoundaryOptions = {
   readonly emitRequestTelemetry?: PlatformRequestTelemetryEmitter;
+  readonly reportUnhandledRequestError?: PlatformUnhandledRequestErrorReporter;
   readonly correlationHeaderName?: string;
   readonly buildUnhandledErrorResponse?: PlatformUnhandledErrorResponseBuilder;
   readonly resolveCorrelationId?: PlatformRequestCorrelationIdResolver;
+  readonly transformRequest?: PlatformRequestTransformer;
+  readonly resolveResponseHeaders?: PlatformRequestResponseHeadersResolver;
 };
 
 export type ObservedPlatformRequestBoundaryOptions = Omit<
   PlatformRequestBoundaryOptions,
-  "emitRequestTelemetry"
+  "emitRequestTelemetry" | "reportUnhandledRequestError"
 > & {
   readonly environment: unknown;
   readonly serviceName: string;
@@ -101,15 +157,26 @@ const buildRequestWithCorrelationId = (input: {
 
   headers.set(input.correlationHeaderName, input.correlationId);
 
-  return new Request(input.request, { headers });
+  return new Request(input.request, {
+    headers,
+  });
 };
 
 const buildResponseWithCorrelationId = (input: {
   readonly response: Response;
   readonly correlationHeaderName: string;
   readonly correlationId: string;
+  readonly additionalHeaders?: HeadersInit;
 }) => {
   const headers = new Headers(input.response.headers);
+
+  if (input.additionalHeaders !== undefined) {
+    for (const [name, value] of new Headers(input.additionalHeaders)) {
+      if (!headers.has(name)) {
+        headers.set(name, value);
+      }
+    }
+  }
 
   headers.set(input.correlationHeaderName, input.correlationId);
 
@@ -145,6 +212,158 @@ const emitRequestTelemetry = (
   void emitter(telemetry).catch(() => undefined);
 };
 
+const reportUnhandledRequestError = (
+  reporter: PlatformUnhandledRequestErrorReporter | undefined,
+  error: PlatformUnhandledRequestError,
+) => {
+  if (reporter === undefined) {
+    return;
+  }
+
+  void reporter(error).catch(() => undefined);
+};
+
+const buildPlatformUnhandledRequestError = (input: {
+  readonly correlationId: string;
+  readonly method: string;
+  readonly path: string;
+  readonly status: number;
+  readonly durationMs: number;
+  readonly error: unknown;
+}): PlatformUnhandledRequestError => {
+  const resolvedError = input.error instanceof Error ? input.error : undefined;
+  const stringError =
+    typeof input.error === "string" && input.error.trim().length > 0
+      ? input.error.trim()
+      : undefined;
+  const resolvedMessage =
+    resolvedError !== undefined && resolvedError.message.trim().length > 0
+      ? resolvedError.message.trim()
+      : undefined;
+  const resolvedName =
+    resolvedError !== undefined && resolvedError.name.trim().length > 0
+      ? resolvedError.name.trim()
+      : undefined;
+  const resolvedStack =
+    resolvedError !== undefined && resolvedError.stack?.trim().length
+      ? resolvedError.stack
+      : undefined;
+
+  return {
+    correlationId: input.correlationId,
+    method: input.method,
+    path: input.path,
+    status: input.status,
+    durationMs: input.durationMs,
+    errorName: resolvedName ?? "Error",
+    errorMessage: resolvedMessage ?? stringError ?? "Request failed.",
+    ...(resolvedStack !== undefined ? { errorStack: resolvedStack } : {}),
+  };
+};
+
+const normalizeObservabilityEnvironment = (
+  input: Schema.Schema.Type<
+    typeof RequestBoundaryObservabilityEnvironmentSchema
+  >,
+) =>
+  "OTEL_EXPORTER_OTLP_ENDPOINT" in input
+    ? {
+        otlpHttpEndpoint: input.OTEL_EXPORTER_OTLP_ENDPOINT,
+        grafanaBaseUrl: input.GRAFANA_BASE_URL,
+      }
+    : {
+        otlpHttpEndpoint: input.otelEndpoint,
+        grafanaBaseUrl: input.grafanaBaseUrl,
+      };
+
+const normalizeErrorTrackingEnvironment = (
+  input: Schema.Schema.Type<
+    typeof RequestBoundaryErrorTrackingEnvironmentSchema
+  >,
+) =>
+  "ERROR_TRACKING_DSN" in input
+    ? { dsn: input.ERROR_TRACKING_DSN }
+    : { dsn: input.errorTrackingDsn };
+
+const requestBoundaryObservabilityEnvironmentKeys = [
+  "OTEL_EXPORTER_OTLP_ENDPOINT",
+  "GRAFANA_BASE_URL",
+  "otelEndpoint",
+  "grafanaBaseUrl",
+] as const;
+
+const requestBoundaryErrorTrackingEnvironmentKeys = [
+  "ERROR_TRACKING_DSN",
+  "errorTrackingDsn",
+] as const;
+
+const requestBoundaryDocumentContentTypes = [
+  "text/html",
+  "application/xhtml+xml",
+] as const;
+
+const requestBoundaryDocumentDestinations = ["document", "iframe"] as const;
+
+const requestBoundarySecurityReportOnlyHeaderName =
+  "Content-Security-Policy-Report-Only";
+
+const hasAnyEnvironmentKey = (environment: unknown, keys: readonly string[]) =>
+  typeof environment === "object" &&
+  environment !== null &&
+  keys.some((key) => key in environment);
+
+const reportRequestBoundaryInitializationFailure = (input: {
+  readonly serviceName: string;
+  readonly concern: "request telemetry" | "error tracking";
+  readonly cause: unknown;
+}) => {
+  globalThis.console?.error(
+    `[${input.serviceName}] Failed to initialize ${input.concern}.`,
+    input.cause,
+  );
+};
+
+const reportRequestBoundaryRuntimeFailure = (input: {
+  readonly serviceName: string;
+  readonly concern:
+    | "emit request telemetry"
+    | "capture unhandled request error";
+  readonly cause: unknown;
+}) => {
+  globalThis.console?.error(
+    `[${input.serviceName}] Failed to ${input.concern}.`,
+    input.cause,
+  );
+};
+
+const isDocumentResponse = (input: {
+  readonly request: Request;
+  readonly response: Response;
+}) => {
+  const responseContentType = input.response.headers
+    .get("content-type")
+    ?.toLowerCase();
+  const requestAccept = input.request.headers.get("accept")?.toLowerCase();
+  const requestDestination = input.request.headers
+    .get("sec-fetch-dest")
+    ?.toLowerCase();
+
+  if (responseContentType !== undefined) {
+    return requestBoundaryDocumentContentTypes.some((contentType) =>
+      responseContentType.startsWith(contentType),
+    );
+  }
+
+  return (
+    requestBoundaryDocumentDestinations.some(
+      (destination) => requestDestination === destination,
+    ) || requestAccept?.includes("text/html") === true
+  );
+};
+
+const buildSecurityReportOnlyPolicy = (securityReportEndpoint: string) =>
+  `object-src 'none'; base-uri 'self'; report-uri ${securityReportEndpoint}`;
+
 export const createPlatformRequestBoundary = (
   options: PlatformRequestBoundaryOptions = {},
 ): PlatformRequestBoundary => {
@@ -171,39 +390,71 @@ export const createPlatformRequestBoundary = (
       const startedAt = Date.now();
 
       try {
-        const response = await handler(requestWithCorrelationId);
-        const responseWithCorrelationId = buildResponseWithCorrelationId({
+        const transformedRequest =
+          (await options.transformRequest?.(requestWithCorrelationId)) ??
+          requestWithCorrelationId;
+        const response = await handler(transformedRequest);
+        const additionalHeaders = await options.resolveResponseHeaders?.({
+          request: transformedRequest,
           response,
           correlationHeaderName,
           correlationId,
         });
+        const responseWithCorrelationId = buildResponseWithCorrelationId({
+          response,
+          correlationHeaderName,
+          correlationId,
+          ...(additionalHeaders !== undefined ? { additionalHeaders } : {}),
+        });
+        const durationMs = Date.now() - startedAt;
 
         emitRequestTelemetry(options.emitRequestTelemetry, {
           correlationId,
           method: request.method,
           path,
           status: responseWithCorrelationId.status,
-          durationMs: Date.now() - startedAt,
+          durationMs,
           outcome: "response",
         });
 
         return responseWithCorrelationId;
-      } catch {
-        const responseWithCorrelationId = buildResponseWithCorrelationId({
-          response: buildUnhandledErrorResponse({
-            correlationHeaderName,
-            correlationId,
-          }),
+      } catch (error) {
+        const fallbackResponse = buildUnhandledErrorResponse({
           correlationHeaderName,
           correlationId,
         });
+        const additionalHeaders = await options.resolveResponseHeaders?.({
+          request: requestWithCorrelationId,
+          response: fallbackResponse,
+          correlationHeaderName,
+          correlationId,
+        });
+        const responseWithCorrelationId = buildResponseWithCorrelationId({
+          response: fallbackResponse,
+          correlationHeaderName,
+          correlationId,
+          ...(additionalHeaders !== undefined ? { additionalHeaders } : {}),
+        });
+        const durationMs = Date.now() - startedAt;
+
+        reportUnhandledRequestError(
+          options.reportUnhandledRequestError,
+          buildPlatformUnhandledRequestError({
+            correlationId,
+            method: request.method,
+            path,
+            status: responseWithCorrelationId.status,
+            durationMs,
+            error,
+          }),
+        );
 
         emitRequestTelemetry(options.emitRequestTelemetry, {
           correlationId,
           method: request.method,
           path,
           status: responseWithCorrelationId.status,
-          durationMs: Date.now() - startedAt,
+          durationMs,
           outcome: "uncaught-error",
         });
 
@@ -222,36 +473,145 @@ export const createPlatformRequestObservabilityTelemetryEmitter = (input: {
       input.environment,
     ).pipe(
       Effect.flatMap((resolvedEnvironment) =>
-        makeObservabilityAdapter({
-          otlpHttpEndpoint: resolvedEnvironment.OTEL_EXPORTER_OTLP_ENDPOINT,
-          grafanaBaseUrl: resolvedEnvironment.GRAFANA_BASE_URL,
-        }),
+        makeObservabilityAdapter(
+          normalizeObservabilityEnvironment(resolvedEnvironment),
+        ),
       ),
       Effect.either,
     ),
   );
 
   if (adapterResolution._tag === "Left") {
+    if (
+      hasAnyEnvironmentKey(
+        input.environment,
+        requestBoundaryObservabilityEnvironmentKeys,
+      )
+    ) {
+      reportRequestBoundaryInitializationFailure({
+        serviceName: input.serviceName,
+        concern: "request telemetry",
+        cause: adapterResolution.left,
+      });
+    }
+
     return undefined;
   }
 
   return async (telemetry: PlatformRequestTelemetry) => {
     await Effect.runPromise(
-      Effect.ignore(
-        adapterResolution.right.emit({
-          kind: telemetryKind.trace,
-          service: input.serviceName,
-          payload: telemetry,
-        }),
-      ),
-    );
+      adapterResolution.right.emit({
+        kind: telemetryKind.trace,
+        service: input.serviceName,
+        payload: telemetry,
+      }),
+    ).catch((cause) => {
+      reportRequestBoundaryRuntimeFailure({
+        serviceName: input.serviceName,
+        concern: "emit request telemetry",
+        cause,
+      });
+    });
   };
 };
+
+export const createPlatformRequestErrorTrackingReporter = (input: {
+  readonly environment: unknown;
+  readonly serviceName: string;
+}) => {
+  const adapterResolution = Effect.runSync(
+    Schema.decodeUnknown(RequestBoundaryErrorTrackingEnvironmentSchema)(
+      input.environment,
+    ).pipe(
+      Effect.flatMap((resolvedEnvironment) =>
+        makeGlitchtipAdapter(
+          normalizeErrorTrackingEnvironment(resolvedEnvironment),
+        ),
+      ),
+      Effect.either,
+    ),
+  );
+
+  if (adapterResolution._tag === "Left") {
+    if (
+      hasAnyEnvironmentKey(
+        input.environment,
+        requestBoundaryErrorTrackingEnvironmentKeys,
+      )
+    ) {
+      reportRequestBoundaryInitializationFailure({
+        serviceName: input.serviceName,
+        concern: "error tracking",
+        cause: adapterResolution.left,
+      });
+    }
+
+    return undefined;
+  }
+
+  return async (error: PlatformUnhandledRequestError) => {
+    await Effect.runPromise(
+      adapterResolution.right.captureException({
+        service: input.serviceName,
+        ...error,
+      }),
+    ).catch((cause) => {
+      reportRequestBoundaryRuntimeFailure({
+        serviceName: input.serviceName,
+        concern: "capture unhandled request error",
+        cause,
+      });
+    });
+  };
+};
+
+export const createPlatformRequestGlitchtipSecurityReportHeadersResolver =
+  (input: {
+    readonly environment: unknown;
+  }): PlatformRequestResponseHeadersResolver | undefined => {
+    const environmentResolution = Effect.runSync(
+      Schema.decodeUnknown(RequestBoundaryErrorTrackingEnvironmentSchema)(
+        input.environment,
+      ).pipe(Effect.map(normalizeErrorTrackingEnvironment), Effect.either),
+    );
+
+    if (environmentResolution._tag === "Left") {
+      return undefined;
+    }
+
+    const securityReportEndpointResolution = Effect.runSync(
+      Effect.either(
+        resolveGlitchtipSecurityReportEndpoint(environmentResolution.right.dsn),
+      ),
+    );
+
+    if (securityReportEndpointResolution._tag === "Left") {
+      return undefined;
+    }
+
+    const securityReportEndpoint = securityReportEndpointResolution.right;
+
+    if (securityReportEndpoint === undefined) {
+      return undefined;
+    }
+
+    return ({ request, response }) =>
+      isDocumentResponse({ request, response })
+        ? {
+            [requestBoundarySecurityReportOnlyHeaderName]:
+              buildSecurityReportOnlyPolicy(securityReportEndpoint),
+          }
+        : undefined;
+  };
 
 export const createObservedPlatformRequestBoundary = (
   options: ObservedPlatformRequestBoundaryOptions,
 ): PlatformRequestBoundary => {
   const telemetryEmitter = createPlatformRequestObservabilityTelemetryEmitter({
+    environment: options.environment,
+    serviceName: options.serviceName,
+  });
+  const errorReporter = createPlatformRequestErrorTrackingReporter({
     environment: options.environment,
     serviceName: options.serviceName,
   });
@@ -266,8 +626,17 @@ export const createObservedPlatformRequestBoundary = (
     ...(options.resolveCorrelationId !== undefined
       ? { resolveCorrelationId: options.resolveCorrelationId }
       : {}),
+    ...(options.transformRequest !== undefined
+      ? { transformRequest: options.transformRequest }
+      : {}),
+    ...(options.resolveResponseHeaders !== undefined
+      ? { resolveResponseHeaders: options.resolveResponseHeaders }
+      : {}),
     ...(telemetryEmitter !== undefined
       ? { emitRequestTelemetry: telemetryEmitter }
+      : {}),
+    ...(errorReporter !== undefined
+      ? { reportUnhandledRequestError: errorReporter }
       : {}),
   });
 };

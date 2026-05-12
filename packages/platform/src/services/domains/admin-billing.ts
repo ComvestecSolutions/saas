@@ -5,15 +5,26 @@ import {
   workflowJobsRunningClaimTimeoutSeconds,
 } from "@comvestec/config";
 import {
+  type AdminBillingExplanationRequest,
+  AdminBillingExplanationRequestSchema,
+  type AdminBillingExplanationResult,
+  AdminBillingExplanationResultSchema,
   actorType,
   authorizationNamespace,
   authorizationRelation,
+  type BillingSummaryView,
+  BillingSummaryViewSchema,
   billingSubscriptionStatus,
   billingAndMeteringAuditAction,
-  identityClaimKey,
+  type BillingRepairGapCancelRequest,
+  BillingRepairGapCancelRequestSchema,
+  type BillingRepairGapCancelResult,
+  BillingRepairGapCancelResultSchema,
+  type BillingRepairGap,
   type BillingRepairGapReplayRequest,
   BillingRepairGapReplayRequestSchema,
   type BillingRepairGapReplayResult,
+  BillingRepairGapReplayResultSchema,
   type BillingReconciliationManualRunRequest,
   BillingReconciliationManualRunRequestSchema,
   type BillingReconciliationManualRunResult,
@@ -30,6 +41,7 @@ import {
   projectionProfile,
   PlatformScopeSchema,
   type PlatformScope,
+  workflowJobGapReason,
   workflowJobKind,
   workflowJobStatus,
   workflowJobTrigger,
@@ -41,6 +53,11 @@ import {
   AuditLogModule,
   type AuditLogModuleError,
   type AuditLogPostgresQueryable,
+  type BillingStatePostgresQueryable,
+  type BillingStatePostgresRepositoryError,
+  BillingStatePostgresRepository,
+  billingEntitlementsTable,
+  billingPaymentEventsTable,
   billingCustomerAccountsTable,
   type BillingReconciliationWorkflowJobRecord,
   BillingReconciliationWorkflowJobRecordSchema,
@@ -48,6 +65,7 @@ import {
   buildBillingReconciliationWorkflowJobId,
   makeAuditLogModule,
   makeAuditLogPostgresRepository,
+  makeBillingStatePostgresRepository,
   type AuthorizationDelegatedCheckError,
   type AuthorizationModuleService,
   makeFieldSecurityModule,
@@ -60,6 +78,7 @@ import {
   makeTenantManagementModule,
   makeTenantOnboardingPostgresRepository,
   makeTenantProvisioningPostgresRepository,
+  makeWorkflowJobsPostgresRepositoryForRecordSchema,
   TenantManagementModule,
   tenantOnboardingRunsTable,
   tenantOnboardingRunStatus,
@@ -69,17 +88,21 @@ import {
   TenantProvisioningPostgresRepository,
   makeWorkflowJobsPostgresRepository,
   type WorkflowJobsPostgresQueryable,
+  type WorkflowJobsPostgresQueryableForRecord,
   WorkflowJobsPostgresRepository,
   type WorkflowJobsPostgresRepositoryError,
+  type WorkflowJobRecord,
+  WorkflowJobRecordSchema,
   workflowJobRuntime,
   workflowJobsTable,
 } from "@comvestec/modules";
 import {
   makeAuthenticatedConvexWorkflowClient,
   type AuthenticatedConvexWorkflowClient,
-  type ConvexAdapterRequestError,
   type ConvexWorkflowExecutionError,
   KeycloakAdapter,
+  type KeycloakAdapterRequestError,
+  type KeycloakAdapterService,
   makeKeycloakAdapter,
   makeOryKetoAdapter,
   makePolarAdapter,
@@ -91,13 +114,23 @@ import {
   type PostgresAdapterConnectionError,
   ValkeyAdapter,
 } from "../../adapters";
-import { createOryKetoAuthorizationDelegatedCheck } from "../access";
+import {
+  createOryKetoAuthorizationDelegatedCheck,
+  createOryKetoAuthorizationDelegatedTupleLookup,
+} from "../access";
 import { buildWriteDatabase } from "../postgres-write-database";
+import {
+  makeWorkflowJobsService,
+  type WorkflowJobsServiceError,
+  type WorkflowJobsServiceOptions,
+  type WorkflowJobsWorkflowExecutionIdentityMismatchError,
+} from "./workflow-jobs";
 
 export const AdminBillingRuntimeOptionsSchema = Schema.Struct({
   postgresUrl: Schema.NonEmptyString,
   convexUrl: Schema.NonEmptyString,
   convexSiteUrl: Schema.NonEmptyString,
+  convexAdminKey: Schema.NonEmptyString,
   keycloakBaseUrl: Schema.NonEmptyString,
   keycloakRealm: Schema.NonEmptyString,
   keycloakClientId: Schema.NonEmptyString,
@@ -119,6 +152,7 @@ const AdminBillingProcessEnvironmentSchema = Schema.Struct({
   POSTGRES_URL: Schema.NonEmptyString,
   CONVEX_SELF_HOSTED_URL: Schema.NonEmptyString,
   CONVEX_SELF_HOSTED_SITE_URL: Schema.NonEmptyString,
+  CONVEX_SELF_HOSTED_ADMIN_KEY: Schema.NonEmptyString,
   KEYCLOAK_BASE_URL: Schema.NonEmptyString,
   KEYCLOAK_REALM: Schema.NonEmptyString,
   KEYCLOAK_CLIENT_ID: Schema.NonEmptyString,
@@ -140,7 +174,9 @@ export type ManagedBillingPlanAccessDeniedError = {
 
 export type AdminBillingProjectionConfigurationError = {
   readonly _tag: "AdminBillingProjectionConfigurationError";
-  readonly moduleId: typeof platformModuleId.workflowJobs;
+  readonly moduleId:
+    | typeof platformModuleId.workflowJobs
+    | typeof platformModuleId.billingAndMetering;
   readonly profile: typeof projectionProfile.admin;
   readonly reason: string;
 };
@@ -177,6 +213,13 @@ export type AdminBillingRepairGapReplayUnavailableError = {
   readonly reason: string;
 };
 
+export type AdminBillingRepairGapCancelUnavailableError = {
+  readonly _tag: "AdminBillingRepairGapCancelUnavailableError";
+  readonly jobId: string;
+  readonly status: string;
+  readonly reason: string;
+};
+
 export type AdminBillingServiceError =
   | AdminBillingProjectionConfigurationError
   | AdminBillingWorkflowExecutionUnavailableError
@@ -184,11 +227,14 @@ export type AdminBillingServiceError =
   | AdminBillingWorkflowBootstrapError
   | AdminBillingRepairGapNotFoundError
   | AdminBillingRepairGapReplayUnavailableError
+  | AdminBillingRepairGapCancelUnavailableError
   | AuthorizationDelegatedCheckError
   | ParseResult.ParseError
   | AuditLogModuleError
+  | BillingStatePostgresRepositoryError
   | IdentitySessionModuleError
   | WorkflowJobsPostgresRepositoryError
+  | KeycloakAdapterRequestError
   | PolarManagedBillingPlanError
   | ConvexWorkflowExecutionError
   | ManagedBillingPlanAccessDeniedError;
@@ -198,12 +244,18 @@ export type AdminBillingRuntimeError =
   | PostgresAdapterConnectionError;
 
 export type AdminBillingService = {
+  readonly inspectBillingState: (
+    input: AdminBillingExplanationRequest,
+  ) => Effect.Effect<AdminBillingExplanationResult, AdminBillingServiceError>;
   readonly createManagedBillingPlan: (
     input: BillingPlanCreateRequest,
   ) => Effect.Effect<BillingPlanCreateResult, AdminBillingServiceError>;
   readonly listBillingRepairGaps: (
     input: BillingRepairGapListRequest,
   ) => Effect.Effect<BillingRepairGapListResult, AdminBillingServiceError>;
+  readonly cancelBillingRepairGap: (
+    input: BillingRepairGapCancelRequest,
+  ) => Effect.Effect<BillingRepairGapCancelResult, AdminBillingServiceError>;
   readonly replayBillingRepairGap: (
     input: BillingRepairGapReplayRequest,
   ) => Effect.Effect<BillingRepairGapReplayResult, AdminBillingServiceError>;
@@ -215,6 +267,57 @@ export type AdminBillingService = {
   >;
 };
 
+const mapWorkflowJobsServiceErrorToAdminBillingServiceError = (
+  error: WorkflowJobsServiceError,
+): AdminBillingServiceError => {
+  switch (error._tag) {
+    case "WorkflowJobsProjectionConfigurationError":
+      return {
+        _tag: "AdminBillingProjectionConfigurationError",
+        moduleId: error.moduleId,
+        profile: error.profile,
+        reason: error.reason,
+      } satisfies AdminBillingProjectionConfigurationError;
+    case "WorkflowJobsAccessDeniedError":
+      return {
+        _tag: "ManagedBillingPlanAccessDeniedError",
+        reason: error.reason,
+        auditRequired: error.auditRequired,
+      } satisfies ManagedBillingPlanAccessDeniedError;
+    case "WorkflowJobsWorkflowExecutionUnavailableError":
+      return {
+        _tag: "AdminBillingWorkflowExecutionUnavailableError",
+        reason: error.reason,
+      } satisfies AdminBillingWorkflowExecutionUnavailableError;
+    case "WorkflowJobsWorkflowExecutionIdentityMismatchError":
+      return {
+        _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+        reason: error.reason,
+      } satisfies AdminBillingWorkflowExecutionIdentityMismatchError;
+    case "WorkflowJobsRepairGapNotFoundError":
+      return {
+        _tag: "AdminBillingRepairGapNotFoundError",
+        jobId: error.jobId,
+      } satisfies AdminBillingRepairGapNotFoundError;
+    case "WorkflowJobsRepairGapReplayUnavailableError":
+      return {
+        _tag: "AdminBillingRepairGapReplayUnavailableError",
+        jobId: error.jobId,
+        status: error.status,
+        reason: error.reason,
+      } satisfies AdminBillingRepairGapReplayUnavailableError;
+    case "WorkflowJobsRepairGapCancelUnavailableError":
+      return {
+        _tag: "AdminBillingRepairGapCancelUnavailableError",
+        jobId: error.jobId,
+        status: error.status,
+        reason: error.reason,
+      } satisfies AdminBillingRepairGapCancelUnavailableError;
+    default:
+      return error as AdminBillingServiceError;
+  }
+};
+
 const decodeAdminBillingProcessEnvironment = Schema.decodeUnknown(
   AdminBillingProcessEnvironmentSchema,
 );
@@ -223,68 +326,50 @@ const decodeAdminBillingRuntimeOptions = Schema.decodeUnknown(
   AdminBillingRuntimeOptionsSchema,
 );
 
-const ConvexWorkflowBearerTokenClaimsSchema = Schema.Struct({
-  sub: Schema.NonEmptyString,
-  [identityClaimKey.actorType]: Schema.Literal(actorType.platformOperator),
-});
-
-type ConvexWorkflowBearerTokenClaims = Schema.Schema.Type<
-  typeof ConvexWorkflowBearerTokenClaimsSchema
->;
-
-const decodeConvexWorkflowBearerTokenClaims = Schema.decodeUnknown(
-  ConvexWorkflowBearerTokenClaimsSchema,
-);
-
 const decodePlatformScope = Schema.decodeUnknown(PlatformScopeSchema);
 
-const decodeBearerTokenPayload = (token: string) => {
-  const encodedPayload = token.split(".")[1];
-
-  return encodedPayload === undefined || encodedPayload.length === 0
-    ? Effect.fail("The Convex bearer token payload segment is missing.")
-    : Effect.try({
-        try: () =>
-          JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.flatMap((payload) =>
-          decodeConvexWorkflowBearerTokenClaims(payload),
-        ),
-      );
-};
-
-const validateWorkflowExecutionIdentity = (input: {
-  readonly requestContext: RequestContext;
-  readonly convexAuthToken: string;
-}) =>
-  decodeBearerTokenPayload(input.convexAuthToken).pipe(
-    Effect.mapError(
-      () =>
-        ({
-          _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
-          reason:
-            "Authenticated billing workflow execution requires a platform-operator Keycloak identity token.",
-        }) satisfies AdminBillingWorkflowExecutionIdentityMismatchError,
-    ),
-    Effect.flatMap((tokenClaims) => {
-      if (input.requestContext.actorId === undefined) {
-        return Effect.fail({
-          _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
-          reason:
-            "Authenticated billing workflow execution requires the operator session to have a stable actor id.",
-        } satisfies AdminBillingWorkflowExecutionIdentityMismatchError);
-      }
-
-      return input.requestContext.actorId === tokenClaims.sub
-        ? Effect.succeed(tokenClaims)
-        : Effect.fail({
+const createWorkflowExecutionIdentityValidator =
+  (keycloak: Pick<KeycloakAdapterService, "validateIdentityToken">) =>
+  (input: {
+    readonly requestContext: RequestContext;
+    readonly convexAuthToken: string;
+  }) =>
+    keycloak.validateIdentityToken({ idToken: input.convexAuthToken }).pipe(
+      Effect.mapError((error) =>
+        error._tag === "KeycloakAdapterRequestError"
+          ? error
+          : ({
+              _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+              reason:
+                "Authenticated billing workflow execution requires a valid platform-operator Keycloak identity token.",
+            } satisfies AdminBillingWorkflowExecutionIdentityMismatchError),
+      ),
+      Effect.flatMap((identityToken) => {
+        if (input.requestContext.actorId === undefined) {
+          return Effect.fail({
             _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
             reason:
-              "The Convex bearer token subject must match the authenticated platform-operator session actor.",
+              "Authenticated billing workflow execution requires the operator session to have a stable actor id.",
           } satisfies AdminBillingWorkflowExecutionIdentityMismatchError);
-    }),
-  );
+        }
+
+        if (identityToken.actorType !== actorType.platformOperator) {
+          return Effect.fail({
+            _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+            reason:
+              "Authenticated billing workflow execution requires a valid platform-operator Keycloak identity token.",
+          } satisfies AdminBillingWorkflowExecutionIdentityMismatchError);
+        }
+
+        return identityToken.actorId === input.requestContext.actorId
+          ? Effect.void
+          : Effect.fail({
+              _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+              reason:
+                "The Convex bearer token subject must match the authenticated platform-operator session actor.",
+            } satisfies AdminBillingWorkflowExecutionIdentityMismatchError);
+      }),
+    );
 
 const subtractSecondsFromDate = (value: Date, seconds: number) =>
   new Date(value.getTime() - seconds * 1_000);
@@ -303,43 +388,28 @@ const hasProjectedFieldValue = (
       record,
     ) !== undefined;
 
-const isStaleWorkflowJob = (input: {
-  readonly updatedAt: string;
-  readonly now: string;
-}) =>
-  new Date(input.updatedAt).getTime() <=
-  subtractSecondsFromDate(
-    new Date(input.now),
-    workflowJobsRunningClaimTimeoutSeconds,
-  ).getTime();
-
-const canReplayRepairGapWorkflowJob = (input: {
-  readonly job: BillingReconciliationWorkflowJobRecord;
-  readonly now: string;
+const resolveManualReconciliationGapReason = (input: {
+  readonly hasCustomerAccount: boolean;
+  readonly provisioningStatus: string | undefined;
+  readonly onboardingStatus: string | undefined;
 }) => {
-  if (input.job.sourceModuleId !== platformModuleId.billingAndMetering) {
-    return false;
+  if (!input.hasCustomerAccount) {
+    return workflowJobGapReason.missingCustomerAccount;
   }
 
-  if (input.job.status === workflowJobStatus.running) {
-    return isStaleWorkflowJob({
-      updatedAt: input.job.updatedAt,
-      now: input.now,
-    });
+  if (input.provisioningStatus !== tenantProvisioningStatus.provisioned) {
+    return workflowJobGapReason.missingProvisioning;
   }
 
-  return (
-    input.job.gapReason !== undefined &&
-    (input.job.status === workflowJobStatus.scheduled ||
-      input.job.status === workflowJobStatus.blocked)
-  );
+  if (
+    input.onboardingStatus === undefined ||
+    input.onboardingStatus === tenantOnboardingRunStatus.failed
+  ) {
+    return workflowJobGapReason.missingOnboarding;
+  }
+
+  return undefined;
 };
-
-const shouldRestoreReplayGapJob = (
-  error: ConvexWorkflowExecutionError,
-): error is ConvexAdapterRequestError =>
-  error._tag === "ConvexAdapterRequestError" &&
-  (error.status === 401 || error.status === 403);
 
 const buildRepairGapProjectionRecord = (
   job: BillingReconciliationWorkflowJobRecord,
@@ -407,6 +477,7 @@ type AdminBillingServiceOptions = {
   readonly authorizationModuleFactory?: AdminBillingAuthorizationModuleFactory;
   readonly workflowExecutionClient?: AuthenticatedConvexWorkflowClient;
   readonly manualReconciliationBootstrapper?: AdminBillingManualReconciliationBootstrapper;
+  readonly workflowJobsCompatibilityRepository?: WorkflowJobsServiceOptions["workflowJobs"];
 };
 
 const buildAdminBillingManualReconciliationCorrelationId = (jobId: string) =>
@@ -482,16 +553,25 @@ export const makeAdminBillingService = (
     const manualReconciliationBootstrapper =
       options.manualReconciliationBootstrapper;
     const auditLog = yield* AuditLogModule;
+    const billingState = yield* BillingStatePostgresRepository;
     const identitySession = yield* IdentitySessionModule;
     const fieldSecurity = yield* makeFieldSecurityModule();
+    const keycloak = yield* KeycloakAdapter;
     const oryKeto = yield* OryKetoAdapter;
     const polar = yield* PolarAdapter;
     const workflowJobs = yield* WorkflowJobsPostgresRepository;
+    const workflowJobsCompatibilityRepository =
+      options.workflowJobsCompatibilityRepository ??
+      (workflowJobs as unknown as WorkflowJobsServiceOptions["workflowJobs"]);
+    const validateWorkflowExecutionIdentity =
+      createWorkflowExecutionIdentityValidator(keycloak);
     const authorization = yield* authorizationModuleFactory({
       tuples: [],
       cacheTtlSeconds: 60,
       maxCacheSize: 128,
       delegatedCheck: createOryKetoAuthorizationDelegatedCheck(oryKeto),
+      delegatedTupleLookup:
+        createOryKetoAuthorizationDelegatedTupleLookup(oryKeto),
     });
     const workflowJobsAdminProjection = yield* Effect.fromNullable(
       findModuleManifest(
@@ -508,6 +588,24 @@ export const makeAdminBillingService = (
             profile: projectionProfile.admin,
             reason:
               "The workflow-jobs admin projection must be declared before repair-gap inspection can run.",
+          }) satisfies AdminBillingProjectionConfigurationError,
+      ),
+    );
+    const billingAdminProjection = yield* Effect.fromNullable(
+      findModuleManifest(
+        platformModuleId.billingAndMetering,
+      )?.projectionProfiles.find(
+        (projection) => projection.profile === projectionProfile.admin,
+      ),
+    ).pipe(
+      Effect.orElseFail(
+        () =>
+          ({
+            _tag: "AdminBillingProjectionConfigurationError",
+            moduleId: platformModuleId.billingAndMetering,
+            profile: projectionProfile.admin,
+            reason:
+              "The billing-and-metering admin projection must be declared before billing explanation can run.",
           }) satisfies AdminBillingProjectionConfigurationError,
       ),
     );
@@ -538,7 +636,265 @@ export const makeAdminBillingService = (
           ),
         );
 
+    const redactRepairGapFailureDetails = (job: BillingRepairGap) => {
+      const { lastError: _lastError, ...jobWithoutLastError } = job;
+
+      return jobWithoutLastError;
+    };
+
+    const resolveProjectedRepairGapForResponse = (input: {
+      readonly projectedJob: {
+        readonly job: BillingRepairGap;
+        readonly auditedFields: readonly string[];
+      };
+      readonly inspectionReason?: string;
+    }) =>
+      input.projectedJob.auditedFields.length > 0 &&
+      input.inspectionReason === undefined
+        ? redactRepairGapFailureDetails(input.projectedJob.job)
+        : input.projectedJob.job;
+
+    const appendRepairGapSensitiveReadAudit = (input: {
+      readonly requestContext: RequestContext;
+      readonly target: string;
+      readonly inspectionReason?: string;
+      readonly auditedFields: readonly string[];
+      readonly reasonPrefix: string;
+    }) =>
+      input.auditedFields.length === 0 || input.inspectionReason === undefined
+        ? Effect.succeed(undefined)
+        : auditLog.append({
+            requestContext: input.requestContext,
+            moduleId: platformModuleId.fieldSecurity,
+            action: fieldSecurityAuditAction.sensitiveRead,
+            target: input.target,
+            reason: [input.reasonPrefix, input.inspectionReason].join(": "),
+          });
+
+    const normalizeInspectionReason = (
+      inspectionReason: string | undefined,
+    ) => {
+      const trimmedInspectionReason = inspectionReason?.trim();
+
+      return trimmedInspectionReason !== undefined &&
+        trimmedInspectionReason.length > 0
+        ? trimmedInspectionReason
+        : undefined;
+    };
+
+    const workflowJobsBillingCompatibilityService =
+      yield* makeWorkflowJobsService({
+        authorization: { check: authorization.check },
+        workflowJobs: workflowJobsCompatibilityRepository,
+        ...(workflowExecutionClient === undefined
+          ? {}
+          : { workflowExecutionClient }),
+        validateWorkflowExecutionIdentity: (input) =>
+          validateWorkflowExecutionIdentity(input).pipe(
+            Effect.mapError((error) =>
+              error._tag === "KeycloakAdapterRequestError"
+                ? error
+                : ({
+                    _tag: "WorkflowJobsWorkflowExecutionIdentityMismatchError",
+                    reason: error.reason,
+                  } satisfies WorkflowJobsWorkflowExecutionIdentityMismatchError),
+            ),
+          ),
+      }).pipe(
+        Effect.mapError(mapWorkflowJobsServiceErrorToAdminBillingServiceError),
+      );
+
+    const ensureBillingRepairGapJobOwner = (jobId: string) =>
+      workflowJobsCompatibilityRepository.getWorkflowJob({ jobId }).pipe(
+        Effect.flatMap((job) =>
+          job === undefined ||
+          job.sourceModuleId !== platformModuleId.billingAndMetering
+            ? Effect.fail({
+                _tag: "AdminBillingRepairGapNotFoundError",
+                jobId,
+              } satisfies AdminBillingRepairGapNotFoundError)
+            : Effect.succeed(job),
+        ),
+      );
+
+    const buildBillingRepairGapMutationResult = <
+      TSchema extends
+        | typeof BillingRepairGapCancelResultSchema
+        | typeof BillingRepairGapReplayResultSchema,
+    >(
+      schema: TSchema,
+      job: {
+        readonly jobId: string;
+        readonly tenantScope: PlatformScope;
+        readonly tenantScopeId: string;
+        readonly status: string;
+        readonly attempts: number;
+        readonly scheduledAt: string;
+        readonly completedAt?: string | undefined;
+        readonly gapReason?: string | undefined;
+        readonly lastError?: string | undefined;
+      },
+    ) =>
+      Schema.decodeUnknown(BillingRepairGapSchema)({
+        jobId: job.jobId,
+        tenantScope: job.tenantScope,
+        tenantScopeId: job.tenantScopeId,
+        status: job.status,
+        attempts: job.attempts,
+        scheduledAt: job.scheduledAt,
+        ...(job.completedAt === undefined
+          ? {}
+          : { completedAt: job.completedAt }),
+        ...(job.gapReason === undefined ? {} : { gapReason: job.gapReason }),
+        ...(job.lastError === undefined ? {} : { lastError: job.lastError }),
+      }).pipe(
+        Effect.flatMap((billingJob) =>
+          Schema.decodeUnknown(schema)({
+            job: billingJob,
+          }),
+        ),
+      );
+
+    const projectBillingSummary = (input: {
+      readonly billingSummary: BillingSummaryView;
+      readonly requestContext: RequestContext;
+    }) =>
+      fieldSecurity
+        .applyProjection({
+          moduleId: platformModuleId.billingAndMetering,
+          requestContext: input.requestContext,
+          projection: billingAdminProjection,
+          record: input.billingSummary,
+        })
+        .pipe(
+          Effect.flatMap((result) =>
+            Schema.decodeUnknown(BillingSummaryViewSchema)(
+              result.projectedRecord,
+            ).pipe(
+              Effect.map((billing) => ({
+                billing,
+                auditedFields: result.auditedFields.filter((field) =>
+                  hasProjectedFieldValue(result.projectedRecord, field),
+                ),
+              })),
+            ),
+          ),
+        );
+
+    const redactBillingInvoiceHistory = (billing: BillingSummaryView) => {
+      const {
+        invoiceHistory: _invoiceHistory,
+        ...billingWithoutInvoiceHistory
+      } = billing;
+
+      return billingWithoutInvoiceHistory;
+    };
+
+    const resolveProjectedBillingSummaryForResponse = (input: {
+      readonly projectedBilling: {
+        readonly billing: BillingSummaryView;
+        readonly auditedFields: readonly string[];
+      };
+      readonly inspectionReason?: string;
+    }) =>
+      input.projectedBilling.auditedFields.length > 0 &&
+      input.inspectionReason === undefined
+        ? redactBillingInvoiceHistory(input.projectedBilling.billing)
+        : input.projectedBilling.billing;
+
+    const appendBillingSensitiveReadAudit = (input: {
+      readonly requestContext: RequestContext;
+      readonly inspectionReason?: string;
+      readonly auditedFields: readonly string[];
+    }) =>
+      input.auditedFields.length === 0 || input.inspectionReason === undefined
+        ? Effect.succeed(undefined)
+        : auditLog.append({
+            requestContext: input.requestContext,
+            moduleId: platformModuleId.fieldSecurity,
+            action: fieldSecurityAuditAction.sensitiveRead,
+            target: `${platformModuleId.billingAndMetering}:invoiceHistory`,
+            reason: [
+              "Inspect billing invoice history",
+              input.inspectionReason,
+            ].join(": "),
+          });
+
     return {
+      inspectBillingState: (input: AdminBillingExplanationRequest) =>
+        Schema.decodeUnknown(AdminBillingExplanationRequestSchema)(input).pipe(
+          Effect.flatMap((request) =>
+            Effect.gen(function* () {
+              const requestContext =
+                yield* identitySession.resolveRequestContext({
+                  sessionId: request.sessionId,
+                });
+              const inspectionReason = normalizeInspectionReason(
+                request.inspectionReason,
+              );
+
+              yield* authorizeAdminBillingAccess({
+                authorization,
+                requestContext,
+                permission: permissionScope.billingRead,
+              });
+
+              const tenantAccessState =
+                yield* billingState.getTenantAccessState(request.tenant);
+              const usage = tenantAccessState.entitlements.flatMap(
+                (entitlement) =>
+                  entitlement.quotaSnapshot === undefined
+                    ? []
+                    : [
+                        {
+                          featureKey: entitlement.featureKey,
+                          quotaSnapshot: entitlement.quotaSnapshot,
+                        },
+                      ],
+              );
+              const rawBillingSummary = yield* Schema.decodeUnknown(
+                BillingSummaryViewSchema,
+              )({
+                plan: tenantAccessState.subscription?.planId,
+                billingInterval:
+                  tenantAccessState.subscription?.billingInterval,
+                status: tenantAccessState.subscription?.status,
+                currentPeriodEnd:
+                  tenantAccessState.subscription?.currentPeriodEnd,
+                ...(usage.length > 0
+                  ? {
+                      usage,
+                    }
+                  : {}),
+                ...(tenantAccessState.invoiceHistory.length > 0
+                  ? { invoiceHistory: tenantAccessState.invoiceHistory }
+                  : {}),
+              });
+              const projectedBilling = yield* projectBillingSummary({
+                billingSummary: rawBillingSummary,
+                requestContext,
+              });
+
+              yield* appendBillingSensitiveReadAudit({
+                requestContext,
+                ...(inspectionReason === undefined ? {} : { inspectionReason }),
+                auditedFields: projectedBilling.auditedFields,
+              });
+
+              return yield* Schema.decodeUnknown(
+                AdminBillingExplanationResultSchema,
+              )({
+                tenant: request.tenant,
+                billing: resolveProjectedBillingSummaryForResponse({
+                  projectedBilling,
+                  ...(inspectionReason === undefined
+                    ? {}
+                    : { inspectionReason }),
+                }),
+              });
+            }),
+          ),
+        ),
       createManagedBillingPlan: (input: BillingPlanCreateRequest) =>
         Schema.decodeUnknown(BillingPlanCreateRequestSchema)(input).pipe(
           Effect.flatMap((request) =>
@@ -566,6 +922,9 @@ export const makeAdminBillingService = (
                 yield* identitySession.resolveRequestContext({
                   sessionId: request.sessionId,
                 });
+              const inspectionReason = normalizeInspectionReason(
+                request.inspectionReason,
+              );
 
               yield* authorizeWorkflowJobAccess({
                 authorization,
@@ -590,21 +949,62 @@ export const makeAdminBillingService = (
                   (projectedJob) => projectedJob.auditedFields.length > 0,
                 )
               ) {
+                if (inspectionReason === undefined) {
+                  return {
+                    jobs: projectedJobsWithAudit.map((projectedJob) =>
+                      resolveProjectedRepairGapForResponse({ projectedJob }),
+                    ),
+                  } satisfies BillingRepairGapListResult;
+                }
+
                 yield* auditLog.append({
                   requestContext,
                   moduleId: platformModuleId.fieldSecurity,
                   action: fieldSecurityAuditAction.sensitiveRead,
                   target: `${platformModuleId.workflowJobs}:repair-gaps:lastError`,
-                  reason:
-                    "Inspect unresolved workflow repair gaps with failure details.",
+                  reason: [
+                    "Inspect unresolved workflow repair gaps with failure details",
+                    inspectionReason,
+                  ].join(": "),
                 });
               }
 
               return {
-                jobs: projectedJobsWithAudit.map(
-                  (projectedJob) => projectedJob.job,
+                jobs: projectedJobsWithAudit.map((projectedJob) =>
+                  resolveProjectedRepairGapForResponse({
+                    projectedJob,
+                    ...(inspectionReason === undefined
+                      ? {}
+                      : { inspectionReason }),
+                  }),
                 ),
               } satisfies BillingRepairGapListResult;
+            }),
+          ),
+        ),
+      cancelBillingRepairGap: (
+        input: BillingRepairGapCancelRequest,
+      ): Effect.Effect<
+        BillingRepairGapCancelResult,
+        AdminBillingServiceError
+      > =>
+        Schema.decodeUnknown(BillingRepairGapCancelRequestSchema)(input).pipe(
+          Effect.flatMap((request) =>
+            Effect.gen(function* () {
+              yield* ensureBillingRepairGapJobOwner(request.jobId);
+
+              const result = yield* workflowJobsBillingCompatibilityService
+                .cancelRepairGap(request)
+                .pipe(
+                  Effect.mapError(
+                    mapWorkflowJobsServiceErrorToAdminBillingServiceError,
+                  ),
+                );
+
+              return yield* buildBillingRepairGapMutationResult(
+                BillingRepairGapCancelResultSchema,
+                result.job,
+              );
             }),
           ),
         ),
@@ -617,153 +1017,20 @@ export const makeAdminBillingService = (
         Schema.decodeUnknown(BillingRepairGapReplayRequestSchema)(input).pipe(
           Effect.flatMap((request) =>
             Effect.gen(function* () {
-              const requestContext =
-                yield* identitySession.resolveRequestContext({
-                  sessionId: request.sessionId,
-                });
+              yield* ensureBillingRepairGapJobOwner(request.jobId);
 
-              yield* authorizeWorkflowJobAccess({
-                authorization,
-                requestContext,
-              });
+              const result = yield* workflowJobsBillingCompatibilityService
+                .replayRepairGap(request)
+                .pipe(
+                  Effect.mapError(
+                    mapWorkflowJobsServiceErrorToAdminBillingServiceError,
+                  ),
+                );
 
-              yield* validateWorkflowExecutionIdentity({
-                requestContext,
-                convexAuthToken: request.convexAuthToken,
-              });
-
-              const workflowClient = yield* Effect.fromNullable(
-                workflowExecutionClient,
-              ).pipe(
-                Effect.orElseFail(
-                  () =>
-                    ({
-                      _tag: "AdminBillingWorkflowExecutionUnavailableError",
-                      reason:
-                        "The authenticated Convex workflow client is not configured for admin billing workflow execution.",
-                    }) satisfies AdminBillingWorkflowExecutionUnavailableError,
-                ),
+              return yield* buildBillingRepairGapMutationResult(
+                BillingRepairGapReplayResultSchema,
+                result.job,
               );
-
-              const now = new Date().toISOString();
-              const existingJob = yield* workflowJobs
-                .getWorkflowJob({
-                  jobId: request.jobId,
-                })
-                .pipe(
-                  Effect.flatMap((job) =>
-                    job === undefined ||
-                    job.sourceModuleId !== platformModuleId.billingAndMetering
-                      ? Effect.fail({
-                          _tag: "AdminBillingRepairGapNotFoundError",
-                          jobId: request.jobId,
-                        } satisfies AdminBillingRepairGapNotFoundError)
-                      : Effect.succeed(job),
-                  ),
-                );
-
-              if (!canReplayRepairGapWorkflowJob({ job: existingJob, now })) {
-                return yield* Effect.fail({
-                  _tag: "AdminBillingRepairGapReplayUnavailableError",
-                  jobId: request.jobId,
-                  status: existingJob.status,
-                  reason:
-                    "Only unresolved scheduled, blocked, or stale running billing repair gaps can be replayed.",
-                } satisfies AdminBillingRepairGapReplayUnavailableError);
-              }
-
-              yield* auditLog.append({
-                requestContext,
-                moduleId: platformModuleId.billingAndMetering,
-                action: billingAndMeteringAuditAction.reconciliationTriggered,
-                target: `${platformModuleId.workflowJobs}:${request.jobId}:repair-gap-replay`,
-                reason:
-                  "Replay an unresolved billing repair gap from the admin backend.",
-              });
-
-              yield* workflowJobs.persistWorkflowJob({
-                ...existingJob,
-                status: workflowJobStatus.scheduled,
-                scheduledAt: now,
-                updatedAt: now,
-              });
-
-              const runReplayExecution: Effect.Effect<
-                null,
-                | WorkflowJobsPostgresRepositoryError
-                | ConvexWorkflowExecutionError
-              > = workflowClient
-                .runBillingConvergenceJob(
-                  {
-                    jobId: request.jobId,
-                  },
-                  {
-                    authToken: request.convexAuthToken,
-                  },
-                )
-                .pipe(
-                  Effect.catchAll(
-                    (
-                      error,
-                    ): Effect.Effect<
-                      never,
-                      | WorkflowJobsPostgresRepositoryError
-                      | ConvexWorkflowExecutionError
-                    > =>
-                      shouldRestoreReplayGapJob(error)
-                        ? workflowJobs
-                            .restoreWorkflowJobIfUpdatedAtMatches({
-                              jobId: existingJob.jobId,
-                              expectedUpdatedAt: now,
-                              record: existingJob,
-                            })
-                            .pipe(
-                              Effect.zipRight(
-                                Effect.fail<ConvexWorkflowExecutionError>(
-                                  error,
-                                ),
-                              ),
-                            )
-                        : Effect.fail<ConvexWorkflowExecutionError>(error),
-                  ),
-                );
-
-              yield* runReplayExecution;
-
-              const replayedJob = yield* workflowJobs
-                .getWorkflowJob({
-                  jobId: request.jobId,
-                })
-                .pipe(
-                  Effect.flatMap((job) =>
-                    job === undefined
-                      ? Effect.fail({
-                          _tag: "AdminBillingRepairGapNotFoundError",
-                          jobId: request.jobId,
-                        } satisfies AdminBillingRepairGapNotFoundError)
-                      : Effect.succeed(job),
-                  ),
-                );
-
-              const projectedJob = yield* projectRepairGap({
-                job: replayedJob,
-                requestContext,
-              });
-
-              if (projectedJob.auditedFields.length > 0) {
-                yield* auditLog.append({
-                  requestContext,
-                  moduleId: platformModuleId.fieldSecurity,
-                  action: fieldSecurityAuditAction.sensitiveRead,
-                  target: `${platformModuleId.workflowJobs}:repair-gap:${request.jobId}:lastError`,
-                  reason:
-                    "Inspect replayed workflow repair gap with failure details.",
-                });
-              }
-
-              return {
-                job: projectedJob.job,
-              } satisfies BillingRepairGapReplayResult;
             }),
           ),
         ),
@@ -861,6 +1128,7 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
       yield* makeAuthenticatedConvexWorkflowClient({
         deploymentUrl: options.convexUrl,
         siteUrl: options.convexSiteUrl,
+        adminKey: options.convexAdminKey,
         keycloakBaseUrl: options.keycloakBaseUrl,
         keycloakRealm: options.keycloakRealm,
         keycloakClientId: options.keycloakClientId,
@@ -956,6 +1224,28 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
 
         return rows[0];
       },
+      cancelWorkflowJobIfUpdatedAtMatches: async (
+        jobId,
+        expectedUpdatedAt,
+        canceledAt,
+      ) => {
+        const rows = await postgres.database
+          .update(workflowJobsTable)
+          .set({
+            status: workflowJobStatus.canceled,
+            completedAt: canceledAt,
+            updatedAt: canceledAt,
+          })
+          .where(
+            and(
+              eq(workflowJobsTable.jobId, jobId),
+              eq(workflowJobsTable.updatedAt, expectedUpdatedAt),
+            ),
+          )
+          .returning();
+
+        return rows[0];
+      },
       listDueWorkflowJobs: async (sourceModuleId, scheduledBefore) =>
         postgres.database
           .select()
@@ -982,13 +1272,19 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
             ),
           )
           .orderBy(desc(workflowJobsTable.scheduledAt)),
-      listRepairGapWorkflowJobs: async (sourceModuleId) =>
+      listRepairGapWorkflowJobs: async (input) =>
         postgres.database
           .select()
           .from(workflowJobsTable)
           .where(
             and(
-              eq(workflowJobsTable.sourceModuleId, sourceModuleId),
+              eq(workflowJobsTable.sourceModuleId, input.sourceModuleId),
+              ...(input.tenantScope === undefined
+                ? []
+                : [eq(workflowJobsTable.tenantScope, input.tenantScope)]),
+              ...(input.tenantScopeId === undefined
+                ? []
+                : [eq(workflowJobsTable.tenantScopeId, input.tenantScopeId)]),
               or(
                 and(
                   isNotNull(workflowJobsTable.gapReason),
@@ -1019,7 +1315,107 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
           .from(auditLogEventsTable)
           .where(eq(auditLogEventsTable.moduleId, moduleId))
           .orderBy(desc(auditLogEventsTable.recordedAt)),
+      listEventsByTarget: async (input) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(
+            and(
+              eq(auditLogEventsTable.moduleId, input.moduleId),
+              eq(auditLogEventsTable.target, input.target),
+            ),
+          )
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
+      listEventsByActor: async (actorId) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(eq(auditLogEventsTable.actorId, actorId))
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
+      listEventsByTenant: async (input) =>
+        postgres.database
+          .select()
+          .from(auditLogEventsTable)
+          .where(
+            and(
+              eq(auditLogEventsTable.tenantScope, input.tenantScope),
+              eq(auditLogEventsTable.tenantScopeId, input.tenantScopeId),
+            ),
+          )
+          .orderBy(desc(auditLogEventsTable.recordedAt)),
     };
+    const billingStateQueryable: BillingStatePostgresQueryable = {
+      listEntitlementsByScope: async (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(billingEntitlementsTable)
+          .where(
+            and(
+              eq(billingEntitlementsTable.scope, scope),
+              eq(billingEntitlementsTable.scopeId, scopeId),
+              eq(billingEntitlementsTable.active, true),
+            ),
+          ),
+      listPaymentEventsByScope: (scope, scopeId) =>
+        postgres.database
+          .select()
+          .from(billingPaymentEventsTable)
+          .where(
+            and(
+              eq(billingPaymentEventsTable.scope, scope),
+              eq(billingPaymentEventsTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(billingPaymentEventsTable.recordedAt)),
+      getLatestSubscriptionByScope: async (scope, scopeId) => {
+        const liveRows = await postgres.database
+          .select()
+          .from(billingSubscriptionsTable)
+          .where(
+            and(
+              eq(billingSubscriptionsTable.scope, scope),
+              eq(billingSubscriptionsTable.scopeId, scopeId),
+              or(
+                eq(
+                  billingSubscriptionsTable.status,
+                  billingSubscriptionStatus.pending,
+                ),
+                eq(
+                  billingSubscriptionsTable.status,
+                  billingSubscriptionStatus.active,
+                ),
+                eq(
+                  billingSubscriptionsTable.status,
+                  billingSubscriptionStatus.pastDue,
+                ),
+              ),
+            ),
+          )
+          .orderBy(desc(billingSubscriptionsTable.updatedAt))
+          .limit(1);
+
+        if (liveRows[0] !== undefined) {
+          return liveRows[0];
+        }
+
+        const rows = await postgres.database
+          .select()
+          .from(billingSubscriptionsTable)
+          .where(
+            and(
+              eq(billingSubscriptionsTable.scope, scope),
+              eq(billingSubscriptionsTable.scopeId, scopeId),
+            ),
+          )
+          .orderBy(desc(billingSubscriptionsTable.updatedAt))
+          .limit(1);
+
+        return rows[0];
+      },
+    };
+    const billingStateRepository = yield* makeBillingStatePostgresRepository(
+      billingStateQueryable,
+    );
     const auditLogRepository = yield* makeAuditLogPostgresRepository({
       ...writeDatabase,
       ...auditLogQueryable,
@@ -1029,6 +1425,14 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
       writeDatabase,
       workflowJobsQueryable,
     );
+    const workflowJobsCompatibilityQueryable =
+      workflowJobsQueryable as WorkflowJobsPostgresQueryableForRecord<WorkflowJobRecord>;
+    const workflowJobsCompatibilityRepository: WorkflowJobsServiceOptions["workflowJobs"] =
+      yield* makeWorkflowJobsPostgresRepositoryForRecordSchema(
+        writeDatabase,
+        workflowJobsCompatibilityQueryable,
+        WorkflowJobRecordSchema,
+      );
     const manualReconciliationBootstrapper: AdminBillingManualReconciliationBootstrapper =
       (input) =>
         Effect.gen(function* () {
@@ -1176,13 +1580,13 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
                 customerAccountsByTenant.has(tenantKey);
               const provisioningStatus = provisioningByTenant.get(tenantKey);
               const onboardingStatus = onboardingByTenant.get(tenantKey);
+              const gapReason = resolveManualReconciliationGapReason({
+                hasCustomerAccount,
+                provisioningStatus,
+                onboardingStatus,
+              });
 
-              if (
-                hasCustomerAccount &&
-                provisioningStatus === tenantProvisioningStatus.provisioned &&
-                onboardingStatus !== undefined &&
-                onboardingStatus !== tenantOnboardingRunStatus.failed
-              ) {
+              if (gapReason === undefined) {
                 return Effect.void;
               }
 
@@ -1195,45 +1599,53 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
                     key: subscriptionRow.subscriptionId,
                   });
 
-                  return Schema.decodeUnknown(
-                    BillingReconciliationWorkflowJobRecordSchema,
-                  )({
-                    jobId,
-                    runtime: workflowJobRuntime.convex,
-                    sourceModuleId: platformModuleId.billingAndMetering,
-                    kind: workflowJobKind.reconciliationSweep,
-                    trigger: workflowJobTrigger.periodicSweep,
-                    status: workflowJobStatus.scheduled,
-                    tenantScope,
-                    tenantScopeId: subscriptionRow.scopeId,
-                    attempts: 0,
-                    scheduledAt: input.now,
-                    payload: {
-                      sourceModuleId: platformModuleId.billingAndMetering,
-                      tenantScope,
-                      tenantScopeId: subscriptionRow.scopeId,
-                      provider: subscriptionRow.provider,
-                      correlationId:
-                        buildAdminBillingManualReconciliationCorrelationId(
-                          jobId,
-                        ),
-                      ...(typeof subscriptionRow.metadata?.customerId ===
-                      "string"
-                        ? {
-                            providerCustomerId:
-                              subscriptionRow.metadata.customerId,
-                          }
-                        : {}),
-                      subscriptionId: subscriptionRow.subscriptionId,
-                      trigger: workflowJobTrigger.periodicSweep,
-                    },
-                    createdAt: input.now,
-                    updatedAt: input.now,
-                  }).pipe(
-                    Effect.flatMap((record) =>
-                      workflowJobsRepository.persistWorkflowJob(record),
+                  return workflowJobsRepository.getWorkflowJob({ jobId }).pipe(
+                    Effect.flatMap((existingJob) =>
+                      existingJob?.status === workflowJobStatus.canceled
+                        ? Effect.void
+                        : Schema.decodeUnknown(
+                            BillingReconciliationWorkflowJobRecordSchema,
+                          )({
+                            jobId,
+                            runtime: workflowJobRuntime.convex,
+                            sourceModuleId: platformModuleId.billingAndMetering,
+                            kind: workflowJobKind.reconciliationSweep,
+                            trigger: workflowJobTrigger.periodicSweep,
+                            status: workflowJobStatus.scheduled,
+                            tenantScope,
+                            tenantScopeId: subscriptionRow.scopeId,
+                            attempts: 0,
+                            scheduledAt: input.now,
+                            ...(gapReason !== undefined ? { gapReason } : {}),
+                            payload: {
+                              sourceModuleId:
+                                platformModuleId.billingAndMetering,
+                              tenantScope,
+                              tenantScopeId: subscriptionRow.scopeId,
+                              provider: subscriptionRow.provider,
+                              correlationId:
+                                buildAdminBillingManualReconciliationCorrelationId(
+                                  jobId,
+                                ),
+                              ...(typeof subscriptionRow.metadata
+                                ?.customerId === "string"
+                                ? {
+                                    providerCustomerId:
+                                      subscriptionRow.metadata.customerId,
+                                  }
+                                : {}),
+                              subscriptionId: subscriptionRow.subscriptionId,
+                              trigger: workflowJobTrigger.periodicSweep,
+                            },
+                            createdAt: input.now,
+                            updatedAt: input.now,
+                          }).pipe(
+                            Effect.flatMap((record) =>
+                              workflowJobsRepository.persistWorkflowJob(record),
+                            ),
+                            Effect.asVoid,
+                          ),
                     ),
-                    Effect.asVoid,
                   );
                 }),
               );
@@ -1261,9 +1673,15 @@ const makeAdminBillingRuntime = (options: AdminBillingRuntimeOptions) =>
     const service = yield* makeAdminBillingService({
       workflowExecutionClient,
       manualReconciliationBootstrapper,
+      workflowJobsCompatibilityRepository,
     }).pipe(
       Effect.provideService(AuditLogModule, auditLog),
+      Effect.provideService(
+        BillingStatePostgresRepository,
+        billingStateRepository,
+      ),
       Effect.provideService(IdentitySessionModule, identitySession),
+      Effect.provideService(KeycloakAdapter, keycloak),
       Effect.provideService(OryKetoAdapter, oryKeto),
       Effect.provideService(PolarAdapter, polar),
       Effect.provideService(
@@ -1302,6 +1720,7 @@ export const resolveAdminBillingRuntimeOptionsFromEnvironment = (
         postgresUrl: resolvedEnvironment.POSTGRES_URL,
         convexUrl: resolvedEnvironment.CONVEX_SELF_HOSTED_URL,
         convexSiteUrl: resolvedEnvironment.CONVEX_SELF_HOSTED_SITE_URL,
+        convexAdminKey: resolvedEnvironment.CONVEX_SELF_HOSTED_ADMIN_KEY,
         keycloakBaseUrl: resolvedEnvironment.KEYCLOAK_BASE_URL,
         keycloakRealm: resolvedEnvironment.KEYCLOAK_REALM,
         keycloakClientId: resolvedEnvironment.KEYCLOAK_CLIENT_ID,

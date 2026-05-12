@@ -4,6 +4,7 @@ import {
   AuditEventSchema,
   CustomDomainLifecycleStateSchema,
   DeclaredRuntimeGovernedKeySchema,
+  type Entitlement,
   FeatureFlagDeclarationSchema,
   PermissionDescriptorListSchema,
   platformModuleId,
@@ -19,13 +20,26 @@ import {
 } from "@comvestec/contracts";
 import type { RequestContext } from "@comvestec/contracts";
 import {
+  configDefaultValue,
   type PlatformModuleId,
   PlatformModuleManifestSchema,
   PlatformStorageSchema,
   findModuleManifest,
   platformHost,
   platformDefaults,
+  tenantBrandingConfigKey,
+  tenantBrandingFeatureFlag,
 } from "@comvestec/config";
+import type {
+  RuntimeConfigModulePersistenceError,
+  RuntimeConfigModuleService,
+  UnknownConfigKeyError,
+} from "@comvestec/modules";
+import {
+  makeTenantBrandingModule,
+  AdminBrandingProjectionSchema,
+  PublicBrandingProjectionSchema,
+} from "../../../../modules/src/domains/tenant-branding";
 import { RuntimeConfigSyncArtifactStatusSchema } from "../../../../modules/src/persistence/postgres/governance";
 import type {
   AdminGovernanceRuntimeConfigOverrideView,
@@ -61,6 +75,12 @@ export type AdminAppSnapshotGovernanceError =
   | AdminAppSnapshotUnauthenticatedActorError
   | AdminAppSnapshotAccessDeniedError;
 
+export type AppSnapshotBrandingResolutionError =
+  | ParseResult.ParseError
+  | MissingModuleManifestError
+  | RuntimeConfigModulePersistenceError
+  | UnknownConfigKeyError;
+
 const getRequiredModuleManifest = (moduleId: PlatformModuleId) =>
   Effect.fromNullable(findModuleManifest(moduleId)).pipe(
     Effect.mapError(
@@ -85,6 +105,16 @@ const TenantBrandingManifestEffect = getRequiredModuleManifest(
 
 const TenantBrandingPreviewSchema = Schema.Struct({
   moduleId: Schema.Literal(platformModuleId.tenantBranding),
+  projection: PublicBrandingProjectionSchema,
+  companyName: Schema.NonEmptyString,
+  supportedScopes: Schema.Array(PlatformScopeSchema),
+  featureFlags: Schema.Array(FeatureFlagDeclarationSchema),
+  customDomainLifecycle: Schema.Array(CustomDomainLifecycleStateSchema),
+});
+
+const AdminTenantBrandingPreviewSchema = Schema.Struct({
+  moduleId: Schema.Literal(platformModuleId.tenantBranding),
+  projection: AdminBrandingProjectionSchema,
   companyName: Schema.NonEmptyString,
   supportedScopes: Schema.Array(PlatformScopeSchema),
   featureFlags: Schema.Array(FeatureFlagDeclarationSchema),
@@ -171,6 +201,7 @@ export type PublicWebSnapshot = Schema.Schema.Type<
 export const ProductAppSnapshotSchema = Schema.Struct({
   application: Schema.Literal("Product app"),
   ...ManifestAppSnapshotBaseFields,
+  branding: TenantBrandingPreviewSchema,
   permissionDescriptors: PermissionDescriptorListSchema,
   platformProjectionDescriptors: ProjectionDescriptorListSchema,
   tenancyScopes: Schema.Array(PlatformScopeSchema),
@@ -210,6 +241,7 @@ const AdminAppGovernancePreviewEntrySchema = Schema.Struct({
 export const AdminAppSnapshotSchema = Schema.Struct({
   application: Schema.Literal("Admin app"),
   ...ManifestAppSnapshotBaseFields,
+  branding: AdminTenantBrandingPreviewSchema,
   permissions: PermissionDescriptorListSchema,
   governancePreview: Schema.Array(AdminAppGovernancePreviewEntrySchema),
 });
@@ -227,9 +259,83 @@ const decodeProductAppSnapshot = Schema.decodeUnknown(ProductAppSnapshotSchema);
 
 const decodeAdminAppSnapshot = Schema.decodeUnknown(AdminAppSnapshotSchema);
 
+const decodeTenantBrandingPreview = Schema.decodeUnknown(
+  TenantBrandingPreviewSchema,
+);
+
+const decodeAdminTenantBrandingPreview = Schema.decodeUnknown(
+  AdminTenantBrandingPreviewSchema,
+);
+
 const decodeAdminAppGovernancePreview = Schema.decodeUnknown(
   AdminAppGovernancePreviewEntrySchema,
 );
+
+type TenantBrandingRuntimeConfigService = Pick<
+  RuntimeConfigModuleService,
+  "listOverridesByModule" | "resolveConfigValue"
+>;
+
+type AdminTenantBrandingRuntimeConfigService =
+  TenantBrandingRuntimeConfigService &
+    Pick<RuntimeConfigModuleService, "resolveStoredFeatureFlag">;
+
+type TenantBrandingSnapshotRuntime = {
+  readonly entitlements: readonly Entitlement[];
+  readonly runtimeConfig: TenantBrandingRuntimeConfigService;
+};
+
+type AdminTenantBrandingSnapshotRuntime = {
+  readonly entitlements: readonly Entitlement[];
+  readonly runtimeConfig: AdminTenantBrandingRuntimeConfigService;
+};
+
+const tenantBrandingPublicProjectionConfigKeys = [
+  tenantBrandingConfigKey.companyName,
+  tenantBrandingConfigKey.logoAssetId,
+  tenantBrandingConfigKey.faviconAssetId,
+  tenantBrandingConfigKey.themePrimary,
+  tenantBrandingConfigKey.themeSecondary,
+  tenantBrandingConfigKey.themeAccent,
+  tenantBrandingConfigKey.supportEmail,
+] as const;
+
+const tenantBrandingAdminProjectionConfigKeys = [
+  ...tenantBrandingPublicProjectionConfigKeys,
+  tenantBrandingConfigKey.replyToEmail,
+  tenantBrandingConfigKey.customDomainHost,
+] as const;
+
+const isMaterializedBrandingValue = (value: unknown) =>
+  value !== undefined && value !== null && value !== configDefaultValue.inherit;
+
+const platformScopeSpecificityRank = (
+  scope: RequestContext["tenant"]["scope"],
+) => {
+  switch (scope) {
+    case platformScope.individual:
+      return 0;
+    case platformScope.organization:
+      return 1;
+    case platformScope.enterprise:
+      return 2;
+    case platformScope.platform:
+      return 3;
+  }
+};
+
+const resolveBrandingEffectiveScope = (
+  scopes: readonly (RequestContext["tenant"]["scope"] | undefined)[],
+) =>
+  scopes.reduce<RequestContext["tenant"]["scope"]>(
+    (selectedScope, scope) =>
+      scope !== undefined &&
+      platformScopeSpecificityRank(scope) <
+        platformScopeSpecificityRank(selectedScope)
+        ? scope
+        : selectedScope,
+    platformScope.platform,
+  );
 
 const adminAppGovernancePreviewModuleIds = Schema.validateSync(
   Schema.Array(PlatformModuleIdSchema),
@@ -245,6 +351,230 @@ const emptyAdminAppGovernancePreview = Schema.validateSync(
     auditEvents: [],
   })),
 );
+
+const buildTenantBrandingPreview = (input: {
+  readonly brandingManifest: Schema.Schema.Type<
+    typeof PlatformModuleManifestSchema
+  >;
+  readonly requestContext: RequestContext;
+  readonly runtime?: TenantBrandingSnapshotRuntime;
+}) =>
+  Effect.gen(function* () {
+    const tenantBranding = yield* makeTenantBrandingModule();
+
+    let projection: Schema.Schema.Type<typeof PublicBrandingProjectionSchema>;
+    const runtime = input.runtime;
+
+    if (runtime === undefined) {
+      const fallbackProjection = (yield* tenantBranding.resolveBranding({
+        requestContext: input.requestContext,
+        entitled: false,
+        values: {},
+      })).publicProjection;
+      projection = yield* Schema.decodeUnknown(PublicBrandingProjectionSchema)({
+        ...fallbackProjection,
+        effectiveScope: platformScope.platform,
+      });
+    } else {
+      const overrides = yield* runtime.runtimeConfig.listOverridesByModule(
+        platformModuleId.tenantBranding,
+      );
+      const resolutions = yield* Effect.forEach(
+        tenantBrandingPublicProjectionConfigKeys,
+        (key) =>
+          runtime.runtimeConfig
+            .resolveConfigValue({
+              requestContext: input.requestContext,
+              moduleId: platformModuleId.tenantBranding,
+              key,
+              overrides,
+              entitlements: runtime.entitlements,
+            })
+            .pipe(Effect.map((resolution) => [key, resolution] as const)),
+        { concurrency: 1 },
+      );
+
+      const materializedResolutions = resolutions.filter(([, resolution]) =>
+        isMaterializedBrandingValue(resolution.effectiveValue),
+      );
+      const effectiveScope = resolveBrandingEffectiveScope(
+        materializedResolutions.map(
+          ([, resolution]) => resolution.resolvedScope,
+        ),
+      );
+
+      const resolvedProjection = (yield* tenantBranding.resolveBranding({
+        requestContext: input.requestContext,
+        entitled: resolutions.some(([, resolution]) => resolution.entitled),
+        values: Object.fromEntries(
+          materializedResolutions.flatMap(([key, resolution]) =>
+            isMaterializedBrandingValue(resolution.effectiveValue)
+              ? [[key, resolution.effectiveValue] as const]
+              : [],
+          ),
+        ),
+      })).publicProjection;
+      projection = yield* Schema.decodeUnknown(PublicBrandingProjectionSchema)({
+        ...resolvedProjection,
+        effectiveScope,
+      });
+    }
+
+    return yield* decodeTenantBrandingPreview({
+      moduleId: input.brandingManifest.moduleId,
+      projection,
+      companyName: projection.companyName,
+      supportedScopes: [...brandingSupportedScopes],
+      featureFlags: input.brandingManifest.featureFlags,
+      customDomainLifecycle: [...customDomainLifecycleStates],
+    });
+  });
+
+const buildAdminTenantBrandingPreview = (input: {
+  readonly brandingManifest: Schema.Schema.Type<
+    typeof PlatformModuleManifestSchema
+  >;
+  readonly requestContext: RequestContext;
+  readonly runtime?: AdminTenantBrandingSnapshotRuntime;
+}) =>
+  Effect.gen(function* () {
+    const tenantBranding = yield* makeTenantBrandingModule();
+
+    const toVisibleAdminProjection = (
+      inputProjection: Schema.Schema.Type<typeof AdminBrandingProjectionSchema>,
+    ) => {
+      const { replyToEmail, customDomainHost, ...projectionBase } =
+        inputProjection;
+
+      return Schema.decodeUnknown(AdminBrandingProjectionSchema)({
+        ...projectionBase,
+        ...(input.requestContext.actorType === actorType.platformOperator &&
+        replyToEmail !== undefined
+          ? { replyToEmail }
+          : {}),
+        ...(input.requestContext.actorType === actorType.platformOperator &&
+        customDomainHost !== undefined
+          ? { customDomainHost }
+          : {}),
+      });
+    };
+
+    let projection: Schema.Schema.Type<typeof AdminBrandingProjectionSchema>;
+    const runtime = input.runtime;
+
+    if (runtime === undefined) {
+      const fallbackProjection = (yield* tenantBranding.resolveBranding({
+        requestContext: input.requestContext,
+        entitled: false,
+        values: {},
+      })).adminProjection;
+      projection = yield* toVisibleAdminProjection({
+        ...fallbackProjection,
+        effectiveScope: platformScope.platform,
+      });
+    } else {
+      const overrides = yield* runtime.runtimeConfig.listOverridesByModule(
+        platformModuleId.tenantBranding,
+      );
+      const brandedEmailsFlag = yield* Effect.fromNullable(
+        input.brandingManifest.featureFlags.find(
+          (featureFlag) =>
+            featureFlag.key === tenantBrandingFeatureFlag.brandedEmails,
+        ),
+      ).pipe(
+        Effect.orDieWith(
+          () =>
+            new Error(
+              "Missing tenant-branding brandedEmails feature flag declaration.",
+            ),
+        ),
+      );
+      const customDomainFlag = yield* Effect.fromNullable(
+        input.brandingManifest.featureFlags.find(
+          (featureFlag) =>
+            featureFlag.key === tenantBrandingFeatureFlag.customDomain,
+        ),
+      ).pipe(
+        Effect.orDieWith(
+          () =>
+            new Error(
+              "Missing tenant-branding customDomain feature flag declaration.",
+            ),
+        ),
+      );
+      const brandedEmailsEnabled = yield* runtime.runtimeConfig
+        .resolveStoredFeatureFlag({
+          requestContext: input.requestContext,
+          moduleId: platformModuleId.tenantBranding,
+          flag: brandedEmailsFlag,
+          entitlements: runtime.entitlements,
+        })
+        .pipe(Effect.map((resolution) => resolution.effectiveValue));
+      const customDomainEnabled = yield* runtime.runtimeConfig
+        .resolveStoredFeatureFlag({
+          requestContext: input.requestContext,
+          moduleId: platformModuleId.tenantBranding,
+          flag: customDomainFlag,
+          entitlements: runtime.entitlements,
+        })
+        .pipe(Effect.map((resolution) => resolution.effectiveValue));
+      const resolutions = yield* Effect.forEach(
+        tenantBrandingAdminProjectionConfigKeys,
+        (key) =>
+          runtime.runtimeConfig
+            .resolveConfigValue({
+              requestContext: input.requestContext,
+              moduleId: platformModuleId.tenantBranding,
+              key,
+              overrides,
+              entitlements: runtime.entitlements,
+            })
+            .pipe(Effect.map((resolution) => [key, resolution] as const)),
+        { concurrency: 1 },
+      );
+
+      const materializedResolutions = resolutions.filter(([, resolution]) =>
+        isMaterializedBrandingValue(resolution.effectiveValue),
+      );
+      const visibleMaterializedResolutions = materializedResolutions.filter(
+        ([key]) =>
+          (key !== tenantBrandingConfigKey.replyToEmail ||
+            brandedEmailsEnabled) &&
+          (key !== tenantBrandingConfigKey.customDomainHost ||
+            customDomainEnabled),
+      );
+      const effectiveScope = resolveBrandingEffectiveScope(
+        visibleMaterializedResolutions.map(
+          ([, resolution]) => resolution.resolvedScope,
+        ),
+      );
+
+      const resolvedProjection = (yield* tenantBranding.resolveBranding({
+        requestContext: input.requestContext,
+        entitled: resolutions.some(([, resolution]) => resolution.entitled),
+        values: Object.fromEntries(
+          visibleMaterializedResolutions.flatMap(([key, resolution]) =>
+            isMaterializedBrandingValue(resolution.effectiveValue)
+              ? [[key, resolution.effectiveValue] as const]
+              : [],
+          ),
+        ),
+      })).adminProjection;
+      projection = yield* toVisibleAdminProjection({
+        ...resolvedProjection,
+        effectiveScope,
+      });
+    }
+
+    return yield* decodeAdminTenantBrandingPreview({
+      moduleId: input.brandingManifest.moduleId,
+      projection,
+      companyName: projection.companyName,
+      supportedScopes: [...brandingSupportedScopes],
+      featureFlags: input.brandingManifest.featureFlags,
+      customDomainLifecycle: [...customDomainLifecycleStates],
+    });
+  });
 
 const toAdminAppGovernanceOverridePreview = (
   override: AdminGovernanceRuntimeConfigOverrideView,
@@ -323,9 +653,17 @@ const buildAdminAppGovernancePreview = (
     ),
   );
 
-const buildPublicWebSnapshot = (requestContext: RequestContext) =>
+const buildPublicWebSnapshot = (
+  requestContext: RequestContext,
+  runtime?: TenantBrandingSnapshotRuntime,
+) =>
   Effect.gen(function* () {
     const brandingManifest = yield* TenantBrandingManifestEffect;
+    const branding = yield* buildTenantBrandingPreview({
+      brandingManifest,
+      requestContext,
+      ...(runtime !== undefined ? { runtime } : {}),
+    });
 
     return yield* decodePublicWebSnapshot({
       application: "Public web",
@@ -336,20 +674,22 @@ const buildPublicWebSnapshot = (requestContext: RequestContext) =>
       storage: platformDefaults.storage,
       tenancyScopes: [...platformDefaults.tenancy.scopes],
       secureByDefault: platformDefaults.security.fieldLevelAccess,
-      branding: {
-        moduleId: brandingManifest.moduleId,
-        companyName: "Platform brand fallback",
-        supportedScopes: [...brandingSupportedScopes],
-        featureFlags: brandingManifest.featureFlags,
-        customDomainLifecycle: [...customDomainLifecycleStates],
-      },
+      branding,
     });
   });
 
-const buildProductAppSnapshot = (requestContext: RequestContext) =>
+const buildProductAppSnapshot = (
+  requestContext: RequestContext,
+  runtime?: TenantBrandingSnapshotRuntime,
+) =>
   Effect.gen(function* () {
     const manifest = yield* TenantManagementManifestEffect;
     const brandingManifest = yield* TenantBrandingManifestEffect;
+    const branding = yield* buildTenantBrandingPreview({
+      brandingManifest,
+      requestContext,
+      ...(runtime !== undefined ? { runtime } : {}),
+    });
 
     return yield* decodeProductAppSnapshot({
       application: "Product app",
@@ -358,6 +698,7 @@ const buildProductAppSnapshot = (requestContext: RequestContext) =>
       requestContext,
       manifest,
       brandingManifest,
+      branding,
       permissionDescriptors: corePermissionDescriptors,
       platformProjectionDescriptors: baseProjectionDescriptors,
       tenancyScopes: [...platformDefaults.tenancy.scopes],
@@ -367,10 +708,16 @@ const buildProductAppSnapshot = (requestContext: RequestContext) =>
 const buildAdminAppSnapshot = (
   requestContext: RequestContext,
   governancePreview = emptyAdminAppGovernancePreview,
+  runtime?: AdminTenantBrandingSnapshotRuntime,
 ) =>
   Effect.gen(function* () {
     const manifest = yield* RuntimeConfigManifestEffect;
     const brandingManifest = yield* TenantBrandingManifestEffect;
+    const branding = yield* buildAdminTenantBrandingPreview({
+      brandingManifest,
+      requestContext,
+      ...(runtime !== undefined ? { runtime } : {}),
+    });
 
     return yield* decodeAdminAppSnapshot({
       application: "Admin app",
@@ -379,56 +726,101 @@ const buildAdminAppSnapshot = (
       requestContext,
       manifest,
       brandingManifest,
+      branding,
       permissions: corePermissionDescriptors,
       governancePreview,
     });
   });
 
-export const getPublicWebSnapshotForRequest = (input: RequestContext) =>
+export const getPublicWebSnapshotForRequestContext = (input: RequestContext) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) => buildPublicWebSnapshot(requestContext)),
   );
 
-export const getProductAppSnapshotForRequest = (input: RequestContext) =>
+export const getPublicWebSnapshotForRequestContextWithRuntimeConfig = (
+  input: RequestContext,
+  runtimeConfig: TenantBrandingRuntimeConfigService,
+  entitlements: readonly Entitlement[],
+) =>
+  decodeRequestContext(input).pipe(
+    Effect.flatMap((requestContext) =>
+      buildPublicWebSnapshot(requestContext, {
+        runtimeConfig,
+        entitlements,
+      }),
+    ),
+  );
+
+export const getProductAppSnapshotForRequestContext = (input: RequestContext) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) => buildProductAppSnapshot(requestContext)),
   );
 
-export const getAdminAppSnapshotForRequest = (input: RequestContext) =>
+export const getProductAppSnapshotForRequestContextWithRuntimeConfig = (
+  input: RequestContext,
+  runtimeConfig: TenantBrandingRuntimeConfigService,
+  entitlements: readonly Entitlement[],
+) =>
+  decodeRequestContext(input).pipe(
+    Effect.flatMap((requestContext) =>
+      buildProductAppSnapshot(requestContext, {
+        runtimeConfig,
+        entitlements,
+      }),
+    ),
+  );
+
+export const getAdminAppSnapshotForRequestContext = (input: RequestContext) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) => buildAdminAppSnapshot(requestContext)),
   );
 
-const buildAdminAppSnapshotForRequestWithGovernanceService = (
+type AdminGovernanceRuntimeModule = Pick<
+  typeof import("../governance/admin-governance"),
+  "runAdminGovernanceFromEnvironment"
+>;
+
+const buildAdminAppSnapshotForRequestContextWithGovernanceService = (
   requestContext: RequestContext,
   governanceService: AdminAppSnapshotGovernanceService,
+  runtime?: AdminTenantBrandingSnapshotRuntime,
 ) =>
   ensureAdminAppSnapshotAccess(requestContext).pipe(
     Effect.flatMap(() =>
       buildAdminAppGovernancePreview(governanceService, requestContext),
     ),
     Effect.flatMap((governancePreview) =>
-      buildAdminAppSnapshot(requestContext, governancePreview),
+      buildAdminAppSnapshot(requestContext, governancePreview, runtime),
     ),
   );
 
-export const getAdminAppSnapshotForRequestWithGovernanceService = (
+export const getAdminAppSnapshotForRequestContextWithGovernanceService = (
   input: RequestContext,
   governanceService: AdminAppSnapshotGovernanceService,
+  runtimeConfig?: AdminTenantBrandingRuntimeConfigService,
+  entitlements: readonly Entitlement[] = [],
 ) =>
   decodeRequestContext(input).pipe(
     Effect.flatMap((requestContext) =>
-      buildAdminAppSnapshotForRequestWithGovernanceService(
+      buildAdminAppSnapshotForRequestContextWithGovernanceService(
         requestContext,
         governanceService,
+        runtimeConfig !== undefined
+          ? {
+              runtimeConfig,
+              entitlements,
+            }
+          : undefined,
       ),
     ),
   );
 
 const loadAdminGovernanceRuntime = () =>
-  loadRuntimeModuleOrDie(() => import("../governance/admin-governance"));
+  loadRuntimeModuleOrDie<AdminGovernanceRuntimeModule>(
+    () => import("../governance/admin-governance"),
+  );
 
-export const getAdminAppSnapshotForRequestFromEnvironment = (
+export const getAdminAppSnapshotForRequestContextFromEnvironment = (
   environment: unknown,
   input: RequestContext,
 ) =>
@@ -437,7 +829,7 @@ export const getAdminAppSnapshotForRequestFromEnvironment = (
       loadAdminGovernanceRuntime().pipe(
         Effect.flatMap(({ runAdminGovernanceFromEnvironment }) =>
           runAdminGovernanceFromEnvironment(environment, (governanceService) =>
-            buildAdminAppSnapshotForRequestWithGovernanceService(
+            buildAdminAppSnapshotForRequestContextWithGovernanceService(
               requestContext,
               governanceService,
             ),
@@ -460,7 +852,7 @@ export const getAdminAppSnapshot = buildAdminAppSnapshot(
 );
 
 export const getAdminAppSnapshotFromEnvironment = (environment: unknown) =>
-  getAdminAppSnapshotForRequestFromEnvironment(
+  getAdminAppSnapshotForRequestContextFromEnvironment(
     environment,
     defaultAdminAppRequestContext,
   );

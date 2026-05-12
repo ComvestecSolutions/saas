@@ -1,11 +1,9 @@
-"use node";
-
 import { Effect } from "effect";
-import {
-  platformAdapterServiceName,
-  type ConvexAdapterRequestError,
-  type ConvexAdapterService,
-} from "@comvestec/platform";
+import { platformAdapterServiceName } from "../packages/platform/src/adapters/service-names";
+import type {
+  ConvexAdapterRequestError,
+  ConvexAdapterService,
+} from "../packages/platform/src/adapters/storage/convex";
 import {
   scheduleBillingConvergenceDispatchPlan,
   type BillingConvergenceSchedulingError,

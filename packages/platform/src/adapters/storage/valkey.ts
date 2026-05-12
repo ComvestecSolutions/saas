@@ -22,6 +22,7 @@ export type ValkeyRedisClient = {
   quit: () => Promise<void>;
   ping: () => Promise<string>;
   incrByFloat: (key: string, increment: number) => Promise<string>;
+  del: (key: string) => Promise<number>;
   set: (
     key: string,
     value: string,
@@ -84,6 +85,7 @@ export type ValkeyAdapterOperationError = {
     | "incrementCounter"
     | "writeSession"
     | "readSession"
+    | "deleteSession"
     | "close";
   readonly cause: unknown;
 };
@@ -129,6 +131,9 @@ export type ValkeyAdapterService = {
   readonly readSession: (
     input: ValkeySessionLookupInput,
   ) => Effect.Effect<ValkeySessionEntry | undefined, ValkeyAdapterError>;
+  readonly deleteSession: (
+    input: ValkeySessionLookupInput,
+  ) => Effect.Effect<void, ValkeyAdapterError>;
   readonly close: Effect.Effect<void, ValkeyAdapterOperationError>;
 };
 
@@ -270,6 +275,23 @@ export const makeValkeyAdapter = (input: ValkeyAdapterOptions) =>
                       buildValkeyOperationError("readSession", cause),
                   }).pipe(Effect.flatMap(decodeValkeySessionEntry));
                 }),
+              ),
+            ),
+          ),
+        deleteSession: (sessionInput: ValkeySessionLookupInput) =>
+          Schema.decodeUnknown(ValkeySessionLookupInputSchema)(
+            sessionInput,
+          ).pipe(
+            Effect.flatMap((decodedInput) =>
+              ensureConnected("deleteSession").pipe(
+                Effect.flatMap(() =>
+                  Effect.tryPromise({
+                    try: () => client.del(toSessionKey(decodedInput.sessionId)),
+                    catch: (cause) =>
+                      buildValkeyOperationError("deleteSession", cause),
+                  }),
+                ),
+                Effect.map(() => undefined),
               ),
             ),
           ),

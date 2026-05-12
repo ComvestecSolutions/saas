@@ -23,6 +23,7 @@ export type RuntimeEnvironment = {
   readonly ketoWriteUrl: string;
   readonly errorTrackingDsn: string;
   readonly openpanelClientId: string;
+  readonly openpanelClientSecret: Redacted.Redacted<string>;
   readonly openpanelApiUrl: string;
   readonly novuApiKey: Redacted.Redacted<string>;
   readonly novuApiUrl: string;
@@ -35,6 +36,9 @@ export type RuntimeEnvironment = {
   readonly openmeterApiKey: Redacted.Redacted<string>;
   readonly postalApiUrl: string;
   readonly postalApiKey: Redacted.Redacted<string>;
+  readonly platformEmailSenderDisplayName: string;
+  readonly platformEmailSenderFromEmail: string;
+  readonly platformEmailSenderReplyToEmail: string;
 };
 
 export class PlatformEnvironmentService extends Context.Tag(
@@ -69,6 +73,7 @@ export const makeRuntimeEnvironment = (input: unknown) =>
         ketoWriteUrl: environment.ketoWriteUrl,
         errorTrackingDsn: environment.errorTrackingDsn,
         openpanelClientId: environment.openpanelClientId,
+        openpanelClientSecret: Redacted.make(environment.openpanelClientSecret),
         openpanelApiUrl: environment.openpanelApiUrl,
         novuApiKey: Redacted.make(environment.novuApiKey),
         novuApiUrl: environment.novuApiUrl,
@@ -81,6 +86,11 @@ export const makeRuntimeEnvironment = (input: unknown) =>
         openmeterApiKey: Redacted.make(environment.openmeterApiKey),
         postalApiUrl: environment.postalApiUrl,
         postalApiKey: Redacted.make(environment.postalApiKey),
+        platformEmailSenderDisplayName:
+          environment.platformEmailSenderDisplayName,
+        platformEmailSenderFromEmail: environment.platformEmailSenderFromEmail,
+        platformEmailSenderReplyToEmail:
+          environment.platformEmailSenderReplyToEmail,
       }),
     ),
   );

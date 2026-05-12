@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createPublicWebFileRoute } from "../file-route";
 
-export const Route = createFileRoute("/")({
+export const Route = createPublicWebFileRoute("/")({
   component: PublicWebShell,
 });
 

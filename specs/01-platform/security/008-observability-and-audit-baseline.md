@@ -55,7 +55,8 @@ Audit at minimum:
 
 1. Logs must be structured.
 2. Traces must cross app, workflow, and storage boundaries where possible.
-3. Alerting should distinguish platform health, security anomalies, and product issues.
-4. Health probes and SLO dashboards are first-class operator surfaces, not ad hoc infrastructure notes.
-5. Product analytics remains a platform-owned boundary. The current analytics provider is OpenPanel behind the repo-managed analytics service group and the shared OpenPanel adapter, not ad hoc browser-only vendor calls.
-6. Product analytics events must stay distinct from audit trails. Sensitive access, privileged actions, and compliance events continue to flow through audit boundaries even when a related business event is also emitted to analytics.
+3. Backend-owned request boundaries should emit per-request outcome telemetry with correlation context, should report uncaught handler failures through the shared error-tracking boundary when the runtime is configured, and should add report-only document security-report headers through the same shared boundary when a derivable GlitchTip project DSN is configured.
+4. Alerting should distinguish platform health, security anomalies, and product issues.
+5. Health probes and SLO dashboards are first-class operator surfaces, not ad hoc infrastructure notes.
+6. Product analytics remains a platform-owned boundary. The current analytics provider is OpenPanel behind the repo-managed analytics service group and the shared OpenPanel adapter, not ad hoc browser-only vendor calls.
+7. Product analytics events must stay distinct from audit trails. Sensitive access, privileged actions, and compliance events continue to flow through audit boundaries even when a related business event is also emitted to analytics.
