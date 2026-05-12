@@ -1,9 +1,11 @@
 import {
+  actorType,
   billingAndMeteringFeatureFlag,
   billingEnforcementMode,
   billingMeteringMode,
   billingPlanInterval,
   billingPlanVisibility,
+  identityClaimKey,
   platformModuleId,
   tenantBrandingFeatureFlag,
   tenantManagementFeatureFlag,
@@ -453,7 +455,7 @@ export const createKeycloakTestOptions = (
     clientSecret: overrides?.clientSecret ?? "change-me",
     fetch:
       overrides?.fetch ??
-      (async (input) => {
+      (async (input, init) => {
         const url = typeof input === "string" ? input : input.toString();
 
         if (url === `${issuer}/.well-known/openid-configuration`) {
@@ -461,18 +463,70 @@ export const createKeycloakTestOptions = (
         }
 
         if (url === `${issuer}/protocol/openid-connect/token/introspect`) {
+          const requestBody = new URLSearchParams(String(init?.body ?? ""));
+          const token = requestBody.get("token");
+
+          if (token?.startsWith("access-token:")) {
+            const impersonatedActorId = token.slice("access-token:".length);
+
+            return createJsonResponse({
+              active: true,
+              sub: impersonatedActorId,
+              sid: `sess_impersonation_${impersonatedActorId}`,
+              iss: issuer,
+              tenant_hint: "org_1",
+              [identityClaimKey.actorType]: actorType.organizationMember,
+            });
+          }
+
           return createJsonResponse({
             active: true,
             sub: "usr_token",
             sid: "sess_token",
             iss: issuer,
+            tenant_hint: "org_token",
+            [identityClaimKey.actorType]: actorType.organizationMember,
           });
         }
 
         if (url === `${issuer}/protocol/openid-connect/token`) {
+          const requestBody = new URLSearchParams(String(init?.body ?? ""));
+          const requestedSubject = requestBody.get("requested_subject");
+          const grantType = requestBody.get("grant_type");
+
+          if (grantType === "client_credentials") {
+            return createJsonResponse({
+              access_token: "service-account-access-token",
+              expires_in: 1800,
+            });
+          }
+
+          if (
+            grantType === "urn:ietf:params:oauth:grant-type:token-exchange" &&
+            requestedSubject !== null &&
+            requestedSubject.length > 0
+          ) {
+            return createJsonResponse({
+              access_token: `access-token:${requestedSubject}`,
+              id_token: `id-token:${requestedSubject}`,
+              expires_in: 1800,
+              session_state: `sess_impersonation_${requestedSubject}`,
+            });
+          }
+
           return createJsonResponse({
             access_token: "access-token",
             id_token: "id-token",
+            expires_in: 1800,
+          });
+        }
+
+        if (
+          init?.method === "DELETE" &&
+          url.startsWith(`${baseUrl}/admin/realms/${realm}/sessions/`)
+        ) {
+          return new Response(null, {
+            status: 204,
           });
         }
 
@@ -505,6 +559,11 @@ export const createValkeyTestClient = (): ValkeyRedisClient => {
 
       return `${nextValue}`;
     },
+    del: async (key) => {
+      const deleted = values.delete(key);
+
+      return deleted ? 1 : 0;
+    },
     set: async (key, value) => {
       values.set(key, value);
     },
@@ -515,9 +574,29 @@ export const createValkeyTestClient = (): ValkeyRedisClient => {
 export const createOryKetoTestOptions = (
   overrides?: Partial<OryKetoAdapterOptions>,
 ): OryKetoAdapterOptions => {
-  const tuples = new Set<string>();
+  const tuples = new Map<
+    string,
+    {
+      namespace: string;
+      object: string;
+      relation: string;
+      subject_id: string;
+    }
+  >();
   const readUrl = overrides?.readUrl ?? "http://localhost:4466";
   const writeUrl = overrides?.writeUrl ?? "http://localhost:4467";
+  const buildTupleKey = (input: {
+    readonly namespace: string | null;
+    readonly object: string | null;
+    readonly relation: string | null;
+    readonly subject_id: string | null;
+  }) =>
+    JSON.stringify([
+      input.namespace,
+      input.object,
+      input.relation,
+      input.subject_id,
+    ]);
 
   return {
     readUrl,
@@ -541,27 +620,52 @@ export const createOryKetoTestOptions = (
             relation: string;
             subject_id: string;
           };
-          tuples.add(
-            [
-              payload.namespace,
-              payload.object,
-              payload.relation,
-              payload.subject_id,
-            ].join(":"),
-          );
+          tuples.set(buildTupleKey(payload), payload);
 
           return createJsonResponse(payload, 201);
         }
 
+        if (method === "DELETE" && url.pathname === "/admin/relation-tuples") {
+          tuples.delete(
+            buildTupleKey({
+              namespace: url.searchParams.get("namespace"),
+              object: url.searchParams.get("object"),
+              relation: url.searchParams.get("relation"),
+              subject_id: url.searchParams.get("subject_id"),
+            }),
+          );
+
+          return new Response(null, {
+            status: 204,
+          });
+        }
+
         if (method === "GET" && url.pathname === "/relation-tuples/check") {
-          const tupleKey = [
-            url.searchParams.get("namespace"),
-            url.searchParams.get("object"),
-            url.searchParams.get("relation"),
-            url.searchParams.get("subject_id"),
-          ].join(":");
+          const tupleKey = buildTupleKey({
+            namespace: url.searchParams.get("namespace"),
+            object: url.searchParams.get("object"),
+            relation: url.searchParams.get("relation"),
+            subject_id: url.searchParams.get("subject_id"),
+          });
 
           return createJsonResponse({ allowed: tuples.has(tupleKey) });
+        }
+
+        if (method === "GET" && url.pathname === "/relation-tuples") {
+          const namespace = url.searchParams.get("namespace");
+          const object = url.searchParams.get("object");
+          const relation = url.searchParams.get("relation");
+          const subject = url.searchParams.get("subject_id");
+
+          const relationTuples = [...tuples.values()].filter(
+            (tuple) =>
+              tuple.namespace === namespace &&
+              tuple.object === object &&
+              tuple.relation === relation &&
+              (subject === null || tuple.subject_id === subject),
+          );
+
+          return createJsonResponse({ relation_tuples: relationTuples });
         }
 
         return new Response("Not Found", {

@@ -1,6 +1,10 @@
+import { createSign, generateKeyPairSync } from "node:crypto";
 import { Effect, ParseResult, Schema } from "effect";
+import type { MockedFunction } from "vitest";
 import {
   platformModuleManifests,
+  tenantBrandingConfigKey,
+  tenantBrandingFeatureFlag,
   workflowJobsRetryMaxAttempts,
   workflowJobsRunningClaimTimeoutSeconds,
   workflowJobsScheduledRecoveryAttemptCount,
@@ -13,6 +17,7 @@ import {
   billingAndMeteringFeatureFlag,
   billingEnforcementMode,
   billingMeteringMode,
+  billingPaymentEventStatus,
   billingPlanInterval,
   billingPlanVisibility,
   billingSubscriptionStatus,
@@ -23,9 +28,11 @@ import {
   platformModuleId,
   platformScope,
   projectionProfile,
+  runtimeResolutionSource,
   workflowJobGapReason,
   workflowJobKind,
   workflowJobStatus,
+  type WorkflowJobSummary,
   type WorkflowJobSummaryList,
   workflowJobTrigger,
   usageQuotaPeriod,
@@ -47,6 +54,7 @@ import {
   BillingWebhookService,
   billingCustomerAccountsTable,
   buildBillingReconciliationWorkflowJobId,
+  buildSearchTenantIndexEnsureWorkflowJobId,
   identitySessionRunIdPrefix,
   identitySessionLifecycleEventType,
   makeWebhooksApiAccessModule,
@@ -66,18 +74,30 @@ import {
   makeAuthorizationModule,
   makeIdentitySessionModule,
   makeIdentitySessionPostgresRepository,
+  makeRuntimeConfigModule,
+  makeRuntimeConfigPostgresRepository,
   makeTenantManagementModule,
   makeTenantOnboardingPostgresRepository,
   makeTenantProvisioningPostgresRepository,
   makeWorkflowJobsPostgresRepository,
+  makeWorkflowJobsPostgresRepositoryForRecordSchema,
   TenantManagementModule,
   tenantOnboardingRunStatus,
   TenantOnboardingPostgresRepository,
   tenantProvisioningStatus,
   TenantProvisioningPostgresRepository,
+  type WorkflowJobRecord,
+  WorkflowJobRecordSchema,
   type WorkflowJobsPostgresQueryable,
+  type WorkflowJobsPostgresQueryableForRecord,
   WorkflowJobsPostgresRepository,
   WebhooksApiAccessModule,
+  type WebhookApiKeyPostgresRepositoryService,
+  WebhookApiKeyPostgresRepository,
+  type WebhookOutboundDeliveryPostgresRepositoryService,
+  WebhookOutboundDeliveryPostgresRepository,
+  type WebhookSubscriptionPostgresRepositoryService,
+  WebhookSubscriptionPostgresRepository,
   tenantProvisioningReceiptsTable,
   tenantOnboardingRunsTable,
   tenantOnboardingStepsTable,
@@ -88,6 +108,10 @@ import {
   type BillingWebhookReplayPostgresQueryable,
   type PostgresDatabase,
   type PostgresInsertBuilder,
+  type RuntimeConfigPostgresQueryable,
+  runtimeConfigOverrideProposalsTable,
+  runtimeConfigOverridesTable,
+  runtimeConfigSyncArtifactsTable,
 } from "@comvestec/modules";
 import {
   type BillingReconciliationWorkflowDispatchInput,
@@ -102,6 +126,7 @@ import {
   makeOryKetoAdapter,
   makePolarAdapter,
   makeSubscriberJourneyService,
+  type OpenmeterAdapterService,
   OryKetoAdapter,
   PolarAdapter,
   platformAdapterServiceName,
@@ -140,6 +165,12 @@ const createSubscriberJourneyTestDatabase = () => {
   type BillingSubscriptionSelectRow =
     typeof billingSubscriptionsTable.$inferSelect;
   type AuditLogEventSelectRow = typeof auditLogEventsTable.$inferSelect;
+  type RuntimeConfigOverrideProposalSelectRow =
+    typeof runtimeConfigOverrideProposalsTable.$inferSelect;
+  type RuntimeConfigOverrideSelectRow =
+    typeof runtimeConfigOverridesTable.$inferSelect;
+  type RuntimeConfigSyncArtifactSelectRow =
+    typeof runtimeConfigSyncArtifactsTable.$inferSelect;
   type WorkflowJobSelectRow = typeof workflowJobsTable.$inferSelect;
 
   const identitySessionEvents = new Map<
@@ -180,6 +211,18 @@ const createSubscriberJourneyTestDatabase = () => {
     typeof auditLogEventsTable.$inferInsert
   >();
   const workflowJobs = new Map<string, typeof workflowJobsTable.$inferInsert>();
+  const runtimeConfigOverrides = new Map<
+    string,
+    typeof runtimeConfigOverridesTable.$inferInsert
+  >();
+  const runtimeConfigOverrideProposals = new Map<
+    string,
+    typeof runtimeConfigOverrideProposalsTable.$inferInsert
+  >();
+  const runtimeConfigSyncArtifacts = new Map<
+    string,
+    typeof runtimeConfigSyncArtifactsTable.$inferInsert
+  >();
 
   const persistRows = (table: PersistedTable, values: PersistedValues) => {
     const rows = Array.isArray(values) ? values : [values];
@@ -274,11 +317,26 @@ const createSubscriberJourneyTestDatabase = () => {
   const transaction = {
     insert: (table: PersistedTable) => ({
       values: (values: PersistedValues) => ({
+        execute: async () => {
+          persistRows(table, values);
+        },
         onConflictDoUpdate: () => ({
           execute: async () => {
             persistRows(table, values);
           },
         }),
+      }),
+    }),
+    update: () => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => [],
+        }),
+      }),
+    }),
+    select: () => ({
+      from: () => ({
+        where: async () => [],
       }),
     }),
   };
@@ -368,16 +426,107 @@ const createSubscriberJourneyTestDatabase = () => {
     recordedAt: row.recordedAt ?? new Date(),
   });
 
+  const toRuntimeConfigOverrideSelectRow = (
+    row: typeof runtimeConfigOverridesTable.$inferInsert,
+  ): RuntimeConfigOverrideSelectRow => ({
+    overrideId: row.overrideId,
+    moduleId: row.moduleId,
+    key: row.key,
+    scope: row.scope,
+    scopeId: row.scopeId,
+    value: row.value,
+    source: row.source,
+    changedBy: row.changedBy,
+    approvalReason: row.approvalReason ?? null,
+    changedAt: row.changedAt ?? new Date(),
+  });
+
+  const toRuntimeConfigOverrideProposalSelectRow = (
+    row: typeof runtimeConfigOverrideProposalsTable.$inferInsert,
+  ): RuntimeConfigOverrideProposalSelectRow => ({
+    proposalId: row.proposalId,
+    moduleId: row.moduleId,
+    key: row.key,
+    scope: row.scope,
+    scopeId: row.scopeId,
+    value: row.value,
+    source: row.source,
+    changedBy: row.changedBy,
+    changedAt: row.changedAt ?? new Date(),
+    approvalReason: row.approvalReason,
+    status: row.status ?? "pending",
+    decidedBy: row.decidedBy ?? null,
+    decisionReason: row.decisionReason ?? null,
+    decidedAt: row.decidedAt ?? null,
+  });
+
+  const toRuntimeConfigSyncArtifactSelectRow = (
+    row: typeof runtimeConfigSyncArtifactsTable.$inferInsert,
+  ): RuntimeConfigSyncArtifactSelectRow => ({
+    proposalId: row.proposalId,
+    moduleId: row.moduleId,
+    key: row.key,
+    action: row.action,
+    artifactPath: row.artifactPath,
+    runtimeValue: row.runtimeValue ?? null,
+    codeValue: row.codeValue ?? null,
+    status: row.status ?? "pending",
+    generatedAt: row.generatedAt ?? new Date(),
+    decidedBy: row.decidedBy ?? null,
+    decisionReason: row.decisionReason ?? null,
+    decidedAt: row.decidedAt ?? null,
+  });
+
   const readDatabase: BillingStatePostgresQueryable = {
     listEntitlementsByScope: async (scope, scopeId) =>
       [...entitlements.values()]
         .filter((row) => row.scope === scope && row.scopeId === scopeId)
         .map(toBillingEntitlementSelectRow),
+    listPaymentEventsByScope: async (scope, scopeId) =>
+      [...paymentEvents.values()]
+        .filter((row) => row.scope === scope && row.scopeId === scopeId)
+        .sort((left, right) => {
+          const leftTime =
+            left.recordedAt instanceof Date ? left.recordedAt.getTime() : 0;
+          const rightTime =
+            right.recordedAt instanceof Date ? right.recordedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map((row) => ({
+          eventId: row.eventId,
+          provider: row.provider,
+          providerEventId: row.providerEventId,
+          subscriptionId: row.subscriptionId ?? null,
+          scope: row.scope ?? null,
+          scopeId: row.scopeId ?? null,
+          eventType: row.eventType,
+          status: row.status,
+          amountMinor: row.amountMinor ?? null,
+          currency: row.currency ?? null,
+          effectiveAt: row.effectiveAt ?? null,
+          payload: row.payload ?? {},
+          recordedAt: row.recordedAt ?? new Date(),
+        })),
     getLatestSubscriptionByScope: async (scope, scopeId) =>
       (() => {
-        const subscription = [...subscriptions.values()].find(
-          (row) => row.scope === scope && row.scopeId === scopeId,
-        );
+        const matchingSubscriptions = [...subscriptions.values()]
+          .filter((row) => row.scope === scope && row.scopeId === scopeId)
+          .sort((left, right) => {
+            const leftTime =
+              left.updatedAt instanceof Date ? left.updatedAt.getTime() : 0;
+            const rightTime =
+              right.updatedAt instanceof Date ? right.updatedAt.getTime() : 0;
+
+            return rightTime - leftTime;
+          });
+        const subscription =
+          matchingSubscriptions.find(
+            (row) =>
+              row.status === billingSubscriptionStatus.pending ||
+              row.status === billingSubscriptionStatus.active ||
+              row.status === billingSubscriptionStatus.pastDue,
+          ) ?? matchingSubscriptions[0];
 
         return subscription === undefined
           ? undefined
@@ -490,6 +639,31 @@ const createSubscriberJourneyTestDatabase = () => {
 
       return toWorkflowJobSelectRow(restoredWorkflowJob);
     },
+    cancelWorkflowJobIfUpdatedAtMatches: async (
+      jobId,
+      expectedUpdatedAt,
+      canceledAt,
+    ) => {
+      const workflowJob = workflowJobs.get(jobId);
+
+      if (
+        workflowJob === undefined ||
+        workflowJob.updatedAt?.getTime() !== expectedUpdatedAt.getTime()
+      ) {
+        return undefined;
+      }
+
+      const canceledWorkflowJob = {
+        ...workflowJob,
+        status: workflowJobStatus.canceled,
+        completedAt: canceledAt,
+        updatedAt: canceledAt,
+      } satisfies typeof workflowJobsTable.$inferInsert;
+
+      workflowJobs.set(jobId, canceledWorkflowJob);
+
+      return toWorkflowJobSelectRow(canceledWorkflowJob);
+    },
     listDueWorkflowJobs: async (sourceModuleId, scheduledBefore) =>
       [...workflowJobs.values()]
         .filter(
@@ -513,11 +687,15 @@ const createSubscriberJourneyTestDatabase = () => {
           return leftTime - rightTime;
         })
         .map(toWorkflowJobSelectRow),
-    listRepairGapWorkflowJobs: async (sourceModuleId) =>
+    listRepairGapWorkflowJobs: async (input) =>
       [...workflowJobs.values()]
         .filter(
           (row) =>
-            row.sourceModuleId === sourceModuleId &&
+            row.sourceModuleId === input.sourceModuleId &&
+            (input.tenantScope === undefined ||
+              row.tenantScope === input.tenantScope) &&
+            (input.tenantScopeId === undefined ||
+              row.tenantScopeId === input.tenantScopeId) &&
             ((row.gapReason != null &&
               (row.status === workflowJobStatus.scheduled ||
                 row.status === workflowJobStatus.blocked)) ||
@@ -551,6 +729,87 @@ const createSubscriberJourneyTestDatabase = () => {
           return rightTime - leftTime;
         })
         .map(toAuditLogEventSelectRow),
+    listEventsByTarget: async (input) =>
+      [...auditLogEvents.values()]
+        .filter(
+          (row) =>
+            row.moduleId === input.moduleId && row.target === input.target,
+        )
+        .sort((left, right) => {
+          const leftTime =
+            left.recordedAt instanceof Date ? left.recordedAt.getTime() : 0;
+          const rightTime =
+            right.recordedAt instanceof Date ? right.recordedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map(toAuditLogEventSelectRow),
+    listEventsByActor: async (actorId) =>
+      [...auditLogEvents.values()]
+        .filter((row) => row.actorId === actorId)
+        .sort((left, right) => {
+          const leftTime =
+            left.recordedAt instanceof Date ? left.recordedAt.getTime() : 0;
+          const rightTime =
+            right.recordedAt instanceof Date ? right.recordedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map(toAuditLogEventSelectRow),
+    listEventsByTenant: async (input) =>
+      [...auditLogEvents.values()]
+        .filter(
+          (row) =>
+            row.tenantScope === input.tenantScope &&
+            row.tenantScopeId === input.tenantScopeId,
+        )
+        .sort((left, right) => {
+          const leftTime =
+            left.recordedAt instanceof Date ? left.recordedAt.getTime() : 0;
+          const rightTime =
+            right.recordedAt instanceof Date ? right.recordedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map(toAuditLogEventSelectRow),
+  };
+  const runtimeConfigQueryable: RuntimeConfigPostgresQueryable = {
+    listOverridesByModule: async (moduleId) =>
+      [...runtimeConfigOverrides.values()]
+        .filter((row) => row.moduleId === moduleId)
+        .sort((left, right) => {
+          const leftTime =
+            left.changedAt instanceof Date ? left.changedAt.getTime() : 0;
+          const rightTime =
+            right.changedAt instanceof Date ? right.changedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map(toRuntimeConfigOverrideSelectRow),
+    listOverrideProposalsByModule: async (moduleId) =>
+      [...runtimeConfigOverrideProposals.values()]
+        .filter((row) => row.moduleId === moduleId)
+        .sort((left, right) => {
+          const leftTime =
+            left.changedAt instanceof Date ? left.changedAt.getTime() : 0;
+          const rightTime =
+            right.changedAt instanceof Date ? right.changedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map(toRuntimeConfigOverrideProposalSelectRow),
+    listSyncArtifactsByModule: async (moduleId) =>
+      [...runtimeConfigSyncArtifacts.values()]
+        .filter((row) => row.moduleId === moduleId)
+        .sort((left, right) => {
+          const leftTime =
+            left.generatedAt instanceof Date ? left.generatedAt.getTime() : 0;
+          const rightTime =
+            right.generatedAt instanceof Date ? right.generatedAt.getTime() : 0;
+
+          return rightTime - leftTime;
+        })
+        .map(toRuntimeConfigSyncArtifactSelectRow),
   };
 
   return {
@@ -558,6 +817,7 @@ const createSubscriberJourneyTestDatabase = () => {
     readDatabase,
     replayDatabase,
     auditLogQueryable,
+    runtimeConfigQueryable,
     workflowJobsQueryable,
     identitySessionEvents,
     onboardingRuns,
@@ -570,6 +830,9 @@ const createSubscriberJourneyTestDatabase = () => {
     entitlements,
     auditLogEvents,
     workflowJobs,
+    runtimeConfigOverrides,
+    runtimeConfigOverrideProposals,
+    runtimeConfigSyncArtifacts,
   };
 };
 
@@ -658,8 +921,38 @@ const createSubscriberJourneyRepairReadModel = (
         };
   },
   getCustomerAccountByTenant: async (scope: string, scopeId: string) => {
+    const customerAccount = [...database.customerAccounts.values()]
+      .filter((row) => row.scope === scope && row.scopeId === scopeId)
+      .sort((left, right) => {
+        const leftTime =
+          left.updatedAt instanceof Date ? left.updatedAt.getTime() : 0;
+        const rightTime =
+          right.updatedAt instanceof Date ? right.updatedAt.getTime() : 0;
+
+        return rightTime - leftTime;
+      })[0];
+
+    return customerAccount === undefined
+      ? undefined
+      : await Effect.runPromise(
+          Schema.decodeUnknown(BillingCustomerAccountRecordSchema)({
+            accountId: customerAccount.accountId,
+            provider: customerAccount.provider,
+            providerCustomerId: customerAccount.providerCustomerId,
+            actorId: customerAccount.actorId,
+            scope: customerAccount.scope,
+            scopeId: customerAccount.scopeId,
+            ...(customerAccount.email != null
+              ? { email: customerAccount.email }
+              : {}),
+            status: customerAccount.status,
+            metadata: customerAccount.metadata ?? {},
+          }),
+        );
+  },
+  getCustomerAccountById: async (accountId: string) => {
     const customerAccount = [...database.customerAccounts.values()].find(
-      (row) => row.scope === scope && row.scopeId === scopeId,
+      (row) => row.accountId === accountId,
     );
 
     return customerAccount === undefined
@@ -708,12 +1001,28 @@ const createConvexAdapterDouble = (options?: {
 
       scheduledWorkflowDispatches.push(input);
 
+      const primaryScheduled = options?.primaryScheduled ?? true;
+      const scheduledRecoveryAttemptCount =
+        options?.scheduledRecoveryAttemptCount ??
+        workflowJobsScheduledRecoveryAttemptCount;
+      const scheduledFunctionIds = [
+        ...(primaryScheduled
+          ? [["scheduled", input.jobId, "primary"].join(":")]
+          : []),
+        ...Array.from({ length: scheduledRecoveryAttemptCount }, (_, index) =>
+          ["scheduled", input.jobId, "recovery", index + 1].join(":"),
+        ),
+      ];
+      const resolvedScheduledFunctionIds =
+        scheduledFunctionIds.length > 0
+          ? scheduledFunctionIds
+          : [["scheduled", input.jobId, "recovery", 1].join(":")];
+
       const dispatch: ConvexScheduledWorkflowDispatch = {
-        scheduledFunctionId: ["scheduled", input.jobId].join(":"),
-        primaryScheduled: options?.primaryScheduled ?? true,
-        scheduledRecoveryAttemptCount:
-          options?.scheduledRecoveryAttemptCount ??
-          workflowJobsScheduledRecoveryAttemptCount,
+        scheduledFunctionId: resolvedScheduledFunctionIds[0] ?? "",
+        scheduledFunctionIds: resolvedScheduledFunctionIds,
+        primaryScheduled,
+        scheduledRecoveryAttemptCount,
         expectedRecoveryAttemptCount: workflowJobsScheduledRecoveryAttemptCount,
       };
 
@@ -740,6 +1049,9 @@ const seedAuthCallbackEvidence = (input: {
   readonly database: ReturnType<typeof createSubscriberJourneyTestDatabase>;
   readonly actorId: string;
   readonly scopeId: string;
+  readonly scope?:
+    | typeof platformScope.organization
+    | typeof platformScope.enterprise;
 }) => {
   input.database.identitySessionEvents.set(
     ["evt-auth-callback", input.scopeId].join(":"),
@@ -747,7 +1059,7 @@ const seedAuthCallbackEvidence = (input: {
       eventId: ["evt-auth-callback", input.scopeId].join(":"),
       sessionId: ["sess", input.scopeId].join("_"),
       actorId: input.actorId,
-      tenantScope: platformScope.organization,
+      tenantScope: input.scope ?? platformScope.organization,
       tenantScopeId: input.scopeId,
       eventType: identitySessionLifecycleEventType.authCallbackCompleted,
       provider: platformAdapterServiceName.keycloak,
@@ -762,23 +1074,102 @@ const seedAuthCallbackEvidence = (input: {
 const encodeBase64UrlJson = (value: unknown) =>
   Buffer.from(JSON.stringify(value)).toString("base64url");
 
+const keycloakIdentityTokenTestKeyId =
+  "subscriber-journey-keycloak-identity-token-test-key";
+const keycloakIdentityTokenTestKeyPair = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+});
+const keycloakIdentityTokenTestPublicJwk = {
+  ...(keycloakIdentityTokenTestKeyPair.publicKey.export({
+    format: "jwk",
+  }) as JsonWebKey),
+  kid: keycloakIdentityTokenTestKeyId,
+  alg: "RS256",
+  use: "sig",
+};
+
 const createKeycloakIdToken = (input: {
   readonly sub: string;
   readonly actorTypeValue?: string;
-}) =>
-  [
-    encodeBase64UrlJson({ alg: "none", typ: "JWT" }),
-    encodeBase64UrlJson({
-      iss: "http://localhost:8080/realms/comvestec",
-      aud: "comvestec-web",
-      sub: input.sub,
-      preferred_username: input.sub,
-      ...(input.actorTypeValue !== undefined
-        ? { [identityClaimKey.actorType]: input.actorTypeValue }
-        : {}),
+  readonly keyId?: string;
+  readonly algorithm?: string;
+  readonly expiresInSeconds?: number;
+}) => {
+  const baseOptions = createKeycloakTestOptions();
+  const issuer = `${baseOptions.baseUrl}/realms/${baseOptions.realm}`;
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const headerSegment = encodeBase64UrlJson({
+    alg: input.algorithm ?? "RS256",
+    typ: "JWT",
+    kid: input.keyId ?? keycloakIdentityTokenTestKeyId,
+  });
+  const payloadSegment = encodeBase64UrlJson({
+    iss: issuer,
+    aud: baseOptions.clientId,
+    sub: input.sub,
+    preferred_username: input.sub,
+    exp: nowSeconds + (input.expiresInSeconds ?? 3_600),
+    iat: nowSeconds,
+    sid: `sess_${input.sub}`,
+    ...(input.actorTypeValue !== undefined
+      ? { [identityClaimKey.actorType]: input.actorTypeValue }
+      : {}),
+  });
+  const signedContent = `${headerSegment}.${payloadSegment}`;
+  const signer = createSign("RSA-SHA256");
+
+  signer.update(signedContent);
+  signer.end();
+
+  return `${signedContent}.${signer
+    .sign(keycloakIdentityTokenTestKeyPair.privateKey)
+    .toString("base64url")}`;
+};
+
+const createSubscriberJourneyKeycloakAdapter = async () => {
+  const baseOptions = createKeycloakTestOptions();
+  const issuer = `${baseOptions.baseUrl}/realms/${baseOptions.realm}`;
+  const certsEndpoint = `${issuer}/protocol/openid-connect/certs`;
+
+  return Effect.runPromise(
+    makeKeycloakAdapter({
+      ...baseOptions,
+      fetch: async (input, init) => {
+        const url = typeof input === "string" ? input : input.toString();
+
+        if (url === certsEndpoint) {
+          return new Response(
+            JSON.stringify({ keys: [keycloakIdentityTokenTestPublicJwk] }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+              },
+            },
+          );
+        }
+
+        return baseOptions.fetch!(input, init);
+      },
     }),
-    "signature",
-  ].join(".");
+  );
+};
+
+const createOpenmeterUsageMeterDouble = () => {
+  const ingestedUsageEvents: Array<
+    Parameters<OpenmeterAdapterService["ingestUsage"]>[0]
+  > = [];
+
+  return {
+    ingestedUsageEvents,
+    usageMeter: {
+      ingestUsage: vi.fn((input) => {
+        ingestedUsageEvents.push(input);
+        return Effect.succeed(input);
+      }),
+    } satisfies Pick<OpenmeterAdapterService, "ingestUsage">,
+  };
+};
 
 const createSubscriberJourneyHarness = async (options?: {
   readonly authorizationModuleFactory?: typeof makeAuthorizationModule;
@@ -798,7 +1189,7 @@ const createSubscriberJourneyHarness = async (options?: {
     readonly status?: string;
     readonly currentPeriodEnd?: Date | string | null;
   };
-  readonly workflowExecutionClient?: AuthenticatedConvexWorkflowClient;
+  readonly workflowExecutionClient?: Partial<AuthenticatedConvexWorkflowClient>;
 }) => {
   const database = createSubscriberJourneyTestDatabase();
   const convexAdapterOptions =
@@ -826,9 +1217,7 @@ const createSubscriberJourneyHarness = async (options?: {
         };
   const { convex, scheduledWorkflowDispatches } =
     createConvexAdapterDouble(convexAdapterOptions);
-  const keycloak = await Effect.runPromise(
-    makeKeycloakAdapter(createKeycloakTestOptions()),
-  );
+  const keycloak = await createSubscriberJourneyKeycloakAdapter();
   const valkey = await Effect.runPromise(
     makeValkeyAdapter({
       url: "redis://localhost:6379",
@@ -937,6 +1326,8 @@ const createSubscriberJourneyHarness = async (options?: {
           },
         };
   const polar = await Effect.runPromise(makePolarAdapter(polarOptions));
+  const { ingestedUsageEvents: openmeterUsageEvents, usageMeter } =
+    createOpenmeterUsageMeterDouble();
   const tenantManagement = await Effect.runPromise(
     makeTenantManagementModule(),
   );
@@ -959,11 +1350,45 @@ const createSubscriberJourneyHarness = async (options?: {
   const billingWebhookReplayRepository = await Effect.runPromise(
     makeBillingWebhookReplayPostgresRepository(database.replayDatabase),
   );
+  const webhookSubscriptionRepository: WebhookSubscriptionPostgresRepositoryService =
+    {
+      createWebhookSubscription: (input) => Effect.succeed(input),
+      listWebhookSubscriptions: () => Effect.succeed([]),
+    };
+  const webhookApiKeyRepository: WebhookApiKeyPostgresRepositoryService = {
+    createWebhookApiKey: (input) => Effect.succeed(input),
+    listWebhookApiKeys: () => Effect.succeed([]),
+    rotateWebhookApiKey: () =>
+      Effect.die(new Error("Unexpected webhook api key rotation call.")),
+    revokeWebhookApiKey: () =>
+      Effect.die(new Error("Unexpected webhook api key revoke call.")),
+    restoreWebhookApiKey: () =>
+      Effect.die(new Error("Unexpected webhook api key restore call.")),
+  };
+  const webhookOutboundDeliveryRepository: WebhookOutboundDeliveryPostgresRepositoryService =
+    {
+      createWebhookOutboundDelivery: (input) => Effect.succeed(input),
+      getWebhookOutboundDelivery: () => Effect.succeed(undefined),
+      listWebhookOutboundDeliveries: () => Effect.succeed([]),
+      updateWebhookOutboundDelivery: () =>
+        Effect.die(
+          new Error("Unexpected webhook outbound delivery update call."),
+        ),
+    };
   const auditLogRepository = await Effect.runPromise(
     makeAuditLogPostgresRepository({
       ...database.writeDatabase,
       ...database.auditLogQueryable,
     }),
+  );
+  const runtimeConfigRepository = await Effect.runPromise(
+    makeRuntimeConfigPostgresRepository({
+      ...database.writeDatabase,
+      ...database.runtimeConfigQueryable,
+    }),
+  );
+  const runtimeConfig = await Effect.runPromise(
+    makeRuntimeConfigModule(runtimeConfigRepository),
   );
   const workflowJobsRepository = await Effect.runPromise(
     makeWorkflowJobsPostgresRepository(
@@ -1015,11 +1440,25 @@ const createSubscriberJourneyHarness = async (options?: {
         BillingWebhookReplayPostgresRepository,
         billingWebhookReplayRepository,
       ),
+      Effect.provideService(
+        WebhookApiKeyPostgresRepository,
+        webhookApiKeyRepository,
+      ),
+      Effect.provideService(
+        WebhookOutboundDeliveryPostgresRepository,
+        webhookOutboundDeliveryRepository,
+      ),
+      Effect.provideService(
+        WebhookSubscriptionPostgresRepository,
+        webhookSubscriptionRepository,
+      ),
     ),
   );
   const subscriberJourney = await Effect.runPromise(
     makeSubscriberJourneyService({
       repairReadModel: createSubscriberJourneyRepairReadModel(database),
+      runtimeConfig,
+      usageMeter,
     }).pipe(
       Effect.provideService(ConvexAdapter, convex),
       Effect.provideService(TenantManagementModule, tenantManagement),
@@ -1119,13 +1558,16 @@ const createSubscriberJourneyHarness = async (options?: {
           const hasCustomerAccount = customerAccountsByTenant.has(tenantKey);
           const provisioningStatus = provisioningByTenant.get(tenantKey);
           const onboardingStatus = onboardingByTenant.get(tenantKey);
+          const gapReason = !hasCustomerAccount
+            ? workflowJobGapReason.missingCustomerAccount
+            : provisioningStatus !== tenantProvisioningStatus.provisioned
+              ? workflowJobGapReason.missingProvisioning
+              : onboardingStatus === undefined ||
+                  onboardingStatus === tenantOnboardingRunStatus.failed
+                ? workflowJobGapReason.missingOnboarding
+                : undefined;
 
-          if (
-            hasCustomerAccount &&
-            provisioningStatus === tenantProvisioningStatus.provisioned &&
-            onboardingStatus !== undefined &&
-            onboardingStatus !== tenantOnboardingRunStatus.failed
-          ) {
+          if (gapReason === undefined) {
             return Effect.void;
           }
 
@@ -1136,69 +1578,150 @@ const createSubscriberJourneyHarness = async (options?: {
             key: subscription.subscriptionId,
           });
 
-          return Schema.decodeUnknown(
-            BillingReconciliationWorkflowJobRecordSchema,
-          )({
-            jobId,
-            runtime: workflowJobRuntime.convex,
-            sourceModuleId: platformModuleId.billingAndMetering,
-            kind: workflowJobKind.reconciliationSweep,
-            trigger: workflowJobTrigger.periodicSweep,
-            status: workflowJobStatus.scheduled,
-            tenantScope: subscription.scope,
-            tenantScopeId: subscription.scopeId,
-            attempts: 0,
-            scheduledAt: input.now,
-            payload: {
-              sourceModuleId: platformModuleId.billingAndMetering,
-              tenantScope: subscription.scope,
-              tenantScopeId: subscription.scopeId,
-              provider: subscription.provider,
-              correlationId: [
-                "admin-billing",
-                "manual-reconciliation",
-                jobId,
-              ].join(":"),
-              ...(typeof subscription.metadata?.customerId === "string"
-                ? {
-                    providerCustomerId: subscription.metadata.customerId,
-                  }
-                : {}),
-              subscriptionId: subscription.subscriptionId,
-              trigger: workflowJobTrigger.periodicSweep,
-            },
-            createdAt: input.now,
-            updatedAt: input.now,
-          }).pipe(
-            Effect.flatMap((record) =>
-              workflowJobsRepository.persistWorkflowJob(record),
+          return workflowJobsRepository.getWorkflowJob({ jobId }).pipe(
+            Effect.flatMap((existingJob) =>
+              existingJob?.status === workflowJobStatus.canceled
+                ? Effect.void
+                : Schema.decodeUnknown(
+                    BillingReconciliationWorkflowJobRecordSchema,
+                  )({
+                    jobId,
+                    runtime: workflowJobRuntime.convex,
+                    sourceModuleId: platformModuleId.billingAndMetering,
+                    kind: workflowJobKind.reconciliationSweep,
+                    trigger: workflowJobTrigger.periodicSweep,
+                    status: workflowJobStatus.scheduled,
+                    tenantScope: subscription.scope,
+                    tenantScopeId: subscription.scopeId,
+                    attempts: 0,
+                    scheduledAt: input.now,
+                    ...(gapReason !== undefined ? { gapReason } : {}),
+                    payload: {
+                      sourceModuleId: platformModuleId.billingAndMetering,
+                      tenantScope: subscription.scope,
+                      tenantScopeId: subscription.scopeId,
+                      provider: subscription.provider,
+                      correlationId: [
+                        "admin-billing",
+                        "manual-reconciliation",
+                        jobId,
+                      ].join(":"),
+                      ...(typeof subscription.metadata?.customerId === "string"
+                        ? {
+                            providerCustomerId:
+                              subscription.metadata.customerId,
+                          }
+                        : {}),
+                      subscriptionId: subscription.subscriptionId,
+                      trigger: workflowJobTrigger.periodicSweep,
+                    },
+                    createdAt: input.now,
+                    updatedAt: input.now,
+                  }).pipe(
+                    Effect.flatMap((record) =>
+                      workflowJobsRepository.persistWorkflowJob(record),
+                    ),
+                    Effect.asVoid,
+                  ),
             ),
-            Effect.asVoid,
           );
         },
       );
     });
-  const workflowExecutionClient: AuthenticatedConvexWorkflowClient =
-    options?.workflowExecutionClient ?? {
-      scheduleBillingReconciliationWorkflowJob: (input) =>
-        convex.scheduleBillingReconciliationWorkflowJob(input),
-      runBillingConvergenceJob: ((input) =>
-        subscriberJourney
-          .runBillingConvergenceJob(input)
-          .pipe(
-            Effect.as(null),
-          )) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
-      recoverBillingConvergenceJob: ((input) =>
-        subscriberJourney
-          .runBillingConvergenceJob(input)
-          .pipe(
-            Effect.as(null),
-          )) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
-      runDueBillingConvergenceJobs: ((input) =>
-        subscriberJourney.runDueBillingConvergenceJobs(
-          input?.now === undefined ? undefined : { now: input.now },
-        )) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
-    };
+  const defaultWorkflowExecutionClient: AuthenticatedConvexWorkflowClient = {
+    scheduleBillingReconciliationWorkflowJob: (input) =>
+      convex.scheduleBillingReconciliationWorkflowJob(input),
+    scheduleSearchTenantIndexEnsureWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected search workflow scheduling call."),
+      )) as AuthenticatedConvexWorkflowClient["scheduleSearchTenantIndexEnsureWorkflowJob"],
+    scheduleImportExportManagedFileSummaryWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected import-export workflow scheduling call."),
+      )) as AuthenticatedConvexWorkflowClient["scheduleImportExportManagedFileSummaryWorkflowJob"],
+    scheduleImportExportSupportCaseSummaryWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected support-case export workflow scheduling call."),
+      )) as AuthenticatedConvexWorkflowClient["scheduleImportExportSupportCaseSummaryWorkflowJob"],
+    scheduleWebhookOutboundDeliveryWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected webhook delivery workflow scheduling call."),
+      )) as AuthenticatedConvexWorkflowClient["scheduleWebhookOutboundDeliveryWorkflowJob"],
+    scheduleTenantInvitationReminderWorkflowJob: (() =>
+      Effect.die(
+        new Error(
+          "Unexpected tenant invitation reminder workflow scheduling call.",
+        ),
+      )) as AuthenticatedConvexWorkflowClient["scheduleTenantInvitationReminderWorkflowJob"],
+    scheduleTenantInvitationExpiryNotificationWorkflowJob: (() =>
+      Effect.die(
+        new Error(
+          "Unexpected tenant invitation expiry workflow scheduling call.",
+        ),
+      )) as AuthenticatedConvexWorkflowClient["scheduleTenantInvitationExpiryNotificationWorkflowJob"],
+    cancelScheduledWorkflowJob: () => Effect.succeed(null),
+    runBillingConvergenceJob: ((input) =>
+      subscriberJourney
+        .runBillingConvergenceJob(input)
+        .pipe(
+          Effect.as(null),
+        )) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+    recoverBillingConvergenceJob: ((input) =>
+      subscriberJourney
+        .runBillingConvergenceJob(input)
+        .pipe(
+          Effect.as(null),
+        )) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+    runDueBillingConvergenceJobs: ((input) =>
+      subscriberJourney.runDueBillingConvergenceJobs(
+        input?.now === undefined ? undefined : { now: input.now },
+      )) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+    runSearchTenantIndexEnsureWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected search workflow execution call."),
+      )) as AuthenticatedConvexWorkflowClient["runSearchTenantIndexEnsureWorkflowJob"],
+    runImportExportManagedFileSummaryWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected import-export workflow execution call."),
+      )) as AuthenticatedConvexWorkflowClient["runImportExportManagedFileSummaryWorkflowJob"],
+    runImportExportSupportCaseSummaryWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected support-case export workflow execution call."),
+      )) as AuthenticatedConvexWorkflowClient["runImportExportSupportCaseSummaryWorkflowJob"],
+    runWebhookOutboundDeliveryWorkflowJob: (() =>
+      Effect.die(
+        new Error("Unexpected webhook delivery workflow execution call."),
+      )) as AuthenticatedConvexWorkflowClient["runWebhookOutboundDeliveryWorkflowJob"],
+    runTenantInvitationReminderWorkflowJob: (() =>
+      Effect.die(
+        new Error(
+          "Unexpected tenant invitation reminder workflow execution call.",
+        ),
+      )) as AuthenticatedConvexWorkflowClient["runTenantInvitationReminderWorkflowJob"],
+    runTenantInvitationExpiryNotificationWorkflowJob: (() =>
+      Effect.die(
+        new Error(
+          "Unexpected tenant invitation expiry workflow execution call.",
+        ),
+      )) as AuthenticatedConvexWorkflowClient["runTenantInvitationExpiryNotificationWorkflowJob"],
+  };
+  const workflowExecutionClient: AuthenticatedConvexWorkflowClient = {
+    ...defaultWorkflowExecutionClient,
+    ...options?.workflowExecutionClient,
+  };
+  const workflowJobsCompatibilityQueryable =
+    database.workflowJobsQueryable as WorkflowJobsPostgresQueryableForRecord<WorkflowJobRecord>;
+  const workflowJobsCompatibilityRepository: NonNullable<
+    NonNullable<
+      Parameters<typeof makeAdminBillingService>[0]
+    >["workflowJobsCompatibilityRepository"]
+  > = await Effect.runPromise(
+    makeWorkflowJobsPostgresRepositoryForRecordSchema(
+      database.writeDatabase,
+      workflowJobsCompatibilityQueryable,
+      WorkflowJobRecordSchema,
+    ),
+  );
   const adminBilling = await Effect.runPromise(
     makeAdminBillingService({
       ...(options?.authorizationModuleFactory !== undefined
@@ -1208,9 +1731,15 @@ const createSubscriberJourneyHarness = async (options?: {
         : {}),
       workflowExecutionClient,
       manualReconciliationBootstrapper,
+      workflowJobsCompatibilityRepository,
     }).pipe(
       Effect.provideService(AuditLogModule, auditLog),
+      Effect.provideService(
+        BillingStatePostgresRepository,
+        billingStateRepository,
+      ),
       Effect.provideService(IdentitySessionModule, identitySession),
+      Effect.provideService(KeycloakAdapter, keycloak),
       Effect.provideService(OryKetoAdapter, oryKeto),
       Effect.provideService(PolarAdapter, polar),
       Effect.provideService(
@@ -1223,6 +1752,7 @@ const createSubscriberJourneyHarness = async (options?: {
   return {
     adminBilling,
     database,
+    openmeterUsageEvents,
     oryKeto,
     scheduledWorkflowDispatches,
     subscriberJourney,
@@ -1249,6 +1779,8 @@ describe("platform subscriber journey", () => {
     const polar = await Effect.runPromise(
       makePolarAdapter(createPolarTestOptions()),
     );
+    const { ingestedUsageEvents: openmeterUsageEvents, usageMeter } =
+      createOpenmeterUsageMeterDouble();
     const tenantManagement = await Effect.runPromise(
       makeTenantManagementModule(),
     );
@@ -1273,11 +1805,45 @@ describe("platform subscriber journey", () => {
     const billingWebhookReplayRepository = await Effect.runPromise(
       makeBillingWebhookReplayPostgresRepository(database.replayDatabase),
     );
+    const webhookSubscriptionRepository: WebhookSubscriptionPostgresRepositoryService =
+      {
+        createWebhookSubscription: (input) => Effect.succeed(input),
+        listWebhookSubscriptions: () => Effect.succeed([]),
+      };
+    const webhookApiKeyRepository: WebhookApiKeyPostgresRepositoryService = {
+      createWebhookApiKey: (input) => Effect.succeed(input),
+      listWebhookApiKeys: () => Effect.succeed([]),
+      rotateWebhookApiKey: () =>
+        Effect.die(new Error("Unexpected webhook api key rotation call.")),
+      revokeWebhookApiKey: () =>
+        Effect.die(new Error("Unexpected webhook api key revoke call.")),
+      restoreWebhookApiKey: () =>
+        Effect.die(new Error("Unexpected webhook api key restore call.")),
+    };
+    const webhookOutboundDeliveryRepository: WebhookOutboundDeliveryPostgresRepositoryService =
+      {
+        createWebhookOutboundDelivery: (input) => Effect.succeed(input),
+        getWebhookOutboundDelivery: () => Effect.succeed(undefined),
+        listWebhookOutboundDeliveries: () => Effect.succeed([]),
+        updateWebhookOutboundDelivery: () =>
+          Effect.die(
+            new Error("Unexpected webhook outbound delivery update call."),
+          ),
+      };
     const workflowJobsRepository = await Effect.runPromise(
       makeWorkflowJobsPostgresRepository(
         database.writeDatabase,
         database.workflowJobsQueryable,
       ),
+    );
+    const runtimeConfigRepository = await Effect.runPromise(
+      makeRuntimeConfigPostgresRepository({
+        ...database.writeDatabase,
+        ...database.runtimeConfigQueryable,
+      }),
+    );
+    const runtimeConfig = await Effect.runPromise(
+      makeRuntimeConfigModule(runtimeConfigRepository),
     );
     const identitySession = await Effect.runPromise(
       makeIdentitySessionModule().pipe(
@@ -1320,11 +1886,25 @@ describe("platform subscriber journey", () => {
           BillingWebhookReplayPostgresRepository,
           billingWebhookReplayRepository,
         ),
+        Effect.provideService(
+          WebhookApiKeyPostgresRepository,
+          webhookApiKeyRepository,
+        ),
+        Effect.provideService(
+          WebhookOutboundDeliveryPostgresRepository,
+          webhookOutboundDeliveryRepository,
+        ),
+        Effect.provideService(
+          WebhookSubscriptionPostgresRepository,
+          webhookSubscriptionRepository,
+        ),
       ),
     );
     const subscriberJourney = await Effect.runPromise(
       makeSubscriberJourneyService({
         repairReadModel: createSubscriberJourneyRepairReadModel(database),
+        runtimeConfig,
+        usageMeter,
       }).pipe(
         Effect.provideService(ConvexAdapter, convex),
         Effect.provideService(TenantManagementModule, tenantManagement),
@@ -1391,6 +1971,12 @@ describe("platform subscriber journey", () => {
       platformModuleId.identitySession,
       platformModuleId.billingAndMetering,
     ]);
+    expect(publicAuthStart.snapshot).toMatchObject({
+      application: "Public web",
+      branding: {
+        companyName: "Platform brand fallback",
+      },
+    });
     expect(publicAuthStart.tenant.scopeId).toBe(
       publicAuthStart.tenant.organizationId,
     );
@@ -1513,6 +2099,14 @@ describe("platform subscriber journey", () => {
         },
       ],
     });
+    expect(openmeterUsageEvents).toEqual([
+      expect.objectContaining({
+        subject: [platformScope.organization, "org_1"].join(":"),
+        eventName: billingAndMeteringFeatureFlag.apiRequests,
+        quantity: 1,
+        capturedAt: expect.any(String),
+      }),
+    ]);
     expect(bootstrap.enabledModules).toEqual(
       expect.arrayContaining([
         platformModuleId.tenantManagement,
@@ -1542,6 +2136,89 @@ describe("platform subscriber journey", () => {
       platformModuleId.identitySession,
       platformModuleId.billingAndMetering,
     ]);
+    expect(authStart.snapshot.application).toBe("Public web");
+  });
+
+  it("keeps individual hinted auth-start provisioning separate from branding resolution", async () => {
+    const { database, subscriberJourney } =
+      await createSubscriberJourneyHarness();
+
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+        platformScope.platform,
+        platformScope.platform,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingFeatureFlag.enabled,
+          platformScope.platform,
+          platformScope.platform,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        value: true,
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingConfigKey.companyName,
+        platformScope.platform,
+        platformScope.platform,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingConfigKey.companyName,
+          platformScope.platform,
+          platformScope.platform,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        value: "Comvestec Platform",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+
+    const authStart = await Effect.runPromise(
+      subscriberJourney.preparePublicAuthStart({
+        host: "product.example.com",
+        tenantHint: "usr_login_branding",
+        tenantScopeHint: platformScope.individual,
+      }),
+    );
+
+    expect(authStart.requestContext.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    });
+    expect(authStart.tenant).toEqual({
+      scope: platformScope.individual,
+      scopeId: expect.stringMatching(/^usr_/),
+      individualId: expect.any(String),
+    });
+    expect(authStart.tenant.scopeId).not.toBe("usr_login_branding");
+    expect(authStart.snapshot.requestContext.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    });
+    expect(authStart.snapshot.branding.companyName).toBe("Comvestec Platform");
+    expect(authStart.snapshot.branding.projection.entitled).toBe(false);
+    expect(authStart.snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.platform,
+    );
   });
 
   it("reuses provided auth-start correlation ids when supplied", async () => {
@@ -1557,6 +2234,191 @@ describe("platform subscriber journey", () => {
     expect(authStart.correlationId).toBe("corr_public_auth_start");
     expect(authStart.requestContext.correlationId).toBe(
       "corr_public_auth_start",
+    );
+  });
+
+  it("resolves stored platform branding into public auth-start preparation", async () => {
+    const { database, subscriberJourney } =
+      await createSubscriberJourneyHarness();
+
+    database.entitlements.set(
+      [
+        platformScope.platform,
+        platformScope.platform,
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+      ].join(":"),
+      {
+        entitlementId: "ent_tenant_branding_platform_public_auth_start",
+        moduleId: platformModuleId.tenantBranding,
+        featureKey: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+        platformScope.platform,
+        platformScope.platform,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingFeatureFlag.enabled,
+          platformScope.platform,
+          platformScope.platform,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        value: true,
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingConfigKey.companyName,
+        platformScope.platform,
+        platformScope.platform,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingConfigKey.companyName,
+          platformScope.platform,
+          platformScope.platform,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        value: "Comvestec Platform",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+
+    const authStart = await Effect.runPromise(
+      subscriberJourney.preparePublicAuthStart({
+        host: "product.example.com",
+      }),
+    );
+
+    expect(authStart.snapshot.branding.companyName).toBe("Comvestec Platform");
+    expect(authStart.snapshot.branding.projection.entitled).toBe(true);
+    expect(authStart.snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.platform,
+    );
+  });
+
+  it("resolves hinted tenant branding into public auth-start preparation without changing provisioning state", async () => {
+    const { database, subscriberJourney } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_login_branding";
+
+    database.entitlements.set(
+      [
+        platformScope.organization,
+        tenantScopeId,
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+      ].join(":"),
+      {
+        entitlementId: "ent_tenant_branding_login_enabled",
+        moduleId: platformModuleId.tenantBranding,
+        featureKey: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+        platformScope.organization,
+        tenantScopeId,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingFeatureFlag.enabled,
+          platformScope.organization,
+          tenantScopeId,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        value: true,
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingConfigKey.companyName,
+        platformScope.organization,
+        tenantScopeId,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingConfigKey.companyName,
+          platformScope.organization,
+          tenantScopeId,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        value: "Acme Login Brand",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+
+    const authStart = await Effect.runPromise(
+      subscriberJourney.preparePublicAuthStart({
+        host: "product.example.com",
+        tenantHint: tenantScopeId,
+      }),
+    );
+
+    expect(authStart.requestContext.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    });
+    expect(authStart.tenant).toEqual({
+      scope: platformScope.organization,
+      scopeId: expect.stringMatching(/^org_/),
+      organizationId: expect.any(String),
+    });
+    expect(authStart.tenant.scopeId).not.toBe(tenantScopeId);
+    expect(authStart.snapshot.requestContext.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    });
+    expect(authStart.snapshot.branding.companyName).toBe("Acme Login Brand");
+    expect(authStart.snapshot.branding.projection.companyName).toBe(
+      "Acme Login Brand",
+    );
+    expect(authStart.snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.organization,
     );
   });
 
@@ -1628,7 +2490,8 @@ describe("platform subscriber journey", () => {
 
     expect(bootstrap.authorization).toMatchObject({
       allowed: false,
-      reason: "No persisted authorization relation was found.",
+      reason:
+        "Access denied because persisted tuple evidence was unavailable and delegated fallback found no match.",
     });
     expect(bootstrap.requestContext.actorId).toBe("usr_bootstrap_denied");
     expect(bootstrap).not.toHaveProperty("snapshot");
@@ -1666,7 +2529,8 @@ describe("platform subscriber journey", () => {
 
     expect(bootstrap.authorization).toMatchObject({
       allowed: false,
-      reason: "No persisted authorization relation was found.",
+      reason:
+        "Access denied because persisted tuple evidence was unavailable and delegated fallback found no match.",
       auditRequired: true,
     });
     expect(bootstrap).not.toHaveProperty("snapshot");
@@ -1719,6 +2583,962 @@ describe("platform subscriber journey", () => {
     expect(bootstrap.enabledModules).toEqual([]);
   });
 
+  it("does not self-heal tenant provisioning or onboarding during privileged break-glass bootstrap reads", async () => {
+    const { database, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_bootstrap_break_glass_hidden_gap";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_bootstrap_break_glass_hidden_gap",
+        requestContext: {
+          actorType: actorType.supportOperator,
+          actorId: "usr_support_break_glass_hidden_gap",
+          sessionId: "sess_bootstrap_break_glass_hidden_gap",
+          correlationId: "corr_bootstrap_break_glass_hidden_gap",
+          reason: "Support incident access",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: tenantScopeId,
+            organizationId: tenantScopeId,
+          },
+          breakGlass: {
+            approvedBy: "usr_admin_break_glass",
+            reason: "Support incident access",
+            expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+          },
+        },
+      }),
+    );
+
+    database.customerAccounts.set(
+      "polar:cus_bootstrap_break_glass_hidden_gap",
+      {
+        accountId: "polar:cus_bootstrap_break_glass_hidden_gap",
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId: "cus_bootstrap_break_glass_hidden_gap",
+        actorId: "usr_support_break_glass_hidden_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_bootstrap_break_glass_hidden_gap",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_bootstrap_break_glass_hidden_gap",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_bootstrap_break_glass_hidden_gap",
+        accountId: "polar:cus_bootstrap_break_glass_hidden_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: "cus_bootstrap_break_glass_hidden_gap",
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.organization,
+        tenantScopeId,
+        platformModuleId.billingAndMetering,
+        billingAndMeteringFeatureFlag.apiRequests,
+      ].join(":"),
+      {
+        entitlementId: "ent_bootstrap_break_glass_hidden_gap_api_requests",
+        moduleId: platformModuleId.billingAndMetering,
+        featureKey: billingAndMeteringFeatureFlag.apiRequests,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+
+    const bootstrap = await Effect.runPromise(
+      subscriberJourney.buildProductBootstrap({
+        sessionId: "sess_bootstrap_break_glass_hidden_gap",
+      }),
+    );
+
+    expect(bootstrap.authorization).toMatchObject({
+      allowed: true,
+      reason: "Allowed via break-glass context.",
+      auditRequired: true,
+    });
+    expect(bootstrap.snapshot).toMatchObject({
+      application: "Product app",
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+  });
+
+  it("still repairs hidden tenant state for privileged operators when access comes from persisted authorization instead of break-glass", async () => {
+    const { database, oryKeto, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_bootstrap_privileged_persisted_gap";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_bootstrap_privileged_persisted_gap",
+        requestContext: {
+          actorType: actorType.supportOperator,
+          actorId: "usr_support_persisted_gap",
+          sessionId: "sess_bootstrap_privileged_persisted_gap",
+          correlationId: "corr_bootstrap_privileged_persisted_gap",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: tenantScopeId,
+            organizationId: tenantScopeId,
+          },
+        },
+      }),
+    );
+
+    await Effect.runPromise(
+      oryKeto.writeTuple({
+        namespace: authorizationNamespace.tenant,
+        object: tenantScopeId,
+        relation: authorizationRelation.viewer,
+        subject: "usr_support_persisted_gap",
+      }),
+    );
+
+    database.customerAccounts.set(
+      "polar:cus_bootstrap_privileged_persisted_gap",
+      {
+        accountId: "polar:cus_bootstrap_privileged_persisted_gap",
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId: "cus_bootstrap_privileged_persisted_gap",
+        actorId: "usr_support_persisted_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_bootstrap_privileged_persisted_gap",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_bootstrap_privileged_persisted_gap",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_bootstrap_privileged_persisted_gap",
+        accountId: "polar:cus_bootstrap_privileged_persisted_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: "cus_bootstrap_privileged_persisted_gap",
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.organization,
+        tenantScopeId,
+        platformModuleId.billingAndMetering,
+        billingAndMeteringFeatureFlag.apiRequests,
+      ].join(":"),
+      {
+        entitlementId: "ent_bootstrap_privileged_persisted_gap_api_requests",
+        moduleId: platformModuleId.billingAndMetering,
+        featureKey: billingAndMeteringFeatureFlag.apiRequests,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+
+    const bootstrap = await Effect.runPromise(
+      subscriberJourney.buildProductBootstrap({
+        sessionId: "sess_bootstrap_privileged_persisted_gap",
+      }),
+    );
+
+    expect(bootstrap.authorization).toMatchObject({
+      allowed: true,
+      auditRequired: true,
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toMatchObject({
+      ownerActorId: "usr_support_persisted_gap",
+      status: tenantProvisioningStatus.provisioned,
+    });
+    expect(database.onboardingRuns.get(onboardingRunId)).toMatchObject({
+      triggeredBy: "usr_support_persisted_gap",
+      status: tenantOnboardingRunStatus.inProgress,
+    });
+  });
+
+  it("bootstraps and repairs hidden provisioning and onboarding gaps from existing billing linkage", async () => {
+    const { database, oryKeto, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_bootstrap_hidden_gap";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_bootstrap_hidden_gap",
+        requestContext: {
+          actorType: actorType.organizationAdmin,
+          actorId: "usr_bootstrap_hidden_gap",
+          sessionId: "sess_bootstrap_hidden_gap",
+          correlationId: "corr_bootstrap_hidden_gap",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: tenantScopeId,
+            organizationId: tenantScopeId,
+          },
+        },
+      }),
+    );
+
+    await Effect.runPromise(
+      oryKeto.writeTuple({
+        namespace: authorizationNamespace.tenant,
+        object: tenantScopeId,
+        relation: authorizationRelation.viewer,
+        subject: "usr_bootstrap_hidden_gap",
+      }),
+    );
+
+    database.customerAccounts.set("polar:cus_bootstrap_hidden_gap", {
+      accountId: "polar:cus_bootstrap_hidden_gap",
+      provider: platformAdapterServiceName.polar,
+      providerCustomerId: "cus_bootstrap_hidden_gap",
+      actorId: "usr_bootstrap_hidden_gap",
+      scope: platformScope.organization,
+      scopeId: tenantScopeId,
+      status: "active",
+      metadata: {
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+        subscriptionId: "sub_bootstrap_hidden_gap",
+        action: billingWebhookReconciliationAction.activate,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_bootstrap_hidden_gap",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_bootstrap_hidden_gap",
+        accountId: "polar:cus_bootstrap_hidden_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: "cus_bootstrap_hidden_gap",
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.organization,
+        tenantScopeId,
+        platformModuleId.billingAndMetering,
+        billingAndMeteringFeatureFlag.apiRequests,
+      ].join(":"),
+      {
+        entitlementId: "ent_bootstrap_hidden_gap_api_requests",
+        moduleId: platformModuleId.billingAndMetering,
+        featureKey: billingAndMeteringFeatureFlag.apiRequests,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+
+    const bootstrap = await Effect.runPromise(
+      subscriberJourney.buildProductBootstrap({
+        sessionId: "sess_bootstrap_hidden_gap",
+      }),
+    );
+
+    expect(bootstrap.authorization).toMatchObject({
+      allowed: true,
+    });
+    expect(bootstrap.snapshot).toMatchObject({
+      application: "Product app",
+    });
+    expect(bootstrap.billingStatus).toMatchObject({
+      plan: "plan_starter",
+      status: billingSubscriptionStatus.active,
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toMatchObject({
+      ownerActorId: "usr_bootstrap_hidden_gap",
+      status: tenantProvisioningStatus.provisioned,
+      metadata: expect.objectContaining({
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+      }),
+    });
+    expect(database.onboardingRuns.get(onboardingRunId)).toMatchObject({
+      triggeredBy: "usr_bootstrap_hidden_gap",
+      status: tenantOnboardingRunStatus.inProgress,
+      currentStepId: "team-invites",
+      metadata: expect.objectContaining({
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+      }),
+    });
+  });
+
+  it("returns the newest live same-scope subscription before newer canceled history", async () => {
+    const tenantScopeId = "org_live_subscription_preferred";
+    const { database } = await createSubscriberJourneyHarness();
+
+    database.subscriptions.set("organization-live-active", {
+      subscriptionId: "sub_live_active",
+      provider: platformAdapterServiceName.polar,
+      providerSubscriptionId: "sub_live_active",
+      accountId: "polar:cus_live_active",
+      scope: platformScope.organization,
+      scopeId: tenantScopeId,
+      planId: "plan_starter",
+      priceId: "price_starter_month",
+      status: billingSubscriptionStatus.active,
+      metadata: {
+        interval: billingPlanInterval.month,
+        customerId: "cus_live_active",
+      },
+      createdAt: new Date("2026-04-25T10:00:00.000Z"),
+      updatedAt: new Date("2026-04-25T10:00:00.000Z"),
+    });
+    database.subscriptions.set("organization-live-past-due", {
+      subscriptionId: "sub_live_past_due",
+      provider: platformAdapterServiceName.polar,
+      providerSubscriptionId: "sub_live_past_due",
+      accountId: "polar:cus_live_past_due",
+      scope: platformScope.organization,
+      scopeId: tenantScopeId,
+      planId: "plan_starter",
+      priceId: "price_starter_month",
+      status: billingSubscriptionStatus.pastDue,
+      metadata: {
+        interval: billingPlanInterval.month,
+        customerId: "cus_live_past_due",
+      },
+      createdAt: new Date("2026-04-26T10:00:00.000Z"),
+      updatedAt: new Date("2026-04-26T10:00:00.000Z"),
+    });
+    database.subscriptions.set("organization-canceled-newer", {
+      subscriptionId: "sub_canceled_newer",
+      provider: platformAdapterServiceName.polar,
+      providerSubscriptionId: "sub_canceled_newer",
+      accountId: "polar:cus_canceled_newer",
+      scope: platformScope.organization,
+      scopeId: tenantScopeId,
+      planId: "plan_starter",
+      priceId: "price_starter_month",
+      status: billingSubscriptionStatus.canceled,
+      metadata: {
+        interval: billingPlanInterval.month,
+        customerId: "cus_canceled_newer",
+      },
+      createdAt: new Date("2026-04-27T10:00:00.000Z"),
+      updatedAt: new Date("2026-04-27T10:00:00.000Z"),
+    });
+
+    await expect(
+      database.readDatabase.getLatestSubscriptionByScope(
+        platformScope.organization,
+        tenantScopeId,
+      ),
+    ).resolves.toMatchObject({
+      subscriptionId: "sub_live_past_due",
+      accountId: "polar:cus_live_past_due",
+      status: billingSubscriptionStatus.pastDue,
+    });
+  });
+
+  it("uses request tenant hierarchy when bootstrap repairs from enterprise-owned billing state", async () => {
+    const { database, oryKeto, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_bootstrap_hidden_gap_enterprise";
+    const enterpriseId = "ent_bootstrap_hidden_gap_enterprise";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.enterprise,
+      enterpriseId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.enterprise,
+      enterpriseId,
+    ].join(":");
+    const organizationProvisioningId = [
+      "tenant-provisioning",
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const organizationOnboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_bootstrap_hidden_gap_enterprise",
+        requestContext: {
+          actorType: actorType.organizationAdmin,
+          actorId: "usr_bootstrap_hidden_gap_enterprise",
+          sessionId: "sess_bootstrap_hidden_gap_enterprise",
+          correlationId: "corr_bootstrap_hidden_gap_enterprise",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: tenantScopeId,
+            enterpriseId,
+            organizationId: tenantScopeId,
+          },
+        },
+      }),
+    );
+
+    await Effect.runPromise(
+      oryKeto.writeTuple({
+        namespace: authorizationNamespace.tenant,
+        object: tenantScopeId,
+        relation: authorizationRelation.viewer,
+        subject: "usr_bootstrap_hidden_gap_enterprise",
+      }),
+    );
+
+    seedAuthCallbackEvidence({
+      database,
+      actorId: "usr_bootstrap_hidden_gap_enterprise",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+    });
+
+    database.customerAccounts.set(
+      "polar:cus_bootstrap_hidden_gap_enterprise_stale",
+      {
+        accountId: "polar:cus_bootstrap_hidden_gap_enterprise_stale",
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId: "cus_bootstrap_hidden_gap_enterprise_stale",
+        actorId: "usr_bootstrap_hidden_gap_enterprise_stale",
+        scope: platformScope.enterprise,
+        scopeId: enterpriseId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_bootstrap_hidden_gap_enterprise_stale",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(Date.now() + 60_000),
+      },
+    );
+
+    database.customerAccounts.set("polar:cus_bootstrap_hidden_gap_enterprise", {
+      accountId: "polar:cus_bootstrap_hidden_gap_enterprise",
+      provider: platformAdapterServiceName.polar,
+      providerCustomerId: "cus_bootstrap_hidden_gap_enterprise",
+      actorId: "usr_bootstrap_hidden_gap_enterprise",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+      status: "active",
+      metadata: {
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+        subscriptionId: "sub_bootstrap_hidden_gap_enterprise",
+        action: billingWebhookReconciliationAction.activate,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    database.subscriptions.set(`${platformScope.enterprise}:${enterpriseId}`, {
+      subscriptionId: "sub_bootstrap_hidden_gap_enterprise",
+      provider: platformAdapterServiceName.polar,
+      providerSubscriptionId: "sub_bootstrap_hidden_gap_enterprise",
+      accountId: "polar:cus_bootstrap_hidden_gap_enterprise",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+      planId: "plan_starter",
+      priceId: "price_starter_month",
+      status: billingSubscriptionStatus.active,
+      metadata: {
+        interval: billingPlanInterval.month,
+        customerId: "cus_bootstrap_hidden_gap_enterprise",
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_bootstrap_hidden_gap_enterprise_org_canceled",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId:
+          "sub_bootstrap_hidden_gap_enterprise_org_canceled",
+        accountId: "polar:cus_bootstrap_hidden_gap_enterprise_org_canceled",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.canceled,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: "cus_bootstrap_hidden_gap_enterprise_org_canceled",
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(Date.now() + 60_000),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.enterprise,
+        enterpriseId,
+        platformModuleId.billingAndMetering,
+        billingAndMeteringFeatureFlag.apiRequests,
+      ].join(":"),
+      {
+        entitlementId: "ent_bootstrap_hidden_gap_enterprise_api_requests",
+        moduleId: platformModuleId.billingAndMetering,
+        featureKey: billingAndMeteringFeatureFlag.apiRequests,
+        scope: platformScope.enterprise,
+        scopeId: enterpriseId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.organization,
+        tenantScopeId,
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+      ].join(":"),
+      {
+        entitlementId: "ent_bootstrap_hidden_gap_enterprise_branding",
+        moduleId: platformModuleId.tenantBranding,
+        featureKey: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+
+    const bootstrap = await Effect.runPromise(
+      subscriberJourney.buildProductBootstrap({
+        sessionId: "sess_bootstrap_hidden_gap_enterprise",
+      }),
+    );
+
+    expect(bootstrap.authorization).toMatchObject({
+      allowed: true,
+    });
+    expect(bootstrap.snapshot).toMatchObject({
+      application: "Product app",
+    });
+    expect(bootstrap.billingStatus).toMatchObject({
+      plan: "plan_starter",
+      status: billingSubscriptionStatus.active,
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toMatchObject({
+      ownerActorId: "usr_bootstrap_hidden_gap_enterprise",
+      status: tenantProvisioningStatus.provisioned,
+      metadata: expect.objectContaining({
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+      }),
+    });
+    expect(database.onboardingRuns.get(onboardingRunId)).toMatchObject({
+      triggeredBy: "usr_bootstrap_hidden_gap_enterprise",
+      status: tenantOnboardingRunStatus.inProgress,
+      currentStepId: "team-invites",
+      metadata: expect.objectContaining({
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+      }),
+    });
+    expect(
+      [...database.onboardingSteps.values()].filter(
+        (step) => step.runId === onboardingRunId,
+      ),
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ stepId: "billing" })]),
+    );
+    expect(
+      [...database.onboardingSteps.values()].filter(
+        (step) => step.runId === onboardingRunId,
+      ),
+    ).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ stepId: "branding" }),
+      ]),
+    );
+    expect(
+      database.provisioningReceipts.get(organizationProvisioningId),
+    ).toBeUndefined();
+    expect(
+      database.onboardingRuns.get(organizationOnboardingRunId),
+    ).toBeUndefined();
+  });
+
+  it("does not repair ancestor-owned billing state during bootstrap when the matched account belongs to a different actor", async () => {
+    const { database, oryKeto, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_bootstrap_hidden_gap_enterprise_other_actor";
+    const enterpriseId = "ent_bootstrap_hidden_gap_enterprise_other_actor";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.enterprise,
+      enterpriseId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.enterprise,
+      enterpriseId,
+    ].join(":");
+    const organizationProvisioningId = [
+      "tenant-provisioning",
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const organizationOnboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_bootstrap_hidden_gap_enterprise_other_actor",
+        requestContext: {
+          actorType: actorType.organizationAdmin,
+          actorId: "usr_bootstrap_hidden_gap_enterprise_reader",
+          sessionId: "sess_bootstrap_hidden_gap_enterprise_other_actor",
+          correlationId: "corr_bootstrap_hidden_gap_enterprise_other_actor",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: tenantScopeId,
+            enterpriseId,
+            organizationId: tenantScopeId,
+          },
+        },
+      }),
+    );
+
+    await Effect.runPromise(
+      oryKeto.writeTuple({
+        namespace: authorizationNamespace.tenant,
+        object: tenantScopeId,
+        relation: authorizationRelation.viewer,
+        subject: "usr_bootstrap_hidden_gap_enterprise_reader",
+      }),
+    );
+
+    database.customerAccounts.set(
+      "polar:cus_bootstrap_hidden_gap_enterprise_other_actor_reader",
+      {
+        accountId:
+          "polar:cus_bootstrap_hidden_gap_enterprise_other_actor_reader",
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId:
+          "cus_bootstrap_hidden_gap_enterprise_other_actor_reader",
+        actorId: "usr_bootstrap_hidden_gap_enterprise_reader",
+        scope: platformScope.enterprise,
+        scopeId: enterpriseId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId:
+            "sub_bootstrap_hidden_gap_enterprise_other_actor_reader",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(Date.now() + 60_000),
+      },
+    );
+
+    database.customerAccounts.set(
+      "polar:cus_bootstrap_hidden_gap_enterprise_other_actor",
+      {
+        accountId: "polar:cus_bootstrap_hidden_gap_enterprise_other_actor",
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId: "cus_bootstrap_hidden_gap_enterprise_other_actor",
+        actorId: "usr_bootstrap_hidden_gap_enterprise_owner",
+        scope: platformScope.enterprise,
+        scopeId: enterpriseId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_bootstrap_hidden_gap_enterprise_other_actor",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+    database.subscriptions.set(`${platformScope.enterprise}:${enterpriseId}`, {
+      subscriptionId: "sub_bootstrap_hidden_gap_enterprise_other_actor",
+      provider: platformAdapterServiceName.polar,
+      providerSubscriptionId: "sub_bootstrap_hidden_gap_enterprise_other_actor",
+      accountId: "polar:cus_bootstrap_hidden_gap_enterprise_other_actor",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+      planId: "plan_starter",
+      priceId: "price_starter_month",
+      status: billingSubscriptionStatus.active,
+      metadata: {
+        interval: billingPlanInterval.month,
+        customerId: "cus_bootstrap_hidden_gap_enterprise_other_actor",
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    database.entitlements.set(
+      [
+        platformScope.enterprise,
+        enterpriseId,
+        platformModuleId.billingAndMetering,
+        billingAndMeteringFeatureFlag.apiRequests,
+      ].join(":"),
+      {
+        entitlementId:
+          "ent_bootstrap_hidden_gap_enterprise_other_actor_api_requests",
+        moduleId: platformModuleId.billingAndMetering,
+        featureKey: billingAndMeteringFeatureFlag.apiRequests,
+        scope: platformScope.enterprise,
+        scopeId: enterpriseId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+
+    const bootstrap = await Effect.runPromise(
+      subscriberJourney.buildProductBootstrap({
+        sessionId: "sess_bootstrap_hidden_gap_enterprise_other_actor",
+      }),
+    );
+
+    expect(bootstrap.authorization).toMatchObject({
+      allowed: true,
+    });
+    expect(bootstrap.snapshot).toMatchObject({
+      application: "Product app",
+    });
+    expect(bootstrap.billingStatus).toMatchObject({
+      plan: "plan_starter",
+      status: billingSubscriptionStatus.active,
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toBeUndefined();
+    expect(database.onboardingRuns.get(onboardingRunId)).toBeUndefined();
+    expect(
+      database.provisioningReceipts.get(organizationProvisioningId),
+    ).toBeUndefined();
+    expect(
+      database.onboardingRuns.get(organizationOnboardingRunId),
+    ).toBeUndefined();
+  });
+
+  it("resolves stored tenant-branding overrides into product bootstrap snapshots", async () => {
+    const { database, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+    const tenantScopeId = "org_bootstrap_branded";
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_bootstrap_branded",
+        requestContext: {
+          actorType: actorType.supportOperator,
+          actorId: "usr_support_branded",
+          sessionId: "sess_bootstrap_branded",
+          correlationId: "corr_bootstrap_branded",
+          reason: "Support incident access",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: tenantScopeId,
+            organizationId: tenantScopeId,
+          },
+          breakGlass: {
+            approvedBy: "usr_admin_break_glass",
+            reason: "Support incident access",
+            expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+          },
+        },
+      }),
+    );
+
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+        platformScope.organization,
+        tenantScopeId,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingFeatureFlag.enabled,
+          platformScope.organization,
+          tenantScopeId,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        value: true,
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingConfigKey.companyName,
+        platformScope.platform,
+        platformScope.platform,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingConfigKey.companyName,
+          platformScope.platform,
+          platformScope.platform,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.companyName,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        value: "Acme Support Brand",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+    database.runtimeConfigOverrides.set(
+      [
+        platformModuleId.tenantBranding,
+        tenantBrandingConfigKey.themePrimary,
+        platformScope.platform,
+        platformScope.platform,
+      ].join(":"),
+      {
+        overrideId: [
+          platformModuleId.tenantBranding,
+          tenantBrandingConfigKey.themePrimary,
+          platformScope.platform,
+          platformScope.platform,
+        ].join(":"),
+        moduleId: platformModuleId.tenantBranding,
+        key: tenantBrandingConfigKey.themePrimary,
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+        value: "#14532D",
+        source: runtimeResolutionSource.runtimeOverride,
+        changedBy: "usr_governance_admin",
+        changedAt: new Date(),
+      },
+    );
+
+    const bootstrap = await Effect.runPromise(
+      subscriberJourney.buildProductBootstrap({
+        sessionId: "sess_bootstrap_branded",
+      }),
+    );
+
+    expect(bootstrap.authorization).toMatchObject({
+      allowed: true,
+      reason: "Allowed via break-glass context.",
+    });
+    expect(bootstrap.snapshot).toMatchObject({
+      application: "Product app",
+      branding: {
+        moduleId: platformModuleId.tenantBranding,
+        companyName: "Acme Support Brand",
+        projection: {
+          companyName: "Acme Support Brand",
+          themeTokens: {
+            primary: "#14532D",
+          },
+          effectiveScope: platformScope.platform,
+          entitled: false,
+        },
+      },
+    });
+  });
+
   it("schedules reconciliation deadline jobs when checkout sessions are created", async () => {
     const { database, scheduledWorkflowDispatches, subscriberJourney } =
       await createSubscriberJourneyHarness();
@@ -1753,6 +3573,25 @@ describe("platform subscriber journey", () => {
       tenantScopeId: "org_checkout_deadline",
       payload: expect.objectContaining({
         checkoutSessionId: checkout.checkoutSessionId,
+        dispatch: {
+          scheduledAt: expect.any(String),
+          scheduledFunctionId: ["scheduled", workflowJobId, "primary"].join(
+            ":",
+          ),
+          scheduledFunctionIds: [
+            ["scheduled", workflowJobId, "primary"].join(":"),
+            ...Array.from(
+              { length: workflowJobsScheduledRecoveryAttemptCount },
+              (_, index) =>
+                ["scheduled", workflowJobId, "recovery", index + 1].join(":"),
+            ),
+          ],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount:
+            workflowJobsScheduledRecoveryAttemptCount,
+          expectedRecoveryAttemptCount:
+            workflowJobsScheduledRecoveryAttemptCount,
+        },
         trigger: workflowJobTrigger.checkoutCreated,
       }),
       scheduledAt: expect.any(Date),
@@ -1799,6 +3638,102 @@ describe("platform subscriber journey", () => {
       gapReason: workflowJobGapReason.repairFailed,
       lastError: expect.stringContaining("convex unavailable"),
       completedAt: expect.any(Date),
+    });
+  });
+
+  it("retains Convex dispatch metadata when the dispatched workflow job write fails", async () => {
+    const tenantScopeId = "org_dispatch_metadata_persist_failure";
+    const { database, subscriberJourney } =
+      await createSubscriberJourneyHarness();
+    const originalInsert = database.writeDatabase.insert;
+    const mutableWriteDatabase = database.writeDatabase as {
+      insert: typeof database.writeDatabase.insert;
+    };
+    let workflowJobPersistAttempts = 0;
+
+    mutableWriteDatabase.insert = ((table) => {
+      const insertQuery = originalInsert(table) as {
+        values: (values: unknown) => {
+          onConflictDoUpdate: (config: unknown) => {
+            execute: () => Promise<unknown>;
+          };
+        };
+      };
+
+      if (!Object.is(table as object, workflowJobsTable)) {
+        return insertQuery;
+      }
+
+      return {
+        values: (values: unknown) => {
+          const valuesQuery = insertQuery.values(values);
+
+          return {
+            ...valuesQuery,
+            onConflictDoUpdate: (config: unknown) => {
+              const conflictQuery = valuesQuery.onConflictDoUpdate(config);
+
+              return {
+                ...conflictQuery,
+                execute: async () => {
+                  workflowJobPersistAttempts += 1;
+
+                  if (workflowJobPersistAttempts === 2) {
+                    throw new Error(
+                      "workflow job dispatched persistence unavailable",
+                    );
+                  }
+
+                  return conflictQuery.execute();
+                },
+              };
+            },
+          };
+        },
+      };
+    }) as typeof database.writeDatabase.insert;
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          subscriberJourney.createCheckoutSession({
+            planId: "plan_starter",
+            priceId: "price_starter_month",
+            successUrl: "http://localhost:3002/billing/success",
+            cancelUrl: "http://localhost:3002/billing/cancel",
+            tenantScope: platformScope.organization,
+            tenantScopeId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "WorkflowJobsPostgresRepositoryQueryError",
+      operation: "persistWorkflowJob",
+    });
+
+    const workflowJob = [...database.workflowJobs.values()].find(
+      (job) => job.tenantScopeId === tenantScopeId,
+    );
+
+    expect(workflowJob).toMatchObject({
+      status: workflowJobStatus.blocked,
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: expect.stringContaining(
+        "WorkflowJobsPostgresRepositoryQueryError",
+      ),
+      payload: {
+        dispatch: {
+          scheduledFunctionId: expect.any(String),
+          scheduledFunctionIds: expect.arrayContaining([
+            expect.stringContaining(":primary"),
+          ]),
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount:
+            workflowJobsScheduledRecoveryAttemptCount,
+          expectedRecoveryAttemptCount:
+            workflowJobsScheduledRecoveryAttemptCount,
+        },
+      },
     });
   });
 
@@ -2112,6 +4047,206 @@ describe("platform subscriber journey", () => {
         }),
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it("uses persisted tenant hierarchy when scheduled reconciliation reads enterprise-owned billing state", async () => {
+    const tenantScopeId = "org_due_repair_enterprise";
+    const enterpriseId = "ent_due_repair_enterprise";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.enterprise,
+      enterpriseId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.enterprise,
+      enterpriseId,
+    ].join(":");
+    const { database, subscriberJourney } =
+      await createSubscriberJourneyHarness();
+
+    seedAuthCallbackEvidence({
+      database,
+      actorId: "usr_owner_due_repair_enterprise",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+    });
+
+    database.customerAccounts.set("polar:cus_due_repair_enterprise_stale", {
+      accountId: "polar:cus_due_repair_enterprise_stale",
+      provider: platformAdapterServiceName.polar,
+      providerCustomerId: "cus_due_repair_enterprise_stale",
+      actorId: "usr_owner_due_repair_enterprise_stale",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+      status: "active",
+      metadata: {
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+        subscriptionId: "sub_due_repair_enterprise_stale",
+        action: billingWebhookReconciliationAction.activate,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(Date.now() + 60_000),
+    });
+
+    const checkout = await Effect.runPromise(
+      subscriberJourney.createCheckoutSession({
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        successUrl: "http://localhost:3002/billing/success",
+        cancelUrl: "http://localhost:3002/billing/cancel",
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        enterpriseId,
+        organizationId: tenantScopeId,
+      }),
+    );
+
+    database.customerAccounts.set("polar:cus_due_repair_enterprise", {
+      accountId: "polar:cus_due_repair_enterprise",
+      provider: platformAdapterServiceName.polar,
+      providerCustomerId: "cus_due_repair_enterprise",
+      actorId: "usr_owner_due_repair_enterprise",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+      status: "active",
+      metadata: {
+        linkageSource: billingCustomerAccountLinkageSource.identitySessionAudit,
+        subscriptionId: "sub_due_repair_enterprise",
+        action: billingWebhookReconciliationAction.activate,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    database.subscriptions.set(`${platformScope.enterprise}:${enterpriseId}`, {
+      subscriptionId: "sub_due_repair_enterprise",
+      provider: platformAdapterServiceName.polar,
+      providerSubscriptionId: "sub_due_repair_enterprise",
+      accountId: "polar:cus_due_repair_enterprise",
+      scope: platformScope.enterprise,
+      scopeId: enterpriseId,
+      planId: checkout.planId,
+      priceId: checkout.priceId,
+      status: "active",
+      metadata: {
+        interval: billingPlanInterval.month,
+        customerId: "cus_due_repair_enterprise",
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_due_repair_enterprise_org_canceled",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_due_repair_enterprise_org_canceled",
+        accountId: "polar:cus_due_repair_enterprise_org_canceled",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: checkout.planId,
+        priceId: checkout.priceId,
+        status: billingSubscriptionStatus.canceled,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: "cus_due_repair_enterprise_org_canceled",
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(Date.now() + 60_000),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.enterprise,
+        enterpriseId,
+        platformModuleId.billingAndMetering,
+        billingAndMeteringFeatureFlag.apiRequests,
+      ].join(":"),
+      {
+        entitlementId: "ent_due_repair_enterprise_api_requests",
+        moduleId: platformModuleId.billingAndMetering,
+        featureKey: billingAndMeteringFeatureFlag.apiRequests,
+        scope: platformScope.enterprise,
+        scopeId: enterpriseId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+    database.entitlements.set(
+      [
+        platformScope.organization,
+        tenantScopeId,
+        platformModuleId.tenantBranding,
+        tenantBrandingFeatureFlag.enabled,
+      ].join(":"),
+      {
+        entitlementId: "ent_due_repair_enterprise_branding",
+        moduleId: platformModuleId.tenantBranding,
+        featureKey: tenantBrandingFeatureFlag.enabled,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        active: true,
+        grantedAt: new Date(),
+      },
+    );
+
+    const workflowJobId = [
+      "workflow-jobs",
+      "billing-repair",
+      workflowJobTrigger.checkoutCreated,
+      platformScope.organization,
+      tenantScopeId,
+      checkout.checkoutSessionId,
+    ].join(":");
+
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      payload: expect.objectContaining({
+        enterpriseId,
+        organizationId: tenantScopeId,
+      }),
+    });
+
+    const job = await Effect.runPromise(
+      subscriberJourney.runBillingConvergenceJob({
+        jobId: workflowJobId,
+        now: new Date(Date.now() + 900_000).toISOString(),
+      }),
+    );
+
+    expect(job).toMatchObject({
+      jobId: workflowJobId,
+      status: workflowJobStatus.completed,
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toMatchObject({
+      ownerActorId: "usr_owner_due_repair_enterprise",
+      status: tenantProvisioningStatus.provisioned,
+      metadata: expect.objectContaining({
+        source: "workflow-jobs.repair",
+      }),
+    });
+    expect(database.onboardingRuns.get(onboardingRunId)).toMatchObject({
+      triggeredBy: "usr_owner_due_repair_enterprise",
+      status: tenantOnboardingRunStatus.inProgress,
+      metadata: expect.objectContaining({
+        source: "workflow-jobs.repair",
+      }),
+    });
+    expect(
+      [...database.onboardingSteps.values()].filter(
+        (step) => step.runId === onboardingRunId,
+      ),
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ stepId: "billing" })]),
+    );
+    expect(
+      [...database.onboardingSteps.values()].filter(
+        (step) => step.runId === onboardingRunId,
+      ),
+    ).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ stepId: "branding" }),
+      ]),
+    );
   });
 
   it("repairs a missing customer account from an existing subscription during scheduled reconciliation", async () => {
@@ -2717,6 +4852,7 @@ describe("platform subscriber journey", () => {
     const repairGaps = await Effect.runPromise(
       adminBilling.listBillingRepairGaps({
         sessionId: "sess_admin_repair_gap_list",
+        inspectionReason: "Investigate scheduled tenant repair failures",
       }),
     );
 
@@ -2751,7 +4887,7 @@ describe("platform subscriber journey", () => {
           tenantScope: platformScope.platform,
           tenantScopeId: platformScope.platform,
           reason:
-            "Inspect unresolved workflow repair gaps with failure details.",
+            "Inspect unresolved workflow repair gaps with failure details: Investigate scheduled tenant repair failures",
           correlationId: "corr_admin_repair_gap_list",
         }),
       ]),
@@ -2799,6 +4935,7 @@ describe("platform subscriber journey", () => {
     const blockedRepairGaps = await Effect.runPromise(
       adminBilling.listBillingRepairGaps({
         sessionId: "sess_admin_repair_gap_list",
+        inspectionReason: "Investigate blocked tenant repair failures",
       }),
     );
     const blockedRepairGapJob = blockedRepairGaps.jobs.find(
@@ -2813,6 +4950,229 @@ describe("platform subscriber journey", () => {
       gapReason: workflowJobGapReason.repairFailed,
       lastError: expect.any(String),
     });
+  });
+
+  it("redacts repair-gap failure details until an inspection reason is supplied", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_repair_gap_reason_gate",
+      key: "sub_repair_gap_reason_gate",
+    });
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness();
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_admin_repair_gap_reason_gate",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_admin_repair_gap_reason_gate",
+          correlationId: "corr_admin_repair_gap_reason_gate",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationDeadline,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.blocked,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_repair_gap_reason_gate",
+      attempts: 2,
+      scheduledAt: new Date("2026-04-20T09:15:00.000Z"),
+      completedAt: new Date("2026-04-20T09:20:00.000Z"),
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "Provisioning receipt never reconciled.",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_repair_gap_reason_gate",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_repair_gap_reason_gate",
+        trigger: workflowJobTrigger.periodicSweep,
+      },
+      createdAt: new Date("2026-04-20T09:10:00.000Z"),
+      updatedAt: new Date("2026-04-20T09:20:00.000Z"),
+    });
+
+    const redactedRepairGaps = await Effect.runPromise(
+      adminBilling.listBillingRepairGaps({
+        sessionId: "sess_admin_repair_gap_reason_gate",
+      }),
+    );
+    const redactedRepairGap = redactedRepairGaps.jobs.find(
+      (job) => job.jobId === workflowJobId,
+    );
+
+    expect(redactedRepairGap).toBeDefined();
+    expect(redactedRepairGap).not.toHaveProperty("lastError");
+    expect([...database.auditLogEvents.values()]).toEqual([]);
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.listBillingRepairGaps({
+          sessionId: "sess_admin_repair_gap_reason_gate",
+          inspectionReason: "Investigate hidden org repair failures",
+        }),
+      ),
+    ).resolves.toEqual({
+      jobs: [
+        expect.objectContaining({
+          jobId: workflowJobId,
+          lastError: "Provisioning receipt never reconciled.",
+        }),
+      ],
+    });
+
+    expect([...database.auditLogEvents.values()]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: platformModuleId.fieldSecurity,
+          action: fieldSecurityAuditAction.sensitiveRead,
+          target: `${platformModuleId.workflowJobs}:repair-gaps:lastError`,
+          reason:
+            "Inspect unresolved workflow repair gaps with failure details: Investigate hidden org repair failures",
+          correlationId: "corr_admin_repair_gap_reason_gate",
+        }),
+      ]),
+    );
+  });
+
+  it("requires an inspection reason before returning billing invoice history", async () => {
+    const tenantScopeId = "org_billing_explanation";
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness();
+
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_billing_explanation",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "polar_sub_billing_explanation",
+        accountId: "polar:cus_billing_explanation",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_scale",
+        priceId: "price_scale_month",
+        status: billingSubscriptionStatus.pastDue,
+        currentPeriodEnd: new Date("2026-05-01T00:00:00.000Z"),
+        metadata: {
+          interval: billingPlanInterval.month,
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-27T08:00:00.000Z"),
+      },
+    );
+    database.paymentEvents.set("evt_billing_explanation_failed", {
+      eventId: "evt_billing_explanation_failed",
+      provider: platformAdapterServiceName.polar,
+      providerEventId: "polar_evt_billing_explanation_failed",
+      subscriptionId: "sub_billing_explanation",
+      scope: platformScope.organization,
+      scopeId: tenantScopeId,
+      eventType: billingWebhookEventType.paymentFailed,
+      status: billingPaymentEventStatus.failed,
+      amountMinor: 4900,
+      currency: "USD",
+      effectiveAt: new Date("2026-04-27T08:00:00.000Z"),
+      payload: {},
+      recordedAt: new Date("2026-04-27T08:00:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_billing_explanation",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_billing_explanation",
+          correlationId: "corr_billing_explanation",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    const withoutReason = await Effect.runPromise(
+      adminBilling.inspectBillingState({
+        sessionId: "sess_billing_explanation",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: tenantScopeId,
+          organizationId: tenantScopeId,
+        },
+      }),
+    );
+
+    expect(withoutReason).toEqual({
+      tenant: {
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        organizationId: tenantScopeId,
+      },
+      billing: {
+        plan: "plan_scale",
+        billingInterval: billingPlanInterval.month,
+        status: billingSubscriptionStatus.pastDue,
+        currentPeriodEnd: "2026-05-01T00:00:00.000Z",
+      },
+    });
+    expect(database.auditLogEvents.size).toBe(0);
+
+    const withWhitespaceReason = await Effect.runPromise(
+      adminBilling.inspectBillingState({
+        sessionId: "sess_billing_explanation",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: tenantScopeId,
+          organizationId: tenantScopeId,
+        },
+        inspectionReason: "   ",
+      }),
+    );
+
+    expect(withWhitespaceReason).toEqual(withoutReason);
+    expect(database.auditLogEvents.size).toBe(0);
+
+    const withReason = await Effect.runPromise(
+      adminBilling.inspectBillingState({
+        sessionId: "sess_billing_explanation",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: tenantScopeId,
+          organizationId: tenantScopeId,
+        },
+        inspectionReason: "Investigate billing payment failures",
+      }),
+    );
+
+    expect(withReason.billing.invoiceHistory).toEqual([
+      expect.objectContaining({
+        eventId: "evt_billing_explanation_failed",
+        eventType: billingWebhookEventType.paymentFailed,
+        status: billingPaymentEventStatus.failed,
+      }),
+    ]);
+    expect([...database.auditLogEvents.values()]).toEqual([
+      expect.objectContaining({
+        moduleId: platformModuleId.fieldSecurity,
+        action: fieldSecurityAuditAction.sensitiveRead,
+        target: `${platformModuleId.billingAndMetering}:invoiceHistory`,
+        reason:
+          "Inspect billing invoice history: Investigate billing payment failures",
+      }),
+    ]);
   });
 
   it("denies repair gap inspection for support break-glass sessions outside the platform tenant", async () => {
@@ -3050,6 +5410,7 @@ describe("platform subscriber journey", () => {
     const repairGaps = await Effect.runPromise(
       adminBilling.listBillingRepairGaps({
         sessionId: "sess_admin_gap_list_filtered_statuses",
+        inspectionReason: "Inspect stale running repair failures",
       }),
     );
 
@@ -3547,21 +5908,24 @@ describe("platform subscriber journey", () => {
   });
 
   it("rejects manual reconciliation when the Convex token subject does not match the platform-operator session", async () => {
-    const runDueBillingConvergenceJobs = jest.fn(() =>
+    const runDueBillingConvergenceJobs = vi.fn(() =>
       Effect.succeed([] satisfies WorkflowJobSummaryList),
     );
     const { adminBilling, database, valkey } =
       await createSubscriberJourneyHarness({
         workflowExecutionClient: {
-          scheduleBillingReconciliationWorkflowJob: jest.fn(() =>
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
             Effect.die(
               "Unexpected scheduleBillingReconciliationWorkflowJob call.",
             ),
           ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
-          runBillingConvergenceJob: jest.fn(() =>
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected runBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
-          recoverBillingConvergenceJob: jest.fn(() =>
+          recoverBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected recoverBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
           runDueBillingConvergenceJobs,
@@ -3605,21 +5969,24 @@ describe("platform subscriber journey", () => {
   });
 
   it("rejects manual reconciliation when the Convex token does not carry a platform-operator actor claim", async () => {
-    const runDueBillingConvergenceJobs = jest.fn(() =>
+    const runDueBillingConvergenceJobs = vi.fn(() =>
       Effect.succeed([] satisfies WorkflowJobSummaryList),
     );
     const { adminBilling, database, valkey } =
       await createSubscriberJourneyHarness({
         workflowExecutionClient: {
-          scheduleBillingReconciliationWorkflowJob: jest.fn(() =>
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
             Effect.die(
               "Unexpected scheduleBillingReconciliationWorkflowJob call.",
             ),
           ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
-          runBillingConvergenceJob: jest.fn(() =>
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected runBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
-          recoverBillingConvergenceJob: jest.fn(() =>
+          recoverBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected recoverBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
           runDueBillingConvergenceJobs,
@@ -3663,21 +6030,24 @@ describe("platform subscriber journey", () => {
   });
 
   it("runs manual reconciliation when the Convex token is bound to the platform-operator session", async () => {
-    const runDueBillingConvergenceJobs = jest.fn(() =>
+    const runDueBillingConvergenceJobs = vi.fn(() =>
       Effect.succeed([] satisfies WorkflowJobSummaryList),
     );
     const { adminBilling, database, valkey } =
       await createSubscriberJourneyHarness({
         workflowExecutionClient: {
-          scheduleBillingReconciliationWorkflowJob: jest.fn(() =>
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
             Effect.die(
               "Unexpected scheduleBillingReconciliationWorkflowJob call.",
             ),
           ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
-          runBillingConvergenceJob: jest.fn(() =>
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected runBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
-          recoverBillingConvergenceJob: jest.fn(() =>
+          recoverBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected recoverBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
           runDueBillingConvergenceJobs,
@@ -3876,6 +6246,1473 @@ describe("platform subscriber journey", () => {
     ).not.toHaveLength(0);
   });
 
+  it("rejects repair-gap replay when the Keycloak identity token is invalid", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_replay_repair_gap_invalid_token",
+      key: "sub_replay_repair_gap_invalid_token",
+    });
+    const runBillingConvergenceJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob,
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.die("Unexpected runDueBillingConvergenceJobs call."),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.blocked,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_replay_repair_gap_invalid_token",
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      lastError: "Missing tenant provisioning receipt.",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_replay_repair_gap_invalid_token",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_replay_repair_gap_invalid_token",
+        subscriptionId: "sub_replay_repair_gap_invalid_token",
+        trigger: workflowJobTrigger.periodicSweep,
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_replay_repair_gap_invalid_token",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_replay_repair_gap_invalid_token",
+          correlationId: "corr_replay_repair_gap_invalid_token",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.replayBillingRepairGap({
+            sessionId: "sess_replay_repair_gap_invalid_token",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+              keyId: "unexpected-key-id",
+            }),
+            jobId: workflowJobId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+    });
+
+    expect(runBillingConvergenceJob).not.toHaveBeenCalled();
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.blocked,
+      gapReason: workflowJobGapReason.missingProvisioning,
+      lastError: "Missing tenant provisioning receipt.",
+    });
+  });
+
+  it("clears replayed repair-gap failure details once the shared workflow-jobs owner reschedules the job", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_replay_repair_gap_reason_gate",
+      key: "sub_replay_repair_gap_reason_gate",
+    });
+    const runBillingConvergenceJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob,
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.die("Unexpected runDueBillingConvergenceJobs call."),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_replay_repair_gap_reason_gate",
+      attempts: 2,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "Previous replay attempt failed.",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_replay_repair_gap_reason_gate",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_replay_repair_gap_reason_gate",
+        subscriptionId: "sub_replay_repair_gap_reason_gate",
+        trigger: workflowJobTrigger.periodicSweep,
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:31:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_replay_repair_gap_reason_gate",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_replay_repair_gap_reason_gate",
+          correlationId: "corr_replay_repair_gap_reason_gate",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    const redactedReplayResult = await Effect.runPromise(
+      adminBilling.replayBillingRepairGap({
+        sessionId: "sess_replay_repair_gap_reason_gate",
+        convexAuthToken: createKeycloakIdToken({
+          sub: "usr_platform_operator",
+          actorTypeValue: actorType.platformOperator,
+        }),
+        jobId: workflowJobId,
+      }),
+    );
+
+    expect(redactedReplayResult.job).not.toHaveProperty("lastError");
+    expect(runBillingConvergenceJob).toHaveBeenCalledTimes(1);
+    expect(
+      [...database.auditLogEvents.values()].filter(
+        (event) => event.moduleId === platformModuleId.fieldSecurity,
+      ),
+    ).toEqual([]);
+
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+      gapReason: undefined,
+      lastError: undefined,
+    });
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.replayBillingRepairGap({
+            sessionId: "sess_replay_repair_gap_reason_gate",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+            }),
+            jobId: workflowJobId,
+            inspectionReason: "Investigate replayed tenant repair failures",
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "AdminBillingRepairGapReplayUnavailableError",
+      jobId: workflowJobId,
+      status: workflowJobStatus.scheduled,
+    });
+  });
+
+  it("treats foreign workflow repair gaps as missing for billing compatibility replay", async () => {
+    const tenantScopeId = "org_replay_foreign_repair_gap";
+    const workflowJobId = buildSearchTenantIndexEnsureWorkflowJobId({
+      trigger: workflowJobTrigger.operatorRequested,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "search_replay_foreign_repair_gap",
+    });
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness();
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.search,
+      kind: workflowJobKind.searchIndexEnsure,
+      trigger: workflowJobTrigger.operatorRequested,
+      status: workflowJobStatus.blocked,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "Search index ensure failed.",
+      payload: {
+        sourceModuleId: platformModuleId.search,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        correlationId: "corr_replay_foreign_repair_gap",
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:31:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_replay_foreign_repair_gap",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_replay_foreign_repair_gap",
+          correlationId: "corr_replay_foreign_repair_gap",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.replayBillingRepairGap({
+            sessionId: "sess_replay_foreign_repair_gap",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+            }),
+            jobId: workflowJobId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "AdminBillingRepairGapNotFoundError",
+      jobId: workflowJobId,
+    });
+  });
+
+  it("cancels unresolved repair gaps and keeps canceled periodic sweep jobs out of later manual bootstrap runs", async () => {
+    const tenantScopeId = "org_cancel_repair_gap";
+    const providerCustomerId = "cus_cancel_repair_gap";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_cancel_repair_gap",
+    });
+    const runDueBillingConvergenceJobs = vi.fn(() =>
+      Effect.succeed([] as readonly WorkflowJobSummary[]),
+    );
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs,
+        },
+      });
+
+    seedAuthCallbackEvidence({
+      database,
+      actorId: "usr_owner_cancel_repair_gap",
+      scopeId: tenantScopeId,
+    });
+
+    database.customerAccounts.set(
+      `${platformAdapterServiceName.polar}:${providerCustomerId}`,
+      {
+        accountId: `${platformAdapterServiceName.polar}:${providerCustomerId}`,
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId,
+        actorId: "usr_owner_cancel_repair_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_cancel_repair_gap",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_cancel_repair_gap",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_cancel_repair_gap",
+        accountId: `${platformAdapterServiceName.polar}:${providerCustomerId}`,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: providerCustomerId,
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.blocked,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 2,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      lastError: "Missing tenant provisioning receipt.",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_repair_gap",
+        providerCustomerId,
+        subscriptionId: "sub_cancel_repair_gap",
+        trigger: workflowJobTrigger.periodicSweep,
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_repair_gap",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_repair_gap",
+          correlationId: "corr_cancel_repair_gap",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.cancelBillingRepairGap({
+          sessionId: "sess_cancel_repair_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          jobId: workflowJobId,
+        }),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: workflowJobId,
+        status: workflowJobStatus.canceled,
+        gapReason: workflowJobGapReason.missingProvisioning,
+        attempts: 2,
+      }),
+    });
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.cancelBillingRepairGap({
+          sessionId: "sess_cancel_repair_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          jobId: workflowJobId,
+        }),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: workflowJobId,
+        status: workflowJobStatus.canceled,
+        gapReason: workflowJobGapReason.missingProvisioning,
+        attempts: 2,
+      }),
+    });
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.runManualBillingReconciliation({
+          sessionId: "sess_cancel_repair_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          now: "2026-04-20T09:00:00.000Z",
+        }),
+      ),
+    ).resolves.toEqual({ jobs: [] });
+
+    expect(runDueBillingConvergenceJobs).toHaveBeenCalledWith(
+      { now: "2026-04-20T09:00:00.000Z" },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.canceled,
+      attempts: 2,
+      gapReason: workflowJobGapReason.missingProvisioning,
+    });
+    await expect(
+      Effect.runPromise(
+        adminBilling.listBillingRepairGaps({
+          sessionId: "sess_cancel_repair_gap",
+        }),
+      ),
+    ).resolves.toEqual({ jobs: [] });
+  });
+
+  it("redacts canceled repair-gap failure details until an inspection reason is supplied", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_cancel_repair_gap_reason_gate",
+      key: "sub_cancel_repair_gap_reason_gate",
+    });
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness();
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.canceled,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_cancel_repair_gap_reason_gate",
+      attempts: 2,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      completedAt: new Date("2026-04-20T08:31:00.000Z"),
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "Canceled repair gap kept its failure detail.",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_cancel_repair_gap_reason_gate",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_repair_gap_reason_gate",
+        subscriptionId: "sub_cancel_repair_gap_reason_gate",
+        trigger: workflowJobTrigger.periodicSweep,
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:31:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_repair_gap_reason_gate",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_repair_gap_reason_gate",
+          correlationId: "corr_cancel_repair_gap_reason_gate",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    const redactedCancelResult = await Effect.runPromise(
+      adminBilling.cancelBillingRepairGap({
+        sessionId: "sess_cancel_repair_gap_reason_gate",
+        convexAuthToken: createKeycloakIdToken({
+          sub: "usr_platform_operator",
+          actorTypeValue: actorType.platformOperator,
+        }),
+        jobId: workflowJobId,
+      }),
+    );
+
+    expect(redactedCancelResult.job).not.toHaveProperty("lastError");
+    expect(
+      [...database.auditLogEvents.values()].filter(
+        (event) => event.moduleId === platformModuleId.fieldSecurity,
+      ),
+    ).toEqual([]);
+
+    const inspectedCancelResult = await Effect.runPromise(
+      adminBilling.cancelBillingRepairGap({
+        sessionId: "sess_cancel_repair_gap_reason_gate",
+        convexAuthToken: createKeycloakIdToken({
+          sub: "usr_platform_operator",
+          actorTypeValue: actorType.platformOperator,
+        }),
+        jobId: workflowJobId,
+        inspectionReason: "Investigate canceled tenant repair failures",
+      }),
+    );
+
+    expect(inspectedCancelResult.job).toMatchObject({
+      jobId: workflowJobId,
+      lastError: "Canceled repair gap kept its failure detail.",
+    });
+    expect(
+      [...database.auditLogEvents.values()].filter(
+        (event) => event.moduleId === platformModuleId.fieldSecurity,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: `${platformModuleId.workflowJobs}:repair-gap:${workflowJobId}:lastError`,
+          reason:
+            "Inspect canceled workflow repair gap with failure details: Investigate canceled tenant repair failures",
+          correlationId: "corr_cancel_repair_gap_reason_gate",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects repair-gap cancellation when the Convex token subject does not match the platform-operator session", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_cancel_repair_gap_subject_mismatch",
+      key: "sub_cancel_repair_gap_subject_mismatch",
+    });
+    const cancelScheduledWorkflowJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob:
+            cancelScheduledWorkflowJob as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_cancel_repair_gap_subject_mismatch",
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_cancel_repair_gap_subject_mismatch",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_repair_gap_subject_mismatch",
+        subscriptionId: "sub_cancel_repair_gap_subject_mismatch",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: ["scheduled-primary"],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 0,
+          expectedRecoveryAttemptCount: 0,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_repair_gap_subject_mismatch",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_repair_gap_subject_mismatch",
+          correlationId: "corr_cancel_repair_gap_subject_mismatch",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.cancelBillingRepairGap({
+            sessionId: "sess_cancel_repair_gap_subject_mismatch",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_other_operator",
+              actorTypeValue: actorType.platformOperator,
+            }),
+            jobId: workflowJobId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+    });
+
+    expect(cancelScheduledWorkflowJob).not.toHaveBeenCalled();
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+      payload: {
+        dispatch: {
+          scheduledFunctionId: "scheduled-primary",
+        },
+      },
+    });
+  });
+
+  it("rejects repair-gap cancellation when the Keycloak identity token is invalid", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_cancel_repair_gap_invalid_token",
+      key: "sub_cancel_repair_gap_invalid_token",
+    });
+    const cancelScheduledWorkflowJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob:
+            cancelScheduledWorkflowJob as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_cancel_repair_gap_invalid_token",
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_cancel_repair_gap_invalid_token",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_repair_gap_invalid_token",
+        subscriptionId: "sub_cancel_repair_gap_invalid_token",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: ["scheduled-primary"],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 0,
+          expectedRecoveryAttemptCount: 0,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_repair_gap_invalid_token",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_repair_gap_invalid_token",
+          correlationId: "corr_cancel_repair_gap_invalid_token",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.cancelBillingRepairGap({
+            sessionId: "sess_cancel_repair_gap_invalid_token",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+              keyId: "unexpected-key-id",
+            }),
+            jobId: workflowJobId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "AdminBillingWorkflowExecutionIdentityMismatchError",
+    });
+
+    expect(cancelScheduledWorkflowJob).not.toHaveBeenCalled();
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+      payload: {
+        dispatch: {
+          scheduledFunctionId: "scheduled-primary",
+        },
+      },
+    });
+  });
+
+  it("revokes persisted Convex dispatch handles before canceling scheduled repair gaps", async () => {
+    const tenantScopeId = "org_cancel_scheduled_repair_gap";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_cancel_scheduled_repair_gap",
+    });
+    const cancelScheduledWorkflowJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob:
+            cancelScheduledWorkflowJob as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_scheduled_repair_gap",
+        subscriptionId: "sub_cancel_scheduled_repair_gap",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: [
+            "scheduled-primary",
+            "scheduled-recovery-1",
+            "scheduled-recovery-2",
+          ],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 2,
+          expectedRecoveryAttemptCount: 2,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_scheduled_repair_gap",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_scheduled_repair_gap",
+          correlationId: "corr_cancel_scheduled_repair_gap",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.cancelBillingRepairGap({
+          sessionId: "sess_cancel_scheduled_repair_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          jobId: workflowJobId,
+        }),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: workflowJobId,
+        status: workflowJobStatus.canceled,
+        attempts: 1,
+        gapReason: workflowJobGapReason.missingProvisioning,
+      }),
+    });
+
+    expect(cancelScheduledWorkflowJob).toHaveBeenCalledTimes(3);
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      1,
+      {
+        scheduledFunctionId: "scheduled-primary",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      2,
+      {
+        scheduledFunctionId: "scheduled-recovery-1",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      3,
+      {
+        scheduledFunctionId: "scheduled-recovery-2",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.canceled,
+    });
+
+    await Effect.runPromise(
+      adminBilling.cancelBillingRepairGap({
+        sessionId: "sess_cancel_scheduled_repair_gap",
+        convexAuthToken: createKeycloakIdToken({
+          sub: "usr_platform_operator",
+          actorTypeValue: actorType.platformOperator,
+        }),
+        jobId: workflowJobId,
+      }),
+    );
+
+    expect(cancelScheduledWorkflowJob).toHaveBeenCalledTimes(3);
+  });
+
+  it("revokes persisted Convex dispatch handles before canceling blocked repair gaps", async () => {
+    const tenantScopeId = "org_cancel_blocked_repair_gap";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_cancel_blocked_repair_gap",
+    });
+    const cancelScheduledWorkflowJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob:
+            cancelScheduledWorkflowJob as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.blocked,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      completedAt: new Date("2026-04-20T08:31:00.000Z"),
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "dispatch metadata write failed",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_blocked_repair_gap",
+        subscriptionId: "sub_cancel_blocked_repair_gap",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: [
+            "scheduled-primary",
+            "scheduled-recovery-1",
+            "scheduled-recovery-2",
+          ],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 2,
+          expectedRecoveryAttemptCount: 2,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:31:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_blocked_repair_gap",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_blocked_repair_gap",
+          correlationId: "corr_cancel_blocked_repair_gap",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.cancelBillingRepairGap({
+          sessionId: "sess_cancel_blocked_repair_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          jobId: workflowJobId,
+        }),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: workflowJobId,
+        status: workflowJobStatus.canceled,
+      }),
+    });
+
+    expect(cancelScheduledWorkflowJob).toHaveBeenCalledTimes(3);
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      1,
+      {
+        scheduledFunctionId: "scheduled-primary",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      2,
+      {
+        scheduledFunctionId: "scheduled-recovery-1",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      3,
+      {
+        scheduledFunctionId: "scheduled-recovery-2",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+  });
+
+  it("keeps the workflow row canceled when Convex handle revocation partially fails", async () => {
+    const tenantScopeId = "org_cancel_partial_remote_failure";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_cancel_partial_remote_failure",
+    });
+    const cancelScheduledWorkflowJobResults = [
+      Effect.succeed(null),
+      Effect.fail({
+        _tag: "ConvexAdapterRequestError",
+        operation: "cancelScheduledWorkflowJob",
+        cause: new Error("convex cleanup unavailable"),
+        status: 503,
+        body: "convex cleanup unavailable",
+      } as const),
+      Effect.succeed(null),
+    ] as const;
+    let cancelScheduledWorkflowJobCallCount = 0;
+    const cancelScheduledWorkflowJob = vi.fn(
+      (
+        _input: { readonly scheduledFunctionId: string },
+        _options?: { readonly authToken?: string },
+      ) =>
+        cancelScheduledWorkflowJobResults[
+          cancelScheduledWorkflowJobCallCount++
+        ] ?? Effect.succeed(null),
+    ) as MockedFunction<
+      AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"]
+    >;
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob,
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_partial_remote_failure",
+        subscriptionId: "sub_cancel_partial_remote_failure",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: [
+            "scheduled-primary",
+            "scheduled-recovery-1",
+            "scheduled-recovery-2",
+          ],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 2,
+          expectedRecoveryAttemptCount: 2,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_partial_remote_failure",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_partial_remote_failure",
+          correlationId: "corr_cancel_partial_remote_failure",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.cancelBillingRepairGap({
+          sessionId: "sess_cancel_partial_remote_failure",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          jobId: workflowJobId,
+        }),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: workflowJobId,
+        status: workflowJobStatus.canceled,
+      }),
+    });
+
+    expect(cancelScheduledWorkflowJob).toHaveBeenCalledTimes(3);
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.canceled,
+    });
+  });
+
+  it("does not revoke persisted handles when the cancellation compare-and-swap loses the row update race", async () => {
+    const tenantScopeId = "org_cancel_race_lost";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_cancel_race_lost",
+    });
+    const cancelScheduledWorkflowJob = vi.fn(() => Effect.succeed(null));
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob:
+            cancelScheduledWorkflowJob as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_race_lost",
+        subscriptionId: "sub_cancel_race_lost",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: ["scheduled-primary", "scheduled-recovery-1"],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 1,
+          expectedRecoveryAttemptCount: 1,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+
+    const mutableWorkflowJobsQueryable = database.workflowJobsQueryable as {
+      cancelWorkflowJobIfUpdatedAtMatches: typeof database.workflowJobsQueryable.cancelWorkflowJobIfUpdatedAtMatches;
+    };
+    const originalCancelWorkflowJobIfUpdatedAtMatches =
+      mutableWorkflowJobsQueryable.cancelWorkflowJobIfUpdatedAtMatches;
+
+    mutableWorkflowJobsQueryable.cancelWorkflowJobIfUpdatedAtMatches = async (
+      jobId,
+      expectedUpdatedAt,
+      canceledAt,
+    ) => {
+      const workflowJob = database.workflowJobs.get(jobId);
+
+      if (workflowJob !== undefined) {
+        database.workflowJobs.set(jobId, {
+          ...workflowJob,
+          updatedAt: new Date(canceledAt.getTime() + 1_000),
+        });
+      }
+
+      return originalCancelWorkflowJobIfUpdatedAtMatches(
+        jobId,
+        expectedUpdatedAt,
+        canceledAt,
+      );
+    };
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_race_lost",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_race_lost",
+          correlationId: "corr_cancel_race_lost",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.cancelBillingRepairGap({
+            sessionId: "sess_cancel_race_lost",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+            }),
+            jobId: workflowJobId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "AdminBillingRepairGapCancelUnavailableError",
+      jobId: workflowJobId,
+      status: workflowJobStatus.scheduled,
+    });
+
+    expect(cancelScheduledWorkflowJob).not.toHaveBeenCalled();
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+    });
+  });
+
+  it("revokes only recovery dispatch handles before canceling stale running repair gaps", async () => {
+    const tenantScopeId = "org_cancel_stale_running_repair_gap";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_cancel_stale_running_repair_gap",
+    });
+    const cancelScheduledWorkflowJob = vi.fn(() => Effect.succeed(null));
+    const staleUpdatedAt = new Date(
+      Date.now() - (workflowJobsRunningClaimTimeoutSeconds + 60) * 1_000,
+    );
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob:
+            cancelScheduledWorkflowJob as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.succeed([] as readonly WorkflowJobSummary[]),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.running,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      attempts: 1,
+      scheduledAt: new Date("2026-04-20T08:30:00.000Z"),
+      gapReason: workflowJobGapReason.missingProvisioning,
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_cancel_stale_running_repair_gap",
+        subscriptionId: "sub_cancel_stale_running_repair_gap",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: {
+          scheduledAt: "2026-04-20T08:30:00.000Z",
+          scheduledFunctionId: "scheduled-primary",
+          scheduledFunctionIds: [
+            "scheduled-primary",
+            "scheduled-recovery-1",
+            "scheduled-recovery-2",
+          ],
+          primaryScheduled: true,
+          scheduledRecoveryAttemptCount: 2,
+          expectedRecoveryAttemptCount: 2,
+        },
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: staleUpdatedAt,
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_cancel_stale_running_repair_gap",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_cancel_stale_running_repair_gap",
+          correlationId: "corr_cancel_stale_running_repair_gap",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.cancelBillingRepairGap({
+          sessionId: "sess_cancel_stale_running_repair_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          jobId: workflowJobId,
+        }),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: workflowJobId,
+        status: workflowJobStatus.canceled,
+      }),
+    });
+
+    expect(cancelScheduledWorkflowJob).toHaveBeenCalledTimes(2);
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      1,
+      {
+        scheduledFunctionId: "scheduled-recovery-1",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(cancelScheduledWorkflowJob).toHaveBeenNthCalledWith(
+      2,
+      {
+        scheduledFunctionId: "scheduled-recovery-2",
+      },
+      {
+        authToken: expect.any(String),
+      },
+    );
+  });
+
   it("restores the original repair-gap state when Convex rejects a replay token", async () => {
     const workflowJobId = buildBillingReconciliationWorkflowJobId({
       trigger: workflowJobTrigger.periodicSweep,
@@ -3885,7 +7722,7 @@ describe("platform subscriber journey", () => {
     });
     const originalScheduledAt = new Date("2026-04-20T08:30:00.000Z");
     const originalUpdatedAt = new Date("2026-04-20T08:31:00.000Z");
-    const runBillingConvergenceJob = jest.fn(() =>
+    const runBillingConvergenceJob = vi.fn(() =>
       Effect.fail({
         _tag: "ConvexAdapterRequestError",
         operation: "runBillingConvergenceJob",
@@ -3897,16 +7734,19 @@ describe("platform subscriber journey", () => {
     const { adminBilling, database, valkey } =
       await createSubscriberJourneyHarness({
         workflowExecutionClient: {
-          scheduleBillingReconciliationWorkflowJob: jest.fn(() =>
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
             Effect.die(
               "Unexpected scheduleBillingReconciliationWorkflowJob call.",
             ),
           ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
           runBillingConvergenceJob,
-          recoverBillingConvergenceJob: jest.fn(() =>
+          recoverBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected recoverBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
-          runDueBillingConvergenceJobs: jest.fn(() =>
+          runDueBillingConvergenceJobs: vi.fn(() =>
             Effect.die("Unexpected runDueBillingConvergenceJobs call."),
           ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
         },
@@ -3986,7 +7826,135 @@ describe("platform subscriber journey", () => {
       scheduledAt: originalScheduledAt,
       updatedAt: originalUpdatedAt,
     });
-    expect(database.auditLogEvents.size).toBe(1);
+    expect(database.auditLogEvents.size).toBe(0);
+  });
+
+  it("restores the original repair-gap dispatch plan when Convex replay transport fails before workflow state changes", async () => {
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_replay_repair_gap_transport_failure",
+      key: "sub_replay_repair_gap_transport_failure",
+    });
+    const originalScheduledAt = new Date("2026-04-20T08:30:00.000Z");
+    const originalUpdatedAt = new Date("2026-04-20T08:31:00.000Z");
+    const originalDispatch = {
+      scheduledAt: "2026-04-20T08:30:00.000Z",
+      scheduledFunctionId: "scheduled-primary",
+      scheduledFunctionIds: ["scheduled-primary", "scheduled-recovery-1"],
+      primaryScheduled: true,
+      scheduledRecoveryAttemptCount: 1,
+      expectedRecoveryAttemptCount: 1,
+    };
+    const runBillingConvergenceJob = vi.fn(() =>
+      Effect.fail({
+        _tag: "ConvexAdapterRequestError",
+        operation: "runBillingConvergenceJob",
+        cause: new Error("Gateway timeout"),
+        status: 502,
+        body: "Gateway timeout",
+      } satisfies ConvexAdapterRequestError),
+    );
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob,
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.die("Unexpected runDueBillingConvergenceJobs call."),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    database.workflowJobs.set(workflowJobId, {
+      jobId: workflowJobId,
+      runtime: workflowJobRuntime.convex,
+      sourceModuleId: platformModuleId.billingAndMetering,
+      kind: workflowJobKind.reconciliationSweep,
+      trigger: workflowJobTrigger.periodicSweep,
+      status: workflowJobStatus.scheduled,
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_replay_repair_gap_transport_failure",
+      attempts: 2,
+      scheduledAt: originalScheduledAt,
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "Previous replay attempt failed.",
+      payload: {
+        sourceModuleId: platformModuleId.billingAndMetering,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_replay_repair_gap_transport_failure",
+        provider: platformAdapterServiceName.polar,
+        correlationId: "corr_replay_repair_gap_transport_failure",
+        subscriptionId: "sub_replay_repair_gap_transport_failure",
+        trigger: workflowJobTrigger.periodicSweep,
+        dispatch: originalDispatch,
+      },
+      createdAt: new Date("2026-04-20T08:00:00.000Z"),
+      updatedAt: originalUpdatedAt,
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_replay_repair_gap_transport_failure",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_replay_repair_gap_transport_failure",
+          correlationId: "corr_replay_repair_gap_transport_failure",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.replayBillingRepairGap({
+            sessionId: "sess_replay_repair_gap_transport_failure",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+            }),
+            jobId: workflowJobId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "ConvexAdapterRequestError",
+      status: 502,
+    });
+
+    expect(runBillingConvergenceJob).toHaveBeenCalledWith(
+      { jobId: workflowJobId },
+      {
+        authToken: expect.any(String),
+      },
+    );
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+      attempts: 2,
+      gapReason: workflowJobGapReason.repairFailed,
+      lastError: "Previous replay attempt failed.",
+      scheduledAt: originalScheduledAt,
+      updatedAt: originalUpdatedAt,
+      payload: {
+        dispatch: originalDispatch,
+      },
+    });
+    expect(database.auditLogEvents.size).toBe(0);
   });
 
   it("does not overwrite newer workflow progress when replay rollback loses a race", async () => {
@@ -4002,7 +7970,7 @@ describe("platform subscriber journey", () => {
     let databaseRef:
       | ReturnType<typeof createSubscriberJourneyTestDatabase>
       | undefined;
-    const runBillingConvergenceJob = jest.fn(() => {
+    const runBillingConvergenceJob = vi.fn(() => {
       const database = databaseRef;
 
       if (database === undefined) {
@@ -4045,16 +8013,19 @@ describe("platform subscriber journey", () => {
     const { adminBilling, database, valkey } =
       await createSubscriberJourneyHarness({
         workflowExecutionClient: {
-          scheduleBillingReconciliationWorkflowJob: jest.fn(() =>
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
             Effect.die(
               "Unexpected scheduleBillingReconciliationWorkflowJob call.",
             ),
           ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
           runBillingConvergenceJob,
-          recoverBillingConvergenceJob: jest.fn(() =>
+          recoverBillingConvergenceJob: vi.fn(() =>
             Effect.die("Unexpected recoverBillingConvergenceJob call."),
           ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
-          runDueBillingConvergenceJobs: jest.fn(() =>
+          runDueBillingConvergenceJobs: vi.fn(() =>
             Effect.die("Unexpected runDueBillingConvergenceJobs call."),
           ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
         },
@@ -4140,7 +8111,170 @@ describe("platform subscriber journey", () => {
     expect(database.workflowJobs.get(workflowJobId)).not.toHaveProperty(
       "lastError",
     );
-    expect(database.auditLogEvents.size).toBe(1);
+    expect(database.auditLogEvents.size).toBe(0);
+  });
+
+  it("surfaces missing onboarding repair gaps when manual reconciliation finds non-billing drift before execution can clear it", async () => {
+    const tenantScopeId = "org_manual_reconciliation_missing_onboarding";
+    const providerCustomerId = "cus_manual_reconciliation_missing_onboarding";
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_manual_reconciliation_missing_onboarding",
+    });
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        workflowExecutionClient: {
+          scheduleBillingReconciliationWorkflowJob: vi.fn(() =>
+            Effect.die(
+              "Unexpected scheduleBillingReconciliationWorkflowJob call.",
+            ),
+          ) as AuthenticatedConvexWorkflowClient["scheduleBillingReconciliationWorkflowJob"],
+          cancelScheduledWorkflowJob: vi.fn(() =>
+            Effect.die("Unexpected cancelScheduledWorkflowJob call."),
+          ) as AuthenticatedConvexWorkflowClient["cancelScheduledWorkflowJob"],
+          runBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected runBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["runBillingConvergenceJob"],
+          recoverBillingConvergenceJob: vi.fn(() =>
+            Effect.die("Unexpected recoverBillingConvergenceJob call."),
+          ) as AuthenticatedConvexWorkflowClient["recoverBillingConvergenceJob"],
+          runDueBillingConvergenceJobs: vi.fn(() =>
+            Effect.fail({
+              _tag: "ConvexAdapterRequestError",
+              operation: "runDueBillingConvergenceJobs",
+              cause: new Error("Gateway timeout"),
+              status: 502,
+              body: "Gateway timeout",
+            } satisfies ConvexAdapterRequestError),
+          ) as AuthenticatedConvexWorkflowClient["runDueBillingConvergenceJobs"],
+        },
+      });
+
+    seedAuthCallbackEvidence({
+      database,
+      actorId: "usr_owner_manual_reconciliation_missing_onboarding",
+      scopeId: tenantScopeId,
+    });
+
+    database.customerAccounts.set(
+      `${platformAdapterServiceName.polar}:${providerCustomerId}`,
+      {
+        accountId: `${platformAdapterServiceName.polar}:${providerCustomerId}`,
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId,
+        actorId: "usr_owner_manual_reconciliation_missing_onboarding",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_manual_reconciliation_missing_onboarding",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_manual_reconciliation_missing_onboarding",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_manual_reconciliation_missing_onboarding",
+        accountId: `${platformAdapterServiceName.polar}:${providerCustomerId}`,
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: providerCustomerId,
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+    database.provisioningReceipts.set(
+      ["tenant-provisioning", platformScope.organization, tenantScopeId].join(
+        ":",
+      ),
+      {
+        provisioningId: [
+          "tenant-provisioning",
+          platformScope.organization,
+          tenantScopeId,
+        ].join(":"),
+        tenantScope: platformScope.organization,
+        tenantScopeId,
+        ownerActorId: "usr_owner_manual_reconciliation_missing_onboarding",
+        status: tenantProvisioningStatus.provisioned,
+        authorizationTuples: [],
+        metadata: {
+          source: "test-manual-reconciliation",
+        },
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_manual_reconciliation_missing_onboarding",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_manual_reconciliation_missing_onboarding",
+          correlationId: "corr_manual_reconciliation_missing_onboarding",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          adminBilling.runManualBillingReconciliation({
+            sessionId: "sess_manual_reconciliation_missing_onboarding",
+            convexAuthToken: createKeycloakIdToken({
+              sub: "usr_platform_operator",
+              actorTypeValue: actorType.platformOperator,
+            }),
+            now: "2026-04-20T09:00:00.000Z",
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "ConvexAdapterRequestError",
+      status: 502,
+    });
+
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+      gapReason: workflowJobGapReason.missingOnboarding,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+    });
+    await expect(
+      Effect.runPromise(
+        adminBilling.listBillingRepairGaps({
+          sessionId: "sess_manual_reconciliation_missing_onboarding",
+        }),
+      ),
+    ).resolves.toEqual({
+      jobs: [
+        expect.objectContaining({
+          jobId: workflowJobId,
+          status: workflowJobStatus.scheduled,
+          gapReason: workflowJobGapReason.missingOnboarding,
+        }),
+      ],
+    });
   });
 
   it("bootstraps and repairs hidden billing gaps during manual reconciliation", async () => {
@@ -4263,6 +8397,162 @@ describe("platform subscriber journey", () => {
     expect(database.onboardingRuns.get(onboardingRunId)).toMatchObject({
       triggeredBy: "usr_owner_manual_reconciliation_hidden_gap",
       status: tenantOnboardingRunStatus.inProgress,
+    });
+    expect(
+      [...database.onboardingSteps.values()].filter(
+        (step) => step.runId === onboardingRunId,
+      ),
+    ).not.toHaveLength(0);
+  });
+
+  it("repairs failed provisioning and onboarding during manual reconciliation", async () => {
+    const tenantScopeId = "org_manual_reconciliation_failed_gap";
+    const provisioningId = [
+      "tenant-provisioning",
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const onboardingRunId = [
+      identitySessionRunIdPrefix.tenantOnboarding,
+      platformScope.organization,
+      tenantScopeId,
+    ].join(":");
+    const workflowJobId = buildBillingReconciliationWorkflowJobId({
+      trigger: workflowJobTrigger.periodicSweep,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      key: "sub_manual_reconciliation_failed_gap",
+    });
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness();
+
+    seedAuthCallbackEvidence({
+      database,
+      actorId: "usr_owner_manual_reconciliation_failed_gap",
+      scopeId: tenantScopeId,
+    });
+
+    database.customerAccounts.set(
+      "polar:cus_manual_reconciliation_failed_gap",
+      {
+        accountId: "polar:cus_manual_reconciliation_failed_gap",
+        provider: platformAdapterServiceName.polar,
+        providerCustomerId: "cus_manual_reconciliation_failed_gap",
+        actorId: "usr_owner_manual_reconciliation_failed_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        status: "active",
+        metadata: {
+          linkageSource:
+            billingCustomerAccountLinkageSource.identitySessionAudit,
+          subscriptionId: "sub_manual_reconciliation_failed_gap",
+          action: billingWebhookReconciliationAction.activate,
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+    database.subscriptions.set(
+      `${platformScope.organization}:${tenantScopeId}`,
+      {
+        subscriptionId: "sub_manual_reconciliation_failed_gap",
+        provider: platformAdapterServiceName.polar,
+        providerSubscriptionId: "sub_manual_reconciliation_failed_gap",
+        accountId: "polar:cus_manual_reconciliation_failed_gap",
+        scope: platformScope.organization,
+        scopeId: tenantScopeId,
+        planId: "plan_starter",
+        priceId: "price_starter_month",
+        status: billingSubscriptionStatus.active,
+        metadata: {
+          interval: billingPlanInterval.month,
+          customerId: "cus_manual_reconciliation_failed_gap",
+        },
+        createdAt: new Date("2026-04-20T08:00:00.000Z"),
+        updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+      },
+    );
+    database.provisioningReceipts.set(provisioningId, {
+      provisioningId,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      ownerActorId: "usr_owner_manual_reconciliation_failed_gap",
+      status: tenantProvisioningStatus.failed,
+      authorizationTuples: [],
+      metadata: {
+        source: "test-failed-state",
+      },
+      updatedAt: new Date("2026-04-20T08:30:00.000Z"),
+    });
+    database.onboardingRuns.set(onboardingRunId, {
+      runId: onboardingRunId,
+      tenantScope: platformScope.organization,
+      tenantScopeId,
+      triggeredBy: "usr_owner_manual_reconciliation_failed_gap",
+      correlationId: "corr_manual_reconciliation_failed_gap_initial",
+      status: tenantOnboardingRunStatus.failed,
+      currentStepId: "billing",
+      metadata: {
+        source: "test-failed-state",
+      },
+      startedAt: new Date("2026-04-20T08:00:00.000Z"),
+    });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_manual_reconciliation_failed_gap",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_manual_reconciliation_failed_gap",
+          correlationId: "corr_manual_reconciliation_failed_gap",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.runManualBillingReconciliation({
+          sessionId: "sess_manual_reconciliation_failed_gap",
+          convexAuthToken: createKeycloakIdToken({
+            sub: "usr_platform_operator",
+            actorTypeValue: actorType.platformOperator,
+          }),
+          now: "2026-04-20T09:00:00.000Z",
+        }),
+      ),
+    ).resolves.toEqual({
+      jobs: [
+        expect.objectContaining({
+          jobId: workflowJobId,
+          tenantScope: platformScope.organization,
+          tenantScopeId,
+          status: workflowJobStatus.completed,
+        }),
+      ],
+    });
+
+    expect(database.workflowJobs.get(workflowJobId)).toMatchObject({
+      status: workflowJobStatus.completed,
+      trigger: workflowJobTrigger.periodicSweep,
+    });
+    expect(database.provisioningReceipts.get(provisioningId)).toMatchObject({
+      ownerActorId: "usr_owner_manual_reconciliation_failed_gap",
+      status: tenantProvisioningStatus.provisioned,
+      metadata: expect.objectContaining({
+        source: "workflow-jobs.repair",
+      }),
+    });
+    expect(database.onboardingRuns.get(onboardingRunId)).toMatchObject({
+      triggeredBy: "usr_owner_manual_reconciliation_failed_gap",
+      status: tenantOnboardingRunStatus.inProgress,
+      metadata: expect.objectContaining({
+        source: "workflow-jobs.repair",
+      }),
     });
     expect(
       [...database.onboardingSteps.values()].filter(

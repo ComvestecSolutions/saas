@@ -1,34 +1,72 @@
+import { spawnSync } from "child_process";
 import { Effect, ParseResult } from "effect";
 import {
   actorType,
+  billingPlanInterval,
+  billingPlanVisibility,
+  customDomainLifecycleState,
   platformModuleId,
   platformScope,
   runtimeConfigAuditAction,
   runtimeChangeProposalAction,
   runtimeResolutionSource,
+  type PlatformModuleId,
+  workflowJobStatus,
 } from "@comvestec/contracts";
-import { tenantBrandingConfigKey } from "@comvestec/config";
+import {
+  emailDeliveryFeatureFlag,
+  tenantBrandingConfigKey,
+  tenantBrandingFeatureFlag,
+} from "@comvestec/config";
 import { platformHost, findModuleManifest } from "@comvestec/config";
-import { runtimeConfigSyncArtifactStatus } from "@comvestec/modules";
+import {
+  makeRuntimeConfigModule,
+  type RuntimeConfigOverrideRecord,
+  type RuntimeConfigPostgresRepositoryService,
+  runtimeConfigSyncArtifactStatus,
+} from "@comvestec/modules";
 import {
   buildProductBootstrapFromEnvironment,
+  buildProductBootstrapFromSessionId,
+  buildClearedSubscriberJourneySessionCookieHeader,
   buildSubscriberJourneySessionCookieHeader,
+  cancelBillingRepairGapFromSessionId,
+  createManagedBillingPlanFromSessionId,
   createProductAppAuthCallbackStateFromEnvironment,
+  createProductBillingCheckoutHandoffTokenFromEnvironment,
+  createSubscriberCheckoutSessionFromRequest,
+  decodeProductBillingCheckoutHandoffTokenFromEnvironment,
   decodeProductAppAuthCallbackStateFromEnvironment,
+  extractAuthenticatedWorkflowExecutionContext,
+  extractAuthenticatedWorkflowExecutionContextFromHeaders,
+  extractBearerToken,
+  invalidateSubscriberSessionFromRequest,
+  extractRequiredSubscriberJourneySessionId,
+  extractRequiredSubscriberJourneySessionIdFromHeader,
   listPublicBillingPlansFromEnvironment,
+  listBillingRepairGapsFromSessionId,
+  replayBillingRepairGapFromWorkflowExecutionContext,
   extractSubscriberJourneySessionId,
+  extractSubscriberJourneySessionIdFromHeader,
   makeRuntimeEnvironment,
   makePlatformEnvironmentLayer,
   getPublicWebSnapshot,
   getProductAppSnapshot,
   getAdminAppSnapshot,
-  getPublicWebSnapshotForRequest,
-  getProductAppSnapshotForRequest,
-  getAdminAppSnapshotForRequest,
-  getAdminAppSnapshotForRequestWithGovernanceService,
+  getPublicWebSnapshotForRequestContext,
+  getPublicWebSnapshotForRequestContextWithRuntimeConfig,
+  getProductAppSnapshotForRequestContext,
+  getProductAppSnapshotForRequestContextWithRuntimeConfig,
+  getAdminAppSnapshotForRequestContext,
+  getAdminAppSnapshotForRequestContextWithGovernanceService,
+  resolveSearchTransportRuntimeOptionsFromConvexEnvironment,
+  resolveSubscriberRequestContextFromSessionId,
   resolveSubscriberJourneyRuntimeOptionsFromConvexEnvironment,
   resolveSubscriberJourneyRuntimeOptionsFromEnvironment,
+  runManualBillingReconciliationFromWorkflowExecutionContext,
+  resolvePublicWebBillingReturnUrlsFromEnvironment,
   validateProductAppAuthCallbackRedirectUriFromEnvironment,
+  validatePublicWebBillingReturnUrlFromEnvironment,
 } from "@comvestec/platform";
 
 const createSignedProductAuthStateToken = async (input: {
@@ -60,6 +98,16 @@ const createSignedProductAuthStateToken = async (input: {
     .replace(/=/g, "")}`;
 };
 
+const createInMemoryRuntimeConfigRepository = (
+  overrides: readonly RuntimeConfigOverrideRecord[],
+): RuntimeConfigPostgresRepositoryService =>
+  ({
+    listOverridesByModule: (moduleId: PlatformModuleId) =>
+      Effect.succeed(
+        overrides.filter((override) => override.moduleId === moduleId),
+      ),
+  }) as unknown as RuntimeConfigPostgresRepositoryService;
+
 describe("platform services", () => {
   it("creates a runtime environment with redacted secrets", async () => {
     const runtimeEnvironment = await Effect.runPromise(
@@ -85,9 +133,10 @@ describe("platform services", () => {
         ketoWriteUrl: "http://localhost:4467",
         errorTrackingDsn: "https://glitchtip.local/api/1/store/",
         openpanelClientId: "client_demo",
+        openpanelClientSecret: "client_secret_demo",
         openpanelApiUrl: "http://localhost:3005/api",
         novuApiKey: "novu-api-key",
-        novuApiUrl: "http://localhost:3100",
+        novuApiUrl: "http://localhost:3101",
         meilisearchUrl: "http://localhost:7700",
         meilisearchApiKey: "meili-master-key",
         polarAccessToken: "polar-access-token",
@@ -97,6 +146,9 @@ describe("platform services", () => {
         openmeterApiKey: "openmeter-api-key",
         postalApiUrl: "http://localhost:5000",
         postalApiKey: "postal-api-key",
+        platformEmailSenderDisplayName: "Comvestec Platform",
+        platformEmailSenderFromEmail: "support@platform.example",
+        platformEmailSenderReplyToEmail: "reply@platform.example",
       }),
     );
 
@@ -121,7 +173,11 @@ describe("platform services", () => {
           KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD: "service-secret",
           POLAR_ACCESS_TOKEN: "polar-access-token",
           POLAR_API_URL: "http://127.0.0.1:8888",
+          OPENMETER_URL: "http://127.0.0.1:8889",
+          OPENMETER_API_KEY: "openmeter-api-key",
           VALKEY_URL: "redis://127.0.0.1:6379",
+          UNLEASH_URL: "http://127.0.0.1:4242",
+          UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
           KETO_READ_URL: "http://127.0.0.1:4466",
           KETO_WRITE_URL: "http://127.0.0.1:4467",
         }),
@@ -139,7 +195,11 @@ describe("platform services", () => {
       keycloakConvexServiceActorPassword: "service-secret",
       polarAccessToken: "polar-access-token",
       polarApiUrl: "http://127.0.0.1:8888",
+      openmeterUrl: "http://127.0.0.1:8889",
+      openmeterApiKey: "openmeter-api-key",
       valkeyUrl: "redis://127.0.0.1:6379",
+      unleashUrl: "http://127.0.0.1:4242",
+      unleashApiKey: "default:development.unleash-insecure-api-token",
       ketoReadUrl: "http://127.0.0.1:4466",
       ketoWriteUrl: "http://127.0.0.1:4467",
     });
@@ -161,6 +221,8 @@ describe("platform services", () => {
           POLAR_ACCESS_TOKEN: "polar-access-token",
           POLAR_API_URL: "http://polar:8888",
           VALKEY_URL_INTERNAL: "redis://valkey:6379",
+          UNLEASH_URL_INTERNAL: "http://unleash:4242",
+          UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
           KETO_READ_URL_INTERNAL: "http://keto-read:4466",
           KETO_WRITE_URL_INTERNAL: "http://keto-write:4467",
         }),
@@ -176,8 +238,62 @@ describe("platform services", () => {
       polarAccessToken: "polar-access-token",
       polarApiUrl: "http://polar:8888",
       valkeyUrl: "redis://valkey:6379",
+      unleashUrl: "http://unleash:4242",
+      unleashApiKey: "default:development.unleash-insecure-api-token",
       ketoReadUrl: "http://keto-read:4466",
       ketoWriteUrl: "http://keto-write:4467",
+    });
+  });
+
+  it("resolves search runtime options from the Convex worker environment", async () => {
+    await expect(
+      Effect.runPromise(
+        resolveSearchTransportRuntimeOptionsFromConvexEnvironment({
+          CONVEX_CLOUD_URL: "http://127.0.0.1:3210",
+          CONVEX_SITE_URL: "http://127.0.0.1:3211",
+          POSTGRES_URL_INTERNAL:
+            "postgresql://comvestec:comvestec@postgres:5432/comvestec",
+          KEYCLOAK_BASE_URL: "http://127.0.0.1:8080",
+          KEYCLOAK_BASE_URL_INTERNAL: "http://keycloak:8080",
+          KEYCLOAK_REALM: "comvestec",
+          KEYCLOAK_CLIENT_ID: "saas-platform",
+          KEYCLOAK_CLIENT_SECRET: "change-me",
+          KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME: "convex.billing.service",
+          KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD: "service-secret",
+          POLAR_ACCESS_TOKEN: "polar-access-token",
+          POLAR_API_URL: "http://polar:8888",
+          VALKEY_URL_INTERNAL: "redis://valkey:6379",
+          UNLEASH_URL_INTERNAL: "http://unleash:4242",
+          UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
+          MEILISEARCH_URL_INTERNAL: "http://meilisearch:7700",
+          MEILISEARCH_API_KEY: "meilisearch-api-key",
+          KETO_READ_URL_INTERNAL: "http://keto-read:4466",
+          KETO_WRITE_URL_INTERNAL: "http://keto-write:4467",
+        }),
+      ),
+    ).resolves.toEqual({
+      subscriberJourney: {
+        postgresUrl: "postgresql://comvestec:comvestec@postgres:5432/comvestec",
+        keycloakBaseUrl: "http://keycloak:8080",
+        keycloakRealm: "comvestec",
+        keycloakClientId: "saas-platform",
+        keycloakClientSecret: "change-me",
+        keycloakConvexServiceActorUsername: "convex.billing.service",
+        keycloakConvexServiceActorPassword: "service-secret",
+        polarAccessToken: "polar-access-token",
+        polarApiUrl: "http://polar:8888",
+        valkeyUrl: "redis://valkey:6379",
+        unleashUrl: "http://unleash:4242",
+        unleashApiKey: "default:development.unleash-insecure-api-token",
+        ketoReadUrl: "http://keto-read:4466",
+        ketoWriteUrl: "http://keto-write:4467",
+      },
+      convex: {
+        deploymentUrl: "http://127.0.0.1:3210",
+        siteUrl: "http://127.0.0.1:3211",
+      },
+      meilisearchUrl: "http://meilisearch:7700",
+      meilisearchApiKey: "meilisearch-api-key",
     });
   });
 
@@ -241,6 +357,8 @@ describe("platform services", () => {
       POLAR_ACCESS_TOKEN: "polar-access-token",
       POLAR_API_URL: "http://127.0.0.1:8888",
       VALKEY_URL: "redis://127.0.0.1:6379",
+      UNLEASH_URL: "http://127.0.0.1:4242",
+      UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
       KETO_READ_URL: "http://127.0.0.1:4466",
       KETO_WRITE_URL: "http://127.0.0.1:4467",
     };
@@ -279,6 +397,8 @@ describe("platform services", () => {
       POLAR_ACCESS_TOKEN: "polar-access-token",
       POLAR_API_URL: "http://127.0.0.1:8888",
       VALKEY_URL: "redis://127.0.0.1:6379",
+      UNLEASH_URL: "http://127.0.0.1:4242",
+      UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
       KETO_READ_URL: "http://127.0.0.1:4466",
       KETO_WRITE_URL: "http://127.0.0.1:4467",
     };
@@ -322,6 +442,8 @@ describe("platform services", () => {
       POLAR_ACCESS_TOKEN: "polar-access-token",
       POLAR_API_URL: "http://polar:8888",
       VALKEY_URL_INTERNAL: "redis://valkey:6379",
+      UNLEASH_URL_INTERNAL: "http://unleash:4242",
+      UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
       KETO_READ_URL_INTERNAL: "http://keto-read:4466",
       KETO_WRITE_URL_INTERNAL: "http://keto-write:4467",
     };
@@ -360,6 +482,8 @@ describe("platform services", () => {
       POLAR_ACCESS_TOKEN: "polar-access-token",
       POLAR_API_URL: "http://polar:8888",
       VALKEY_URL_INTERNAL: "redis://valkey:6379",
+      UNLEASH_URL_INTERNAL: "http://unleash:4242",
+      UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
       KETO_READ_URL_INTERNAL: "http://keto-read:4466",
       KETO_WRITE_URL_INTERNAL: "http://keto-write:4467",
     };
@@ -407,6 +531,8 @@ describe("platform services", () => {
           POLAR_ACCESS_TOKEN: "polar-access-token",
           POLAR_API_URL: "http://127.0.0.1:8888",
           VALKEY_URL: "redis://127.0.0.1:6379",
+          UNLEASH_URL: "http://127.0.0.1:4242",
+          UNLEASH_API_KEY: "default:development.unleash-insecure-api-token",
           KETO_READ_URL: "http://127.0.0.1:4466",
           KETO_WRITE_URL: "http://127.0.0.1:4467",
         }),
@@ -429,6 +555,30 @@ describe("platform services", () => {
     expect(publicCatalogExit._tag).toBe("Failure");
     expect(productBootstrapExit._tag).toBe("Failure");
   });
+
+  it("does not crash subscriber journey helper imports in a clean bun runtime", () => {
+    const proc = spawnSync(
+      "bun",
+      [
+        "-e",
+        `import { Effect } from "effect";
+import { runSubscriberJourneyFromEnvironment } from "./packages/platform/src/services/domains/subscriber-journey";
+const exit = await Effect.runPromiseExit(
+  runSubscriberJourneyFromEnvironment({}, (service) => service.listPublicPlans),
+);
+console.log(JSON.stringify({ exitTag: exit._tag }));`,
+      ],
+      {
+        cwd: process.cwd(),
+      },
+    );
+
+    expect(proc.status).toBe(0);
+    expect(proc.stderr?.toString()).toBe("");
+    expect(JSON.parse((proc.stdout ?? "").toString())).toEqual({
+      exitTag: "Failure",
+    });
+  }, 20_000);
 
   it("extracts subscriber journey session ids from header or cookie", async () => {
     await expect(
@@ -456,6 +606,819 @@ describe("platform services", () => {
     ).resolves.toBe("sess:cookie");
   });
 
+  it("extracts header-only subscriber journey session ids for backend-owned HTTP boundaries", async () => {
+    await expect(
+      Effect.runPromise(
+        extractSubscriberJourneySessionIdFromHeader(
+          new Request("http://localhost:3000", {
+            headers: {
+              "x-comvestec-session-id": "  sess_header_only  ",
+              cookie: "comvestec_session=sess_cookie_only",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBe("sess_header_only");
+
+    await expect(
+      Effect.runPromise(
+        extractSubscriberJourneySessionIdFromHeader(
+          new Request("http://localhost:3000", {
+            headers: {
+              cookie: "comvestec_session=sess_cookie_only",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          extractRequiredSubscriberJourneySessionIdFromHeader(
+            new Request("http://localhost:3000", {
+              headers: {
+                cookie: "comvestec_session=sess_cookie_only",
+              },
+            }),
+          ),
+        ),
+      ),
+    ).resolves.toEqual({
+      _tag: "SubscriberJourneySessionIdMissingError",
+    });
+  });
+
+  it("requires subscriber journey session ids when extracting first-party bootstrap transport", async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          extractRequiredSubscriberJourneySessionId(
+            new Request("http://localhost:3000"),
+          ),
+        ),
+      ),
+    ).resolves.toEqual({
+      _tag: "SubscriberJourneySessionIdMissingError",
+    });
+  });
+
+  it("builds product bootstrap requests from normalized first-party session transport", async () => {
+    let capturedInput: { readonly sessionId: string } | undefined;
+
+    await expect(
+      Effect.runPromise(
+        buildProductBootstrapFromSessionId(
+          {},
+          { sessionId: "sess:bootstrap_cookie" },
+          (input) => {
+            capturedInput = input;
+
+            return Effect.succeed({
+              requestContext: {
+                actorType: actorType.organizationAdmin,
+                actorId: "usr_bootstrap_cookie",
+                sessionId: input.sessionId,
+                correlationId: "corr_bootstrap_cookie",
+                tenant: {
+                  scope: platformScope.organization,
+                  scopeId: "org_bootstrap_cookie",
+                  organizationId: "org_bootstrap_cookie",
+                },
+              },
+              authorization: {
+                allowed: true,
+                reason: "Allowed by persisted authorization relation.",
+                cacheKey: "bootstrap:cookie:org_bootstrap_cookie",
+                auditRequired: false,
+              },
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          sessionId: "sess:bootstrap_cookie",
+        }),
+      }),
+    );
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess:bootstrap_cookie",
+    });
+  });
+
+  it("extracts bearer tokens from authorization headers", async () => {
+    await expect(
+      Effect.runPromise(
+        extractBearerToken(
+          new Request("http://localhost:3000", {
+            headers: {
+              authorization: "Bearer token_value",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBe("token_value");
+
+    await expect(
+      Effect.runPromise(
+        extractBearerToken(
+          new Request("http://localhost:3000", {
+            headers: {
+              authorization: "Basic token_value",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("builds authenticated workflow execution transport from shared request helpers", async () => {
+    await expect(
+      Effect.runPromise(
+        extractAuthenticatedWorkflowExecutionContext(
+          new Request("http://localhost:3000", {
+            headers: {
+              authorization: "Bearer token_value",
+              cookie: "comvestec_session=sess%3Aworkflow",
+            },
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      sessionId: "sess:workflow",
+      convexAuthToken: "token_value",
+    });
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          extractAuthenticatedWorkflowExecutionContext(
+            new Request("http://localhost:3000", {
+              headers: {
+                "x-comvestec-session-id": "sess_workflow",
+              },
+            }),
+          ),
+        ),
+      ),
+    ).resolves.toEqual({
+      _tag: "BearerTokenMissingError",
+    });
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          extractAuthenticatedWorkflowExecutionContextFromHeaders(
+            new Request("http://localhost:3000", {
+              headers: {
+                authorization: "Bearer token_value",
+                cookie: "comvestec_session=sess%3Aworkflow",
+              },
+            }),
+          ),
+        ),
+      ),
+    ).resolves.toEqual({
+      _tag: "SubscriberJourneySessionIdMissingError",
+    });
+  });
+
+  it("builds request-context lookups from normalized first-party session transport", async () => {
+    let capturedInput: { readonly sessionId: string } | undefined;
+
+    await expect(
+      Effect.runPromise(
+        resolveSubscriberRequestContextFromSessionId(
+          {},
+          { sessionId: "sess:request_context" },
+          (input) => {
+            capturedInput = input;
+
+            return Effect.succeed({
+              actorType: actorType.organizationAdmin,
+              actorId: "usr_request_context",
+              sessionId: input.sessionId,
+              correlationId: "corr_request_context",
+              tenant: {
+                scope: platformScope.organization,
+                scopeId: "org_request_context",
+                organizationId: "org_request_context",
+              },
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        sessionId: "sess:request_context",
+      }),
+    );
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess:request_context",
+    });
+  });
+
+  it("builds backend session invalidation requests from request-backed session transport", async () => {
+    let capturedInput:
+      | {
+          readonly sessionId: string;
+          readonly correlationId: string;
+          readonly reason: "logout" | "stale-session";
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        invalidateSubscriberSessionFromRequest(
+          {},
+          {
+            request: new Request("http://localhost:3002/auth/logout", {
+              headers: {
+                cookie: "comvestec_session=sess%3Alogout_request",
+              },
+            }),
+            correlationId: "corr_logout_request",
+            reason: "logout",
+          },
+          (input) => {
+            capturedInput = input;
+
+            return Effect.succeed({
+              sessionId: input.sessionId,
+              correlationId: input.correlationId,
+              reason: input.reason,
+              invalidated: true,
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual({
+      sessionId: "sess:logout_request",
+      correlationId: "corr_logout_request",
+      reason: "logout",
+      invalidated: true,
+    });
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess:logout_request",
+      correlationId: "corr_logout_request",
+      reason: "logout",
+    });
+  });
+
+  it("skips backend session invalidation when no first-party session transport is present", async () => {
+    let invalidationAttempted = false;
+
+    await expect(
+      Effect.runPromise(
+        invalidateSubscriberSessionFromRequest(
+          {},
+          {
+            request: new Request("http://localhost:3002/auth/stale-session"),
+            correlationId: "corr_stale_request",
+            reason: "stale-session",
+          },
+          () => {
+            invalidationAttempted = true;
+
+            return Effect.succeed({
+              sessionId: "sess_unused",
+              correlationId: "corr_stale_request",
+              reason: "stale-session",
+              invalidated: true,
+            });
+          },
+        ),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(invalidationAttempted).toBe(false);
+  });
+
+  it("builds checkout session requests from request-backed session transport", async () => {
+    let capturedResolveInput: { readonly sessionId: string } | undefined;
+    let capturedCheckoutInput:
+      | {
+          readonly planId: string;
+          readonly priceId: string;
+          readonly successUrl: string;
+          readonly cancelUrl: string;
+          readonly tenantScope: string;
+          readonly tenantScopeId: string;
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        createSubscriberCheckoutSessionFromRequest(
+          {},
+          {
+            request: new Request(
+              "http://localhost:3002/billing/checkout?planId=plan_growth&priceId=price_growth_month",
+              {
+                headers: {
+                  cookie: "comvestec_session=sess%3Acheckout_request",
+                },
+              },
+            ),
+            planId: "plan_growth",
+            priceId: "price_growth_month",
+            successPath: "/billing/success",
+            cancelPath: "/billing/cancel",
+          },
+          (input) => {
+            capturedResolveInput = input;
+
+            return Effect.succeed({
+              actorType: actorType.organizationAdmin,
+              actorId: "usr_checkout_request",
+              sessionId: input.sessionId,
+              correlationId: "corr_checkout_request",
+              tenant: {
+                scope: platformScope.organization,
+                scopeId: "org_checkout_request",
+                organizationId: "org_checkout_request",
+              },
+            });
+          },
+          (input) => {
+            capturedCheckoutInput = input;
+
+            return Effect.succeed({
+              checkoutSessionId: "checkout_request_1",
+              checkoutUrl:
+                "https://billing.example.com/checkouts/checkout_request_1",
+              planId: input.planId,
+              priceId: input.priceId,
+              interval: billingPlanInterval.month,
+              provider: "polar",
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            });
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      checkoutSessionId: "checkout_request_1",
+      checkoutUrl: "https://billing.example.com/checkouts/checkout_request_1",
+    });
+
+    expect(capturedResolveInput).toEqual({
+      sessionId: "sess:checkout_request",
+    });
+    expect(capturedCheckoutInput).toEqual({
+      planId: "plan_growth",
+      priceId: "price_growth_month",
+      successUrl: "http://localhost:3002/billing/success",
+      cancelUrl: "http://localhost:3002/billing/cancel",
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_checkout_request",
+      organizationId: "org_checkout_request",
+    });
+  });
+
+  it("preserves absolute checkout return URLs when they are already validated upstream", async () => {
+    let capturedCheckoutInput:
+      | {
+          readonly planId: string;
+          readonly priceId: string;
+          readonly successUrl: string;
+          readonly cancelUrl: string;
+          readonly tenantScope: string;
+          readonly tenantScopeId: string;
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        createSubscriberCheckoutSessionFromRequest(
+          {},
+          {
+            request: new Request(
+              "http://localhost:3002/billing/checkout?planId=plan_growth&priceId=price_growth_month",
+              {
+                headers: {
+                  cookie: "comvestec_session=sess%3Acheckout_request",
+                },
+              },
+            ),
+            planId: "plan_growth",
+            priceId: "price_growth_month",
+            successUrl: "http://localhost:3000/billing/success",
+            cancelUrl: "http://localhost:3000/billing/cancel",
+          },
+          (input) =>
+            Effect.succeed({
+              actorType: actorType.organizationAdmin,
+              actorId: "usr_checkout_request",
+              sessionId: input.sessionId,
+              correlationId: "corr_checkout_request",
+              tenant: {
+                scope: platformScope.organization,
+                scopeId: "org_checkout_request",
+                organizationId: "org_checkout_request",
+              },
+            }),
+          (input) => {
+            capturedCheckoutInput = input;
+
+            return Effect.succeed({
+              checkoutSessionId: "checkout_request_2",
+              checkoutUrl:
+                "https://billing.example.com/checkouts/checkout_request_2",
+              planId: input.planId,
+              priceId: input.priceId,
+              interval: billingPlanInterval.month,
+              provider: "polar",
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            });
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      checkoutSessionId: "checkout_request_2",
+      checkoutUrl: "https://billing.example.com/checkouts/checkout_request_2",
+    });
+
+    expect(capturedCheckoutInput).toEqual({
+      planId: "plan_growth",
+      priceId: "price_growth_month",
+      successUrl: "http://localhost:3000/billing/success",
+      cancelUrl: "http://localhost:3000/billing/cancel",
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_checkout_request",
+      organizationId: "org_checkout_request",
+    });
+  });
+
+  it("rejects absolute URLs passed through the local checkout return-path branch", async () => {
+    let resolveAttempted = false;
+    let checkoutAttempted = false;
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          createSubscriberCheckoutSessionFromRequest(
+            {},
+            {
+              request: new Request(
+                "http://localhost:3002/billing/checkout?planId=plan_growth&priceId=price_growth_month",
+                {
+                  headers: {
+                    cookie: "comvestec_session=sess%3Acheckout_request",
+                  },
+                },
+              ),
+              planId: "plan_growth",
+              priceId: "price_growth_month",
+              successPath: "https://evil.example.com/success",
+              cancelPath: "/billing/cancel",
+            },
+            (input) => {
+              resolveAttempted = true;
+
+              return Effect.succeed({
+                actorType: actorType.organizationAdmin,
+                actorId: "usr_checkout_request",
+                sessionId: input.sessionId,
+                correlationId: "corr_checkout_request",
+                tenant: {
+                  scope: platformScope.organization,
+                  scopeId: "org_checkout_request",
+                  organizationId: "org_checkout_request",
+                },
+              });
+            },
+            () => {
+              checkoutAttempted = true;
+
+              return Effect.die(
+                "checkout should not run for invalid local paths",
+              );
+            },
+          ),
+        ),
+      ),
+    ).resolves.toBeInstanceOf(ParseResult.ParseError);
+
+    expect(resolveAttempted).toBe(true);
+    expect(checkoutAttempted).toBe(false);
+  });
+
+  it("round-trips signed product billing checkout handoff tokens", async () => {
+    const environment = {
+      KEYCLOAK_CLIENT_SECRET: "billing-handoff-secret",
+    };
+    const token = await Effect.runPromise(
+      createProductBillingCheckoutHandoffTokenFromEnvironment(environment, {
+        planId: "plan_growth",
+        priceId: "price_growth_month",
+        successUrl: "http://localhost:3000/billing/success",
+        cancelUrl: "http://localhost:3000/billing/cancel",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        decodeProductBillingCheckoutHandoffTokenFromEnvironment(
+          environment,
+          token,
+        ),
+      ),
+    ).resolves.toMatchObject({
+      planId: "plan_growth",
+      priceId: "price_growth_month",
+      successUrl: "http://localhost:3000/billing/success",
+      cancelUrl: "http://localhost:3000/billing/cancel",
+    });
+  });
+
+  it("resolves and validates the approved public-web billing return URLs", async () => {
+    const environment = {
+      APP_BASE_URL: "http://localhost:3000",
+    };
+
+    await expect(
+      Effect.runPromise(
+        resolvePublicWebBillingReturnUrlsFromEnvironment(environment),
+      ),
+    ).resolves.toEqual({
+      successUrl: "http://localhost:3000/billing/success",
+      cancelUrl: "http://localhost:3000/billing/cancel",
+    });
+
+    await expect(
+      Effect.runPromise(
+        validatePublicWebBillingReturnUrlFromEnvironment(environment, {
+          returnKind: "success",
+          returnUrl: "http://localhost:3000/billing/success",
+        }),
+      ),
+    ).resolves.toBe("http://localhost:3000/billing/success");
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          validatePublicWebBillingReturnUrlFromEnvironment(environment, {
+            returnKind: "cancel",
+            returnUrl: "https://evil.example.com/cancel",
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "PublicWebBillingReturnUrlMismatchError",
+      returnKind: "cancel",
+      expectedReturnUrl: "http://localhost:3000/billing/cancel",
+    });
+  });
+
+  it("builds repair-gap list requests from normalized first-party session transport", async () => {
+    let capturedInput: { readonly sessionId: string } | undefined;
+
+    await expect(
+      Effect.runPromise(
+        listBillingRepairGapsFromSessionId(
+          {},
+          { sessionId: "sess_admin_gap_list" },
+          (input) => {
+            capturedInput = input;
+            return Effect.succeed({ jobs: [] });
+          },
+        ),
+      ),
+    ).resolves.toEqual({ jobs: [] });
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess_admin_gap_list",
+    });
+  });
+
+  it("builds managed billing plan requests from normalized first-party session transport", async () => {
+    let capturedInput:
+      | {
+          readonly sessionId: string;
+          readonly plan: {
+            readonly planKey: string;
+            readonly displayName: string;
+            readonly visibility: string;
+            readonly price: {
+              readonly interval: string;
+              readonly currency: string;
+              readonly amountMinor: number;
+            };
+            readonly entitlements: readonly unknown[];
+          };
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        createManagedBillingPlanFromSessionId(
+          {},
+          {
+            sessionId: "sess_admin_plan_create",
+            plan: {
+              planKey: "scale",
+              displayName: "Scale",
+              visibility: billingPlanVisibility.draft,
+              price: {
+                interval: billingPlanInterval.month,
+                currency: "USD",
+                amountMinor: 4900,
+              },
+              entitlements: [],
+            },
+          },
+          (input) => {
+            capturedInput = {
+              sessionId: input.sessionId,
+              plan: {
+                planKey: input.plan.planKey,
+                displayName: input.plan.displayName,
+                visibility: input.plan.visibility,
+                price: {
+                  interval: input.plan.price.interval,
+                  currency: input.plan.price.currency,
+                  amountMinor: input.plan.price.amountMinor,
+                },
+                entitlements: input.plan.entitlements,
+              },
+            };
+            return Effect.succeed({
+              plan: {
+                planId: "plan_scale",
+                planKey: input.plan.planKey,
+                displayName: input.plan.displayName,
+                active: true,
+                prices: [],
+                entitlements: input.plan.entitlements,
+              },
+              visibility: input.plan.visibility,
+              provider: "polar",
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        plan: expect.objectContaining({
+          planKey: "scale",
+        }),
+      }),
+    );
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess_admin_plan_create",
+      plan: {
+        planKey: "scale",
+        displayName: "Scale",
+        visibility: billingPlanVisibility.draft,
+        price: {
+          interval: billingPlanInterval.month,
+          currency: "USD",
+          amountMinor: 4900,
+        },
+        entitlements: [],
+      },
+    });
+  });
+
+  it("builds repair-gap replay requests from normalized first-party workflow transport", async () => {
+    let capturedInput:
+      | {
+          readonly sessionId: string;
+          readonly convexAuthToken: string;
+          readonly jobId: string;
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        replayBillingRepairGapFromWorkflowExecutionContext(
+          {},
+          {
+            sessionId: "sess_admin_gap_replay",
+            convexAuthToken: "token_value",
+            jobId: "workflow-jobs:billing-repair:org_demo",
+          },
+          (input) => {
+            capturedInput = input;
+            return Effect.succeed({
+              job: {
+                jobId: input.jobId,
+                tenantScope: platformScope.organization,
+                tenantScopeId: "org_demo",
+                status: workflowJobStatus.completed,
+                attempts: 2,
+                scheduledAt: "2026-04-20T09:00:00.000Z",
+                completedAt: "2026-04-20T09:01:00.000Z",
+              },
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: "workflow-jobs:billing-repair:org_demo",
+      }),
+    });
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess_admin_gap_replay",
+      convexAuthToken: "token_value",
+      jobId: "workflow-jobs:billing-repair:org_demo",
+    });
+  });
+
+  it("builds repair-gap cancellation requests from normalized first-party workflow transport", async () => {
+    let capturedInput:
+      | {
+          readonly sessionId: string;
+          readonly convexAuthToken: string;
+          readonly jobId: string;
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        cancelBillingRepairGapFromSessionId(
+          {},
+          {
+            sessionId: "sess:admin_gap_cancel",
+            convexAuthToken: "token_value",
+            jobId: "workflow-jobs:billing-repair:org_demo",
+          },
+          (input) => {
+            capturedInput = input;
+            return Effect.succeed({
+              job: {
+                jobId: input.jobId,
+                tenantScope: platformScope.organization,
+                tenantScopeId: "org_demo",
+                status: workflowJobStatus.canceled,
+                attempts: 2,
+                scheduledAt: "2026-04-20T09:00:00.000Z",
+                completedAt: "2026-04-20T09:01:00.000Z",
+              },
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual({
+      job: expect.objectContaining({
+        jobId: "workflow-jobs:billing-repair:org_demo",
+        status: workflowJobStatus.canceled,
+      }),
+    });
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess:admin_gap_cancel",
+      convexAuthToken: "token_value",
+      jobId: "workflow-jobs:billing-repair:org_demo",
+    });
+  });
+
+  it("builds manual reconciliation requests from normalized first-party workflow transport", async () => {
+    let capturedInput:
+      | {
+          readonly sessionId: string;
+          readonly convexAuthToken: string;
+          readonly now?: string;
+        }
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        runManualBillingReconciliationFromWorkflowExecutionContext(
+          {},
+          {
+            sessionId: "sess_admin_manual_reconciliation",
+            convexAuthToken: "token_value",
+            now: "2026-04-20T09:00:00.000Z",
+          },
+          (input) => {
+            capturedInput = {
+              sessionId: input.sessionId,
+              convexAuthToken: input.convexAuthToken,
+              ...(input.now !== undefined ? { now: input.now } : {}),
+            };
+            return Effect.succeed({ jobs: [] });
+          },
+        ),
+      ),
+    ).resolves.toEqual({ jobs: [] });
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess_admin_manual_reconciliation",
+      convexAuthToken: "token_value",
+      now: "2026-04-20T09:00:00.000Z",
+    });
+  });
+
   it("falls back to the raw subscriber journey session cookie when decoding fails", async () => {
     await expect(
       Effect.runPromise(
@@ -480,6 +1443,14 @@ describe("platform services", () => {
       }),
     ).toBe(
       "comvestec_session=sess%3Acallback; Path=/; HttpOnly; SameSite=Lax; Secure",
+    );
+    expect(buildClearedSubscriberJourneySessionCookieHeader()).toBe(
+      "comvestec_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+    );
+    expect(
+      buildClearedSubscriberJourneySessionCookieHeader({ secure: true }),
+    ).toBe(
+      "comvestec_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure",
     );
   });
 
@@ -554,6 +1525,8 @@ describe("platform services", () => {
       createProductAppAuthCallbackStateFromEnvironment(environment, {
         correlationId: "corr_signed_state",
         redirectUri: "http://localhost:3002/auth/callback",
+        postAuthRedirectPath:
+          "/billing/checkout?planId=plan_growth&priceId=price_growth_monthly",
         tenant: {
           scope: platformScope.organization,
           scopeId: "org_signed_state",
@@ -576,6 +1549,8 @@ describe("platform services", () => {
     ).resolves.toMatchObject({
       correlationId: "corr_signed_state",
       redirectUri: "http://localhost:3002/auth/callback",
+      postAuthRedirectPath:
+        "/billing/checkout?planId=plan_growth&priceId=price_growth_monthly",
       tenant: {
         scope: platformScope.organization,
         scopeId: "org_signed_state",
@@ -822,7 +1797,7 @@ describe("platform services", () => {
 
   it("builds public web snapshot for a custom request context", async () => {
     const snapshot = await Effect.runPromise(
-      getPublicWebSnapshotForRequest({
+      getPublicWebSnapshotForRequestContext({
         actorType: actorType.anonymous,
         correlationId: "public-web.custom",
         host: platformHost.localDevelopment,
@@ -838,9 +1813,133 @@ describe("platform services", () => {
     expect(snapshot.branding.moduleId).toBe(platformModuleId.tenantBranding);
   });
 
+  it("builds public web snapshots with stored tenant-branding projection", async () => {
+    let listOverridesCallCount = 0;
+
+    const snapshot = await Effect.runPromise(
+      getPublicWebSnapshotForRequestContextWithRuntimeConfig(
+        {
+          actorType: actorType.anonymous,
+          correlationId: "public-web.custom.stored-branding",
+          host: platformHost.localDevelopment,
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+        {
+          listOverridesByModule: (moduleId) => {
+            listOverridesCallCount += 1;
+
+            return Effect.succeed([
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.companyName,
+                scope: platformScope.platform,
+                scopeId: platformScope.platform,
+                value: "Comvestec Platform",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_runtime_config",
+                changedAt: "2026-04-25T10:00:00.000Z",
+              },
+            ]);
+          },
+          resolveConfigValue: ({ key, moduleId }) =>
+            Effect.succeed({
+              moduleId,
+              key,
+              effectiveValue:
+                key === tenantBrandingConfigKey.companyName
+                  ? "Comvestec Platform"
+                  : "inherit",
+              source:
+                key === tenantBrandingConfigKey.companyName
+                  ? runtimeResolutionSource.runtimeOverride
+                  : runtimeResolutionSource.codeDefault,
+              entitled: true,
+              resolvedScope: platformScope.platform,
+              resolvedScopeId: platformScope.platform,
+            }),
+        },
+        [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+            active: true,
+            grantedAt: "2026-04-25T10:00:00.000Z",
+          },
+        ],
+      ),
+    );
+
+    expect(listOverridesCallCount).toBe(1);
+    expect(snapshot.branding.companyName).toBe("Comvestec Platform");
+    expect(snapshot.branding.projection.companyName).toBe("Comvestec Platform");
+    expect(snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.platform,
+    );
+  });
+
+  it("keeps stored tenant-branding projection visible when entitlement metadata is false", async () => {
+    const snapshot = await Effect.runPromise(
+      getPublicWebSnapshotForRequestContextWithRuntimeConfig(
+        {
+          actorType: actorType.anonymous,
+          correlationId: "public-web.custom.override-enabled-branding",
+          host: platformHost.localDevelopment,
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+        {
+          listOverridesByModule: (moduleId) =>
+            Effect.succeed([
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.companyName,
+                scope: platformScope.platform,
+                scopeId: platformScope.platform,
+                value: "Comvestec Platform",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_runtime_config",
+                changedAt: "2026-04-25T10:00:00.000Z",
+              },
+            ]),
+          resolveConfigValue: ({ key, moduleId }) =>
+            Effect.succeed({
+              moduleId,
+              key,
+              effectiveValue:
+                key === tenantBrandingConfigKey.companyName
+                  ? "Comvestec Platform"
+                  : "inherit",
+              source:
+                key === tenantBrandingConfigKey.companyName
+                  ? runtimeResolutionSource.runtimeOverride
+                  : runtimeResolutionSource.codeDefault,
+              entitled: false,
+              resolvedScope: platformScope.platform,
+              resolvedScopeId: platformScope.platform,
+            }),
+        },
+        [],
+      ),
+    );
+
+    expect(snapshot.branding.companyName).toBe("Comvestec Platform");
+    expect(snapshot.branding.projection.companyName).toBe("Comvestec Platform");
+    expect(snapshot.branding.projection.entitled).toBe(false);
+    expect(snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.platform,
+    );
+  });
+
   it("builds product app snapshot for a custom request context", async () => {
     const snapshot = await Effect.runPromise(
-      getProductAppSnapshotForRequest({
+      getProductAppSnapshotForRequestContext({
         actorType: actorType.organizationMember,
         actorId: "usr_custom_member",
         sessionId: "sess_custom",
@@ -860,9 +1959,88 @@ describe("platform services", () => {
     expect(snapshot.manifest.moduleId).toBe(platformModuleId.tenantManagement);
   });
 
+  it("builds product app snapshots with stored tenant-branding projection", async () => {
+    let listOverridesCallCount = 0;
+
+    const snapshot = await Effect.runPromise(
+      getProductAppSnapshotForRequestContextWithRuntimeConfig(
+        {
+          actorType: actorType.organizationMember,
+          actorId: "usr_custom_member",
+          sessionId: "sess_custom",
+          correlationId: "product-app.custom.stored-branding",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_custom",
+            enterpriseId: "ent_custom",
+            organizationId: "org_custom",
+            individualId: "usr_custom_member",
+          },
+        },
+        {
+          listOverridesByModule: (moduleId) => {
+            listOverridesCallCount += 1;
+
+            return Effect.succeed([
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.companyName,
+                scope: platformScope.platform,
+                scopeId: platformScope.platform,
+                value: "Acme Organization",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_runtime_config",
+                changedAt: "2026-04-25T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.themePrimary,
+                scope: platformScope.platform,
+                scopeId: platformScope.platform,
+                value: "#14532D",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_runtime_config",
+                changedAt: "2026-04-25T10:00:00.000Z",
+              },
+            ]);
+          },
+          resolveConfigValue: ({ key, moduleId }) =>
+            Effect.succeed({
+              moduleId,
+              key,
+              effectiveValue:
+                key === tenantBrandingConfigKey.companyName
+                  ? "Acme Organization"
+                  : key === tenantBrandingConfigKey.themePrimary
+                    ? "#14532D"
+                    : "inherit",
+              source:
+                key === tenantBrandingConfigKey.companyName ||
+                key === tenantBrandingConfigKey.themePrimary
+                  ? runtimeResolutionSource.runtimeOverride
+                  : runtimeResolutionSource.codeDefault,
+              entitled: true,
+              resolvedScope: platformScope.platform,
+              resolvedScopeId: platformScope.platform,
+            }),
+        },
+        [],
+      ),
+    );
+
+    expect(listOverridesCallCount).toBe(1);
+    expect(snapshot.branding.moduleId).toBe(platformModuleId.tenantBranding);
+    expect(snapshot.branding.companyName).toBe("Acme Organization");
+    expect(snapshot.branding.projection.companyName).toBe("Acme Organization");
+    expect(snapshot.branding.projection.themeTokens.primary).toBe("#14532D");
+    expect(snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.platform,
+    );
+  });
+
   it("builds admin app snapshot for a custom request context", async () => {
     const snapshot = await Effect.runPromise(
-      getAdminAppSnapshotForRequest({
+      getAdminAppSnapshotForRequestContext({
         actorType: actorType.platformOperator,
         actorId: "usr_custom_admin",
         sessionId: "sess_custom_admin",
@@ -878,11 +2056,12 @@ describe("platform services", () => {
     expect(snapshot.application).toBe("Admin app");
     expect(snapshot.requestContext.actorId).toBe("usr_custom_admin");
     expect(snapshot.manifest.moduleId).toBe(platformModuleId.runtimeConfig);
+    expect(snapshot.branding.moduleId).toBe(platformModuleId.tenantBranding);
   });
 
   it("builds an admin app snapshot through the direct governance service boundary", async () => {
     const snapshot = await Effect.runPromise(
-      getAdminAppSnapshotForRequestWithGovernanceService(
+      getAdminAppSnapshotForRequestContextWithGovernanceService(
         {
           actorType: actorType.platformOperator,
           actorId: "usr_governance_admin",
@@ -982,10 +2161,511 @@ describe("platform services", () => {
     );
   });
 
+  it("builds admin app branding preview with tenant-scoped custom-domain state", async () => {
+    const snapshot = await Effect.runPromise(
+      getAdminAppSnapshotForRequestContextWithGovernanceService(
+        {
+          actorType: actorType.platformOperator,
+          actorId: "usr_governance_admin",
+          sessionId: "sess_governance_admin_branding",
+          correlationId: "admin-app.governance.branding",
+          reason: "Review tenant branding state",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            enterpriseId: "ent_demo",
+            organizationId: "org_demo",
+          },
+        },
+        {
+          listRuntimeConfigOverrides: () => Effect.succeed([]),
+          listRuntimeConfigProposals: () => Effect.succeed([]),
+          queryAuditEventsByModule: () => Effect.succeed([]),
+        },
+        {
+          listOverridesByModule: (moduleId) =>
+            Effect.succeed([
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.companyName,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "Acme Organization",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.themePrimary,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "#14532D",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.customDomainHost,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "login.acme.example",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.replyToEmail,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "reply@acme.example",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+            ]),
+          resolveConfigValue: ({ key, moduleId }) =>
+            Effect.succeed({
+              moduleId,
+              key,
+              effectiveValue:
+                key === tenantBrandingConfigKey.companyName
+                  ? "Acme Organization"
+                  : key === tenantBrandingConfigKey.themePrimary
+                    ? "#14532D"
+                    : key === tenantBrandingConfigKey.customDomainHost
+                      ? "login.acme.example"
+                      : key === tenantBrandingConfigKey.replyToEmail
+                        ? "reply@acme.example"
+                        : "inherit",
+              source:
+                key === tenantBrandingConfigKey.companyName ||
+                key === tenantBrandingConfigKey.themePrimary ||
+                key === tenantBrandingConfigKey.customDomainHost ||
+                key === tenantBrandingConfigKey.replyToEmail
+                  ? runtimeResolutionSource.runtimeOverride
+                  : runtimeResolutionSource.codeDefault,
+              entitled: true,
+              resolvedScope: platformScope.organization,
+              resolvedScopeId: "org_demo",
+            }),
+          resolveStoredFeatureFlag: ({ moduleId, flag }) =>
+            Effect.succeed({
+              moduleId,
+              key: flag.key,
+              effectiveValue:
+                flag.key === tenantBrandingFeatureFlag.enabled ||
+                flag.key === tenantBrandingFeatureFlag.customDomain ||
+                flag.key === tenantBrandingFeatureFlag.brandedEmails,
+              source: runtimeResolutionSource.entitlement,
+              entitled:
+                flag.key === tenantBrandingFeatureFlag.enabled ||
+                flag.key === tenantBrandingFeatureFlag.customDomain ||
+                flag.key === tenantBrandingFeatureFlag.brandedEmails,
+            }),
+        },
+        [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.customDomain,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.brandedEmails,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+        ],
+      ),
+    );
+
+    expect(snapshot.branding.companyName).toBe("Acme Organization");
+    expect(snapshot.branding.projection.themeTokens.primary).toBe("#14532D");
+    expect(snapshot.branding.projection.replyToEmail).toBe(
+      "reply@acme.example",
+    );
+    expect(snapshot.branding.projection.customDomainHost).toBe(
+      "login.acme.example",
+    );
+    expect(snapshot.branding.projection.customDomainStatus).toBe(
+      customDomainLifecycleState.unverified,
+    );
+    expect(snapshot.branding.projection.effectiveScope).toBe(
+      platformScope.organization,
+    );
+  });
+
+  it("omits admin-only branding fields when subfeature entitlements are absent", async () => {
+    const snapshot = await Effect.runPromise(
+      getAdminAppSnapshotForRequestContextWithGovernanceService(
+        {
+          actorType: actorType.platformOperator,
+          actorId: "usr_governance_admin",
+          sessionId: "sess_governance_admin_branding_unentitled",
+          correlationId: "admin-app.governance.branding.unentitled",
+          reason: "Review tenant branding state",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            enterpriseId: "ent_demo",
+            organizationId: "org_demo",
+          },
+        },
+        {
+          listRuntimeConfigOverrides: () => Effect.succeed([]),
+          listRuntimeConfigProposals: () => Effect.succeed([]),
+          queryAuditEventsByModule: () => Effect.succeed([]),
+        },
+        {
+          listOverridesByModule: (moduleId) =>
+            Effect.succeed([
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.companyName,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "Acme Organization",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.themePrimary,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "#14532D",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.customDomainHost,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "login.acme.example",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.replyToEmail,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "reply@acme.example",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+            ]),
+          resolveConfigValue: ({ key, moduleId }) =>
+            Effect.succeed({
+              moduleId,
+              key,
+              effectiveValue:
+                key === tenantBrandingConfigKey.companyName
+                  ? "Acme Organization"
+                  : key === tenantBrandingConfigKey.themePrimary
+                    ? "#14532D"
+                    : key === tenantBrandingConfigKey.customDomainHost
+                      ? "login.acme.example"
+                      : key === tenantBrandingConfigKey.replyToEmail
+                        ? "reply@acme.example"
+                        : "inherit",
+              source:
+                key === tenantBrandingConfigKey.companyName ||
+                key === tenantBrandingConfigKey.themePrimary ||
+                key === tenantBrandingConfigKey.customDomainHost ||
+                key === tenantBrandingConfigKey.replyToEmail
+                  ? runtimeResolutionSource.runtimeOverride
+                  : runtimeResolutionSource.codeDefault,
+              entitled: true,
+              resolvedScope: platformScope.organization,
+              resolvedScopeId: "org_demo",
+            }),
+          resolveStoredFeatureFlag: ({ moduleId, flag }) =>
+            Effect.succeed({
+              moduleId,
+              key: flag.key,
+              effectiveValue: flag.key === tenantBrandingFeatureFlag.enabled,
+              source:
+                flag.key === tenantBrandingFeatureFlag.enabled
+                  ? runtimeResolutionSource.entitlement
+                  : runtimeResolutionSource.unentitledDefault,
+              entitled: flag.key === tenantBrandingFeatureFlag.enabled,
+            }),
+        },
+        [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+        ],
+      ),
+    );
+
+    expect(snapshot.branding.companyName).toBe("Acme Organization");
+    expect(snapshot.branding.projection.themeTokens.primary).toBe("#14532D");
+    expect(snapshot.branding.projection.replyToEmail).toBeUndefined();
+    expect(snapshot.branding.projection.customDomainHost).toBeUndefined();
+    expect(snapshot.branding.projection.customDomainStatus).toBe(
+      customDomainLifecycleState.unverified,
+    );
+  });
+
+  it("redacts confidential branding fields for support operators", async () => {
+    const snapshot = await Effect.runPromise(
+      getAdminAppSnapshotForRequestContextWithGovernanceService(
+        {
+          actorType: actorType.supportOperator,
+          actorId: "usr_support_operator",
+          sessionId: "sess_support_operator_branding",
+          correlationId: "admin-app.governance.branding.support",
+          reason: "Review tenant branding state",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            enterpriseId: "ent_demo",
+            organizationId: "org_demo",
+          },
+        },
+        {
+          listRuntimeConfigOverrides: () => Effect.succeed([]),
+          listRuntimeConfigProposals: () => Effect.succeed([]),
+          queryAuditEventsByModule: () => Effect.succeed([]),
+        },
+        {
+          listOverridesByModule: (moduleId) =>
+            Effect.succeed([
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.companyName,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "Acme Organization",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.themePrimary,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "#14532D",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.customDomainHost,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "login.acme.example",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+              {
+                moduleId,
+                key: tenantBrandingConfigKey.replyToEmail,
+                scope: platformScope.organization,
+                scopeId: "org_demo",
+                value: "reply@acme.example",
+                source: runtimeResolutionSource.runtimeOverride,
+                changedBy: "usr_governance_admin",
+                changedAt: "2026-04-29T10:00:00.000Z",
+              },
+            ]),
+          resolveConfigValue: ({ key, moduleId }) =>
+            Effect.succeed({
+              moduleId,
+              key,
+              effectiveValue:
+                key === tenantBrandingConfigKey.companyName
+                  ? "Acme Organization"
+                  : key === tenantBrandingConfigKey.themePrimary
+                    ? "#14532D"
+                    : key === tenantBrandingConfigKey.customDomainHost
+                      ? "login.acme.example"
+                      : key === tenantBrandingConfigKey.replyToEmail
+                        ? "reply@acme.example"
+                        : "inherit",
+              source:
+                key === tenantBrandingConfigKey.companyName ||
+                key === tenantBrandingConfigKey.themePrimary ||
+                key === tenantBrandingConfigKey.customDomainHost ||
+                key === tenantBrandingConfigKey.replyToEmail
+                  ? runtimeResolutionSource.runtimeOverride
+                  : runtimeResolutionSource.codeDefault,
+              entitled: true,
+              resolvedScope: platformScope.organization,
+              resolvedScopeId: "org_demo",
+            }),
+          resolveStoredFeatureFlag: ({ moduleId, flag }) =>
+            Effect.succeed({
+              moduleId,
+              key: flag.key,
+              effectiveValue:
+                flag.key === tenantBrandingFeatureFlag.enabled ||
+                flag.key === tenantBrandingFeatureFlag.customDomain ||
+                flag.key === tenantBrandingFeatureFlag.brandedEmails,
+              source: runtimeResolutionSource.entitlement,
+              entitled:
+                flag.key === tenantBrandingFeatureFlag.enabled ||
+                flag.key === tenantBrandingFeatureFlag.customDomain ||
+                flag.key === tenantBrandingFeatureFlag.brandedEmails,
+            }),
+        },
+        [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.customDomain,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.brandedEmails,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+        ],
+      ),
+    );
+
+    expect(snapshot.branding.companyName).toBe("Acme Organization");
+    expect(snapshot.branding.projection.themeTokens.primary).toBe("#14532D");
+    expect(snapshot.branding.projection.replyToEmail).toBeUndefined();
+    expect(snapshot.branding.projection.customDomainHost).toBeUndefined();
+    expect(snapshot.branding.projection.customDomainStatus).toBe(
+      customDomainLifecycleState.unverified,
+    );
+  });
+
+  it("hides stored branded email fields when a persisted cross-module dependency disables the flag", async () => {
+    const runtimeConfig = await Effect.runPromise(
+      makeRuntimeConfigModule(
+        createInMemoryRuntimeConfigRepository([
+          {
+            moduleId: platformModuleId.tenantBranding,
+            key: tenantBrandingConfigKey.companyName,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            value: "Acme Organization",
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_governance_admin",
+            changedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            key: tenantBrandingConfigKey.replyToEmail,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            value: "reply@acme.example",
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_governance_admin",
+            changedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.emailDelivery,
+            key: emailDeliveryFeatureFlag.enabled,
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+            value: false,
+            source: runtimeResolutionSource.runtimeOverride,
+            changedBy: "usr_governance_admin",
+            changedAt: "2026-04-29T10:00:00.000Z",
+          },
+        ]),
+      ),
+    );
+
+    const snapshot = await Effect.runPromise(
+      getAdminAppSnapshotForRequestContextWithGovernanceService(
+        {
+          actorType: actorType.platformOperator,
+          actorId: "usr_governance_admin",
+          sessionId: "sess_governance_admin_branding_dependency",
+          correlationId: "admin-app.governance.branding.dependency",
+          reason: "Review tenant branding state",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            enterpriseId: "ent_demo",
+            organizationId: "org_demo",
+          },
+        },
+        {
+          listRuntimeConfigOverrides: () => Effect.succeed([]),
+          listRuntimeConfigProposals: () => Effect.succeed([]),
+          queryAuditEventsByModule: () => Effect.succeed([]),
+        },
+        runtimeConfig,
+        [
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.enabled,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+          {
+            moduleId: platformModuleId.tenantBranding,
+            featureKey: tenantBrandingFeatureFlag.brandedEmails,
+            scope: platformScope.organization,
+            scopeId: "org_demo",
+            active: true,
+            grantedAt: "2026-04-29T10:00:00.000Z",
+          },
+        ],
+      ),
+    );
+
+    expect(snapshot.branding.companyName).toBe("Acme Organization");
+    expect(snapshot.branding.projection.replyToEmail).toBeUndefined();
+  });
+
   it("denies non-operator admin app governance snapshots", async () => {
     const result = await Effect.runPromise(
       Effect.either(
-        getAdminAppSnapshotForRequestWithGovernanceService(
+        getAdminAppSnapshotForRequestContextWithGovernanceService(
           {
             actorType: actorType.organizationAdmin,
             actorId: "usr_org_admin",

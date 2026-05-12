@@ -13,9 +13,13 @@ describe("convex environment sync allowlist", () => {
         "KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD",
         "KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME",
         "KEYCLOAK_REALM",
+        "MEILISEARCH_API_KEY",
+        "MEILISEARCH_URL_INTERNAL",
         "POLAR_ACCESS_TOKEN",
         "POLAR_API_URL",
         "POSTGRES_URL_INTERNAL",
+        "UNLEASH_API_KEY",
+        "UNLEASH_URL_INTERNAL",
         "VALKEY_URL_INTERNAL",
       ],
     );

@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 import {
   billingWebhookEventType,
   billingWebhookReconciliationAction,
@@ -44,6 +44,11 @@ const createTestHandler = (
     (use) => use(createWebhooksApiServiceDouble(service)),
     options,
   );
+
+const parseFailureEffect = <A>() =>
+  Schema.decodeUnknown(Schema.Struct({ required: Schema.NonEmptyString }))({
+    required: "",
+  }) as Effect.Effect<A, ParseResult.ParseError>;
 
 describe("platform webhooks api http", () => {
   it("processes verified polar webhook requests through the dedicated HTTP surface", async () => {
@@ -324,6 +329,55 @@ describe("platform webhooks api http", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
       error: "Authentication or signature validation failed.",
+    });
+  });
+
+  it("maps raw parse failures from webhook execution to server errors", async () => {
+    const handler = createWebhooksApiHttpHandler(() => parseFailureEffect());
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${webhooksApiPath.replayPolarWebhook}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ deliveryId: "wh_replay_http_parse_failure" }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Webhook API request failed.",
+    });
+  });
+
+  it("maps webhook runtime failures to backend dependency errors", async () => {
+    const handler = createWebhooksApiHttpHandler(() =>
+      Effect.fail({
+        _tag: "WebhooksApiRuntimeError",
+        cause: new Error("runtime boom"),
+      }),
+    );
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${webhooksApiPath.replayPolarWebhook}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            deliveryId: "wh_replay_http_runtime_failure",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "A backend dependency request failed.",
     });
   });
 

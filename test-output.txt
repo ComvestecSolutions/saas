@@ -1,0 +1,187 @@
+$ bun run test:backend && bun run test:browser
+$ bunx vitest run --config vitest.config.ts --project backend
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90mC:/Users/BhekananiCele/Downloads/Comvestec Solutions Projects/saas[39m
+
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/services.test.ts [2m([22m[2m58 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 22345[2mms[22m[39m
+     [32mΓ£ô[39m creates a runtime environment with redacted secrets[32m 15[2mms[22m[39m
+     [32mΓ£ô[39m resolves subscriber journey runtime options from required environment[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m resolves subscriber journey runtime options from the Convex worker environment[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m fails subscriber journey runtime option resolution when required env is missing[32m 6[2mms[22m[39m
+     [32mΓ£ô[39m fails Convex worker runtime option resolution when required env is missing[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m fails Convex worker runtime option resolution for empty required env values[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m requires Convex host values in the standard subscriber journey environment[32m 18[2mms[22m[39m
+     [32mΓ£ô[39m requires Convex host values to be present in the standard subscriber journey environment[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m requires Convex host values in the Convex worker environment[32m 19[2mms[22m[39m
+     [32mΓ£ô[39m requires Convex host values to be present in the Convex worker environment[32m 8[2mms[22m[39m
+     [32mΓ£ô[39m fails subscriber journey runtime option resolution for empty required env values[32m 17[2mms[22m[39m
+     [32mΓ£ô[39m fails direct subscriber journey helpers when required environment is missing[32m 26[2mms[22m[39m
+[31m     [31m├ù[31m does not crash subscriber journey helper imports in a clean bun runtime[39m[33m 21521[2mms[22m[39m
+     [32mΓ£ô[39m extracts subscriber journey session ids from header or cookie[32m 96[2mms[22m[39m
+     [32mΓ£ô[39m extracts header-only subscriber journey session ids for backend-owned HTTP boundaries[32m 11[2mms[22m[39m
+     [32mΓ£ô[39m requires subscriber journey session ids when extracting first-party bootstrap transport[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m builds product bootstrap requests from normalized first-party session transport[32m 9[2mms[22m[39m
+     [32mΓ£ô[39m extracts bearer tokens from authorization headers[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m builds authenticated workflow execution transport from shared request helpers[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m builds request-context lookups from normalized first-party session transport[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m builds backend session invalidation requests from request-backed session transport[32m 12[2mms[22m[39m
+     [32mΓ£ô[39m skips backend session invalidation when no first-party session transport is present[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m builds checkout session requests from request-backed session transport[32m 17[2mms[22m[39m
+     [32mΓ£ô[39m preserves absolute checkout return URLs when they are already validated upstream[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m rejects absolute URLs passed through the local checkout return-path branch[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m round-trips signed product billing checkout handoff tokens[32m 112[2mms[22m[39m
+     [32mΓ£ô[39m resolves and validates the approved public-web billing return URLs[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m builds repair-gap list requests from normalized first-party session transport[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m builds managed billing plan requests from normalized first-party session transport[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m builds repair-gap replay requests from normalized first-party workflow transport[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m builds repair-gap cancellation requests from normalized first-party workflow transport[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m builds manual reconciliation requests from normalized first-party workflow transport[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m falls back to the raw subscriber journey session cookie when decoding fails[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m serializes subscriber journey session cookies for callback responses[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m allows only the approved product auth callback redirect uri[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m fails product auth callback redirect validation for invalid environment input[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m fails product auth callback redirect validation for malformed redirect URIs[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m round-trips signed product auth callback state[32m 52[2mms[22m[39m
+     [32mΓ£ô[39m rejects a state token with a tampered HMAC signature[32m 14[2mms[22m[39m
+     [32mΓ£ô[39m rejects malformed state tokens with a typed invalid-state error[32m 6[2mms[22m[39m
+     [32mΓ£ô[39m rejects malformed state token signature characters with a typed invalid-state error[32m 35[2mms[22m[39m
+     [32mΓ£ô[39m rejects a state token whose expiresAt is in the past[32m 11[2mms[22m[39m
+     [32mΓ£ô[39m rejects a signed state token whose expiresAt is parseable but not a real ISO timestamp[32m 23[2mms[22m[39m
+     [32mΓ£ô[39m rejects a signed state token whose expiresAt has an impossible ISO calendar date[32m 10[2mms[22m[39m
+     [32mΓ£ô[39m builds effect-backed app snapshots[32m 43[2mms[22m[39m
+     [32mΓ£ô[39m builds public web snapshot for a custom request context[32m 6[2mms[22m[39m
+     [32mΓ£ô[39m builds public web snapshots with stored tenant-branding projection[32m 9[2mms[22m[39m
+     [32mΓ£ô[39m keeps stored tenant-branding projection visible when entitlement metadata is false[32m 16[2mms[22m[39m
+     [32mΓ£ô[39m builds product app snapshot for a custom request context[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m builds product app snapshots with stored tenant-branding projection[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m builds admin app snapshot for a custom request context[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m builds an admin app snapshot through the direct governance service boundary[32m 11[2mms[22m[39m
+     [32mΓ£ô[39m builds admin app branding preview with tenant-scoped custom-domain state[32m 21[2mms[22m[39m
+     [32mΓ£ô[39m omits admin-only branding fields when subfeature entitlements are absent[32m 17[2mms[22m[39m
+     [32mΓ£ô[39m redacts confidential branding fields for support operators[32m 9[2mms[22m[39m
+     [32mΓ£ô[39m hides stored branded email fields when a persisted cross-module dependency disables the flag[32m 56[2mms[22m[39m
+     [32mΓ£ô[39m denies non-operator admin app governance snapshots[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m returns MissingModuleManifestError for unknown module[32m 10[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/local-runtime-environment.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1952[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m keeps non-secret env-file values ahead of shell overrides [33m 652[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m prefers legacy managed secrets over placeholder Vault values during migration [33m 498[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m derives the host postgres url from the configured postgres port [33m 368[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/local-deployment-validation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 98149[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m validates the rendered compose inventory and concern-owned service groups [33m 13013[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m fails before invoking docker when the env file resolves duplicate published ports [33m 10576[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m ignores shell overrides when the resolved runtime env already defines the published ports [33m 11427[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m falls back to compose defaults when an env file sets an empty port value [33m 10697[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m prefers a non-default env-file port when the shell override is present but empty [33m 11524[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m validates started-container status for the full local stack when requested [33m 15517[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m fails started-container validation when a long-running service reports unhealthy status [33m 13030[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m fails started-container validation when the postgres bootstrap one-shot service does not exit successfully [33m 12294[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-health.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 43696[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m treats bootstrap placeholder provider values as unconfigured [33m 20146[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m documents and mounts backend health routes [33m 23544[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-import-export.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 22097[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m documents and mounts the import-export backend routes [33m 22092[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-session-bound-openapi.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 25352[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m documents trusted session headers and omits body session identifiers [33m 25301[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/backend-api-tenant-management.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 32116[2mms[22m[39m
+[31m     [31m├ù[31m documents and mounts the tenant-management routes[39m[33m 32111[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-tenant-branding.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 25440[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m documents and mounts the tenant-branding backend route [33m 25435[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-request-middleware.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 44257[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m generates and preserves correlation ids while emitting request telemetry [33m 44247[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/backend-api.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 33486[2mms[22m[39m
+[31m     [31m├ù[31m builds a generated OpenAPI document and serves Swagger UI via the runtime docs handler[39m[33m 33476[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/backend-api-workflow-jobs.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 30089[2mms[22m[39m
+[31m     [31m├ù[31m documents and mounts the workflow-jobs backend routes[39m[33m 30084[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/backend-api-search.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 39184[2mms[22m[39m
+[31m     [31m├ù[31m documents and mounts the search backend routes[39m[33m 39178[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-notification-center.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 22385[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m documents and mounts the admin notification-center route [33m 22379[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/backend-api-file-storage.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 29593[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m documents and mounts the file-storage backend routes [33m 29588[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/support-operations-query-boundary.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 34982[2mms[22m[39m
+[31m     [31m├ù[31m renders tenant filters into the concrete support-case and repair-gap SQL predicates[39m[33m 34978[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/backend-api-support-operations.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 40204[2mms[22m[39m
+[31m     [31m├ù[31m documents and mounts the support-operations backend routes[39m[33m 40199[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/backend-api-email-delivery.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 43446[2mms[22m[39m
+[31m     [31m├ù[31m documents and mounts the admin email-delivery routes[39m[33m 43440[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/subscriber-journey.test.ts [2m([22m[2m68 tests[22m[2m)[22m[33m 2567[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m runs the backend-ready subscriber slice from auth start to product bootstrap [33m 400[2mms[22m[39m
+ [31mΓ¥»[39m [30m[46m backend [49m[39m tests/platform/adapters.test.ts [2m([22m[2m53 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1089[2mms[22m[39m
+     [32mΓ£ô[39m creates healthy service adapters[32m 219[2mms[22m[39m
+     [32mΓ£ô[39m uses Convex admin auth for internal workflow scheduling when available[32m 29[2mms[22m[39m
+     [32mΓ£ô[39m uses Convex admin auth for file storage operations when available[32m 9[2mms[22m[39m
+     [32mΓ£ô[39m accepts legacy Convex scheduling responses without scheduledFunctionIds[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m surfaces cleanup-unavailable failures for malformed token-exchange payloads without session state[32m 10[2mms[22m[39m
+     [32mΓ£ô[39m validates Keycloak identity tokens against the issuer signing keys[32m 93[2mms[22m[39m
+     [32mΓ£ô[39m rejects Keycloak identity tokens whose signing key does not match the issuer JWKS[32m 16[2mms[22m[39m
+     [32mΓ£ô[39m rejects Keycloak identity tokens that advertise an unsupported signing algorithm[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m surfaces identity-token verification dependency failures when signing keys cannot be read[32m 9[2mms[22m[39m
+     [32mΓ£ô[39m surfaces identity-token verification dependency failures when the issuer JWK cannot be imported[32m 8[2mms[22m[39m
+     [32mΓ£ô[39m lists Ory Keto tuples across paginated responses[32m 70[2mms[22m[39m
+     [32mΓ£ô[39m revokes malformed token-exchange sessions when session state is available[32m 11[2mms[22m[39m
+     [32mΓ£ô[39m revokes issued impersonation sessions when Keycloak returns the wrong actor[32m 12[2mms[22m[39m
+     [32mΓ£ô[39m revokes issued impersonation sessions when introspection omits the session identifier[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m surfaces compensation failures when id-token validation cannot clean up[32m 27[2mms[22m[39m
+     [32mΓ£ô[39m surfaces cleanup-unavailable failures when no impersonation session identifier is available[32m 34[2mms[22m[39m
+[31m     [31m├ù[31m creates healthy adapters for all new services[39m[32m 134[2mms[22m[39m
+     [32mΓ£ô[39m surfaces Postal API send failures as typed adapter errors[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m surfaces Novu trigger failures as typed adapter errors[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m falls back to the legacy OpenMeter events endpoint when ingest is unavailable[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m probes the OpenPanel healthcheck through the configured analytics api host[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m tracks OpenPanel business events through the authenticated analytics endpoint[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m probes the OTLP collector through the configured traces endpoint[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m fails the OTLP collector healthcheck when the collector returns a non-success status[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m probes the GlitchTip DSN store endpoint for readiness[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m fails the GlitchTip healthcheck when the configured DSN endpoint is not reachable[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m treats a placeholder GlitchTip DSN as a typed configuration failure instead of crashing adapter creation[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m fails the OpenPanel healthcheck when the analytics api returns a non-success status[32m 2[2mms[22m[39m
+     [32mΓ£ô[39m validates signed Postal delivered webhooks into normalized provider events[32m 14[2mms[22m[39m
+     [32mΓ£ô[39m maps Postal delay notifications onto soft-bounce delivery events[32m 9[2mms[22m[39m
+     [32mΓ£ô[39m ignores signed Postal events that do not map onto the shared contract[32m 8[2mms[22m[39m
+     [32mΓ£ô[39m rejects Postal webhooks with invalid signatures[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m prioritizes Postal signature validation before payload parsing[32m 5[2mms[22m[39m
+     [32mΓ£ô[39m surfaces Postal payload mapping failures after a signed webhook verifies[32m 28[2mms[22m[39m
+     [32mΓ£ô[39m evaluates Unleash feature flags from declared definitions[32m 23[2mms[22m[39m
+     [32mΓ£ô[39m normalizes Polar SDK base URLs that already include /v1[32m 38[2mms[22m[39m
+     [32mΓ£ô[39m manages tenant search indexes through the Meilisearch fetch seam[32m 40[2mms[22m[39m
+     [32mΓ£ô[39m fails the search lifecycle request when a Meilisearch task reports failure[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m clears tenant-index synonyms when durable settings omit them[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m creates a postgres adapter with an explicit runtime connection seam[32m 40[2mms[22m[39m
+     [32mΓ£ô[39m requires POSTGRES_URL when creating a postgres adapter from environment[32m 1[2mms[22m[39m
+     [32mΓ£ô[39m creates checkout sessions for configured backend plan catalogs[32m 4[2mms[22m[39m
+     [32mΓ£ô[39m sends lowercase currency codes to the polar sdk for managed plans[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m returns the existing public managed plan instead of creating a duplicate[32m 6[2mms[22m[39m
+     [32mΓ£ô[39m updates duplicate managed products into a different canonical plan[32m 8[2mms[22m[39m
+     [32mΓ£ô[39m archives managed products that should be removed from the public catalog[32m 8[2mms[22m[39m
+     [32mΓ£ô[39m normalizes verified polar webhook deliveries into billing reconciliation[32m 18[2mms[22m[39m
+     [32mΓ£ô[39m rejects unverified polar webhook deliveries[32m 3[2mms[22m[39m
+     [32mΓ£ô[39m supports counter and session operations through the valkey client seam[32m 21[2mms[22m[39m
+     [32mΓ£ô[39m checks permissions through the ory keto HTTP seam[32m 7[2mms[22m[39m
+     [32mΓ£ô[39m treats denied Ory Keto permission checks as valid false results[32m 13[2mms[22m[39m
+     [32mΓ£ô[39m deletes Ory Keto tuples through the HTTP seam[32m 10[2mms[22m[39m
+     [32mΓ£ô[39m rejects empty runtime configuration at adapter boundaries[32m 4[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/convex-workflow-job-runner.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1706[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m schedules follow-up billing dispatches through the Internal Convex functions [33m 534[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m registers the search workflow scheduling mutation against the expected internal action [33m 381[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m routes the search workflow action and internal action through the expected runtime clients [33m 688[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/admin-governance-http.test.ts [2m([22m[2m44 tests[22m[2m)[22m[32m 284[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/modules/access.test.ts [2m([22m[2m28 tests[22m[2m)[22m[33m 616[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/subscriber-journey-http.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 464[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/tenant-invitation-redemption.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 217[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/public-web-billing-routes.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 295[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/request-boundary.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 252[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/workflow-jobs.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 163[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/search-http.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 375[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/import-export.test.ts [2m([22m[2m16 tests[22m[2m)[22m[33m 558[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/admin-billing-http.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 385[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/support-operations.test.ts [2m([22m[2m27 tests[22m[2m)[22m[33m 784[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/admin-tenant-management-invitations.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 726[2mms[22m[39m
+     [33m[2mΓ£ô[22m[39m issues tenant invitation records with runtime-config-backed expiry and records an audit event [33m 315[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/modules/persistence.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 266[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/admin-governance.test.ts [2m([22m[2m43 tests[22m[2m)[22m[33m 612[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/workflow-jobs-http.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 243[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/webhooks-api-access-admin.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 400[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/support-operations-http.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 257[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/platform/file-storage.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 346[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/modules/governance.test.ts [2m([22m[2m49 tests[22m[2m)[22m[33m 381[2mms[22m[39m
+ [32mΓ£ô[39m [30m[46m backend [49m[39m tests/modules/domains.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 274[2mms[22m[39m

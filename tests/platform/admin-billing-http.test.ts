@@ -1,12 +1,17 @@
 import { Effect } from "effect";
 import {
+  billingAndMeteringFeatureFlag,
   billingEnforcementMode,
   billingMeteringMode,
+  billingPaymentEventStatus,
   billingPlanInterval,
   billingPlanVisibility,
+  billingSubscriptionStatus,
+  billingWebhookEventType,
   platformModuleId,
   platformScope,
   projectionProfile,
+  usageQuotaPeriod,
   workflowJobGapReason,
   workflowJobStatus,
 } from "@comvestec/contracts";
@@ -14,6 +19,7 @@ import {
   adminBillingApiPath,
   createAdminBillingHttpHandler,
   platformAdapterServiceName,
+  subscriberJourneySessionHeaderName,
   type AdminBillingService,
 } from "@comvestec/platform";
 
@@ -23,7 +29,13 @@ const unexpectedAdminBillingServiceEffect = <A>() =>
 const defaultCreateManagedBillingPlan: AdminBillingService["createManagedBillingPlan"] =
   () => unexpectedAdminBillingServiceEffect();
 
+const defaultInspectBillingState: AdminBillingService["inspectBillingState"] =
+  () => unexpectedAdminBillingServiceEffect();
+
 const defaultListBillingRepairGaps: AdminBillingService["listBillingRepairGaps"] =
+  () => unexpectedAdminBillingServiceEffect();
+
+const defaultCancelBillingRepairGap: AdminBillingService["cancelBillingRepairGap"] =
   () => unexpectedAdminBillingServiceEffect();
 
 const defaultReplayBillingRepairGap: AdminBillingService["replayBillingRepairGap"] =
@@ -37,8 +49,12 @@ const createAdminBillingServiceDouble = (
 ): AdminBillingService => ({
   createManagedBillingPlan:
     overrides.createManagedBillingPlan ?? defaultCreateManagedBillingPlan,
+  inspectBillingState:
+    overrides.inspectBillingState ?? defaultInspectBillingState,
   listBillingRepairGaps:
     overrides.listBillingRepairGaps ?? defaultListBillingRepairGaps,
+  cancelBillingRepairGap:
+    overrides.cancelBillingRepairGap ?? defaultCancelBillingRepairGap,
   replayBillingRepairGap:
     overrides.replayBillingRepairGap ?? defaultReplayBillingRepairGap,
   runManualBillingReconciliation:
@@ -87,9 +103,9 @@ describe("platform admin billing http", () => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              [subscriberJourneySessionHeaderName]: "sess_admin_plan_create",
             },
             body: JSON.stringify({
-              sessionId: "sess_admin_plan_create",
               plan: {
                 planKey: "scale",
                 displayName: "Scale",
@@ -146,9 +162,9 @@ describe("platform admin billing http", () => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              [subscriberJourneySessionHeaderName]: "sess_denied",
             },
             body: JSON.stringify({
-              sessionId: "sess_denied",
               plan: {
                 planKey: "scale",
                 displayName: "Scale",
@@ -179,6 +195,136 @@ describe("platform admin billing http", () => {
     });
   });
 
+  it("requires an explicit session header for managed billing plan creation", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminBillingApiPath.createManagedPlan}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              cookie: "comvestec_session=sess_cookie_only",
+            },
+            body: JSON.stringify({
+              plan: {
+                planKey: "scale",
+                displayName: "Scale",
+                visibility: billingPlanVisibility.draft,
+                price: {
+                  interval: billingPlanInterval.month,
+                  currency: "USD",
+                  amountMinor: 4900,
+                },
+                entitlements: [],
+              },
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated operator session is required.",
+    });
+  });
+
+  it("inspects projected billing state through the admin HTTP surface", async () => {
+    let capturedInput:
+      | Parameters<AdminBillingService["inspectBillingState"]>[0]
+      | undefined;
+    const tenant = {
+      scope: platformScope.organization,
+      scopeId: "org_billing_inspection",
+      organizationId: "org_billing_inspection",
+    } as const;
+    const handler = createTestHandler({
+      inspectBillingState: (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          tenant: input.tenant,
+          billing: {
+            plan: "plan_scale",
+            billingInterval: billingPlanInterval.month,
+            status: billingSubscriptionStatus.pastDue,
+            usage: [
+              {
+                featureKey: billingAndMeteringFeatureFlag.apiRequests,
+                quotaSnapshot: {
+                  meteringMode: billingMeteringMode.rateLimit,
+                  meterKey: billingAndMeteringFeatureFlag.apiRequests,
+                  unit: "request",
+                  quotaLimit: 60,
+                  quotaPeriod: usageQuotaPeriod.minute,
+                  enforcementMode: billingEnforcementMode.rateLimit,
+                },
+              },
+            ],
+            invoiceHistory: [
+              {
+                eventId: "evt_billing_failed",
+                provider: platformAdapterServiceName.polar,
+                providerEventId: "polar_evt_billing_failed",
+                subscriptionId: "sub_scale",
+                scope: platformScope.organization,
+                scopeId: tenant.scopeId,
+                eventType: billingWebhookEventType.paymentFailed,
+                status: billingPaymentEventStatus.failed,
+                amountMinor: 4900,
+                currency: "USD",
+                recordedAt: "2026-04-27T08:00:00.000Z",
+              },
+            ],
+          },
+        });
+      },
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminBillingApiPath.inspectBillingState}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              [subscriberJourneySessionHeaderName]: "sess_billing_inspection",
+            },
+            body: JSON.stringify({
+              tenant,
+              inspectionReason: "  Investigate billing payment failures  ",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(capturedInput).toEqual({
+      sessionId: "sess_billing_inspection",
+      tenant,
+      inspectionReason: "Investigate billing payment failures",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      tenant,
+      billing: expect.objectContaining({
+        plan: "plan_scale",
+        billingInterval: billingPlanInterval.month,
+        status: billingSubscriptionStatus.pastDue,
+        invoiceHistory: [
+          expect.objectContaining({
+            eventId: "evt_billing_failed",
+            eventType: billingWebhookEventType.paymentFailed,
+          }),
+        ],
+      }),
+    });
+  });
+
   it("returns 502 when repair-gap audit logging fails", async () => {
     const handler = createTestHandler({
       listBillingRepairGaps: () =>
@@ -191,12 +337,12 @@ describe("platform admin billing http", () => {
 
     const response = await Effect.runPromise(
       handler(
-        new Request(
-          `http://localhost${adminBillingApiPath.listRepairGaps}?sessionId=sess_admin_repair_gaps`,
-          {
-            method: "GET",
+        new Request(`http://localhost${adminBillingApiPath.listRepairGaps}`, {
+          method: "GET",
+          headers: {
+            [subscriberJourneySessionHeaderName]: "sess_admin_repair_gaps",
           },
-        ),
+        }),
       ),
     );
 
@@ -218,12 +364,12 @@ describe("platform admin billing http", () => {
 
     const response = await Effect.runPromise(
       handler(
-        new Request(
-          `http://localhost${adminBillingApiPath.listRepairGaps}?sessionId=sess_admin_repair_gaps`,
-          {
-            method: "GET",
+        new Request(`http://localhost${adminBillingApiPath.listRepairGaps}`, {
+          method: "GET",
+          headers: {
+            [subscriberJourneySessionHeaderName]: "sess_admin_repair_gaps",
           },
-        ),
+        }),
       ),
     );
 
@@ -247,12 +393,12 @@ describe("platform admin billing http", () => {
 
     const response = await Effect.runPromise(
       handler(
-        new Request(
-          `http://localhost${adminBillingApiPath.listRepairGaps}?sessionId=sess_missing_projection`,
-          {
-            method: "GET",
+        new Request(`http://localhost${adminBillingApiPath.listRepairGaps}`, {
+          method: "GET",
+          headers: {
+            [subscriberJourneySessionHeaderName]: "sess_missing_projection",
           },
-        ),
+        }),
       ),
     );
 
@@ -274,18 +420,214 @@ describe("platform admin billing http", () => {
 
     const response = await Effect.runPromise(
       handler(
-        new Request(
-          `http://localhost${adminBillingApiPath.listRepairGaps}?sessionId=sess_denied_repair_gaps`,
-          {
-            method: "GET",
+        new Request(`http://localhost${adminBillingApiPath.listRepairGaps}`, {
+          method: "GET",
+          headers: {
+            [subscriberJourneySessionHeaderName]: "sess_denied_repair_gaps",
           },
-        ),
+        }),
       ),
     );
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error: "Billing repair gap inspection is not allowed for this session.",
+    });
+  });
+
+  it("requires an explicit session header for admin repair-gap inspection", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.listRepairGaps}`, {
+          method: "GET",
+          headers: {
+            cookie: "comvestec_session=sess_cookie_only",
+          },
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated operator session is required.",
+    });
+  });
+
+  it("cancels billing repair gaps through the admin HTTP surface", async () => {
+    let capturedInput:
+      | Parameters<AdminBillingService["cancelBillingRepairGap"]>[0]
+      | undefined;
+    const handler = createTestHandler({
+      cancelBillingRepairGap: (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          job: {
+            jobId: input.jobId,
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_gap",
+            status: workflowJobStatus.canceled,
+            attempts: 2,
+            scheduledAt: "2026-04-20T09:00:00.000Z",
+            completedAt: "2026-04-20T09:01:00.000Z",
+          },
+        });
+      },
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.cancelRepairGap}`, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer id-token-value",
+            "Content-Type": "application/json",
+            [subscriberJourneySessionHeaderName]: "sess_repair_gap_cancel",
+          },
+          body: JSON.stringify({
+            jobId: "workflow-jobs:billing-repair:org_gap",
+            inspectionReason: "Investigate canceled tenant repair failures",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload).toEqual({
+      job: expect.objectContaining({
+        jobId: "workflow-jobs:billing-repair:org_gap",
+        status: workflowJobStatus.canceled,
+        attempts: 2,
+      }),
+    });
+    expect(payload.job).not.toHaveProperty("lastError");
+    expect(capturedInput).toEqual({
+      sessionId: "sess_repair_gap_cancel",
+      convexAuthToken: "id-token-value",
+      jobId: "workflow-jobs:billing-repair:org_gap",
+      inspectionReason: "Investigate canceled tenant repair failures",
+    });
+  });
+
+  it("returns 404 when the requested repair gap cancellation target does not exist", async () => {
+    const handler = createTestHandler({
+      cancelBillingRepairGap: (input) =>
+        Effect.fail({
+          _tag: "AdminBillingRepairGapNotFoundError",
+          jobId: input.jobId,
+        }),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.cancelRepairGap}`, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer id-token-value",
+            "Content-Type": "application/json",
+            [subscriberJourneySessionHeaderName]:
+              "sess_repair_gap_cancel_missing",
+          },
+          body: JSON.stringify({
+            jobId: "workflow-jobs:billing-repair:missing",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Requested billing repair gap was not found.",
+    });
+  });
+
+  it("returns 409 when a repair gap is no longer eligible for cancellation", async () => {
+    const handler = createTestHandler({
+      cancelBillingRepairGap: (input) =>
+        Effect.fail({
+          _tag: "AdminBillingRepairGapCancelUnavailableError",
+          jobId: input.jobId,
+          status: workflowJobStatus.completed,
+          reason:
+            "Only unresolved scheduled, blocked, or stale running billing repair gaps can be canceled.",
+        }),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.cancelRepairGap}`, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer id-token-value",
+            "Content-Type": "application/json",
+            [subscriberJourneySessionHeaderName]:
+              "sess_repair_gap_cancel_completed",
+          },
+          body: JSON.stringify({
+            jobId: "workflow-jobs:billing-repair:completed",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Billing repair gap is no longer eligible for cancellation.",
+    });
+  });
+
+  it("requires an explicit session header for admin repair-gap cancellation", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.cancelRepairGap}`, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer id-token-value",
+            "Content-Type": "application/json",
+            cookie: "comvestec_session=sess_cookie_only",
+          },
+          body: JSON.stringify({
+            jobId: "workflow-jobs:billing-repair:org_gap",
+            inspectionReason: "Investigate replayed tenant repair failures",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated operator session is required.",
+    });
+  });
+
+  it("requires a bearer token for admin repair-gap cancellation", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.cancelRepairGap}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            [subscriberJourneySessionHeaderName]: "sess_repair_gap_cancel",
+          },
+          body: JSON.stringify({
+            jobId: "workflow-jobs:billing-repair:org_gap",
+            inspectionReason: "Investigate replayed tenant repair failures",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Keycloak bearer token is required.",
     });
   });
 
@@ -306,6 +648,8 @@ describe("platform admin billing http", () => {
             attempts: 2,
             scheduledAt: "2026-04-20T09:00:00.000Z",
             completedAt: "2026-04-20T09:01:00.000Z",
+            lastError:
+              "Previous replay attempt could not resolve the customer account mapping.",
           },
         });
       },
@@ -322,6 +666,7 @@ describe("platform admin billing http", () => {
           },
           body: JSON.stringify({
             jobId: "workflow-jobs:billing-repair:org_gap",
+            inspectionReason: "Investigate replayed tenant repair failures",
           }),
         }),
       ),
@@ -333,12 +678,15 @@ describe("platform admin billing http", () => {
         jobId: "workflow-jobs:billing-repair:org_gap",
         status: workflowJobStatus.completed,
         attempts: 2,
+        lastError:
+          "Previous replay attempt could not resolve the customer account mapping.",
       }),
     });
     expect(capturedInput).toEqual({
       sessionId: "sess_repair_gap_replay",
       convexAuthToken: "id-token-value",
       jobId: "workflow-jobs:billing-repair:org_gap",
+      inspectionReason: "Investigate replayed tenant repair failures",
     });
   });
 
@@ -375,6 +723,7 @@ describe("platform admin billing http", () => {
           },
           body: JSON.stringify({
             jobId: "workflow-jobs:billing-repair:org_gap",
+            inspectionReason: "Investigate replayed tenant repair failures",
           }),
         }),
       ),
@@ -385,6 +734,7 @@ describe("platform admin billing http", () => {
       sessionId: "sess_repair_gap_replay_lowercase",
       convexAuthToken: "id-token-value",
       jobId: "workflow-jobs:billing-repair:org_gap",
+      inspectionReason: "Investigate replayed tenant repair failures",
     });
   });
 
@@ -474,6 +824,31 @@ describe("platform admin billing http", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
       error: "Keycloak bearer token is required.",
+    });
+  });
+
+  it("requires an explicit session header for authenticated admin repair replays", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(`http://localhost${adminBillingApiPath.replayRepairGap}`, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer id-token-value",
+            "Content-Type": "application/json",
+            cookie: "comvestec_session=sess_cookie_only",
+          },
+          body: JSON.stringify({
+            jobId: "workflow-jobs:billing-repair:org_gap",
+          }),
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated operator session is required.",
     });
   });
 
@@ -596,6 +971,16 @@ describe("platform admin billing http", () => {
         }),
       ),
     );
+    const inspectionResponse = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminBillingApiPath.inspectBillingState}`,
+          {
+            method: "GET",
+          },
+        ),
+      ),
+    );
     const replayResponse = await Effect.runPromise(
       handler(
         new Request(`http://localhost${adminBillingApiPath.replayRepairGap}`, {
@@ -613,6 +998,12 @@ describe("platform admin billing http", () => {
     expect(repairGapsResponse.status).toBe(405);
     expect(repairGapsResponse.headers.get("Allow")).toBe("GET");
     await expect(repairGapsResponse.json()).resolves.toEqual({
+      error: "Method not allowed.",
+    });
+
+    expect(inspectionResponse.status).toBe(405);
+    expect(inspectionResponse.headers.get("Allow")).toBe("POST");
+    await expect(inspectionResponse.json()).resolves.toEqual({
       error: "Method not allowed.",
     });
 
@@ -783,6 +1174,32 @@ describe("platform admin billing http", () => {
     });
   });
 
+  it("requires an explicit session header for manual reconciliation", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${adminBillingApiPath.runManualReconciliation}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer id-token-value",
+              "Content-Type": "application/json",
+              cookie: "comvestec_session=sess_cookie_only",
+            },
+            body: JSON.stringify({}),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated operator session is required.",
+    });
+  });
+
   it("returns 403 when manual reconciliation token provenance does not match the operator session", async () => {
     const handler = createTestHandler({
       runManualBillingReconciliation: () =>
@@ -852,30 +1269,37 @@ describe("platform admin billing http", () => {
   });
 
   it("lists unresolved billing repair gaps through the admin HTTP surface", async () => {
+    const listBillingRepairGaps = vi.fn(() =>
+      Effect.succeed({
+        jobs: [
+          {
+            jobId: "workflow-jobs:billing-repair:org_gap",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_gap",
+            status: workflowJobStatus.scheduled,
+            attempts: 1,
+            scheduledAt: new Date().toISOString(),
+            gapReason: workflowJobGapReason.missingSubscriptionState,
+            lastError: "Missing billing webhook receipt payload.",
+          },
+        ],
+      }),
+    );
     const handler = createTestHandler({
-      listBillingRepairGaps: () =>
-        Effect.succeed({
-          jobs: [
-            {
-              jobId: "workflow-jobs:billing-repair:org_gap",
-              tenantScope: platformScope.organization,
-              tenantScopeId: "org_gap",
-              status: workflowJobStatus.scheduled,
-              attempts: 1,
-              scheduledAt: new Date().toISOString(),
-              gapReason: workflowJobGapReason.missingSubscriptionState,
-              lastError: "Missing billing webhook receipt payload.",
-            },
-          ],
-        }),
+      listBillingRepairGaps,
     });
 
     const response = await Effect.runPromise(
       handler(
         new Request(
-          `http://localhost${adminBillingApiPath.listRepairGaps}?sessionId=sess_admin_repair_gaps`,
+          `http://localhost${adminBillingApiPath.listRepairGaps}?inspectionReason=${encodeURIComponent(
+            "Investigate unresolved org repair failures",
+          )}`,
           {
             method: "GET",
+            headers: {
+              [subscriberJourneySessionHeaderName]: "sess_admin_repair_gaps",
+            },
           },
         ),
       ),
@@ -894,6 +1318,10 @@ describe("platform admin billing http", () => {
           lastError: "Missing billing webhook receipt payload.",
         }),
       ],
+    });
+    expect(listBillingRepairGaps).toHaveBeenCalledWith({
+      sessionId: "sess_admin_repair_gaps",
+      inspectionReason: "Investigate unresolved org repair failures",
     });
   });
 });

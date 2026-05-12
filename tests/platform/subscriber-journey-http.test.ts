@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 import {
   actorType,
   platformModuleId,
@@ -7,9 +7,13 @@ import {
 import {
   createProductAppAuthCallbackStateFromEnvironment,
   decodeProductAppAuthCallbackStateFromEnvironment,
+  getPublicWebSnapshotForRequestContext,
 } from "@comvestec/platform";
 import {
   createSubscriberJourneyHttpHandler,
+  type PublicAuthStartPreparation,
+  type PublicAuthStartPreparationError,
+  subscriberJourneySessionHeaderName,
   subscriberJourneyApiPath,
   type SubscriberJourneyService,
 } from "@comvestec/platform";
@@ -22,8 +26,49 @@ const authRouteEnvironment = {
 const unexpectedSubscriberJourneyServiceEffect = <A>() =>
   Effect.die(new Error("Unexpected subscriber journey test service call."));
 
+const buildPublicAuthStartPreparation = (
+  input: Parameters<SubscriberJourneyService["preparePublicAuthStart"]>[0],
+): Effect.Effect<PublicAuthStartPreparation, PublicAuthStartPreparationError> =>
+  Effect.gen(function* () {
+    const correlationId = input.correlationId ?? "corr_http_start";
+    const requestContext = {
+      actorType: actorType.anonymous,
+      correlationId,
+      host: input.host,
+      tenant: {
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+      },
+    };
+    const snapshot =
+      yield* getPublicWebSnapshotForRequestContext(requestContext);
+
+    return {
+      correlationId,
+      requestContext,
+      tenant:
+        input.tenantScopeHint === platformScope.individual
+          ? {
+              scope: platformScope.individual,
+              scopeId: "usr_prepared_1",
+              individualId: "usr_prepared_1",
+            }
+          : {
+              scope: platformScope.organization,
+              scopeId: "org_prepared_1",
+              organizationId: "org_prepared_1",
+            },
+      enabledModules: [
+        platformModuleId.tenantManagement,
+        platformModuleId.identitySession,
+        platformModuleId.billingAndMetering,
+      ],
+      snapshot,
+    };
+  });
+
 const defaultPreparePublicAuthStart: SubscriberJourneyService["preparePublicAuthStart"] =
-  () => unexpectedSubscriberJourneyServiceEffect();
+  (input) => buildPublicAuthStartPreparation(input);
 
 const defaultResolveRequestContext: SubscriberJourneyService["resolveRequestContext"] =
   () => unexpectedSubscriberJourneyServiceEffect();
@@ -32,6 +77,9 @@ const defaultStartAuthentication: SubscriberJourneyService["startAuthentication"
   () => unexpectedSubscriberJourneyServiceEffect();
 
 const defaultCompleteAuthentication: SubscriberJourneyService["completeAuthentication"] =
+  () => unexpectedSubscriberJourneyServiceEffect();
+
+const defaultInvalidateSession: SubscriberJourneyService["invalidateSession"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
 const defaultCreateCheckoutSession: SubscriberJourneyService["createCheckoutSession"] =
@@ -65,6 +113,7 @@ const createSubscriberJourneyServiceDouble = (
     overrides.startAuthentication ?? defaultStartAuthentication,
   completeAuthentication:
     overrides.completeAuthentication ?? defaultCompleteAuthentication,
+  invalidateSession: overrides.invalidateSession ?? defaultInvalidateSession,
   createCheckoutSession:
     overrides.createCheckoutSession ?? defaultCreateCheckoutSession,
   processBillingWebhook:
@@ -84,6 +133,11 @@ const createTestHandler = (service: Partial<SubscriberJourneyService>) =>
   createSubscriberJourneyHttpHandler((use) =>
     use(createSubscriberJourneyServiceDouble(service)),
   );
+
+const parseFailureEffect = <A>() =>
+  Schema.decodeUnknown(Schema.Struct({ required: Schema.NonEmptyString }))({
+    required: "",
+  }) as Effect.Effect<A, ParseResult.ParseError>;
 
 type SubscriberJourneyStartAuthenticationValidator = NonNullable<
   NonNullable<
@@ -208,9 +262,144 @@ describe("platform subscriber journey http", () => {
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
         correlationId: "corr_http_start",
-        redirect: expect.objectContaining({ tenantHint: "org_http" }),
+        redirect: expect.objectContaining({
+          tenantHint: "org_http",
+        }),
       }),
     );
+  });
+
+  it("resolves stored branding hints instead of forwarding caller-supplied auth-start branding", async () => {
+    let capturedPreparationInput:
+      | Parameters<SubscriberJourneyService["preparePublicAuthStart"]>[0]
+      | undefined;
+    let capturedInput:
+      | Parameters<SubscriberJourneyService["startAuthentication"]>[0]
+      | undefined;
+    const handler = createTestHandler({
+      preparePublicAuthStart: (input) => {
+        capturedPreparationInput = input;
+
+        return buildPublicAuthStartPreparation(input).pipe(
+          Effect.map((preparation) => ({
+            ...preparation,
+            snapshot: {
+              ...preparation.snapshot,
+              branding: {
+                ...preparation.snapshot.branding,
+                companyName: "Stored Tenant",
+                projection: {
+                  ...preparation.snapshot.branding.projection,
+                  companyName: "Stored Tenant",
+                  themeTokens: {
+                    ...preparation.snapshot.branding.projection.themeTokens,
+                    primary: "#14532D",
+                  },
+                },
+              },
+            },
+          })),
+        );
+      },
+      startAuthentication: (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          correlationId: input.requestContext.correlationId,
+          redirect: {
+            url: "http://localhost:8080/realms/comvestec/protocol/openid-connect/auth",
+            realm: "comvestec",
+            tenantHint: input.tenantHint,
+            redirectUri: input.redirectUri,
+          },
+        });
+      },
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.startAuthentication}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              requestContext: {
+                actorType: actorType.anonymous,
+                correlationId: "corr_http_start_stripped_hints",
+                tenant: {
+                  scope: platformScope.platform,
+                  scopeId: platformScope.platform,
+                },
+              },
+              tenantHint: "org_http",
+              displayNameHint: "Spoofed Tenant",
+              themeHint: "#111827",
+              redirectUri: "https://product.example.com/auth/callback",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(202);
+
+    expect(capturedPreparationInput).toEqual({
+      correlationId: "corr_http_start_stripped_hints",
+      host: "localhost",
+      tenantHint: "org_http",
+    });
+
+    if (capturedInput === undefined) {
+      throw new Error("Expected auth-start input to be captured.");
+    }
+
+    expect(capturedInput.displayNameHint).toBe("Stored Tenant");
+    expect(capturedInput.themeHint).toBe("#14532D");
+  });
+
+  it("returns 502 when auth-start branding preparation hits a backend dependency failure", async () => {
+    const handler = createTestHandler({
+      preparePublicAuthStart: () =>
+        Effect.fail({
+          _tag: "BillingStatePostgresRepositoryQueryError",
+          operation: "getTenantAccessState",
+          cause: new Error("billing-state unavailable"),
+        } as const),
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.startAuthentication}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              requestContext: {
+                actorType: actorType.anonymous,
+                correlationId: "corr_http_start_dependency_failure",
+                tenant: {
+                  scope: platformScope.platform,
+                  scopeId: platformScope.platform,
+                },
+              },
+              tenantHint: "org_http",
+              redirectUri: "https://product.example.com/auth/callback",
+            }),
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "A backend dependency request failed.",
+    });
   });
 
   it("returns 400 for invalid JSON payloads", async () => {
@@ -306,6 +495,28 @@ describe("platform subscriber journey http", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "Request payload did not match the expected schema.",
+    });
+  });
+
+  it("maps raw parse failures from subscriber journey execution to server errors", async () => {
+    const handler = createSubscriberJourneyHttpHandler(() =>
+      parseFailureEffect(),
+    );
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.listPublicPlans}`,
+          {
+            method: "GET",
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Subscriber journey request failed.",
     });
   });
 
@@ -503,6 +714,156 @@ describe("platform subscriber journey http", () => {
     });
   });
 
+  it("resolves request context through the backend-owned session header", async () => {
+    let capturedInput:
+      | Parameters<SubscriberJourneyService["resolveRequestContext"]>[0]
+      | undefined;
+    const handler = createTestHandler({
+      resolveRequestContext: (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          actorType: actorType.organizationAdmin,
+          actorId: "usr_http_request_context",
+          sessionId: input.sessionId,
+          correlationId: "corr_http_request_context",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_http_request_context",
+            organizationId: "org_http_request_context",
+          },
+        } as const);
+      },
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.resolveRequestContext}`,
+          {
+            method: "POST",
+            headers: {
+              [subscriberJourneySessionHeaderName]: "sess_http_request_context",
+            },
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      requestContext: expect.objectContaining({
+        sessionId: "sess_http_request_context",
+      }),
+    });
+    expect(capturedInput).toEqual({
+      sessionId: "sess_http_request_context",
+    });
+  });
+
+  it("returns 401 when the subscriber session header is missing for request-context lookups", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.resolveRequestContext}`,
+          {
+            method: "POST",
+            headers: {
+              cookie: "comvestec_session=sess_cookie_only",
+            },
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated session is required.",
+    });
+  });
+
+  it("builds product bootstrap through the backend-owned session header", async () => {
+    let capturedInput:
+      | Parameters<SubscriberJourneyService["buildProductBootstrap"]>[0]
+      | undefined;
+    const handler = createTestHandler({
+      buildProductBootstrap: (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          requestContext: {
+            actorType: actorType.organizationAdmin,
+            actorId: "usr_http_bootstrap",
+            sessionId: input.sessionId,
+            correlationId: "corr_http_bootstrap",
+            tenant: {
+              scope: platformScope.organization,
+              scopeId: "org_http_bootstrap",
+              organizationId: "org_http_bootstrap",
+            },
+          },
+          authorization: {
+            allowed: true,
+            reason: "Allowed by persisted authorization relation.",
+            cacheKey: "bootstrap:http:org_http_bootstrap",
+            auditRequired: false,
+          },
+        } as const);
+      },
+    });
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.buildProductBootstrap}`,
+          {
+            method: "POST",
+            headers: {
+              [subscriberJourneySessionHeaderName]: "sess_http_bootstrap",
+            },
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          sessionId: "sess_http_bootstrap",
+        }),
+      }),
+    );
+    expect(capturedInput).toEqual({
+      sessionId: "sess_http_bootstrap",
+    });
+  });
+
+  it("returns 401 when the subscriber session header is missing for product bootstrap", async () => {
+    const handler = createTestHandler({});
+
+    const response = await Effect.runPromise(
+      handler(
+        new Request(
+          `http://localhost${subscriberJourneyApiPath.buildProductBootstrap}`,
+          {
+            method: "POST",
+            headers: {
+              cookie: "comvestec_session=sess_cookie_only",
+            },
+          },
+        ),
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authenticated session is required.",
+    });
+  });
+
   it("returns 502 when product bootstrap authorization delegation fails as a backend dependency", async () => {
     const handler = createTestHandler({
       buildProductBootstrap: () =>
@@ -520,11 +881,9 @@ describe("platform subscriber journey http", () => {
           {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
+              [subscriberJourneySessionHeaderName]:
+                "sess_http_bootstrap_dependency_failure",
             },
-            body: JSON.stringify({
-              sessionId: "sess_http_bootstrap_dependency_failure",
-            }),
           },
         ),
       ),

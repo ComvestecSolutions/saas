@@ -1,0 +1,35 @@
+$ bun run check:typecheck-coverage && bun run typecheck:workspace && bun run typecheck:convex && bun run typecheck:tooling && bun run typecheck:tests
+$ bun run tooling/scripts/check-typecheck-coverage.ts
+Typecheck coverage verified for 433 first-party TypeScript files. Explicitly excluded surfaces remain outside this audit: .git, .turbo, node_modules, vendor, root build, root coverage, root dist, apps/*/build, apps/*/dist, packages/*/build, packages/*/dist.
+$ turbo run typecheck
+ΓÇó turbo 2.9.6
+
+   ΓÇó Packages in scope: @comvestec/admin-app, @comvestec/config, @comvestec/contracts, @comvestec/e2e, @comvestec/modules, @comvestec/platform, @comvestec/product-app, @comvestec/public-web
+   ΓÇó Running typecheck in 8 packages
+   ΓÇó Remote caching disabled
+
+@comvestec/contracts:typecheck: cache hit, replaying logs 64303987e3933e69
+@comvestec/contracts:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/config:typecheck: cache hit, replaying logs 9ad1c04aaf7342bb
+@comvestec/config:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/platform:typecheck: cache miss, executing bb9b58c293dc3faa
+@comvestec/e2e:typecheck: cache hit, replaying logs b1a324db30470583
+@comvestec/e2e:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/platform:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/product-app:typecheck: cache miss, executing 2876934fb000818e
+@comvestec/admin-app:typecheck: cache miss, executing 8d5e5aa000faaf96
+@comvestec/public-web:typecheck: cache miss, executing 1d29a749b3c80f09
+@comvestec/modules:typecheck: cache miss, executing 0219f5370b4e2989
+@comvestec/product-app:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/admin-app:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/public-web:typecheck: $ tsc --noEmit -p tsconfig.json
+@comvestec/modules:typecheck: $ tsc --noEmit -p tsconfig.json
+
+ Tasks:    8 successful, 8 total
+Cached:    3 cached, 8 total
+  Time:    4m26.358s 
+
+$ bun run check:convex-generated && bunx tsc --noEmit -p tsconfig.convex.json
+$ bun run tooling/scripts/check-convex-generated.ts
+$ bunx tsc --noEmit -p tsconfig.tooling.json
+$ bunx tsc --noEmit -p tsconfig.test.json
