@@ -14,6 +14,15 @@ import {
   billingSubscriptionStatus,
   billingWebhookEventType,
   billingWebhookReconciliationAction,
+  CustomDomainHostSchema,
+  EnsureSearchTenantIndexInputSchema,
+  importExportJobFormat,
+  importExportJobSource,
+  ManagedFileSummaryViewSchema,
+  normalizeManagedFileSummaryImportExportFields,
+  SearchTenantIndexRecordSchema,
+  SearchTenantIndexSettingsSchema,
+  SearchTenantIndexSummaryViewSchema,
   permissionScope,
   PermissionScopeSchema,
   platformModuleId,
@@ -154,6 +163,166 @@ describe("contract schemas", () => {
     )(permissionScope.brandingManage);
 
     expect(decodedPermissionScope).toBe(permissionScope.brandingManage);
+  });
+
+  it("rejects non-positive and fractional managed-file byte counts in shared views", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(ManagedFileSummaryViewSchema)({
+        fileId: "file-storage:organization:org_1:file_1",
+        fileName: "logo.svg",
+        contentType: "image/svg+xml",
+        sizeBytes: -1,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      Schema.decodeUnknownSync(ManagedFileSummaryViewSchema)({
+        fileId: "file-storage:organization:org_1:file_1",
+        fileName: "logo.svg",
+        contentType: "image/svg+xml",
+        sizeBytes: 1.5,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects invalid managed-file deleted timestamps in shared views", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(ManagedFileSummaryViewSchema)({
+        fileId: "file-storage:organization:org_1:file_1",
+        fileName: "logo.svg",
+        contentType: "image/svg+xml",
+        sizeBytes: 2048,
+        deletedAt: "not-a-timestamp",
+      }),
+    ).toThrow();
+  });
+
+  it("accepts only valid custom-domain hosts", () => {
+    expect(
+      Schema.decodeUnknownSync(CustomDomainHostSchema)("brand.acme.example"),
+    ).toBe("brand.acme.example");
+
+    for (const invalidHost of [
+      "127.0.0.1",
+      "brand.example.com:443",
+      "brand..example",
+      "-brand.example",
+      "brand_.example",
+      "https://brand.example",
+    ]) {
+      expect(() =>
+        Schema.decodeUnknownSync(CustomDomainHostSchema)(invalidHost),
+      ).toThrow();
+    }
+  });
+
+  it("normalizes legacy managed-file summary import-export fields from source-only data", () => {
+    expect(
+      normalizeManagedFileSummaryImportExportFields({
+        source: importExportJobSource.managedFileSummaryJson,
+      }),
+    ).toEqual({
+      source: importExportJobSource.managedFileSummaryJson,
+      format: importExportJobFormat.json,
+    });
+  });
+
+  it("normalizes managed-file summary import-export sources to match explicit format", () => {
+    expect(
+      normalizeManagedFileSummaryImportExportFields({
+        source: importExportJobSource.managedFileSummaryJson,
+        format: importExportJobFormat.csv,
+      }),
+    ).toEqual({
+      source: importExportJobSource.managedFileSummaryCsv,
+      format: importExportJobFormat.csv,
+    });
+  });
+
+  it("preserves support-case summary import-export sources while filling the implicit JSON format", () => {
+    expect(
+      normalizeManagedFileSummaryImportExportFields({
+        source: importExportJobSource.supportCaseSummaryJson,
+      }),
+    ).toEqual({
+      source: importExportJobSource.supportCaseSummaryJson,
+      format: importExportJobFormat.json,
+    });
+  });
+
+  it("rejects invalid search index counts and sync timestamps in shared views", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(SearchTenantIndexSummaryViewSchema)({
+        indexName: "search:organization:org_1",
+        scope: "organization",
+        scopeId: "org_1",
+        documentCount: -1,
+        lifecycleState: "ready",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      Schema.decodeUnknownSync(SearchTenantIndexSummaryViewSchema)({
+        indexName: "search:organization:org_1",
+        scope: "organization",
+        scopeId: "org_1",
+        documentCount: 10,
+        lifecycleState: "ready",
+        lastSyncedAt: "not-a-timestamp",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects invalid search lifecycle record timestamps", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(SearchTenantIndexRecordSchema)({
+        indexName: "search:organization:org_1",
+        scope: "organization",
+        scopeId: "org_1",
+        documentCount: 0,
+        lifecycleState: "deleted",
+        deletedAt: "not-a-timestamp",
+        createdAt: "2026-04-27T15:00:00.000Z",
+        updatedAt: "2026-04-27T15:00:00.000Z",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects platform-scoped search lifecycle targets", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(EnsureSearchTenantIndexInputSchema)({
+        scope: "platform",
+        scopeId: "platform",
+        settings: {
+          filterableAttributes: ["status"],
+          sortableAttributes: ["updatedAt"],
+          searchableAttributes: ["title"],
+          rankingRules: ["words"],
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("decodes optional search tenant-index synonyms", () => {
+    expect(
+      Schema.decodeUnknownSync(SearchTenantIndexSettingsSchema)({
+        filterableAttributes: ["status"],
+        sortableAttributes: ["updatedAt"],
+        searchableAttributes: ["title"],
+        rankingRules: ["words"],
+        synonyms: {
+          invoice: ["bill", "statement"],
+        },
+      }),
+    ).toEqual({
+      filterableAttributes: ["status"],
+      sortableAttributes: ["updatedAt"],
+      searchableAttributes: ["title"],
+      rankingRules: ["words"],
+      synonyms: {
+        invoice: ["bill", "statement"],
+      },
+    });
   });
 
   it("decodes flexible billing plans with mixed non-metered and rate-limited entitlements", () => {

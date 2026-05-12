@@ -53,7 +53,11 @@ export {
   PlatformModuleManifestSchema,
   type PlatformModuleManifest,
 } from "./module-types";
-export { findModuleManifest, platformModuleManifests } from "./manifests";
+export {
+  findModuleManifest,
+  platformModuleManifests,
+  validatePlatformModuleManifestDeclarations,
+} from "./manifests";
 export {
   defaultTenantOnboardingEnabledModules,
   resolveDefaultTenantOnboardingEnabledModules,
@@ -73,6 +77,10 @@ export {
   runtimeConfigFields,
 } from "./manifests/governance/runtime-config";
 export {
+  featureFlagsFieldClassifications,
+  featureFlagsFields,
+} from "./manifests/governance/feature-flags";
+export {
   supportOperationsFieldClassifications,
   supportOperationsFields,
 } from "./manifests/governance/support-operations";
@@ -80,3 +88,15 @@ export {
   tenantBrandingFieldClassifications,
   tenantBrandingFields,
 } from "./manifests/domains/tenant-branding";
+export {
+  importExportFieldClassifications,
+  importExportFields,
+} from "./manifests/data/import-export";
+export {
+  notificationCenterFieldClassifications,
+  notificationCenterFields,
+} from "./manifests/communication/notification-center";
+export {
+  searchFieldClassifications,
+  searchFields,
+} from "./manifests/data/search";

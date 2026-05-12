@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { PlatformScopeSchema } from "../access/platform-scopes";
 import { RequestContextSchema } from "../access/request-context";
+import { TenantContextSchema } from "../access/tenant-context";
 import {
   DeclaredModuleMeterKeySchema,
   GovernanceEntitlementFeatureKeySchema,
@@ -281,6 +282,9 @@ export const BillingCheckoutSessionInputSchema = Schema.Struct({
   cancelUrl: Schema.NonEmptyString,
   tenantScope: PlatformScopeSchema,
   tenantScopeId: Schema.NonEmptyString,
+  enterpriseId: Schema.optional(Schema.NonEmptyString),
+  organizationId: Schema.optional(Schema.NonEmptyString),
+  individualId: Schema.optional(Schema.NonEmptyString),
 });
 
 export type BillingCheckoutSessionInput = Schema.Schema.Type<
@@ -500,6 +504,82 @@ export const BillingWebhookEventSchema = Schema.Struct({
 
 export type BillingWebhookEvent = Schema.Schema.Type<
   typeof BillingWebhookEventSchema
+>;
+
+export const BillingUsageEntrySchema = Schema.Struct({
+  featureKey: GovernanceEntitlementFeatureKeySchema,
+  quotaSnapshot: BillingEntitlementQuotaSnapshotSchema,
+});
+
+export type BillingUsageEntry = Schema.Schema.Type<
+  typeof BillingUsageEntrySchema
+>;
+
+export const BillingUsageEntryListSchema = Schema.Array(
+  BillingUsageEntrySchema,
+);
+
+export type BillingUsageEntryList = Schema.Schema.Type<
+  typeof BillingUsageEntryListSchema
+>;
+
+export const BillingInvoiceHistoryEntrySchema = Schema.Struct({
+  eventId: Schema.NonEmptyString,
+  provider: Schema.NonEmptyString,
+  providerEventId: Schema.NonEmptyString,
+  subscriptionId: Schema.optional(Schema.NonEmptyString),
+  scope: Schema.optional(PlatformScopeSchema),
+  scopeId: Schema.optional(Schema.NonEmptyString),
+  eventType: BillingWebhookEventTypeSchema,
+  status: BillingPaymentEventStatusSchema,
+  amountMinor: Schema.optional(Schema.Number),
+  currency: Schema.optional(Schema.NonEmptyString),
+  effectiveAt: Schema.optional(Schema.NonEmptyString),
+  recordedAt: Schema.NonEmptyString,
+});
+
+export type BillingInvoiceHistoryEntry = Schema.Schema.Type<
+  typeof BillingInvoiceHistoryEntrySchema
+>;
+
+export const BillingInvoiceHistorySchema = Schema.Array(
+  BillingInvoiceHistoryEntrySchema,
+);
+
+export type BillingInvoiceHistory = Schema.Schema.Type<
+  typeof BillingInvoiceHistorySchema
+>;
+
+export const BillingSummaryViewSchema = Schema.Struct({
+  plan: Schema.optional(Schema.NonEmptyString),
+  billingInterval: Schema.optional(BillingPlanIntervalSchema),
+  status: Schema.optional(BillingSubscriptionStatusSchema),
+  currentPeriodEnd: Schema.optional(Schema.NonEmptyString),
+  usage: Schema.optional(BillingUsageEntryListSchema),
+  invoiceHistory: Schema.optional(BillingInvoiceHistorySchema),
+});
+
+export type BillingSummaryView = Schema.Schema.Type<
+  typeof BillingSummaryViewSchema
+>;
+
+export const AdminBillingExplanationRequestSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  tenant: TenantContextSchema,
+  inspectionReason: Schema.optional(Schema.NonEmptyString),
+});
+
+export type AdminBillingExplanationRequest = Schema.Schema.Type<
+  typeof AdminBillingExplanationRequestSchema
+>;
+
+export const AdminBillingExplanationResultSchema = Schema.Struct({
+  tenant: TenantContextSchema,
+  billing: BillingSummaryViewSchema,
+});
+
+export type AdminBillingExplanationResult = Schema.Schema.Type<
+  typeof AdminBillingExplanationResultSchema
 >;
 
 export const BillingSubscriptionSnapshotSchema = Schema.Struct({

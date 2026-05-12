@@ -34,19 +34,19 @@ Convex for file storage and file metadata. PostgreSQL for file-level audit recor
 
 ## Data Classifications
 
-| Data                             | Classification      |
-| -------------------------------- | ------------------- |
-| File content                     | tenant-confidential |
-| File metadata (name, type, size) | internal            |
-| Published branding assets        | public              |
-| Legal hold markers               | regulated-sensitive |
+| Data                                     | Classification      |
+| ---------------------------------------- | ------------------- |
+| File content                             | tenant-confidential |
+| File metadata (fileId, name, type, size) | internal            |
+| Published branding assets                | public              |
+| Legal hold markers                       | regulated-sensitive |
 
 ## Projection Profiles
 
-| Profile | Visible Fields                                        | Audited Fields |
-| ------- | ----------------------------------------------------- | -------------- |
-| summary | id, name, type, size                                  | —              |
-| admin   | id, name, type, size, uploadedBy, tenantId, legalHold | legalHold      |
+| Profile | Visible Fields                                                                        | Audited Fields  |
+| ------- | ------------------------------------------------------------------------------------- | --------------- |
+| summary | fileId, fileName, contentType, sizeBytes                                              | —               |
+| admin   | fileId, fileName, contentType, sizeBytes, uploadedBy, scope, scopeId, legalHoldActive | legalHoldActive |
 
 ## Rules
 
@@ -54,3 +54,4 @@ Convex for file storage and file metadata. PostgreSQL for file-level audit recor
 2. Sensitive files require classification and audit requirements.
 3. Retention and legal hold behavior must be explicit.
 4. `file-storage` owns branding asset bytes and file metadata, while `tenant-branding` owns which approved assets are published in effective branding projections.
+5. Managed-file registration must bind the uploaded blob to a server-issued upload reservation and validate authoritative storage metadata, including actual blob size, before metadata is persisted.

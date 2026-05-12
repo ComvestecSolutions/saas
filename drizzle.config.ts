@@ -1,41 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { defineConfig } from "drizzle-kit";
 
-const envFilePaths = [".env.local", ".env"] as const;
-
 const readEnvironmentValue = (key: string) => {
-  const directValue = process.env[key];
+  const directValue = process.env[key]?.trim();
 
-  if (typeof directValue === "string" && directValue.length > 0) {
+  if (directValue !== undefined && directValue.length > 0) {
     return directValue;
   }
 
-  for (const envFilePath of envFilePaths) {
-    const absolutePath = resolve(process.cwd(), envFilePath);
-
-    if (!existsSync(absolutePath)) {
-      continue;
-    }
-
-    const fileContents = readFileSync(absolutePath, "utf8");
-    const matchedLine = fileContents
-      .split(/\r?\n/u)
-      .find((line) => line.startsWith(`${key}=`));
-
-    if (matchedLine === undefined) {
-      continue;
-    }
-
-    const value = matchedLine.slice(key.length + 1).trim();
-
-    if (value.length > 0) {
-      return value;
-    }
-  }
-
   throw new Error(
-    `${key} is required for Drizzle commands. Define it in the shell or in .env.`,
+    `${key} is required for Drizzle commands. Use a Vault-backed local wrapper such as \`bun run db:generate:local\` or \`bun run db:migrate:local\`, or set it in the current shell.`,
   );
 };
 

@@ -29,6 +29,132 @@
       "when": 1776527514904,
       "tag": "0003_absurd_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777115865365,
+      "tag": "0004_whole_the_renegades",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777127630032,
+      "tag": "0005_calm_dexter_bennett",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777269092738,
+      "tag": "0006_hard_scarlet_spider",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777274828366,
+      "tag": "0007_plain_starjammers",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777326412683,
+      "tag": "0008_lonely_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777404582526,
+      "tag": "0009_wonderful_wilson_fisk",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777663200000,
+      "tag": "0010_bold_moondragon",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777666800000,
+      "tag": "0011_breezy_firebird",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777785361402,
+      "tag": "0012_light_freak",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777806647816,
+      "tag": "0013_shallow_marvel_apes",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1777889424075,
+      "tag": "0014_tenant_branding_host_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1777929997696,
+      "tag": "0015_loving_dakota_north",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1778023447324,
+      "tag": "0016_hard_ghost_rider",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778031431761,
+      "tag": "0017_robust_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778047565330,
+      "tag": "0018_rapid_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1778090407555,
+      "tag": "0019_ambitious_strong_guy",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1778114750591,
+      "tag": "0020_demonic_obadiah_stane",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1778119717325,
+      "tag": "0021_odd_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

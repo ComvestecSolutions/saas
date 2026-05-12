@@ -107,6 +107,11 @@ const validRuntimeResolutionSourceSeed =
 
 void validRuntimeResolutionSourceSeed;
 
+const validRuntimeRolloutResolutionSourceSeed =
+  runtimeResolutionSource.rollout satisfies RuntimeResolutionSource;
+
+void validRuntimeRolloutResolutionSourceSeed;
+
 const invalidRuntimeResolutionSourceSeed =
   // @ts-expect-error runtime resolution sources must use shared literals
   "not-a-source" satisfies RuntimeResolutionSource;
@@ -138,6 +143,11 @@ const validAuditActionSeed =
   supportOperationsAuditAction.breakGlassStarted satisfies AuditAction;
 
 void validAuditActionSeed;
+
+const validImpersonationAuditActionSeed =
+  supportOperationsAuditAction.impersonationStarted satisfies AuditAction;
+
+void validImpersonationAuditActionSeed;
 
 const invalidAuditActionSeed =
   // @ts-expect-error audit actions must use shared literals

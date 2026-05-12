@@ -1,5 +1,6 @@
 import {
   configSchemaType,
+  featureFlagLifecycle,
   observabilityConfigKey,
   observabilityFeatureFlag,
   permissionScope,
@@ -39,6 +40,8 @@ export const observabilityManifest = defineModuleManifest({
       defaultEnabled: true,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "None — core module.",
     },
     {
@@ -49,6 +52,8 @@ export const observabilityManifest = defineModuleManifest({
       defaultEnabled: false,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [observabilityFeatureFlag.enabled],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan:
         "Promote to default once GlitchTip rollout and retention policy are validated.",
     },
@@ -60,6 +65,8 @@ export const observabilityManifest = defineModuleManifest({
       defaultEnabled: false,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [observabilityFeatureFlag.enabled],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan:
         "Promote to default once SLO definitions and alert routing are validated.",
     },

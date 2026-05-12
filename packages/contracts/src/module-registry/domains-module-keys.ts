@@ -73,6 +73,8 @@ export const tenantManagementConfigKey = defineModuleConfigKeys(
   platformModuleId.tenantManagement,
   {
     membershipInviteExpiryHours: "membership.inviteExpiryHours",
+    membershipInviteReminderHoursBeforeExpiry:
+      "membership.inviteReminderHoursBeforeExpiry",
     onboardingReminderDays: "onboarding.reminderDays",
   },
 );

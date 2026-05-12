@@ -1,0 +1,346 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Welcome to Comvestec</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;family=JetBrains+Mono:wght@500&amp;family=Metropolis:wght@600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      .material-symbols-outlined {
+        font-variation-settings:
+          "FILL" 0,
+          "wght" 400,
+          "GRAD" 0,
+          "opsz" 24;
+      }
+    </style>
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-tint": "#cfbcff",
+              "on-secondary-container": "#bfb2da",
+              "on-surface-variant": "#cbc4d2",
+              "on-tertiary-fixed-variant": "#594400",
+              error: "#ffb4ab",
+              "surface-container-highest": "#36343a",
+              "surface-container-lowest": "#0f0d13",
+              "surface-container-low": "#1d1b20",
+              "surface-dim": "#141218",
+              "surface-variant": "#36343a",
+              background: "#141218",
+              "on-tertiary": "#3e2e00",
+              "on-tertiary-container": "#503d00",
+              "on-secondary-fixed": "#1f1635",
+              "on-primary-fixed": "#22005d",
+              "inverse-primary": "#6750a4",
+              "on-primary-container": "#e0d2ff",
+              "tertiary-container": "#c9a74d",
+              "tertiary-fixed": "#ffdf93",
+              "secondary-fixed": "#e9ddff",
+              "primary-fixed-dim": "#cfbcff",
+              "on-secondary": "#342b4b",
+              "inverse-surface": "#e6e0e9",
+              secondary: "#cdc0e9",
+              "secondary-container": "#4d4465",
+              "inverse-on-surface": "#322f35",
+              "primary-container": "#6750a4",
+              "surface-container": "#211f24",
+              "surface-container-high": "#2b292f",
+              primary: "#cfbcff",
+              "primary-fixed": "#e9ddff",
+              "on-primary-fixed-variant": "#4f378a",
+              "on-error-container": "#ffdad6",
+              "on-primary": "#381e72",
+              tertiary: "#e7c365",
+              "on-surface": "#e6e0e9",
+              "outline-variant": "#494551",
+              "error-container": "#93000a",
+              "on-background": "#e6e0e9",
+              "on-secondary-fixed-variant": "#4b4263",
+              surface: "#141218",
+              "tertiary-fixed-dim": "#e7c365",
+              "secondary-fixed-dim": "#cdc0e9",
+              "on-error": "#690005",
+              "on-tertiary-fixed": "#241a00",
+              outline: "#948e9c",
+              "surface-bright": "#3b383e",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              stack_md: "24px",
+              inline_gutter: "20px",
+              stack_sm: "16px",
+              container_max_width: "600px",
+              stack_xs: "8px",
+              stack_lg: "32px",
+              stack_xl: "48px",
+            },
+            fontFamily: {
+              body: ["Inter"],
+              "meta-code": ["JetBrains Mono"],
+              h2: ["Metropolis"],
+              h1: ["Metropolis"],
+              eyebrow: ["Inter"],
+              "body-sm": ["Inter"],
+            },
+            fontSize: {
+              body: ["15px", { lineHeight: "24px", fontWeight: "400" }],
+              "meta-code": ["12px", { lineHeight: "16px", fontWeight: "500" }],
+              h2: ["20px", { lineHeight: "28px", fontWeight: "600" }],
+              h1: [
+                "28px",
+                {
+                  lineHeight: "36px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "700",
+                },
+              ],
+              eyebrow: [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  letterSpacing: "0.1em",
+                  fontWeight: "700",
+                },
+              ],
+              "body-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body
+    class="bg-background text-on-surface font-body antialiased min-h-screen flex flex-col items-center py-stack_xl px-inline_gutter"
+  >
+    <div class="w-full max-w-container_max_width flex flex-col gap-stack_xl">
+      <!-- TopAppBar Shared Component -->
+      <header
+        class="bg-surface-container-low dark:bg-surface-container-low border-b border-outline-variant dark:border-outline-variant w-full rounded-t-lg"
+      >
+        <div
+          class="flex justify-between items-center w-full px-inline_gutter py-stack_sm mx-auto"
+        >
+          <div
+            class="font-h2 text-h2 font-bold text-on-surface dark:text-on-surface"
+          >
+            Comvestec
+          </div>
+          <div class="flex gap-4 items-center">
+            <span
+              class="material-symbols-outlined text-primary dark:text-primary hover:bg-surface-container-highest transition-colors cursor-pointer p-1 rounded-full"
+              data-icon="notifications"
+              >notifications</span
+            >
+            <span
+              class="material-symbols-outlined text-primary dark:text-primary hover:bg-surface-container-highest transition-colors cursor-pointer p-1 rounded-full"
+              data-icon="settings"
+              >settings</span
+            >
+          </div>
+        </div>
+      </header>
+      <!-- Primary Panel -->
+      <main
+        class="w-full bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden shadow-sm"
+      >
+        <!-- Hero Graphic Placeholder -->
+        <div
+          class="w-full h-[180px] bg-surface-variant bg-cover bg-center border-b border-outline-variant"
+          data-alt="An abstract, highly structured digital visualization resembling a dark-mode data center or high-tech command interface. Intricate glowing grid lines in soft violet and deep blue recede into a dark, infinite void. The aesthetic is strictly institutional, architectural, and precise, conveying a sense of secure, high-end technological infrastructure. Soft directional lighting highlights key geometric intersections."
+          style="
+            background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuBW_xBf5uFKZTJ_zog-RbYhajldCxRn4TsEAIAhCyJTZ1qxgG6SY8T6HK6C59r0QGFRoAjK4X3Ziy0aHG5F615tmkZw0VIZ5qhAJNHCwukP2pJS2gW0t78EA9mLw7GZaspjv2swk_vNs0_n2Nbh4Uu-tPC_n8gDY9-oK7H-g-KPxs2lF3vErGylxlkP_ta7A6YbSCO9iLi3uJeS5A9JCBze2xwxmeQKLxk3ceP_3vIJWvB44rvi62fdQXSqDw5MoF1DXvYFrRjQ6WY&quot;);
+          "
+        ></div>
+        <div class="p-stack_lg">
+          <!-- Eyebrow Context -->
+          <p
+            class="font-eyebrow text-eyebrow text-primary uppercase tracking-widest mb-stack_xs"
+          >
+            Initialization Sequence
+          </p>
+          <!-- Headline -->
+          <h1 class="font-h1 text-h1 text-on-surface mb-stack_md">
+            Your Workspace is Ready
+          </h1>
+          <!-- Body Text -->
+          <p class="font-body text-body text-on-surface-variant mb-stack_xl">
+            Welcome to Comvestec. Your secure operational environment has been
+            successfully provisioned and is ready for configuration. To ensure
+            optimal security and operational readiness, please complete the
+            mandatory onboarding sequence outlined below.
+          </p>
+          <!-- Checklist Modules -->
+          <div class="flex flex-col gap-stack_sm mb-stack_xl">
+            <!-- Checklist Item 1 -->
+            <div
+              class="flex items-start gap-4 p-4 rounded-md border border-outline-variant bg-surface hover:bg-surface-container-highest transition-colors"
+            >
+              <span
+                class="material-symbols-outlined text-primary mt-0.5"
+                data-icon="radio_button_unchecked"
+                >radio_button_unchecked</span
+              >
+              <div class="flex-1">
+                <h3
+                  class="font-h2 text-h2 text-on-surface text-[16px] leading-[24px] mb-1"
+                >
+                  Verify Administrator Identity
+                </h3>
+                <p
+                  class="font-body text-body text-on-surface-variant text-[14px] leading-[20px]"
+                >
+                  Authenticate your primary access credentials to unlock
+                  foundational platform privileges.
+                </p>
+              </div>
+              <div class="ml-auto mt-1">
+                <span
+                  class="bg-surface-variant text-on-surface-variant font-meta-code text-meta-code px-2 py-1 rounded-sm border border-outline-variant uppercase"
+                  >Pending</span
+                >
+              </div>
+            </div>
+            <!-- Checklist Item 2 -->
+            <div
+              class="flex items-start gap-4 p-4 rounded-md border border-outline-variant bg-surface hover:bg-surface-container-highest transition-colors"
+            >
+              <span
+                class="material-symbols-outlined text-primary mt-0.5"
+                data-icon="radio_button_unchecked"
+                >radio_button_unchecked</span
+              >
+              <div class="flex-1">
+                <h3
+                  class="font-h2 text-h2 text-on-surface text-[16px] leading-[24px] mb-1"
+                >
+                  Configure Multi-Factor Authentication
+                </h3>
+                <p
+                  class="font-body text-body text-on-surface-variant text-[14px] leading-[20px]"
+                >
+                  Establish 2FA protocols to secure your instance against
+                  unauthorized access.
+                </p>
+              </div>
+              <div class="ml-auto mt-1">
+                <span
+                  class="bg-surface-variant text-on-surface-variant font-meta-code text-meta-code px-2 py-1 rounded-sm border border-outline-variant uppercase"
+                  >Pending</span
+                >
+              </div>
+            </div>
+            <!-- Checklist Item 3 -->
+            <div
+              class="flex items-start gap-4 p-4 rounded-md border border-outline-variant bg-surface hover:bg-surface-container-highest transition-colors opacity-75"
+            >
+              <span
+                class="material-symbols-outlined text-outline mt-0.5"
+                data-icon="radio_button_unchecked"
+                >radio_button_unchecked</span
+              >
+              <div class="flex-1">
+                <h3
+                  class="font-h2 text-h2 text-on-surface text-[16px] leading-[24px] mb-1"
+                >
+                  Integrate Data Pipelines
+                </h3>
+                <p
+                  class="font-body text-body text-on-surface-variant text-[14px] leading-[20px]"
+                >
+                  Connect your external data sources to begin populating your
+                  analytical dashboards.
+                </p>
+              </div>
+              <div class="ml-auto mt-1">
+                <span
+                  class="bg-surface-dim text-outline font-meta-code text-meta-code px-2 py-1 rounded-sm border border-outline-variant uppercase"
+                  >Optional</span
+                >
+              </div>
+            </div>
+          </div>
+          <!-- Primary Action -->
+          <div class="flex flex-col sm:flex-row items-center gap-stack_md">
+            <a
+              class="w-full sm:w-auto inline-flex items-center justify-center bg-primary text-on-primary font-body text-body font-bold px-[24px] py-[12px] rounded-DEFAULT hover:opacity-90 transition-opacity"
+              href="#"
+            >
+              Initialize Setup
+              <span
+                class="material-symbols-outlined ml-2 text-[18px]"
+                data-icon="arrow_forward"
+                >arrow_forward</span
+              >
+            </a>
+            <!-- Support Link -->
+            <a
+              class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors underline flex items-center gap-1"
+              href="#"
+            >
+              <span
+                class="material-symbols-outlined text-[16px]"
+                data-icon="help"
+                >help</span
+              >
+              Access Deployment Documentation
+            </a>
+          </div>
+        </div>
+      </main>
+      <!-- Footer Shared Component -->
+      <footer
+        class="w-full max-w-container_max_width mx-auto py-stack_xl px-inline_gutter text-center flex flex-col gap-stack_sm bg-background dark:bg-background"
+      >
+        <div
+          class="font-eyebrow text-eyebrow uppercase tracking-widest text-outline"
+        >
+          Comvestec
+        </div>
+        <div class="flex justify-center gap-stack_md flex-wrap">
+          <a
+            class="text-on-surface-variant dark:text-on-surface-variant font-body-sm text-body-sm hover:text-primary transition-colors underline focus:outline-none focus:ring-1 focus:ring-primary rounded-sm"
+            href="#"
+            >Privacy Policy</a
+          >
+          <a
+            class="text-on-surface-variant dark:text-on-surface-variant font-body-sm text-body-sm hover:text-primary transition-colors underline focus:outline-none focus:ring-1 focus:ring-primary rounded-sm"
+            href="#"
+            >Terms of Service</a
+          >
+          <a
+            class="text-on-surface-variant dark:text-on-surface-variant font-body-sm text-body-sm hover:text-primary transition-colors underline focus:outline-none focus:ring-1 focus:ring-primary rounded-sm"
+            href="#"
+            >Email Preferences</a
+          >
+        </div>
+        <p
+          class="font-body-sm text-body-sm text-on-surface-variant dark:text-on-surface-variant mt-stack_xs"
+        >
+          © 2024 Comvestec Solutions. All rights reserved.
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

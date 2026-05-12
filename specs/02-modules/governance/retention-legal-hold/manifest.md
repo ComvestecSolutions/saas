@@ -4,14 +4,14 @@ Status: accepted
 
 ## Technology Boundary
 
-PostgreSQL via Drizzle for retention policies and legal hold records. Convex for file retention markers. Effect services for retention enforcement and purge scheduling.
+PostgreSQL via Drizzle for retention policies and legal hold records. Effect services for retention policy, legal hold, and guard-evaluation workflows. Downstream file-lifecycle and export modules consume this module's guard decisions instead of reimplementing retention logic.
 
 ## Responsibilities
 
 1. Retention policy definition per data type and tenant.
-2. Legal hold placement and release.
-3. Purge scheduling and execution with audit trail.
-4. Compliance evidence export.
+2. Legal hold placement and release with auditable actor identity.
+3. Retention guard evaluation for downstream destructive workflows and purge-eligibility checks.
+4. Compliance review over retention policies and legal holds through projected backend surfaces.
 
 ## Permission Scopes
 
@@ -41,13 +41,13 @@ PostgreSQL via Drizzle for retention policies and legal hold records. Convex for
 
 ## Projection Profiles
 
-| Profile           | Visible Fields                                               | Audited Fields            |
-| ----------------- | ------------------------------------------------------------ | ------------------------- |
-| admin             | policyId, dataType, retentionDays, legalHoldActive           | legalHoldActive           |
-| compliance-review | policyId, dataType, retentionDays, legalHoldActive, evidence | legalHoldActive, evidence |
+| Profile           | Visible Fields                                                                           | Audited Fields                      |
+| ----------------- | ---------------------------------------------------------------------------------------- | ----------------------------------- |
+| admin             | policyId, dataType, retentionDays, legalHoldActive                                       | legalHoldActive                     |
+| compliance-review | legalHoldId, dataType, targetId, status, placedAt, releasedAt, evidence, legalHoldActive | legalHoldActive, targetId, evidence |
 
 ## Rules
 
 1. Data under legal hold must never be purged regardless of retention policy.
 2. Legal hold placement and release must be auditable with actor identity.
-3. Purge execution must produce compliance evidence records.
+3. Downstream file-lifecycle, export, and deletion flows must consume retention guard decisions before destructive actions.

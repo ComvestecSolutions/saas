@@ -7,8 +7,26 @@ export const getPostgresSchemaColumnNames = () => ({
   auditLogEventsTable: Object.keys(
     getTableColumns(postgresSchema.auditLogEventsTable),
   ),
+  retentionPoliciesTable: Object.keys(
+    getTableColumns(postgresSchema.retentionPoliciesTable),
+  ),
+  retentionLegalHoldsTable: Object.keys(
+    getTableColumns(postgresSchema.retentionLegalHoldsTable),
+  ),
+  supportOperationsCasesTable: Object.keys(
+    getTableColumns(postgresSchema.supportOperationsCasesTable),
+  ),
+  supportOperationsBreakGlassIncidentsTable: Object.keys(
+    getTableColumns(postgresSchema.supportOperationsBreakGlassIncidentsTable),
+  ),
+  supportOperationsImpersonationSessionsTable: Object.keys(
+    getTableColumns(postgresSchema.supportOperationsImpersonationSessionsTable),
+  ),
   runtimeConfigOverridesTable: Object.keys(
     getTableColumns(postgresSchema.runtimeConfigOverridesTable),
+  ),
+  runtimeConfigOverrideProposalsTable: Object.keys(
+    getTableColumns(postgresSchema.runtimeConfigOverrideProposalsTable),
   ),
   runtimeConfigSyncArtifactsTable: Object.keys(
     getTableColumns(postgresSchema.runtimeConfigSyncArtifactsTable),
@@ -18,6 +36,9 @@ export const getPostgresSchemaColumnNames = () => ({
   ),
   tenantBrandingDomainVerificationTable: Object.keys(
     getTableColumns(postgresSchema.tenantBrandingDomainVerificationTable),
+  ),
+  searchTenantIndexesTable: Object.keys(
+    getTableColumns(postgresSchema.searchTenantIndexesTable),
   ),
   billingEntitlementsTable: Object.keys(
     getTableColumns(postgresSchema.billingEntitlementsTable),
@@ -34,6 +55,21 @@ export const getPostgresSchemaColumnNames = () => ({
   billingCustomerAccountsTable: Object.keys(
     getTableColumns(postgresSchema.billingCustomerAccountsTable),
   ),
+  emailDeliveryTrackingTable: Object.keys(
+    getTableColumns(postgresSchema.emailDeliveryTrackingTable),
+  ),
+  emailRecipientSuppressionsTable: Object.keys(
+    getTableColumns(postgresSchema.emailRecipientSuppressionsTable),
+  ),
+  importExportJobsTable: Object.keys(
+    getTableColumns(postgresSchema.importExportJobsTable),
+  ),
+  notificationCenterEmailPreferencesTable: Object.keys(
+    getTableColumns(postgresSchema.notificationCenterEmailPreferencesTable),
+  ),
+  notificationCenterEmailReceiptsTable: Object.keys(
+    getTableColumns(postgresSchema.notificationCenterEmailReceiptsTable),
+  ),
   billingSubscriptionsTable: Object.keys(
     getTableColumns(postgresSchema.billingSubscriptionsTable),
   ),
@@ -42,6 +78,15 @@ export const getPostgresSchemaColumnNames = () => ({
   ),
   webhookReceiptsTable: Object.keys(
     getTableColumns(postgresSchema.webhookReceiptsTable),
+  ),
+  webhookSubscriptionsTable: Object.keys(
+    getTableColumns(postgresSchema.webhookSubscriptionsTable),
+  ),
+  webhookOutboundDeliveriesTable: Object.keys(
+    getTableColumns(postgresSchema.webhookOutboundDeliveriesTable),
+  ),
+  webhookApiKeysTable: Object.keys(
+    getTableColumns(postgresSchema.webhookApiKeysTable),
   ),
   tenantOnboardingRunsTable: Object.keys(
     getTableColumns(postgresSchema.tenantOnboardingRunsTable),

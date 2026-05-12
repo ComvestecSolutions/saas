@@ -22,6 +22,7 @@ export const PlatformEnvironmentSchema = Schema.Struct({
   ketoWriteUrl: Schema.NonEmptyString,
   errorTrackingDsn: Schema.NonEmptyString,
   openpanelClientId: Schema.NonEmptyString,
+  openpanelClientSecret: Schema.NonEmptyString,
   openpanelApiUrl: Schema.NonEmptyString,
   novuApiKey: Schema.NonEmptyString,
   novuApiUrl: Schema.NonEmptyString,
@@ -34,6 +35,9 @@ export const PlatformEnvironmentSchema = Schema.Struct({
   openmeterApiKey: Schema.NonEmptyString,
   postalApiUrl: Schema.NonEmptyString,
   postalApiKey: Schema.NonEmptyString,
+  platformEmailSenderDisplayName: Schema.NonEmptyString,
+  platformEmailSenderFromEmail: Schema.NonEmptyString,
+  platformEmailSenderReplyToEmail: Schema.NonEmptyString,
 });
 
 export type PlatformEnvironment = Schema.Schema.Type<

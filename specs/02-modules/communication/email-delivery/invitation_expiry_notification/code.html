@@ -1,0 +1,285 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Membership Invitation Expired</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;family=Metropolis:wght@600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-tint": "#cfbcff",
+              "on-secondary-container": "#bfb2da",
+              "on-surface-variant": "#cbc4d2",
+              "on-tertiary-fixed-variant": "#594400",
+              error: "#ffb4ab",
+              "surface-container-highest": "#36343a",
+              "surface-container-lowest": "#0f0d13",
+              "surface-container-low": "#1d1b20",
+              "surface-dim": "#141218",
+              "surface-variant": "#36343a",
+              background: "#141218",
+              "on-tertiary": "#3e2e00",
+              "on-tertiary-container": "#503d00",
+              "on-secondary-fixed": "#1f1635",
+              "on-primary-fixed": "#22005d",
+              "inverse-primary": "#6750a4",
+              "on-primary-container": "#e0d2ff",
+              "tertiary-container": "#c9a74d",
+              "tertiary-fixed": "#ffdf93",
+              "secondary-fixed": "#e9ddff",
+              "primary-fixed-dim": "#cfbcff",
+              "on-secondary": "#342b4b",
+              "inverse-surface": "#e6e0e9",
+              secondary: "#cdc0e9",
+              "secondary-container": "#4d4465",
+              "inverse-on-surface": "#322f35",
+              "primary-container": "#6750a4",
+              "surface-container": "#211f24",
+              "surface-container-high": "#2b292f",
+              primary: "#cfbcff",
+              "primary-fixed": "#e9ddff",
+              "on-primary-fixed-variant": "#4f378a",
+              "on-error-container": "#ffdad6",
+              "on-primary": "#381e72",
+              tertiary: "#e7c365",
+              "on-surface": "#e6e0e9",
+              "outline-variant": "#494551",
+              "error-container": "#93000a",
+              "on-background": "#e6e0e9",
+              "on-secondary-fixed-variant": "#4b4263",
+              surface: "#141218",
+              "tertiary-fixed-dim": "#e7c365",
+              "secondary-fixed-dim": "#cdc0e9",
+              "on-error": "#690005",
+              "on-tertiary-fixed": "#241a00",
+              outline: "#948e9c",
+              "surface-bright": "#3b383e",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              stack_md: "24px",
+              inline_gutter: "20px",
+              stack_sm: "16px",
+              container_max_width: "600px",
+              stack_xs: "8px",
+              stack_lg: "32px",
+              stack_xl: "48px",
+            },
+            fontFamily: {
+              body: ["Inter", "sans-serif"],
+              "meta-code": ["JetBrains Mono", "monospace"],
+              h2: ["Metropolis", "sans-serif"],
+              h1: ["Metropolis", "sans-serif"],
+              eyebrow: ["Inter", "sans-serif"],
+              "body-sm": ["Inter", "sans-serif"],
+            },
+            fontSize: {
+              body: ["15px", { lineHeight: "24px", fontWeight: "400" }],
+              "meta-code": ["12px", { lineHeight: "16px", fontWeight: "500" }],
+              h2: ["20px", { lineHeight: "28px", fontWeight: "600" }],
+              h1: [
+                "28px",
+                {
+                  lineHeight: "36px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "700",
+                },
+              ],
+              eyebrow: [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  letterSpacing: "0.1em",
+                  fontWeight: "700",
+                },
+              ],
+              "body-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background-color: #141218; /* surface */
+        color: #e6e0e9; /* on-surface */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-background dark:bg-background text-on-background min-h-screen flex flex-col font-body"
+  >
+    <!-- TopAppBar -->
+    <header
+      class="bg-surface-container-low dark:bg-surface-container-low border-b border-outline-variant dark:border-outline-variant w-full"
+    >
+      <div
+        class="flex justify-between items-center w-full px-inline_gutter py-stack_sm max-w-container_max_width mx-auto"
+      >
+        <div
+          class="font-h2 text-h2 font-bold text-on-surface dark:text-on-surface"
+        >
+          Comvestec
+        </div>
+        <div class="flex items-center gap-stack_sm">
+          <!-- Notifications suppressed as per context, active state logic not applicable to transactional email -->
+        </div>
+      </div>
+    </header>
+    <!-- Main Content Canvas -->
+    <main
+      class="flex-grow flex flex-col items-center justify-center py-stack_xl px-inline_gutter w-full max-w-container_max_width mx-auto"
+    >
+      <!-- Eyebrow Context -->
+      <div class="w-full mb-stack_xs text-center">
+        <span
+          class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+          >Invitation Expired</span
+        >
+      </div>
+      <!-- Primary Panel -->
+      <div
+        class="bg-surface-container-low border border-outline-variant rounded-lg p-stack_lg w-full shadow-sm relative overflow-hidden"
+      >
+        <!-- Expiry Status Indicator -->
+        <div class="absolute top-0 left-0 w-full h-1 bg-surface-variant"></div>
+        <div class="flex flex-col items-center text-center gap-stack_md">
+          <!-- Icon Cue -->
+          <div
+            class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center border border-outline-variant"
+          >
+            <span
+              class="material-symbols-outlined text-on-surface-variant"
+              style="font-variation-settings: &quot;FILL&quot; 0"
+              >schedule</span
+            >
+          </div>
+          <!-- Headline -->
+          <h1 class="font-h1 text-h1 text-on-surface">
+            Your invitation has expired
+          </h1>
+          <!-- Body Message -->
+          <p class="font-body text-body text-on-surface-variant max-w-md">
+            The invitation to join the
+            <strong class="text-on-surface font-semibold"
+              >Alpha Sector Operations</strong
+            >
+            tenant as a
+            <strong class="text-on-surface font-semibold"
+              >Workspace Contributor</strong
+            >
+            has timed out. For security reasons, pending invitations are
+            automatically voided after a set duration.
+          </p>
+          <!-- Metadata Rows -->
+          <div
+            class="w-full bg-surface-dim border border-outline-variant rounded p-stack_sm mt-stack_sm"
+          >
+            <div
+              class="flex justify-between items-center border-b border-outline-variant pb-stack_xs mb-stack_xs"
+            >
+              <span
+                class="font-meta-code text-meta-code text-on-surface-variant"
+                >Tenant</span
+              >
+              <span class="font-body-sm text-body-sm text-on-surface"
+                >Alpha Sector Operations</span
+              >
+            </div>
+            <div
+              class="flex justify-between items-center border-b border-outline-variant pb-stack_xs mb-stack_xs"
+            >
+              <span
+                class="font-meta-code text-meta-code text-on-surface-variant"
+                >Role</span
+              >
+              <span class="font-body-sm text-body-sm text-on-surface"
+                >Workspace Contributor</span
+              >
+            </div>
+            <div class="flex justify-between items-center">
+              <span
+                class="font-meta-code text-meta-code text-on-surface-variant"
+                >Expired On</span
+              >
+              <span class="font-body-sm text-body-sm text-on-surface"
+                >Oct 24, 2023 14:30 UTC</span
+              >
+            </div>
+          </div>
+          <!-- Action / Resolution -->
+          <p
+            class="font-body-sm text-body-sm text-on-surface-variant mt-stack_md max-w-sm"
+          >
+            If you still need access, please contact your tenant administrator
+            or organization lead to request a new invitation.
+          </p>
+          <div class="w-full mt-stack_sm">
+            <a
+              class="inline-flex items-center justify-center bg-surface-container-highest border border-outline-variant text-on-surface font-h2 text-h2 rounded px-6 py-3 w-full hover:bg-surface-bright transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
+              href="#"
+            >
+              Return to Sign In
+            </a>
+          </div>
+        </div>
+      </div>
+    </main>
+    <!-- Footer -->
+    <footer
+      class="bg-background dark:bg-background w-full max-w-container_max_width mx-auto py-stack_xl px-inline_gutter text-center flex flex-col gap-stack_sm border-t border-outline-variant mt-auto"
+    >
+      <div
+        class="font-eyebrow text-eyebrow uppercase tracking-widest text-outline"
+      >
+        Comvestec
+      </div>
+      <div class="flex justify-center gap-stack_sm font-body-sm text-body-sm">
+        <a
+          class="text-on-surface-variant hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
+          href="#"
+          >Privacy Policy</a
+        >
+        <span class="text-outline-variant">•</span>
+        <a
+          class="text-on-surface-variant hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
+          href="#"
+          >Terms of Service</a
+        >
+        <span class="text-outline-variant">•</span>
+        <a
+          class="text-on-surface-variant hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
+          href="#"
+          >Email Preferences</a
+        >
+      </div>
+      <p class="font-body-sm text-body-sm text-on-surface-variant mt-stack_xs">
+        © 2024 Comvestec Solutions. All rights reserved.
+      </p>
+    </footer>
+  </body>
+</html>

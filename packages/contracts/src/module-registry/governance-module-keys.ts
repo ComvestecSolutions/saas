@@ -19,7 +19,9 @@ export const auditLogFeatureFlag = defineModuleFeatureFlags(
 
 export const featureFlagsFeatureFlag = defineModuleFeatureFlags(
   platformModuleId.featureFlags,
-  {},
+  {
+    legacyRolloutCatalog: "legacyRolloutCatalog",
+  },
 );
 
 export const retentionLegalHoldConfigKey = defineModuleConfigKeys(

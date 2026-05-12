@@ -4,13 +4,14 @@ import {
   defineDataClassificationDeclarations,
   defineModuleFields,
   defineProjectionDescriptors,
+  emailDeliveryFeatureFlag,
+  featureFlagLifecycle,
   permissionScope,
   platformModuleId,
   platformScope,
   projectionProfile,
   tenantBrandingConfigKey,
   tenantBrandingFeatureFlag,
-  tenantBrandingRuntimeValueKey,
 } from "@comvestec/contracts";
 import {
   configDefaultValue,
@@ -235,6 +236,8 @@ export const tenantBrandingManifest = defineModuleManifest({
         platformScope.enterprise,
         platformScope.organization,
       ],
+      dependencies: [],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "None — premium capability.",
     },
     {
@@ -249,6 +252,8 @@ export const tenantBrandingManifest = defineModuleManifest({
         platformScope.enterprise,
         platformScope.organization,
       ],
+      dependencies: [tenantBrandingFeatureFlag.enabled],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "Retire only with a domain migration plan.",
     },
     {
@@ -263,6 +268,11 @@ export const tenantBrandingManifest = defineModuleManifest({
         platformScope.enterprise,
         platformScope.organization,
       ],
+      dependencies: [
+        tenantBrandingFeatureFlag.enabled,
+        emailDeliveryFeatureFlag.enabled,
+      ],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "Retire only with a fallback to platform email branding.",
     },
   ],
@@ -292,7 +302,6 @@ export const tenantBrandingManifest = defineModuleManifest({
         tenantBrandingFields.customDomainHost,
         tenantBrandingFields.customDomainStatus,
         tenantBrandingFields.scope,
-        tenantBrandingFields.changedBy,
       ],
       auditedFields: [
         tenantBrandingFields.replyToEmail,

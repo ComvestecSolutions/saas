@@ -108,6 +108,34 @@ export type ConfigKeyDeclaration = Schema.Schema.Type<
   typeof ConfigKeyDeclarationSchema
 >;
 
+const FeatureFlagLifecycleConstantSchema = Schema.Struct({
+  active: Schema.Literal("active"),
+  deprecated: Schema.Literal("deprecated"),
+  retired: Schema.Literal("retired"),
+});
+
+export const featureFlagLifecycle = Schema.validateSync(
+  FeatureFlagLifecycleConstantSchema,
+)({
+  active: "active",
+  deprecated: "deprecated",
+  retired: "retired",
+} satisfies Schema.Schema.Type<typeof FeatureFlagLifecycleConstantSchema>);
+
+export const featureFlagLifecycles = [
+  featureFlagLifecycle.active,
+  featureFlagLifecycle.deprecated,
+  featureFlagLifecycle.retired,
+] as const;
+
+export const FeatureFlagLifecycleSchema = Schema.Literal(
+  ...featureFlagLifecycles,
+);
+
+export type FeatureFlagLifecycle = Schema.Schema.Type<
+  typeof FeatureFlagLifecycleSchema
+>;
+
 export const FeatureFlagDeclarationSchema = Schema.Struct({
   key: DeclaredModuleFeatureFlagKeySchema,
   description: Schema.NonEmptyString,
@@ -116,6 +144,8 @@ export const FeatureFlagDeclarationSchema = Schema.Struct({
   defaultEnabled: Schema.Boolean,
   billable: Schema.Boolean,
   allowedScopes: Schema.Array(PlatformScopeSchema),
+  dependencies: Schema.Array(DeclaredModuleFeatureFlagKeySchema),
+  lifecycle: FeatureFlagLifecycleSchema,
   retirementPlan: Schema.NonEmptyString,
 });
 

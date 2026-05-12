@@ -31,7 +31,7 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 5. Support both monthly and yearly pricing for the same sellable plan when the catalog declares both prices.
 6. Persist enough durable customer-account linkage during reconciliation to support automatic downstream repair when prior owner evidence already exists.
 7. Treat provider resource reads as eventually consistent with verified webhook processing so replay and repair flows do not misclassify not-yet-materialized customers or subscriptions as missing truth.
-8. Expose backend-only operator triggers for manual reconciliation and targeted repair-gap replay while frontend admin workflows remain deferred.
+8. Expose backend-owned operator triggers for manual reconciliation and targeted repair-gap replay or cancellation, with first-party admin-app tenant repair inspection now available while broader admin workflows remain deferred.
 9. Ensure both manual and automatic Convex-backed reconciliation runs carry auditable identity, whether that identity is an operator or a service actor.
 
 ## Permission Scopes
@@ -93,4 +93,5 @@ Polar hosted checkout for subscription management and commercial packaging. Open
 13. Verified webhook reconciliation should persist provider customer linkage into PostgreSQL whenever prior tenant owner evidence exists so missing onboarding or provisioning state can be repaired idempotently.
 14. Replay and repair flows must treat direct provider customer, order, and subscription reads as eventually consistent and prefer verified webhook plus PostgreSQL-backed convergence when provider resources are still materializing.
 15. A billing reconciliation workflow must not complete successfully while required provisioning, onboarding, subscription, entitlement, or webhook state remains missing for the reconciled tenant.
-16. Manual operator-triggered reconciliation, targeted repair-gap replay, and automatic service-triggered reconciliation must remain idempotent and leave no duplicate durable records for the same customer or tenant state.
+16. Manual operator-triggered reconciliation, targeted repair-gap replay, targeted repair-gap cancellation, and automatic service-triggered reconciliation must remain idempotent and leave no duplicate durable records for the same customer or tenant state.
+17. Hidden tenant-management drift discovered from durable billing linkage should surface explicit workflow gap reasons when provisioning or onboarding state is what remains missing, even when the owning repair path still runs through the shared billing convergence workflow.

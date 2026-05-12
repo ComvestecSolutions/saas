@@ -143,11 +143,26 @@ const createBillingWebhookTestDatabase = () => {
   const transaction = {
     insert: (table: PersistedTable) => ({
       values: (values: PersistedValues) => ({
+        execute: async () => {
+          persistRows(table, values);
+        },
         onConflictDoUpdate: () => ({
           execute: async () => {
             persistRows(table, values);
           },
         }),
+      }),
+    }),
+    update: () => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => [],
+        }),
+      }),
+    }),
+    select: () => ({
+      from: () => ({
+        where: async () => [],
       }),
     }),
   };

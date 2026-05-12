@@ -4,15 +4,16 @@ Status: accepted
 
 ## Technology Boundary
 
-Keycloak for impersonation session management. PostgreSQL for support case audit trails. Admin app as the primary support interface.
+Keycloak token exchange for impersonation session management. PostgreSQL for durable support-case metadata, break-glass incident records, and support-case audit evidence. Tenant-health views aggregate tenant-scoped support-case context with support-safe workflow repair-gap projections. Backend-owned support-operations HTTP surfaces are the current operator entrypoint; the admin app remains the intended primary support interface as broader operator UI ships.
 
 ## Responsibilities
 
 1. User impersonation with audit trail.
 2. Support case context and metadata management.
-3. Escalation workflows and permission elevation.
-4. Tenant health dashboard for support agents.
-5. Break-glass emergency access with approval, expiry, and post-incident review.
+3. Break-glass incident metadata management with durable pending-review records.
+4. Escalation workflows and permission elevation.
+5. Tenant health dashboard for support agents.
+6. Break-glass emergency access with approval, expiry, and post-incident review.
 
 ## Permission Scopes
 
@@ -25,7 +26,7 @@ Keycloak for impersonation session management. PostgreSQL for support case audit
 | Flag                                   | Purpose                             | Billable | Default | Allowed Scopes |
 | -------------------------------------- | ----------------------------------- | -------- | ------- | -------------- |
 | `support-operations.enabled`           | Module visibility                   | No       | true    | platform       |
-| `support-operations.breakGlassEnabled` | Enable break-glass emergency access | No       | false   | platform       |
+| `support-operations.breakGlassEnabled` | Enable break-glass emergency access | No       | true    | platform       |
 
 ## Config Keys
 
@@ -44,14 +45,17 @@ Keycloak for impersonation session management. PostgreSQL for support case audit
 
 ## Projection Profiles
 
-| Profile      | Visible Fields                                              | Audited Fields   |
-| ------------ | ----------------------------------------------------------- | ---------------- |
-| admin        | caseId, supportAgent, impersonatedUser, startedAt, duration | impersonatedUser |
-| support-safe | caseId, status, startedAt                                   | —                |
+| Profile      | Visible Fields                                                                                                                                                          | Audited Fields   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| admin        | caseId, supportAgent, tenantScope, tenantScopeId, summary, impersonatedUser, startedAt, lastUpdatedAt, durationMinutes, status, priority, approvedBy, reason, expiresAt | impersonatedUser |
+| support-safe | caseId, supportAgent, tenantScope, tenantScopeId, summary, status, priority, startedAt, lastUpdatedAt                                                                   | —                |
 
 ## Rules
 
 1. Impersonation sessions must be time-bounded and produce distinct audit events.
 2. Support agents must see support-safe projections by default, not admin views.
 3. Escalation to higher permissions requires an approval workflow.
-4. Break-glass access requires explicit reason, approver, expiry, and post-incident review.
+4. Break-glass access requires explicit reason, approver, expiry, and a durable incident record that enters pending-review status until post-incident review completes.
+5. Post-incident review must transition the incident status and emit a distinct support-operations audit event against the case identifier.
+6. Keycloak-backed impersonation must mint a real impersonated session and keep operator approval provenance explicit in request-context impersonation metadata and emitted audit events.
+7. Tenant-health operator views must stay tenant-scoped and support-safe by default, surfacing unresolved repair-gap summaries without workflow `lastError` details.

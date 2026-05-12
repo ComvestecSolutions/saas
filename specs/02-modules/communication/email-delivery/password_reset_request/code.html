@@ -1,0 +1,240 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Password Reset Request</title>
+    <!-- Material Symbols -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <!-- Google Fonts for Typography Hierarchy -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Config defined by Design System -->
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-tint": "#cfbcff",
+              "on-secondary-container": "#bfb2da",
+              "on-surface-variant": "#cbc4d2",
+              "on-tertiary-fixed-variant": "#594400",
+              error: "#ffb4ab",
+              "surface-container-highest": "#36343a",
+              "surface-container-lowest": "#0f0d13",
+              "surface-container-low": "#1d1b20",
+              "surface-dim": "#141218",
+              "surface-variant": "#36343a",
+              background: "#141218",
+              "on-tertiary": "#3e2e00",
+              "on-tertiary-container": "#503d00",
+              "on-secondary-fixed": "#1f1635",
+              "on-primary-fixed": "#22005d",
+              "inverse-primary": "#6750a4",
+              "on-primary-container": "#e0d2ff",
+              "tertiary-container": "#c9a74d",
+              "tertiary-fixed": "#ffdf93",
+              "secondary-fixed": "#e9ddff",
+              "primary-fixed-dim": "#cfbcff",
+              "on-secondary": "#342b4b",
+              "inverse-surface": "#e6e0e9",
+              secondary: "#cdc0e9",
+              "secondary-container": "#4d4465",
+              "inverse-on-surface": "#322f35",
+              "primary-container": "#6750a4",
+              "surface-container": "#211f24",
+              "surface-container-high": "#2b292f",
+              primary: "#cfbcff",
+              "primary-fixed": "#e9ddff",
+              "on-primary-fixed-variant": "#4f378a",
+              "on-error-container": "#ffdad6",
+              "on-primary": "#381e72",
+              tertiary: "#e7c365",
+              "on-surface": "#e6e0e9",
+              "outline-variant": "#494551",
+              "error-container": "#93000a",
+              "on-background": "#e6e0e9",
+              "on-secondary-fixed-variant": "#4b4263",
+              surface: "#141218",
+              "tertiary-fixed-dim": "#e7c365",
+              "secondary-fixed-dim": "#cdc0e9",
+              "on-error": "#690005",
+              "on-tertiary-fixed": "#241a00",
+              outline: "#948e9c",
+              "surface-bright": "#3b383e",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              stack_md: "24px",
+              inline_gutter: "20px",
+              stack_sm: "16px",
+              container_max_width: "600px",
+              stack_xs: "8px",
+              stack_lg: "32px",
+              stack_xl: "48px",
+            },
+            fontFamily: {
+              body: ["Inter", "sans-serif"],
+              "meta-code": ["JetBrains Mono", "monospace"],
+              h2: ["Inter", "sans-serif"], // Fallback for Metropolis
+              h1: ["Inter", "sans-serif"], // Fallback for Metropolis
+              eyebrow: ["Inter", "sans-serif"],
+              "body-sm": ["Inter", "sans-serif"],
+            },
+            fontSize: {
+              body: ["15px", { lineHeight: "24px", fontWeight: "400" }],
+              "meta-code": ["12px", { lineHeight: "16px", fontWeight: "500" }],
+              h2: ["20px", { lineHeight: "28px", fontWeight: "600" }],
+              h1: [
+                "28px",
+                {
+                  lineHeight: "36px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "700",
+                },
+              ],
+              eyebrow: [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  letterSpacing: "0.1em",
+                  fontWeight: "700",
+                },
+              ],
+              "body-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body
+    class="bg-background text-on-surface font-body text-body antialiased w-full min-h-screen py-stack_xl px-inline_gutter"
+  >
+    <!-- Wrapper for Fixed Grid Email Layout -->
+    <div
+      class="w-full max-w-container_max_width mx-auto flex flex-col shadow-2xl"
+    >
+      <!-- Branded Header (Derived from TopAppBar Shared Component) -->
+      <header
+        class="flex justify-between items-center w-full px-inline_gutter py-stack_sm bg-surface-container-low border-b border-outline-variant rounded-t"
+      >
+        <div class="font-h2 text-h2 font-bold text-on-surface">Comvestec</div>
+        <div class="flex items-center">
+          <span class="material-symbols-outlined text-outline">lock</span>
+        </div>
+      </header>
+      <!-- Primary Panel (Operational Canvas) -->
+      <main
+        class="bg-surface-container-low border border-t-0 border-outline-variant rounded-b p-stack_lg flex flex-col gap-stack_md"
+      >
+        <!-- Eyebrow Context -->
+        <div
+          class="font-eyebrow text-eyebrow text-primary uppercase tracking-widest flex items-center gap-2"
+        >
+          <span class="material-symbols-outlined text-[16px]"
+            >shield_person</span
+          >
+          Security Request
+        </div>
+        <!-- Content Area -->
+        <div class="flex flex-col gap-stack_sm">
+          <h1 class="font-h1 text-h1 text-on-surface">Reset your password</h1>
+          <p class="font-body text-body text-on-surface-variant">
+            A request to reset the password for your
+            <strong>{{platform_name}}</strong> account associated with
+            <span class="text-on-surface font-medium">{{recipient_email}}</span>
+            has been initiated.
+          </p>
+        </div>
+        <!-- Action Area -->
+        <div
+          class="flex flex-col gap-stack_sm py-stack_sm border-y border-outline-variant/30"
+        >
+          <p class="font-body text-body text-on-surface-variant">
+            To securely proceed and set a new password, please use the button
+            below. This single-use link will automatically expire in
+            <span class="text-on-surface font-medium">{{expiry_time}}</span>.
+          </p>
+          <div class="mt-stack_xs">
+            <a
+              class="inline-flex items-center justify-center bg-primary text-on-primary font-body text-body font-bold px-6 py-3 rounded transition-colors hover:bg-primary-fixed w-max"
+              href="{{reset_url}}"
+            >
+              Reset Password
+            </a>
+          </div>
+        </div>
+        <!-- Secondary Metadata (Safety Catch) -->
+        <div
+          class="bg-surface-dim border border-outline-variant/50 rounded p-stack_sm flex items-start gap-3 mt-stack_xs"
+        >
+          <span
+            class="material-symbols-outlined text-error text-[20px] mt-[2px]"
+            data-weight="fill"
+            style="font-variation-settings: &quot;FILL&quot; 1"
+            >warning</span
+          >
+          <div class="flex flex-col">
+            <span
+              class="font-meta-code text-meta-code text-on-surface uppercase tracking-wider mb-1"
+              >If you did not request this</span
+            >
+            <p class="font-body-sm text-body-sm text-on-surface-variant">
+              No action is required. Your current password remains secure and
+              active. If you notice suspicious activity, please contact your
+              system administrator immediately.
+            </p>
+          </div>
+        </div>
+      </main>
+      <!-- Calm Footer (Derived from Footer Shared Component) -->
+      <footer
+        class="w-full max-w-container_max_width mx-auto py-stack_xl px-inline_gutter text-center flex flex-col gap-stack_sm bg-background"
+      >
+        <div
+          class="flex justify-center flex-wrap gap-x-stack_md gap-y-stack_xs"
+        >
+          <a
+            class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors"
+            href="#"
+            >Privacy Policy</a
+          >
+          <a
+            class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors"
+            href="#"
+            >Terms of Service</a
+          >
+          <a
+            class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors"
+            href="#"
+            >Email Preferences</a
+          >
+        </div>
+        <div
+          class="font-eyebrow text-eyebrow uppercase tracking-widest text-outline mt-stack_sm"
+        >
+          © 2024 Comvestec Solutions. All rights reserved.
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -4,6 +4,7 @@ import {
   defineDataClassificationDeclarations,
   defineModuleFields,
   defineProjectionDescriptors,
+  featureFlagLifecycle,
   permissionScope,
   platformModuleId,
   platformScope,
@@ -30,6 +31,9 @@ export const runtimeConfigFields = defineModuleFields({
   codeValue: "codeValue",
   status: "status",
   generatedAt: "generatedAt",
+  decidedBy: "decidedBy",
+  decisionReason: "decisionReason",
+  decidedAt: "decidedAt",
 });
 
 export const runtimeConfigFieldClassifications =
@@ -98,6 +102,18 @@ export const runtimeConfigFieldClassifications =
       field: runtimeConfigFields.generatedAt,
       classification: dataClassification.internal,
     },
+    {
+      field: runtimeConfigFields.decidedBy,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: runtimeConfigFields.decisionReason,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: runtimeConfigFields.decidedAt,
+      classification: dataClassification.internal,
+    },
   ]);
 
 export const runtimeConfigManifest = defineModuleManifest({
@@ -131,6 +147,8 @@ export const runtimeConfigManifest = defineModuleManifest({
       defaultEnabled: true,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "None — core module.",
     },
     {
@@ -141,6 +159,8 @@ export const runtimeConfigManifest = defineModuleManifest({
       defaultEnabled: false,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [runtimeConfigFeatureFlag.enabled],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "Promote to default when stable.",
     },
   ],
@@ -170,12 +190,17 @@ export const runtimeConfigManifest = defineModuleManifest({
         runtimeConfigFields.codeValue,
         runtimeConfigFields.status,
         runtimeConfigFields.generatedAt,
+        runtimeConfigFields.decidedBy,
+        runtimeConfigFields.decisionReason,
+        runtimeConfigFields.decidedAt,
       ],
       auditedFields: [
         runtimeConfigFields.value,
         runtimeConfigFields.approvalReason,
         runtimeConfigFields.runtimeValue,
         runtimeConfigFields.codeValue,
+        runtimeConfigFields.decidedBy,
+        runtimeConfigFields.decisionReason,
       ],
     },
   ]),

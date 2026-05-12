@@ -12,9 +12,11 @@ PostgreSQL via Drizzle for override storage, history, and approval records. Conv
 2. Database-backed effective value storage, override history, and approval records.
 3. Bidirectional sync and reconciliation between code-declared registries and database-backed runtime state.
 4. Drift detection, no-redeploy activation, and rollback support.
-5. Tenant-scoped cascade resolution: individual, organization, enterprise, platform.
-6. Entitlement-gated resolution for billable config keys.
-7. Canonical override and effective-value resolution for config families such as `tenant-branding`.
+5. Proposal lifecycle tracking that preserves approval metadata until committed code catches up and the artifact becomes `applied`.
+6. Tenant-scoped cascade resolution: individual, organization, enterprise, platform.
+7. Entitlement-gated resolution for billable config keys.
+8. Canonical override and effective-value resolution for config families such as `tenant-branding`.
+9. Durable proposal and review workflow for direct runtime override mutations before they affect effective runtime state.
 
 ## Config Key Declarations
 
@@ -56,18 +58,18 @@ PostgreSQL rows keyed by `(moduleId, key, scope, scopeId)` where scope is one of
 
 ## Data Classifications
 
-| Data                                    | Classification      |
-| --------------------------------------- | ------------------- |
-| Module ids, key names, scopes, statuses | internal            |
-| Override, runtime, code value           | regulated-sensitive |
-| Approval reasons and actor identity     | regulated-sensitive |
-| Change and generation timestamps        | internal            |
-| Proposal artifact paths                 | internal            |
+| Data                                              | Classification      |
+| ------------------------------------------------- | ------------------- |
+| Module ids, key names, scopes, statuses           | internal            |
+| Override, runtime, code value                     | regulated-sensitive |
+| Approval and decision reasons plus actor identity | regulated-sensitive |
+| Change and generation timestamps                  | internal            |
+| Proposal artifact paths                           | internal            |
 
 ## Projection Profiles
 
-- `admin`: visible fields are `moduleId`, `key`, `scope`, `scopeId`, `value`, `source`, `changedBy`, `changedAt`, `approvalReason`, `proposalId`, `action`, `artifactPath`, `runtimeValue`, `codeValue`, `status`, and `generatedAt`.
-- `admin`: audited fields are `value`, `approvalReason`, `runtimeValue`, and `codeValue`.
+- `admin`: visible fields are `moduleId`, `key`, `scope`, `scopeId`, `value`, `source`, `changedBy`, `changedAt`, `approvalReason`, `proposalId`, `action`, `artifactPath`, `runtimeValue`, `codeValue`, `status`, `generatedAt`, `decidedBy`, `decisionReason`, and `decidedAt`.
+- `admin`: audited fields are `value`, `approvalReason`, `runtimeValue`, `codeValue`, `decidedBy`, and `decisionReason`.
 
 ## Rules
 
@@ -83,3 +85,5 @@ PostgreSQL rows keyed by `(moduleId, key, scope, scopeId)` where scope is one of
 10. Entitlement must be checked before applying any override for billable keys.
 11. Dynamic operational state such as custom-domain verification status is not a config key. It remains in module-owned PostgreSQL records even when requested hostnames are resolved through config.
 12. Approved runtime changes exported back toward code must emit structured change proposal artifacts rather than directly rewriting repository files.
+13. Approved sync artifacts must transition to `applied` once the code-declared baseline matches the approved runtime value, and that transition must preserve the original review metadata.
+14. Direct runtime override mutations must be submitted as durable override proposals, remain non-effective while pending or rejected, and only upsert the effective override state after an authenticated operator review approves them.

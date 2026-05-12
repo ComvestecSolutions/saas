@@ -1,5 +1,9 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
-import { findModuleManifest } from "@comvestec/config";
+import {
+  configDefaultValue,
+  findModuleManifest,
+  platformModuleManifests,
+} from "@comvestec/config";
 import {
   type ConfigOverride,
   type DeclaredModuleConfigKey,
@@ -9,6 +13,7 @@ import {
   ConfigOverrideSchema,
   type Entitlement,
   EntitlementSchema,
+  featureFlagLifecycle,
   type FeatureFlagDeclaration,
   FeatureFlagDeclarationSchema,
   getModuleEnabledFeatureFlagKey,
@@ -29,7 +34,12 @@ import {
   type RuntimeConfigPostgresRepositoryError,
   type RuntimeConfigPostgresRepositoryService,
   type RuntimeConfigOverrideRecord,
+  type RuntimeConfigOverrideProposalRecord,
+  type RuntimeConfigOverrideProposalSubmitRecord,
   RuntimeConfigOverrideRecordSchema,
+  RuntimeConfigOverrideProposalSubmitRecordSchema,
+  type RuntimeConfigSyncArtifactReviewRecord,
+  RuntimeConfigSyncArtifactReviewRecordSchema,
   type RuntimeConfigSyncArtifactRecord,
   RuntimeConfigSyncArtifactRecordSchema,
   runtimeConfigSyncArtifactStatus,
@@ -83,6 +93,36 @@ const StoredRuntimeFlagResolutionRequestSchema = Schema.Struct({
 export type StoredRuntimeFlagResolutionRequest = Schema.Schema.Type<
   typeof StoredRuntimeFlagResolutionRequestSchema
 >;
+
+const RuntimeFeatureFlagRolloutRequestSchema = Schema.Struct({
+  requestContext: RequestContextSchema,
+  moduleId: PlatformModuleIdSchema,
+  flag: FeatureFlagDeclarationSchema,
+});
+
+export type RuntimeFeatureFlagRolloutRequest = Schema.Schema.Type<
+  typeof RuntimeFeatureFlagRolloutRequestSchema
+>;
+
+const RuntimeFeatureFlagRolloutEvaluationSchema = Schema.Struct({
+  effectiveValue: Schema.Boolean,
+  definitionExists: Schema.Boolean,
+  resolvedScope: Schema.optional(PlatformScopeSchema),
+  resolvedScopeId: Schema.optional(Schema.NonEmptyString),
+});
+
+export type RuntimeFeatureFlagRolloutEvaluation = Schema.Schema.Type<
+  typeof RuntimeFeatureFlagRolloutEvaluationSchema
+>;
+
+export type RuntimeFeatureFlagRolloutService = {
+  readonly evaluateFeatureFlag: (
+    input: RuntimeFeatureFlagRolloutRequest,
+  ) => Effect.Effect<
+    RuntimeFeatureFlagRolloutEvaluation,
+    ParseResult.ParseError
+  >;
+};
 
 export const RuntimeResolutionResultSchema = Schema.Struct({
   moduleId: PlatformModuleIdSchema,
@@ -156,25 +196,54 @@ const resolveCascadeCandidates = (requestContext: RequestContext) => {
     scopeId: string;
   }> = [];
 
-  if (requestContext.tenant.individualId !== undefined) {
-    candidates.push({
-      scope: platformScope.individual,
-      scopeId: requestContext.tenant.individualId,
-    });
-  }
+  switch (requestContext.tenant.scope) {
+    case platformScope.individual:
+      candidates.push({
+        scope: platformScope.individual,
+        scopeId:
+          requestContext.tenant.individualId ?? requestContext.tenant.scopeId,
+      });
 
-  if (requestContext.tenant.organizationId !== undefined) {
-    candidates.push({
-      scope: platformScope.organization,
-      scopeId: requestContext.tenant.organizationId,
-    });
-  }
+      if (requestContext.tenant.organizationId !== undefined) {
+        candidates.push({
+          scope: platformScope.organization,
+          scopeId: requestContext.tenant.organizationId,
+        });
+      }
 
-  if (requestContext.tenant.enterpriseId !== undefined) {
-    candidates.push({
-      scope: platformScope.enterprise,
-      scopeId: requestContext.tenant.enterpriseId,
-    });
+      if (requestContext.tenant.enterpriseId !== undefined) {
+        candidates.push({
+          scope: platformScope.enterprise,
+          scopeId: requestContext.tenant.enterpriseId,
+        });
+      }
+
+      break;
+    case platformScope.organization:
+      candidates.push({
+        scope: platformScope.organization,
+        scopeId:
+          requestContext.tenant.organizationId ?? requestContext.tenant.scopeId,
+      });
+
+      if (requestContext.tenant.enterpriseId !== undefined) {
+        candidates.push({
+          scope: platformScope.enterprise,
+          scopeId: requestContext.tenant.enterpriseId,
+        });
+      }
+
+      break;
+    case platformScope.enterprise:
+      candidates.push({
+        scope: platformScope.enterprise,
+        scopeId:
+          requestContext.tenant.enterpriseId ?? requestContext.tenant.scopeId,
+      });
+
+      break;
+    case platformScope.platform:
+      break;
   }
 
   candidates.push({
@@ -185,19 +254,21 @@ const resolveCascadeCandidates = (requestContext: RequestContext) => {
   return candidates;
 };
 
-const hasDirectEntitlement = (
+const findMatchedEntitlement = (
   moduleId: PlatformModuleId,
   key: FeatureFlagDeclaration["key"],
   requestContext: RequestContext,
   entitlements: readonly Entitlement[],
 ) =>
-  entitlements.some(
-    (entitlement) =>
-      entitlement.moduleId === moduleId &&
-      entitlement.active &&
-      entitlement.featureKey === key &&
-      entitlement.scope === requestContext.tenant.scope &&
-      entitlement.scopeId === requestContext.tenant.scopeId,
+  resolveCascadeCandidates(requestContext).find((candidate) =>
+    entitlements.some(
+      (entitlement) =>
+        entitlement.moduleId === moduleId &&
+        entitlement.active &&
+        entitlement.featureKey === key &&
+        entitlement.scope === candidate.scope &&
+        entitlement.scopeId === candidate.scopeId,
+    ),
   );
 
 const findFeatureFlagDeclaration = (
@@ -205,6 +276,49 @@ const findFeatureFlagDeclaration = (
   key: FeatureFlagDeclaration["key"],
 ) =>
   findModuleManifest(moduleId)?.featureFlags.find((flag) => flag.key === key);
+
+const findFeatureFlagDeclarationByKey = (key: FeatureFlagDeclaration["key"]) =>
+  platformModuleManifests
+    .flatMap((manifest) =>
+      manifest.featureFlags.map((flag) => ({
+        moduleId: manifest.moduleId,
+        flag,
+      })),
+    )
+    .find((record) => record.flag.key === key);
+
+const collectFeatureFlagDependencyModuleIds = (
+  moduleId: PlatformModuleId,
+  flag: FeatureFlagDeclaration,
+  visitedFlagKeys: readonly FeatureFlagDeclaration["key"][] = [],
+): readonly PlatformModuleId[] => {
+  const moduleIds = new Set<PlatformModuleId>([moduleId]);
+  const nextVisitedFlagKeys = [...visitedFlagKeys, flag.key];
+
+  for (const dependencyKey of flag.dependencies) {
+    if (nextVisitedFlagKeys.includes(dependencyKey)) {
+      continue;
+    }
+
+    const dependencyRecord = findFeatureFlagDeclarationByKey(dependencyKey);
+
+    if (dependencyRecord === undefined) {
+      continue;
+    }
+
+    moduleIds.add(dependencyRecord.moduleId);
+
+    for (const dependencyModuleId of collectFeatureFlagDependencyModuleIds(
+      dependencyRecord.moduleId,
+      dependencyRecord.flag,
+      nextVisitedFlagKeys,
+    )) {
+      moduleIds.add(dependencyModuleId);
+    }
+  }
+
+  return [...moduleIds];
+};
 
 const findMatchedOverride = (
   moduleId: PlatformModuleId,
@@ -226,18 +340,55 @@ const findMatchedOverride = (
     )
     .at(0);
 
+const findMatchedConfigOverride = (
+  moduleId: PlatformModuleId,
+  key: DeclaredRuntimeGovernedKey,
+  allowedScopes: readonly PlatformScope[],
+  requestContext: RequestContext,
+  overrides: readonly ConfigOverride[],
+) =>
+  resolveCascadeCandidates(requestContext)
+    .flatMap((candidate) =>
+      overrides.filter(
+        (override) =>
+          override.moduleId === moduleId &&
+          override.key === key &&
+          override.scope === candidate.scope &&
+          override.scopeId === candidate.scopeId &&
+          allowedScopes.includes(candidate.scope),
+      ),
+    )
+    .find((override) => override.value !== configDefaultValue.inherit);
+
 type FeatureFlagRuntimeResolution = Pick<
   RuntimeResolutionResult,
   "effectiveValue" | "source" | "entitled" | "resolvedScope" | "resolvedScopeId"
 >;
 
-const resolveFeatureFlagState = (
+const resolveFeatureFlagSurrogateState = (
   moduleId: PlatformModuleId,
   flag: FeatureFlagDeclaration,
   requestContext: RequestContext,
   overrides: readonly ConfigOverride[],
   entitlements: readonly Entitlement[],
 ): FeatureFlagRuntimeResolution => {
+  const moduleEnabledKey = getModuleEnabledFeatureFlagKey(moduleId);
+  const matchedEntitlement = findMatchedEntitlement(
+    moduleId,
+    flag.key,
+    requestContext,
+    entitlements,
+  );
+  const entitled = matchedEntitlement !== undefined;
+
+  if (flag.billable && flag.key !== moduleEnabledKey && !entitled) {
+    return {
+      effectiveValue: false,
+      source: runtimeResolutionSource.unentitledDefault,
+      entitled: false,
+    };
+  }
+
   const matchedOverride = findMatchedOverride(
     moduleId,
     flag.key,
@@ -252,17 +403,19 @@ const resolveFeatureFlagState = (
     return {
       effectiveValue,
       source: runtimeResolutionSource.runtimeOverride,
-      entitled: effectiveValue,
+      entitled: true,
       resolvedScope: matchedOverride.scope,
       resolvedScopeId: matchedOverride.scopeId,
     };
   }
 
-  if (hasDirectEntitlement(moduleId, flag.key, requestContext, entitlements)) {
+  if (entitled) {
     return {
       effectiveValue: true,
       source: runtimeResolutionSource.entitlement,
       entitled: true,
+      resolvedScope: matchedEntitlement.scope,
+      resolvedScopeId: matchedEntitlement.scopeId,
     };
   }
 
@@ -279,8 +432,162 @@ const resolveFeatureFlagState = (
     source: flag.billable
       ? runtimeResolutionSource.unentitledDefault
       : runtimeResolutionSource.codeDefault,
-    entitled: false,
+    entitled: !flag.billable,
   };
+};
+
+const resolveFeatureFlagState = (input: {
+  readonly moduleId: PlatformModuleId;
+  readonly flag: FeatureFlagDeclaration;
+  readonly requestContext: RequestContext;
+  readonly overrides: readonly ConfigOverride[];
+  readonly entitlements: readonly Entitlement[];
+  readonly featureFlagRollout?: RuntimeFeatureFlagRolloutService;
+  readonly visitedFlagKeys?: readonly FeatureFlagDeclaration["key"][];
+}): Effect.Effect<FeatureFlagRuntimeResolution, ParseResult.ParseError> => {
+  return Effect.gen(function* () {
+    const moduleEnabledKey = getModuleEnabledFeatureFlagKey(input.moduleId);
+    const matchedEntitlement = findMatchedEntitlement(
+      input.moduleId,
+      input.flag.key,
+      input.requestContext,
+      input.entitlements,
+    );
+    const entitled = matchedEntitlement !== undefined;
+
+    if (input.flag.lifecycle === featureFlagLifecycle.retired) {
+      return {
+        effectiveValue: false,
+        source: runtimeResolutionSource.retired,
+        entitled: input.flag.billable ? entitled : true,
+      } satisfies FeatureFlagRuntimeResolution;
+    }
+
+    const matchedOverride = findMatchedOverride(
+      input.moduleId,
+      input.flag.key,
+      input.flag.allowedScopes,
+      input.requestContext,
+      input.overrides,
+    );
+
+    if (input.flag.billable && !entitled) {
+      if (
+        input.flag.key === moduleEnabledKey &&
+        matchedOverride !== undefined
+      ) {
+        const effectiveValue = Boolean(matchedOverride.value);
+
+        return {
+          effectiveValue,
+          source: runtimeResolutionSource.runtimeOverride,
+          entitled: false,
+          resolvedScope: matchedOverride.scope,
+          resolvedScopeId: matchedOverride.scopeId,
+        } satisfies FeatureFlagRuntimeResolution;
+      }
+
+      return {
+        effectiveValue: false,
+        source: runtimeResolutionSource.unentitledDefault,
+        entitled: false,
+      } satisfies FeatureFlagRuntimeResolution;
+    }
+
+    const visitedFlagKeys = [...(input.visitedFlagKeys ?? []), input.flag.key];
+    const dependencyResolutions = yield* Effect.forEach(
+      input.flag.dependencies,
+      (dependencyKey) => {
+        if (visitedFlagKeys.includes(dependencyKey)) {
+          return Effect.succeed(false);
+        }
+
+        const dependencyRecord = findFeatureFlagDeclarationByKey(dependencyKey);
+
+        if (dependencyRecord === undefined) {
+          return Effect.succeed(false);
+        }
+
+        return resolveFeatureFlagState({
+          moduleId: dependencyRecord.moduleId,
+          flag: dependencyRecord.flag,
+          requestContext: input.requestContext,
+          overrides: input.overrides,
+          entitlements: input.entitlements,
+          ...(input.featureFlagRollout !== undefined
+            ? { featureFlagRollout: input.featureFlagRollout }
+            : {}),
+          visitedFlagKeys,
+        }).pipe(Effect.map((resolution) => resolution.effectiveValue));
+      },
+    );
+
+    if (dependencyResolutions.some((resolution) => !resolution)) {
+      return {
+        effectiveValue: false,
+        source: runtimeResolutionSource.dependencyDisabled,
+        entitled: input.flag.billable ? entitled : true,
+      } satisfies FeatureFlagRuntimeResolution;
+    }
+
+    if (matchedOverride !== undefined) {
+      const effectiveValue = Boolean(matchedOverride.value);
+
+      return {
+        effectiveValue,
+        source: runtimeResolutionSource.runtimeOverride,
+        entitled: true,
+        resolvedScope: matchedOverride.scope,
+        resolvedScopeId: matchedOverride.scopeId,
+      } satisfies FeatureFlagRuntimeResolution;
+    }
+
+    if (input.featureFlagRollout !== undefined) {
+      return yield* input.featureFlagRollout
+        .evaluateFeatureFlag({
+          requestContext: input.requestContext,
+          moduleId: input.moduleId,
+          flag: input.flag,
+        })
+        .pipe(
+          Effect.map((rolloutResolution) => {
+            if (!rolloutResolution.definitionExists) {
+              return resolveFeatureFlagSurrogateState(
+                input.moduleId,
+                input.flag,
+                input.requestContext,
+                input.overrides,
+                input.entitlements,
+              );
+            }
+
+            return {
+              effectiveValue: rolloutResolution.effectiveValue,
+              source: runtimeResolutionSource.rollout,
+              entitled: input.flag.billable
+                ? input.flag.key === moduleEnabledKey
+                  ? entitled || rolloutResolution.effectiveValue
+                  : true
+                : true,
+              ...(rolloutResolution.resolvedScope !== undefined
+                ? { resolvedScope: rolloutResolution.resolvedScope }
+                : {}),
+              ...(rolloutResolution.resolvedScopeId !== undefined
+                ? { resolvedScopeId: rolloutResolution.resolvedScopeId }
+                : {}),
+            } satisfies FeatureFlagRuntimeResolution;
+          }),
+        );
+    }
+
+    return resolveFeatureFlagSurrogateState(
+      input.moduleId,
+      input.flag,
+      input.requestContext,
+      input.overrides,
+      input.entitlements,
+    );
+  });
 };
 
 const resolveModuleEnabledState = (
@@ -288,27 +595,29 @@ const resolveModuleEnabledState = (
   requestContext: RequestContext,
   overrides: readonly ConfigOverride[],
   entitlements: readonly Entitlement[],
-): FeatureFlagRuntimeResolution => {
+  featureFlagRollout?: RuntimeFeatureFlagRolloutService,
+): Effect.Effect<FeatureFlagRuntimeResolution, ParseResult.ParseError> => {
   const enabledFlag = findFeatureFlagDeclaration(
     moduleId,
     getModuleEnabledFeatureFlagKey(moduleId),
   );
 
   if (enabledFlag === undefined) {
-    return {
+    return Effect.succeed({
       effectiveValue: true,
       source: runtimeResolutionSource.codeDefault,
       entitled: true,
-    };
+    });
   }
 
-  return resolveFeatureFlagState(
+  return resolveFeatureFlagState({
     moduleId,
-    enabledFlag,
+    flag: enabledFlag,
     requestContext,
     overrides,
     entitlements,
-  );
+    ...(featureFlagRollout !== undefined ? { featureFlagRollout } : {}),
+  });
 };
 
 const findDeclaration = (
@@ -330,7 +639,10 @@ export type RuntimeConfigPersistenceNotConfiguredError = {
     | "resolveStoredConfigValue"
     | "resolveStoredFeatureFlag"
     | "listOverridesByModule"
+    | "listOverrideProposalsByModule"
     | "upsertOverride"
+    | "submitOverrideProposal"
+    | "reviewChangeProposal"
     | "persistChangeProposals"
     | "listChangeProposalsByModule";
 };
@@ -357,123 +669,167 @@ const requireRuntimeConfigRepository = <A, E>(
     Effect.flatMap(useRepository),
   );
 
-const resolveDecodedConfigValue = (
-  request: RuntimeConfigResolutionRequest,
-): Effect.Effect<
-  RuntimeResolutionResult,
-  ParseResult.ParseError | UnknownConfigKeyError
-> => {
-  const declaration = findDeclaration(request.moduleId, request.key);
-  if (declaration === undefined) {
-    return Effect.fail({
-      _tag: "UnknownConfigKeyError",
-      key: request.key,
-    } satisfies UnknownConfigKeyError);
-  }
+const resolveDecodedConfigValue =
+  (featureFlagRollout?: RuntimeFeatureFlagRolloutService) =>
+  (
+    request: RuntimeConfigResolutionRequest,
+  ): Effect.Effect<
+    RuntimeResolutionResult,
+    ParseResult.ParseError | UnknownConfigKeyError
+  > =>
+    Effect.gen(function* () {
+      const declaration = findDeclaration(request.moduleId, request.key);
+      if (declaration === undefined) {
+        return yield* Effect.fail({
+          _tag: "UnknownConfigKeyError",
+          key: request.key,
+        } satisfies UnknownConfigKeyError);
+      }
 
-  const entitled =
-    !declaration.billable ||
-    resolveModuleEnabledState(
-      request.moduleId,
-      request.requestContext,
-      request.overrides,
-      request.entitlements,
-    ).effectiveValue;
+      const moduleState = declaration.billable
+        ? yield* resolveModuleEnabledState(
+            request.moduleId,
+            request.requestContext,
+            request.overrides,
+            request.entitlements,
+            featureFlagRollout,
+          )
+        : undefined;
 
-  if (!entitled) {
-    return decodeRuntimeResolutionResult({
-      moduleId: request.moduleId,
-      key: request.key,
-      effectiveValue: declaration.defaultValue,
-      source: runtimeResolutionSource.unentitledDefault,
-      entitled: false,
-    } satisfies RuntimeResolutionResult);
-  }
-
-  const matchedOverride = findMatchedOverride(
-    request.moduleId,
-    request.key,
-    declaration.allowedScopes,
-    request.requestContext,
-    request.overrides,
-  );
-
-  return decodeRuntimeResolutionResult(
-    (matchedOverride === undefined
-      ? {
+      if (
+        declaration.billable &&
+        moduleState !== undefined &&
+        !moduleState.effectiveValue
+      ) {
+        return yield* decodeRuntimeResolutionResult({
           moduleId: request.moduleId,
           key: request.key,
           effectiveValue: declaration.defaultValue,
-          source: runtimeResolutionSource.codeDefault,
-          entitled: true,
-        }
-      : {
+          source: moduleState.source,
+          entitled: false,
+          ...(moduleState.resolvedScope !== undefined
+            ? { resolvedScope: moduleState.resolvedScope }
+            : {}),
+          ...(moduleState.resolvedScopeId !== undefined
+            ? { resolvedScopeId: moduleState.resolvedScopeId }
+            : {}),
+        } satisfies RuntimeResolutionResult);
+      }
+
+      const matchedOverride = findMatchedConfigOverride(
+        request.moduleId,
+        request.key,
+        declaration.allowedScopes,
+        request.requestContext,
+        request.overrides,
+      );
+
+      return yield* decodeRuntimeResolutionResult(
+        (matchedOverride === undefined
+          ? {
+              moduleId: request.moduleId,
+              key: request.key,
+              effectiveValue: declaration.defaultValue,
+              source: runtimeResolutionSource.codeDefault,
+              entitled: declaration.billable
+                ? (moduleState?.entitled ?? false)
+                : true,
+            }
+          : {
+              moduleId: request.moduleId,
+              key: request.key,
+              effectiveValue: matchedOverride.value,
+              source: runtimeResolutionSource.runtimeOverride,
+              entitled: declaration.billable
+                ? (moduleState?.entitled ?? false)
+                : true,
+              resolvedScope: matchedOverride.scope,
+              resolvedScopeId: matchedOverride.scopeId,
+            }) satisfies RuntimeResolutionResult,
+      );
+    });
+
+const resolveDecodedFeatureFlag =
+  (featureFlagRollout?: RuntimeFeatureFlagRolloutService) =>
+  (
+    request: RuntimeFlagResolutionRequest,
+  ): Effect.Effect<RuntimeResolutionResult, ParseResult.ParseError> =>
+    Effect.gen(function* () {
+      const moduleEnabledKey = getModuleEnabledFeatureFlagKey(request.moduleId);
+      const moduleState = yield* resolveModuleEnabledState(
+        request.moduleId,
+        request.requestContext,
+        request.overrides,
+        request.entitlements,
+        featureFlagRollout,
+      );
+
+      if (
+        request.flag.key !== moduleEnabledKey &&
+        !moduleState.effectiveValue
+      ) {
+        const matchedEntitlement = request.flag.billable
+          ? findMatchedEntitlement(
+              request.moduleId,
+              request.flag.key,
+              request.requestContext,
+              request.entitlements,
+            )
+          : undefined;
+
+        return yield* decodeRuntimeResolutionResult({
           moduleId: request.moduleId,
-          key: request.key,
-          effectiveValue: matchedOverride.value,
-          source: runtimeResolutionSource.runtimeOverride,
-          entitled: true,
-          resolvedScope: matchedOverride.scope,
-          resolvedScopeId: matchedOverride.scopeId,
-        }) satisfies RuntimeResolutionResult,
-  );
-};
+          key: request.flag.key,
+          effectiveValue: false,
+          source: moduleState.source,
+          entitled: request.flag.billable
+            ? matchedEntitlement !== undefined
+            : true,
+          ...(moduleState.resolvedScope !== undefined
+            ? { resolvedScope: moduleState.resolvedScope }
+            : {}),
+          ...(moduleState.resolvedScopeId !== undefined
+            ? { resolvedScopeId: moduleState.resolvedScopeId }
+            : {}),
+        } satisfies RuntimeResolutionResult);
+      }
 
-const resolveDecodedFeatureFlag = (request: RuntimeFlagResolutionRequest) => {
-  const moduleEnabledKey = getModuleEnabledFeatureFlagKey(request.moduleId);
-  const moduleState = resolveModuleEnabledState(
-    request.moduleId,
-    request.requestContext,
-    request.overrides,
-    request.entitlements,
-  );
+      const resolution =
+        request.flag.key === moduleEnabledKey
+          ? moduleState
+          : yield* resolveFeatureFlagState({
+              moduleId: request.moduleId,
+              flag: request.flag,
+              requestContext: request.requestContext,
+              overrides: request.overrides,
+              entitlements: request.entitlements,
+              ...(featureFlagRollout !== undefined
+                ? { featureFlagRollout }
+                : {}),
+            });
 
-  if (request.flag.key !== moduleEnabledKey && !moduleState.effectiveValue) {
-    return decodeRuntimeResolutionResult({
-      moduleId: request.moduleId,
-      key: request.flag.key,
-      effectiveValue: false,
-      source: moduleState.source,
-      entitled: false,
-      ...(moduleState.resolvedScope !== undefined
-        ? { resolvedScope: moduleState.resolvedScope }
-        : {}),
-      ...(moduleState.resolvedScopeId !== undefined
-        ? { resolvedScopeId: moduleState.resolvedScopeId }
-        : {}),
-    } satisfies RuntimeResolutionResult);
-  }
-
-  const resolution =
-    request.flag.key === moduleEnabledKey
-      ? moduleState
-      : resolveFeatureFlagState(
-          request.moduleId,
-          request.flag,
-          request.requestContext,
-          request.overrides,
-          request.entitlements,
-        );
-
-  return decodeRuntimeResolutionResult({
-    moduleId: request.moduleId,
-    key: request.flag.key,
-    effectiveValue: resolution.effectiveValue,
-    source: resolution.source,
-    entitled: resolution.entitled,
-    ...(resolution.resolvedScope !== undefined
-      ? { resolvedScope: resolution.resolvedScope }
-      : {}),
-    ...(resolution.resolvedScopeId !== undefined
-      ? { resolvedScopeId: resolution.resolvedScopeId }
-      : {}),
-  } satisfies RuntimeResolutionResult);
-};
+      return yield* decodeRuntimeResolutionResult({
+        moduleId: request.moduleId,
+        key: request.flag.key,
+        effectiveValue: resolution.effectiveValue,
+        source: resolution.source,
+        entitled: resolution.entitled,
+        ...(resolution.resolvedScope !== undefined
+          ? { resolvedScope: resolution.resolvedScope }
+          : {}),
+        ...(resolution.resolvedScopeId !== undefined
+          ? { resolvedScopeId: resolution.resolvedScopeId }
+          : {}),
+      } satisfies RuntimeResolutionResult);
+    });
 
 const buildDecodedChangeProposals = (request: RuntimeChangeProposalRequest) => {
   const moduleManifest = findModuleManifest(request.moduleId);
-  const declaredKeys = new Set<string>(
-    moduleManifest?.configKeys.map((configKey) => configKey.key) ?? [],
+  const declaredConfigKeys = new Map(
+    (moduleManifest?.configKeys ?? []).map((configKey) => [
+      configKey.key,
+      configKey,
+    ]),
   );
 
   return decodeRuntimeChangeProposalList(
@@ -481,9 +837,10 @@ const buildDecodedChangeProposals = (request: RuntimeChangeProposalRequest) => {
       .filter((override) => override.moduleId === request.moduleId)
       .map((override) => {
         const renamedKey = request.renameMap[override.key];
+        const declaredConfigKey = declaredConfigKeys.get(override.key);
         const action = renamedKey
           ? runtimeChangeProposalAction.rename
-          : declaredKeys.has(override.key)
+          : declaredConfigKey !== undefined
             ? runtimeChangeProposalAction.update
             : runtimeChangeProposalAction.retire;
 
@@ -495,11 +852,14 @@ const buildDecodedChangeProposals = (request: RuntimeChangeProposalRequest) => {
           artifactPath: `specs/00-governance/runtime-config-proposals/${request.moduleId}.${override.key.replace(/\./g, "-")}.json`,
           reason: renamedKey
             ? `Runtime key should migrate to ${renamedKey}.`
-            : declaredKeys.has(override.key)
+            : declaredConfigKey !== undefined
               ? "Approved runtime override differs from the code-declared baseline."
               : "Runtime key no longer exists in the code-declared manifest.",
           runtimeValue: override.value,
           ...(renamedKey !== undefined ? { codeValue: renamedKey } : {}),
+          ...(renamedKey === undefined && declaredConfigKey !== undefined
+            ? { codeValue: declaredConfigKey.defaultValue }
+            : {}),
         };
       }),
   );
@@ -560,10 +920,28 @@ export type RuntimeConfigModuleService = {
     readonly RuntimeConfigOverrideRecord[],
     RuntimeConfigModulePersistenceError
   >;
+  readonly listOverrideProposalsByModule: (
+    moduleId: PlatformModuleId,
+  ) => Effect.Effect<
+    readonly RuntimeConfigOverrideProposalRecord[],
+    RuntimeConfigModulePersistenceError
+  >;
   readonly upsertOverride: (
     input: RuntimeConfigOverrideRecord,
   ) => Effect.Effect<
     RuntimeConfigOverrideRecord,
+    RuntimeConfigModulePersistenceError
+  >;
+  readonly submitOverrideProposal: (
+    input: RuntimeConfigOverrideProposalSubmitRecord,
+  ) => Effect.Effect<
+    RuntimeConfigOverrideProposalRecord,
+    RuntimeConfigModulePersistenceError
+  >;
+  readonly reviewChangeProposal: (
+    input: RuntimeConfigSyncArtifactReviewRecord,
+  ) => Effect.Effect<
+    RuntimeConfigSyncArtifactRecord,
     RuntimeConfigModulePersistenceError
   >;
   readonly persistChangeProposals: (
@@ -587,11 +965,12 @@ export class RuntimeConfigModule extends Context.Tag("RuntimeConfigModule")<
 
 export const makeRuntimeConfigModule = (
   runtimeConfigRepository?: RuntimeConfigPostgresRepositoryService,
+  featureFlagRollout?: RuntimeFeatureFlagRolloutService,
 ) =>
   Effect.succeed<RuntimeConfigModuleService>({
     resolveConfigValue: (input: RuntimeConfigResolutionRequest) =>
       Schema.decodeUnknown(RuntimeConfigResolutionRequestSchema)(input).pipe(
-        Effect.flatMap(resolveDecodedConfigValue),
+        Effect.flatMap(resolveDecodedConfigValue(featureFlagRollout)),
       ),
     resolveStoredConfigValue: (input: StoredRuntimeConfigResolutionRequest) =>
       Schema.decodeUnknown(StoredRuntimeConfigResolutionRequestSchema)(
@@ -604,7 +983,7 @@ export const makeRuntimeConfigModule = (
             (repository) => repository.listOverridesByModule(request.moduleId),
           ).pipe(
             Effect.flatMap((overrides) =>
-              resolveDecodedConfigValue({
+              resolveDecodedConfigValue(featureFlagRollout)({
                 ...request,
                 overrides,
               }),
@@ -614,23 +993,37 @@ export const makeRuntimeConfigModule = (
       ),
     resolveFeatureFlag: (input: RuntimeFlagResolutionRequest) =>
       Schema.decodeUnknown(RuntimeFlagResolutionRequestSchema)(input).pipe(
-        Effect.flatMap(resolveDecodedFeatureFlag),
+        Effect.flatMap(resolveDecodedFeatureFlag(featureFlagRollout)),
       ),
     resolveStoredFeatureFlag: (input: StoredRuntimeFlagResolutionRequest) =>
       Schema.decodeUnknown(StoredRuntimeFlagResolutionRequestSchema)(
         input,
       ).pipe(
         Effect.flatMap((request) =>
-          requireRuntimeConfigRepository(
-            runtimeConfigRepository,
-            "resolveStoredFeatureFlag",
-            (repository) => repository.listOverridesByModule(request.moduleId),
+          Effect.succeed(
+            collectFeatureFlagDependencyModuleIds(
+              request.moduleId,
+              request.flag,
+            ),
           ).pipe(
-            Effect.flatMap((overrides) =>
-              resolveDecodedFeatureFlag({
-                ...request,
-                overrides,
-              }),
+            Effect.flatMap((moduleIds) =>
+              requireRuntimeConfigRepository(
+                runtimeConfigRepository,
+                "resolveStoredFeatureFlag",
+                (repository) =>
+                  Effect.forEach(
+                    moduleIds,
+                    (moduleId) => repository.listOverridesByModule(moduleId),
+                    { concurrency: 1 },
+                  ).pipe(Effect.map((overrideLists) => overrideLists.flat())),
+              ).pipe(
+                Effect.flatMap((overrides) =>
+                  resolveDecodedFeatureFlag(featureFlagRollout)({
+                    ...request,
+                    overrides,
+                  }),
+                ),
+              ),
             ),
           ),
         ),
@@ -649,6 +1042,17 @@ export const makeRuntimeConfigModule = (
           ),
         ),
       ),
+    listOverrideProposalsByModule: (moduleId: PlatformModuleId) =>
+      Schema.decodeUnknown(PlatformModuleIdSchema)(moduleId).pipe(
+        Effect.flatMap((decodedModuleId) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "listOverrideProposalsByModule",
+            (repository) =>
+              repository.listOverrideProposalsByModule(decodedModuleId),
+          ),
+        ),
+      ),
     upsertOverride: (input: RuntimeConfigOverrideRecord) =>
       Schema.decodeUnknown(RuntimeConfigOverrideRecordSchema)(input).pipe(
         Effect.flatMap((override) =>
@@ -656,6 +1060,32 @@ export const makeRuntimeConfigModule = (
             runtimeConfigRepository,
             "upsertOverride",
             (repository) => repository.upsertOverride(override),
+          ),
+        ),
+      ),
+    submitOverrideProposal: (
+      input: RuntimeConfigOverrideProposalSubmitRecord,
+    ) =>
+      Schema.decodeUnknown(RuntimeConfigOverrideProposalSubmitRecordSchema)(
+        input,
+      ).pipe(
+        Effect.flatMap((proposal) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "submitOverrideProposal",
+            (repository) => repository.submitOverrideProposal(proposal),
+          ),
+        ),
+      ),
+    reviewChangeProposal: (input: RuntimeConfigSyncArtifactReviewRecord) =>
+      Schema.decodeUnknown(RuntimeConfigSyncArtifactReviewRecordSchema)(
+        input,
+      ).pipe(
+        Effect.flatMap((review) =>
+          requireRuntimeConfigRepository(
+            runtimeConfigRepository,
+            "reviewChangeProposal",
+            (repository) => repository.reviewSyncArtifact(review),
           ),
         ),
       ),

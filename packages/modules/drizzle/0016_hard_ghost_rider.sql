@@ -1,0 +1,2 @@
+ALTER TABLE "tenant_membership_invitations" ADD COLUMN "reminder_queued_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "tenant_membership_invitations" ADD COLUMN "expiry_notification_queued_at" timestamp with time zone;

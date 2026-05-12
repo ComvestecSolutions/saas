@@ -4,6 +4,7 @@ import {
   defineDataClassificationDeclarations,
   defineModuleFields,
   defineProjectionDescriptors,
+  featureFlagLifecycle,
   permissionScope,
   platformModuleId,
   platformScope,
@@ -15,6 +16,9 @@ import { defineModuleManifest } from "../../manifest-helpers";
 
 export const workflowJobsFields = defineModuleFields({
   jobId: "jobId",
+  sourceModuleId: "sourceModuleId",
+  kind: "kind",
+  trigger: "trigger",
   tenantScope: "tenantScope",
   tenantScopeId: "tenantScopeId",
   status: "status",
@@ -44,6 +48,18 @@ export const workflowJobsFieldClassifications =
     },
     {
       field: workflowJobsFields.jobId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: workflowJobsFields.sourceModuleId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: workflowJobsFields.kind,
+      classification: dataClassification.internal,
+    },
+    {
+      field: workflowJobsFields.trigger,
       classification: dataClassification.internal,
     },
     {
@@ -133,6 +149,8 @@ export const workflowJobsManifest = defineModuleManifest({
       defaultEnabled: false,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan:
         "Promote to default once Convex-native job orchestration is validated.",
     },
@@ -144,6 +162,9 @@ export const workflowJobsManifest = defineModuleManifest({
       profile: projectionProfile.admin,
       visibleFields: [
         workflowJobsFields.jobId,
+        workflowJobsFields.sourceModuleId,
+        workflowJobsFields.kind,
+        workflowJobsFields.trigger,
         workflowJobsFields.tenantScope,
         workflowJobsFields.tenantScopeId,
         workflowJobsFields.status,
@@ -156,9 +177,29 @@ export const workflowJobsManifest = defineModuleManifest({
       auditedFields: [workflowJobsFields.lastError],
     },
     {
+      profile: projectionProfile.supportSafe,
+      visibleFields: [
+        workflowJobsFields.jobId,
+        workflowJobsFields.sourceModuleId,
+        workflowJobsFields.kind,
+        workflowJobsFields.trigger,
+        workflowJobsFields.tenantScope,
+        workflowJobsFields.tenantScopeId,
+        workflowJobsFields.status,
+        workflowJobsFields.attempts,
+        workflowJobsFields.scheduledAt,
+        workflowJobsFields.completedAt,
+        workflowJobsFields.gapReason,
+      ],
+      auditedFields: [],
+    },
+    {
       profile: projectionProfile.summary,
       visibleFields: [
         workflowJobsFields.jobId,
+        workflowJobsFields.sourceModuleId,
+        workflowJobsFields.kind,
+        workflowJobsFields.trigger,
         workflowJobsFields.status,
         workflowJobsFields.gapReason,
       ],

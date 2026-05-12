@@ -9,7 +9,10 @@ import { AuditActionSchema } from "./audit-actions";
 
 const RuntimeResolutionSourceConstantSchema = Schema.Struct({
   codeDefault: Schema.Literal("code-default"),
+  dependencyDisabled: Schema.Literal("dependency-disabled"),
   entitlement: Schema.Literal("entitlement"),
+  retired: Schema.Literal("retired"),
+  rollout: Schema.Literal("rollout"),
   runtimeOverride: Schema.Literal("runtime-override"),
   unentitledDefault: Schema.Literal("unentitled-default"),
 });
@@ -18,7 +21,10 @@ export const runtimeResolutionSource = Schema.validateSync(
   RuntimeResolutionSourceConstantSchema,
 )({
   codeDefault: "code-default",
+  dependencyDisabled: "dependency-disabled",
   entitlement: "entitlement",
+  retired: "retired",
+  rollout: "rollout",
   runtimeOverride: "runtime-override",
   unentitledDefault: "unentitled-default",
 } satisfies Schema.Schema.Type<typeof RuntimeResolutionSourceConstantSchema>);
@@ -43,7 +49,10 @@ export type PersistedConfigSource = Schema.Schema.Type<
 
 export const runtimeResolutionSources = [
   runtimeResolutionSource.codeDefault,
+  runtimeResolutionSource.dependencyDisabled,
   runtimeResolutionSource.entitlement,
+  runtimeResolutionSource.retired,
+  runtimeResolutionSource.rollout,
   runtimeResolutionSource.runtimeOverride,
   runtimeResolutionSource.unentitledDefault,
 ] as const;

@@ -76,3 +76,4 @@ Keycloak for authentication, federation, MFA, and session lifecycle. Valkey for 
 6. Auth callback handling must be auditable and safe to retry without duplicating session activation state.
 7. Checkout or signup completion must depend on validated session state, not anonymous query parameters.
 8. Any downstream execution surface that trusts Keycloak-derived identity must keep user or service-actor provenance auditable alongside the platform request context.
+9. When the platform owns password reset, email verification, or MFA code email rendering, it must use the shared `email-delivery` code-owned template registry and tracked-delivery path instead of ad hoc provider-authored content.

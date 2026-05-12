@@ -1,0 +1,394 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Comvestec - Invoice Digest</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;family=JetBrains+Mono:wght@500&amp;family=Metropolis:wght@600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-tint": "#cfbcff",
+              "on-secondary-container": "#bfb2da",
+              "on-surface-variant": "#cbc4d2",
+              "on-tertiary-fixed-variant": "#594400",
+              error: "#ffb4ab",
+              "surface-container-highest": "#36343a",
+              "surface-container-lowest": "#0f0d13",
+              "surface-container-low": "#1d1b20",
+              "surface-dim": "#141218",
+              "surface-variant": "#36343a",
+              background: "#141218",
+              "on-tertiary": "#3e2e00",
+              "on-tertiary-container": "#503d00",
+              "on-secondary-fixed": "#1f1635",
+              "on-primary-fixed": "#22005d",
+              "inverse-primary": "#6750a4",
+              "on-primary-container": "#e0d2ff",
+              "tertiary-container": "#c9a74d",
+              "tertiary-fixed": "#ffdf93",
+              "secondary-fixed": "#e9ddff",
+              "primary-fixed-dim": "#cfbcff",
+              "on-secondary": "#342b4b",
+              "inverse-surface": "#e6e0e9",
+              secondary: "#cdc0e9",
+              "secondary-container": "#4d4465",
+              "inverse-on-surface": "#322f35",
+              "primary-container": "#6750a4",
+              "surface-container": "#211f24",
+              "surface-container-high": "#2b292f",
+              primary: "#cfbcff",
+              "primary-fixed": "#e9ddff",
+              "on-primary-fixed-variant": "#4f378a",
+              "on-error-container": "#ffdad6",
+              "on-primary": "#381e72",
+              tertiary: "#e7c365",
+              "on-surface": "#e6e0e9",
+              "outline-variant": "#494551",
+              "error-container": "#93000a",
+              "on-background": "#e6e0e9",
+              "on-secondary-fixed-variant": "#4b4263",
+              surface: "#141218",
+              "tertiary-fixed-dim": "#e7c365",
+              "secondary-fixed-dim": "#cdc0e9",
+              "on-error": "#690005",
+              "on-tertiary-fixed": "#241a00",
+              outline: "#948e9c",
+              "surface-bright": "#3b383e",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              stack_md: "24px",
+              inline_gutter: "20px",
+              stack_sm: "16px",
+              container_max_width: "600px",
+              stack_xs: "8px",
+              stack_lg: "32px",
+              stack_xl: "48px",
+            },
+            fontFamily: {
+              body: ["Inter"],
+              "meta-code": ["JetBrains Mono"],
+              h2: ["Metropolis"],
+              h1: ["Metropolis"],
+              eyebrow: ["Inter"],
+              "body-sm": ["Inter"],
+            },
+            fontSize: {
+              body: [
+                "15px",
+                {
+                  lineHeight: "24px",
+                  fontWeight: "400",
+                },
+              ],
+              "meta-code": [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  fontWeight: "500",
+                },
+              ],
+              h2: [
+                "20px",
+                {
+                  lineHeight: "28px",
+                  fontWeight: "600",
+                },
+              ],
+              h1: [
+                "28px",
+                {
+                  lineHeight: "36px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "700",
+                },
+              ],
+              eyebrow: [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  letterSpacing: "0.1em",
+                  fontWeight: "700",
+                },
+              ],
+              "body-sm": [
+                "13px",
+                {
+                  lineHeight: "20px",
+                  fontWeight: "400",
+                },
+              ],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      .material-symbols-outlined {
+        font-family: "Material Symbols Outlined";
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: "liga";
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-background text-on-surface font-body font-body antialiased m-0 p-0"
+  >
+    <div
+      class="w-full max-w-container_max_width mx-auto bg-surface flex flex-col min-h-screen"
+    >
+      <!-- TopAppBar -->
+      <header
+        class="bg-surface-container-low dark:bg-surface-container-low border-b border-outline-variant dark:border-outline-variant w-full docked full-width top"
+      >
+        <div
+          class="flex justify-between items-center w-full px-inline_gutter py-stack_sm max-w-container_max_width mx-auto"
+        >
+          <div
+            class="font-h2 text-h2 font-bold text-on-surface dark:text-on-surface"
+          >
+            Comvestec
+          </div>
+          <div class="flex items-center gap-stack_sm">
+            <button
+              class="text-primary dark:text-primary hover:bg-surface-container-highest transition-colors p-1 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <span class="material-symbols-outlined" data-icon="notifications"
+                >notifications</span
+              >
+            </button>
+            <button
+              class="text-primary dark:text-primary hover:bg-surface-container-highest transition-colors p-1 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <span class="material-symbols-outlined" data-icon="settings"
+                >settings</span
+              >
+            </button>
+          </div>
+        </div>
+      </header>
+      <!-- Main Content -->
+      <main
+        class="flex-grow flex flex-col px-inline_gutter py-stack_lg gap-stack_lg"
+      >
+        <!-- Context Header -->
+        <div class="flex flex-col gap-stack_xs">
+          <p
+            class="font-eyebrow text-eyebrow uppercase tracking-widest text-primary"
+          >
+            Billing Digest
+          </p>
+          <h1 class="font-h1 text-h1 text-on-surface">
+            Invoices Ready for Review
+          </h1>
+          <p class="font-body text-body text-on-surface-variant">
+            You have
+            <span class="font-bold text-on-surface">3 new invoices</span>
+            generated for your accounts. Please review the details below.
+          </p>
+        </div>
+        <!-- Invoices List Panel -->
+        <div
+          class="bg-surface-container-low border border-outline-variant rounded p-stack_md flex flex-col gap-stack_sm"
+        >
+          <!-- Invoice Row 1 -->
+          <div
+            class="bg-surface-container-highest border border-outline-variant rounded p-stack_sm flex flex-col md:flex-row justify-between items-start md:items-center gap-stack_sm"
+          >
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <span
+                  class="font-meta-code text-meta-code text-secondary bg-surface-dim px-2 py-1 rounded border border-outline-variant"
+                  >INV-2023-0891</span
+                >
+                <span
+                  class="font-eyebrow text-eyebrow text-tertiary bg-tertiary/10 px-2 py-1 rounded"
+                  >Pending</span
+                >
+              </div>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                Due: Nov 15, 2023 • Alpha Core Services
+              </p>
+            </div>
+            <div
+              class="flex items-center gap-stack_sm w-full md:w-auto justify-between md:justify-end"
+            >
+              <span class="font-h2 text-h2 text-on-surface">$4,250.00</span>
+              <a
+                class="text-primary hover:text-on-primary-container transition-colors p-2 rounded flex items-center justify-center border border-primary hover:bg-primary/10"
+                href="#"
+              >
+                <span
+                  class="material-symbols-outlined text-[20px]"
+                  data-icon="arrow_forward"
+                  >arrow_forward</span
+                >
+              </a>
+            </div>
+          </div>
+          <!-- Invoice Row 2 -->
+          <div
+            class="bg-surface-container-highest border border-outline-variant rounded p-stack_sm flex flex-col md:flex-row justify-between items-start md:items-center gap-stack_sm"
+          >
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <span
+                  class="font-meta-code text-meta-code text-secondary bg-surface-dim px-2 py-1 rounded border border-outline-variant"
+                  >INV-2023-0892</span
+                >
+                <span
+                  class="font-eyebrow text-eyebrow text-tertiary bg-tertiary/10 px-2 py-1 rounded"
+                  >Pending</span
+                >
+              </div>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                Due: Nov 18, 2023 • Beta Analytics
+              </p>
+            </div>
+            <div
+              class="flex items-center gap-stack_sm w-full md:w-auto justify-between md:justify-end"
+            >
+              <span class="font-h2 text-h2 text-on-surface">$1,120.50</span>
+              <a
+                class="text-primary hover:text-on-primary-container transition-colors p-2 rounded flex items-center justify-center border border-primary hover:bg-primary/10"
+                href="#"
+              >
+                <span
+                  class="material-symbols-outlined text-[20px]"
+                  data-icon="arrow_forward"
+                  >arrow_forward</span
+                >
+              </a>
+            </div>
+          </div>
+          <!-- Invoice Row 3 -->
+          <div
+            class="bg-surface-container-highest border border-outline-variant rounded p-stack_sm flex flex-col md:flex-row justify-between items-start md:items-center gap-stack_sm"
+          >
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center gap-2">
+                <span
+                  class="font-meta-code text-meta-code text-secondary bg-surface-dim px-2 py-1 rounded border border-outline-variant"
+                  >INV-2023-0895</span
+                >
+                <span
+                  class="font-eyebrow text-eyebrow text-error bg-error/10 px-2 py-1 rounded text-error"
+                  >Overdue</span
+                >
+              </div>
+              <p class="font-body-sm text-body-sm text-on-surface-variant">
+                Due: Oct 30, 2023 • Gamma Hosting
+              </p>
+            </div>
+            <div
+              class="flex items-center gap-stack_sm w-full md:w-auto justify-between md:justify-end"
+            >
+              <span class="font-h2 text-h2 text-on-surface">$850.00</span>
+              <a
+                class="text-primary hover:text-on-primary-container transition-colors p-2 rounded flex items-center justify-center border border-primary hover:bg-primary/10"
+                href="#"
+              >
+                <span
+                  class="material-symbols-outlined text-[20px]"
+                  data-icon="arrow_forward"
+                  >arrow_forward</span
+                >
+              </a>
+            </div>
+          </div>
+        </div>
+        <!-- Summary & Actions -->
+        <div class="flex flex-col gap-stack_md pt-stack_sm">
+          <div
+            class="flex justify-between items-center border-t border-outline-variant pt-stack_sm"
+          >
+            <span class="font-body-sm text-body-sm text-on-surface-variant"
+              >Total Outstanding</span
+            >
+            <span class="font-h1 text-h1 text-primary">$6,220.50</span>
+          </div>
+          <div
+            class="flex flex-col sm:flex-row gap-stack_sm w-full mt-stack_xs"
+          >
+            <button
+              class="bg-primary text-on-primary font-body text-body font-bold py-3 px-6 rounded hover:bg-primary-container transition-colors w-full sm:w-auto text-center"
+            >
+              Pay All Selected
+            </button>
+            <button
+              class="bg-transparent text-primary font-body text-body font-bold py-3 px-6 rounded border border-outline-variant hover:bg-surface-container-highest transition-colors w-full sm:w-auto text-center"
+            >
+              View Billing Portal
+            </button>
+          </div>
+        </div>
+      </main>
+      <!-- Footer -->
+      <footer
+        class="bg-background dark:bg-background docked full-width bottom w-full max-w-container_max_width mx-auto py-stack_xl px-inline_gutter text-center flex flex-col gap-stack_sm"
+      >
+        <div
+          class="font-eyebrow text-eyebrow uppercase tracking-widest text-outline"
+        >
+          Comvestec Solutions
+        </div>
+        <div class="flex flex-wrap justify-center gap-x-4 gap-y-2">
+          <a
+            class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors focus:outline-none ring-1 ring-transparent focus:ring-primary rounded px-1"
+            href="#"
+            >Privacy Policy</a
+          >
+          <span class="text-outline-variant">•</span>
+          <a
+            class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors focus:outline-none ring-1 ring-transparent focus:ring-primary rounded px-1"
+            href="#"
+            >Terms of Service</a
+          >
+          <span class="text-outline-variant">•</span>
+          <a
+            class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors focus:outline-none ring-1 ring-transparent focus:ring-primary rounded px-1"
+            href="#"
+            >Email Preferences</a
+          >
+        </div>
+        <p
+          class="font-body-sm text-body-sm text-on-surface-variant mt-stack_xs"
+        >
+          © 2024 Comvestec Solutions. All rights reserved.
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

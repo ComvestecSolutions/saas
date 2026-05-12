@@ -10,7 +10,7 @@ Postal for self-hosted transactional email delivery. The adapter wraps Postal be
 
 1. Transactional email rendering and delivery.
 2. Delivery tracking, bounce handling, and complaint processing.
-3. Template management for system emails (invitations, password resets, notifications).
+3. Template management for system emails (invitations, password resets, verification emails, MFA codes, welcome campaigns, newsletters, notifications).
 4. Email reputation and deliverability monitoring.
 5. Consumption of approved `tenant-branding` sender identity and branded email chrome.
 
@@ -39,14 +39,15 @@ Postal for self-hosted transactional email delivery. The adapter wraps Postal be
 | Email content             | tenant-confidential |
 | Recipient addresses       | regulated-sensitive |
 | Delivery tracking records | internal            |
+| Suppression records       | internal            |
 | DKIM/domain credentials   | secret              |
 
 ## Projection Profiles
 
-| Profile | Visible Fields                                   | Audited Fields |
-| ------- | ------------------------------------------------ | -------------- |
-| admin   | messageId, recipient, status, sentAt, bounceType | recipient      |
-| summary | messageId, status, sentAt                        | —              |
+| Profile | Visible Fields                                                                                           | Audited Fields |
+| ------- | -------------------------------------------------------------------------------------------------------- | -------------- |
+| admin   | messageId, recipient, template, status, sentAt, lastEventAt, bounceType, suppressionReason, suppressedAt | recipient      |
+| summary | messageId, template, status, sentAt, lastEventAt                                                         | —              |
 
 ## Rules
 
@@ -54,3 +55,4 @@ Postal for self-hosted transactional email delivery. The adapter wraps Postal be
 2. Bounce and complaint handling must update recipient suppression lists.
 3. System email templates must be version-controlled and reviewable.
 4. Branded sender metadata, reply-to identity, and approved email chrome must consume `tenant-branding` projections rather than a separate email-only branding store.
+5. Provider delivery events must update durable delivery tracking and suppression records through the shared backend module.

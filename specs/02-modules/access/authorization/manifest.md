@@ -12,6 +12,7 @@ Ory Keto for relationship-based authorization (Zanzibar-style tuple checks). Key
 2. Permission scope definitions.
 3. Relationship checks and cached decision support via Ory Keto.
 4. Relation tuple management for tenant hierarchy scoping.
+5. Authenticated operator tuple mutation on the Ory-managed relation path with audit-backed review.
 
 ## Required Declarations
 
@@ -19,6 +20,7 @@ Ory Keto for relationship-based authorization (Zanzibar-style tuple checks). Key
 2. actor classes
 3. supported resource types
 4. admin inspection requirements
+5. admin mutation requirements
 
 ## Actor Classes
 
@@ -54,9 +56,16 @@ Ory Keto for relationship-based authorization (Zanzibar-style tuple checks). Key
 
 ## Admin Inspection Requirements
 
-1. Admin inspection must show the matched tuple or other allow source.
-2. Admin inspection must show whether break-glass or impersonation affected the decision.
+1. Admin inspection must show the matched tuple when persisted tuple evidence exists, or the alternative allow source when access is granted without persisted tuple evidence.
+2. Admin inspection must show whether break-glass was used and whether impersonation was active on the evaluated request context.
 3. Admin inspection must show the evaluated tenant scope and subject candidates.
+
+## Admin Mutation Requirements
+
+1. Admin tuple mutation must require an authenticated platform or support operator session and a non-empty operator reason.
+2. Admin tuple mutation currently covers additive tuple writes on the Ory-managed relation path; revocation and deletion remain follow-on capabilities.
+3. Mutation responses must return the persisted tuple together with the projected audit event generated for the change.
+4. Operator review of tuple changes must route through the existing admin audit-log read surface rather than a separate authorization proposal store.
 
 ## Permission Scopes
 
@@ -86,14 +95,14 @@ Ory Keto for relationship-based authorization (Zanzibar-style tuple checks). Key
 
 ## Projection Profiles
 
-| Profile | Visible Fields                       | Audited Fields |
-| ------- | ------------------------------------ | -------------- |
-| admin   | subject, relation, object, namespace | —              |
-| summary | subject, relation                    | —              |
+| Profile | Visible Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Audited Fields                                                                                                            |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| admin   | allowSource, evaluatedActorType, evaluatedActorId, evaluatedSessionId, evaluatedCorrelationId, decision.allowed, decision.reason, decision.auditRequired, decision.matchedTuple.namespace, decision.matchedTuple.object, decision.matchedTuple.relation, decision.matchedTuple.subject, explanation.subjectCandidates, explanation.matchedSubject, explanation.usedBreakGlass, explanation.impersonationActive, explanation.requestScope, explanation.requestScopeId, tuple.namespace, tuple.object, tuple.relation, tuple.subject | decision.matchedTuple.subject, explanation.subjectCandidates, explanation.matchedSubject, evaluatedActorId, tuple.subject |
+| summary | allowSource, explanation.matchedSubject, explanation.requestScope, explanation.requestScopeId                                                                                                                                                                                                                                                                                                                                                                                                                                      | —                                                                                                                         |
 
 ## Rules
 
 1. Resource authorization is distinct from field visibility.
 2. Decisions must be explainable for admin inspection.
 3. Privileged flows require stronger audit and approval behavior.
-4. Break-glass and support impersonation must never silently bypass explainability.
+4. Break-glass and support impersonation must never silently bypass explainability; inspection views must remain explicit about when only the request context, rather than the matched tuple, explains the decision.

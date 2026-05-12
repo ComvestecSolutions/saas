@@ -21,7 +21,7 @@ The platform is made up of **modules**. Each module provides **features**. Featu
 Each runtime module must declare:
 
 1. config keys with key name, description, JSON schema or Effect Schema type reference, default value, billable flag, allowed override scopes, and owner
-2. feature flags with key name, description, owner, purpose, default enabled state, billable flag, allowed override scopes, and retirement plan
+2. feature flags with key name, description, owner, purpose, default enabled state, billable flag, allowed override scopes, dependency keys, lifecycle state, and retirement plan
 3. permission scopes with description and assignability
 4. projection profiles with visible and audited field lists
 5. data classifications per field or record type

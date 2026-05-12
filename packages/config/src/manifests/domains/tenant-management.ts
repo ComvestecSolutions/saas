@@ -5,6 +5,7 @@ import {
   defineDataClassificationDeclarations,
   defineModuleFields,
   defineProjectionDescriptors,
+  featureFlagLifecycle,
   identitySessionFeatureFlag,
   permissionScope,
   platformModuleId,
@@ -23,7 +24,20 @@ export const tenantManagementFields = defineModuleFields({
   id: "id",
   name: "name",
   status: "status",
+  createdAt: "createdAt",
   billingEmail: "billingEmail",
+  memberCount: "memberCount",
+  invitationId: "invitation.invitationId",
+  invitationRecipientEmail: "invitation.recipientEmail",
+  invitationRelation: "invitation.relation",
+  invitationStatus: "invitation.status",
+  invitationIssuedBy: "invitation.issuedBy",
+  invitationIssuedAt: "invitation.issuedAt",
+  invitationExpiresAt: "invitation.expiresAt",
+  invitationRevokedAt: "invitation.revokedAt",
+  invitationRevokedBy: "invitation.revokedBy",
+  invitationRedeemedAt: "invitation.redeemedAt",
+  invitationRedeemedBy: "invitation.redeemedBy",
 });
 
 export const tenantManagementFieldClassifications =
@@ -41,8 +55,60 @@ export const tenantManagementFieldClassifications =
       classification: dataClassification.internal,
     },
     {
+      field: tenantManagementFields.createdAt,
+      classification: dataClassification.internal,
+    },
+    {
       field: tenantManagementFields.billingEmail,
       classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: tenantManagementFields.memberCount,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationId,
+      classification: dataClassification.internal,
+    },
+    {
+      field: tenantManagementFields.invitationRecipientEmail,
+      classification: dataClassification.regulatedSensitive,
+    },
+    {
+      field: tenantManagementFields.invitationRelation,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationStatus,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationIssuedBy,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationIssuedAt,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationExpiresAt,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationRevokedAt,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationRevokedBy,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationRedeemedAt,
+      classification: dataClassification.tenantConfidential,
+    },
+    {
+      field: tenantManagementFields.invitationRedeemedBy,
+      classification: dataClassification.tenantConfidential,
     },
   ]);
 
@@ -54,6 +120,19 @@ export const tenantManagementManifest = defineModuleManifest({
       description: "Hours before an invite expires.",
       schema: configSchemaType.number,
       defaultValue: 72,
+      billable: false,
+      allowedScopes: [
+        platformScope.platform,
+        platformScope.enterprise,
+        platformScope.organization,
+      ],
+      owner: platformModuleId.tenantManagement,
+    },
+    {
+      key: tenantManagementConfigKey.membershipInviteReminderHoursBeforeExpiry,
+      description: "Hours before invite expiry to queue a reminder email.",
+      schema: configSchemaType.number,
+      defaultValue: 24,
       billable: false,
       allowedScopes: [
         platformScope.platform,
@@ -85,6 +164,8 @@ export const tenantManagementManifest = defineModuleManifest({
       defaultEnabled: true,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "None — core module.",
     },
     {
@@ -95,6 +176,8 @@ export const tenantManagementManifest = defineModuleManifest({
       defaultEnabled: false,
       billable: true,
       allowedScopes: [platformScope.platform, platformScope.enterprise],
+      dependencies: [tenantManagementFeatureFlag.enabled],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "None — permanent feature gate.",
     },
     {
@@ -109,6 +192,8 @@ export const tenantManagementManifest = defineModuleManifest({
         platformScope.enterprise,
         platformScope.organization,
       ],
+      dependencies: [tenantManagementFeatureFlag.enabled],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "Promote to default once onboarding workflow stabilizes.",
     },
   ],
@@ -135,8 +220,40 @@ export const tenantManagementManifest = defineModuleManifest({
         tenantManagementFields.name,
         tenantManagementFields.status,
         tenantManagementFields.billingEmail,
+        tenantManagementFields.memberCount,
+        tenantManagementFields.invitationId,
+        tenantManagementFields.invitationRecipientEmail,
+        tenantManagementFields.invitationRelation,
+        tenantManagementFields.invitationStatus,
+        tenantManagementFields.invitationIssuedBy,
+        tenantManagementFields.invitationIssuedAt,
+        tenantManagementFields.invitationExpiresAt,
+        tenantManagementFields.invitationRevokedAt,
+        tenantManagementFields.invitationRevokedBy,
+        tenantManagementFields.invitationRedeemedAt,
+        tenantManagementFields.invitationRedeemedBy,
       ],
-      auditedFields: [tenantManagementFields.billingEmail],
+      auditedFields: [
+        tenantManagementFields.billingEmail,
+        tenantManagementFields.invitationRecipientEmail,
+      ],
+    },
+    {
+      profile: projectionProfile.supportSafe,
+      visibleFields: [
+        tenantManagementFields.id,
+        tenantManagementFields.name,
+        tenantManagementFields.status,
+        tenantManagementFields.createdAt,
+        tenantManagementFields.invitationId,
+        tenantManagementFields.invitationRelation,
+        tenantManagementFields.invitationStatus,
+        tenantManagementFields.invitationIssuedAt,
+        tenantManagementFields.invitationExpiresAt,
+        tenantManagementFields.invitationRevokedAt,
+        tenantManagementFields.invitationRedeemedAt,
+      ],
+      auditedFields: [],
     },
   ]),
 });

@@ -1,5 +1,6 @@
 import {
   configSchemaType,
+  featureFlagLifecycle,
   fieldSecurityConfigKey,
   fieldSecurityFeatureFlag,
   permissionScope,
@@ -30,6 +31,8 @@ export const fieldSecurityManifest = defineModuleManifest({
       defaultEnabled: true,
       billable: false,
       allowedScopes: [platformScope.platform],
+      dependencies: [],
+      lifecycle: featureFlagLifecycle.active,
       retirementPlan: "None — core module.",
     },
   ],

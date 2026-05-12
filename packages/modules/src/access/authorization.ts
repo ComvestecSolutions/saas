@@ -77,6 +77,12 @@ export type AuthorizationExplanation = Schema.Schema.Type<
   typeof AuthorizationExplanationSchema
 >;
 
+type DelegatedMatchedTupleResolution = {
+  readonly matchedTuple: AuthorizationTuple | undefined;
+  readonly matchedSubject: string | undefined;
+  readonly degradedExplainability: boolean;
+};
+
 const ScopeRelationMappingSchema = Schema.Struct({
   permissionScope: PermissionScopeSchema,
   namespace: AuthorizationNamespaceSchema,
@@ -103,6 +109,11 @@ export const defaultScopeRelationMappings = Schema.validateSync(
     relation: authorizationRelation.editor,
   },
   {
+    permissionScope: permissionScope.memberManage,
+    namespace: authorizationNamespace.tenant,
+    relation: authorizationRelation.admin,
+  },
+  {
     permissionScope: permissionScope.configWrite,
     namespace: authorizationNamespace.module,
     relation: authorizationRelation.admin,
@@ -116,6 +127,16 @@ export const defaultScopeRelationMappings = Schema.validateSync(
     permissionScope: permissionScope.brandingManage,
     namespace: authorizationNamespace.brandingProfile,
     relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.fileRead,
+    namespace: authorizationNamespace.file,
+    relation: authorizationRelation.viewer,
+  },
+  {
+    permissionScope: permissionScope.fileWrite,
+    namespace: authorizationNamespace.file,
+    relation: authorizationRelation.editor,
   },
   {
     permissionScope: permissionScope.auditRead,
@@ -135,6 +156,41 @@ export const defaultScopeRelationMappings = Schema.validateSync(
   {
     permissionScope: permissionScope.billingWrite,
     namespace: authorizationNamespace.billingEntitlement,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.notificationManage,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.emailManage,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.importExecute,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.exportExecute,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.retentionManage,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.searchAdmin,
+    namespace: authorizationNamespace.module,
+    relation: authorizationRelation.admin,
+  },
+  {
+    permissionScope: permissionScope.webhookManage,
+    namespace: authorizationNamespace.module,
     relation: authorizationRelation.admin,
   },
   {
@@ -173,8 +229,25 @@ export type AuthorizationDelegatedCheck = (
   input: AuthorizationDelegatedCheckInput,
 ) => Effect.Effect<boolean, AuthorizationDelegatedCheckError>;
 
+export type AuthorizationDelegatedTupleLookupInput = {
+  readonly namespace: AuthorizationTuple["namespace"];
+  readonly object: AuthorizationTuple["object"];
+  readonly relation: AuthorizationTuple["relation"];
+  readonly subjects: readonly AuthorizationTuple["subject"][];
+  readonly tenantScope: AuthorizationTuple["tenantScope"];
+  readonly tenantScopeId: AuthorizationTuple["tenantScopeId"];
+};
+
+export type AuthorizationDelegatedTupleLookup = (
+  input: AuthorizationDelegatedTupleLookupInput,
+) => Effect.Effect<
+  readonly AuthorizationTuple[],
+  AuthorizationDelegatedCheckError
+>;
+
 export type AuthorizationModuleOptions = AuthorizationModuleRuntimeOptions & {
   readonly delegatedCheck?: AuthorizationDelegatedCheck;
+  readonly delegatedTupleLookup?: AuthorizationDelegatedTupleLookup;
 };
 
 const buildSubjectCandidates = (
@@ -283,6 +356,28 @@ const resolveDelegatedMatchedSubject = (
     ),
   );
 
+const resolveDelegatedMatchedTuple = (input: {
+  readonly request: AuthorizationCheckInput;
+  readonly subjectCandidates: readonly string[];
+  readonly delegatedTupleLookup: AuthorizationDelegatedTupleLookup;
+}) =>
+  input
+    .delegatedTupleLookup({
+      namespace: input.request.namespace,
+      object: input.request.object,
+      relation: input.request.relation,
+      subjects: input.subjectCandidates,
+      tenantScope: input.request.requestContext.tenant.scope,
+      tenantScopeId: input.request.requestContext.tenant.scopeId,
+    })
+    .pipe(
+      Effect.map((tuples) =>
+        input.subjectCandidates
+          .map((subject) => tuples.find((tuple) => tuple.subject === subject))
+          .find((tuple): tuple is AuthorizationTuple => tuple !== undefined),
+      ),
+    );
+
 export type AuthorizationModuleService = {
   readonly listTuples: Effect.Effect<readonly AuthorizationTuple[]>;
   readonly check: (
@@ -324,6 +419,7 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
 
       const tuples = [...options.tuples];
       const delegatedCheck = input.delegatedCheck;
+      const delegatedTupleLookup = input.delegatedTupleLookup;
 
       const check = (checkInput: AuthorizationCheckInput) =>
         Schema.decodeUnknown(AuthorizationCheckInputSchema)(checkInput).pipe(
@@ -395,42 +491,82 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
             }
 
             const matchedTupleEffect =
-              delegatedCheck === undefined
-                ? Effect.succeed(localMatchedTuple)
-                : resolveDelegatedMatchedSubject(
-                    decodedInput,
+              delegatedTupleLookup !== undefined
+                ? resolveDelegatedMatchedTuple({
+                    request: decodedInput,
                     subjectCandidates,
-                    delegatedCheck,
-                  ).pipe(
-                    Effect.map((matchedSubject) =>
-                      matchedSubject === undefined
-                        ? undefined
-                        : localMatchedTuple?.subject === matchedSubject
-                          ? localMatchedTuple
-                          : ({
-                              namespace: decodedInput.namespace,
-                              object: decodedInput.object,
-                              relation: decodedInput.relation,
-                              subject: matchedSubject,
-                              tenantScope:
-                                decodedInput.requestContext.tenant.scope,
-                              tenantScopeId:
-                                decodedInput.requestContext.tenant.scopeId,
-                            } satisfies AuthorizationTuple),
+                    delegatedTupleLookup,
+                  }).pipe(
+                    Effect.map(
+                      (matchedTuple): DelegatedMatchedTupleResolution => ({
+                        matchedTuple,
+                        matchedSubject: matchedTuple?.subject,
+                        degradedExplainability: false,
+                      }),
                     ),
-                  );
+                    Effect.catchAll((error) =>
+                      delegatedCheck === undefined
+                        ? Effect.fail(error)
+                        : Effect.succeed<DelegatedMatchedTupleResolution>({
+                            matchedTuple: undefined,
+                            matchedSubject: undefined,
+                            degradedExplainability: true,
+                          }),
+                    ),
+                    Effect.flatMap((delegatedResolution) =>
+                      delegatedResolution.matchedTuple !== undefined ||
+                      delegatedCheck === undefined
+                        ? Effect.succeed(delegatedResolution)
+                        : resolveDelegatedMatchedSubject(
+                            decodedInput,
+                            subjectCandidates,
+                            delegatedCheck,
+                          ).pipe(
+                            Effect.map((matchedSubject) => ({
+                              matchedTuple: undefined,
+                              matchedSubject,
+                              degradedExplainability: true,
+                            })),
+                          ),
+                    ),
+                  )
+                : delegatedCheck === undefined
+                  ? Effect.succeed<DelegatedMatchedTupleResolution>({
+                      matchedTuple: localMatchedTuple,
+                      matchedSubject: localMatchedTuple?.subject,
+                      degradedExplainability: false,
+                    })
+                  : resolveDelegatedMatchedSubject(
+                      decodedInput,
+                      subjectCandidates,
+                      delegatedCheck,
+                    ).pipe(
+                      Effect.map(
+                        (matchedSubject): DelegatedMatchedTupleResolution => ({
+                          matchedTuple: undefined,
+                          matchedSubject,
+                          degradedExplainability: matchedSubject !== undefined,
+                        }),
+                      ),
+                    );
 
             return matchedTupleEffect.pipe(
-              Effect.flatMap((matchedTuple) => {
+              Effect.flatMap((matchedResolution) => {
                 const usedDelegatedCheck = delegatedCheck !== undefined;
+                const resolvedSubject =
+                  matchedResolution.matchedSubject ??
+                  matchedResolution.matchedTuple?.subject;
                 const decision =
-                  matchedTuple === undefined
+                  matchedResolution.matchedTuple === undefined &&
+                  resolvedSubject === undefined
                     ? {
                         allowed: false,
                         cacheKey,
-                        reason: usedDelegatedCheck
-                          ? "No persisted authorization relation was found."
-                          : "No matching authorization tuple was found.",
+                        reason: matchedResolution.degradedExplainability
+                          ? "Access denied because persisted tuple evidence was unavailable and delegated fallback found no match."
+                          : usedDelegatedCheck
+                            ? "No persisted authorization relation was found."
+                            : "No matching authorization tuple was found.",
                         auditRequired: actorSupportsPrivilegedSupportEscalation(
                           decodedInput.requestContext.actorType,
                         ),
@@ -438,13 +574,17 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
                     : {
                         allowed: true,
                         cacheKey,
-                        reason: usedDelegatedCheck
-                          ? "Matched persisted authorization relation."
-                          : "Matched declared authorization tuple.",
+                        reason: matchedResolution.degradedExplainability
+                          ? "Allowed via delegated authorization fallback without persisted tuple evidence."
+                          : usedDelegatedCheck
+                            ? "Matched persisted authorization relation."
+                            : "Matched declared authorization tuple.",
                         auditRequired: actorSupportsPrivilegedSupportEscalation(
                           decodedInput.requestContext.actorType,
                         ),
-                        matchedTuple,
+                        ...(matchedResolution.matchedTuple !== undefined
+                          ? { matchedTuple: matchedResolution.matchedTuple }
+                          : {}),
                       };
 
                 return Schema.decodeUnknown(AuthorizationDecisionSchema)(
@@ -495,13 +635,37 @@ export const makeAuthorizationModule = (input: AuthorizationModuleOptions) =>
             const matchedSubjectEffect =
               usedBreakGlass || !permissionMappingAllowed
                 ? Effect.succeed<string | undefined>(undefined)
-                : delegatedCheck === undefined
-                  ? Effect.succeed(localMatchedTuple?.subject)
-                  : resolveDelegatedMatchedSubject(
-                      decodedInput,
+                : delegatedTupleLookup !== undefined
+                  ? resolveDelegatedMatchedTuple({
+                      request: decodedInput,
                       subjectCandidates,
-                      delegatedCheck,
-                    );
+                      delegatedTupleLookup,
+                    }).pipe(
+                      Effect.catchAll((error) =>
+                        delegatedCheck === undefined
+                          ? Effect.fail(error)
+                          : Effect.succeed<AuthorizationTuple | undefined>(
+                              undefined,
+                            ),
+                      ),
+                      Effect.flatMap((matchedTuple) =>
+                        matchedTuple !== undefined ||
+                        delegatedCheck === undefined
+                          ? Effect.succeed(matchedTuple?.subject)
+                          : resolveDelegatedMatchedSubject(
+                              decodedInput,
+                              subjectCandidates,
+                              delegatedCheck,
+                            ),
+                      ),
+                    )
+                  : delegatedCheck === undefined
+                    ? Effect.succeed(localMatchedTuple?.subject)
+                    : resolveDelegatedMatchedSubject(
+                        decodedInput,
+                        subjectCandidates,
+                        delegatedCheck,
+                      );
 
             return matchedSubjectEffect.pipe(
               Effect.flatMap((matchedSubject) =>

@@ -4,7 +4,7 @@ Status: accepted
 
 ## Technology Boundary
 
-In-process Effect services for inbound provider webhook intake plus outbound webhook registration and delivery. PostgreSQL for webhook subscription storage, receipt logs, idempotency records, and delivery logs. Valkey for delivery rate limiting.
+In-process Effect services for inbound provider webhook intake plus outbound webhook registration and delivery. PostgreSQL for webhook subscription storage, receipt logs, idempotency records, and delivery logs. Shared workflow-jobs plus Convex-backed scheduling for outbound delivery retry and backoff.
 
 ## Responsibilities
 
@@ -49,15 +49,15 @@ In-process Effect services for inbound provider webhook intake plus outbound web
 
 ## Projection Profiles
 
-| Profile | Visible Fields                                    | Audited Fields |
-| ------- | ------------------------------------------------- | -------------- |
-| admin   | subscriptionId, url, events, status, lastDelivery | url            |
-| summary | subscriptionId, status                            | —              |
+| Profile | Visible Fields                                                                                                | Audited Fields |
+| ------- | ------------------------------------------------------------------------------------------------------------- | -------------- |
+| admin   | apiKeyId, label, prefix, subscriptionId, url, events, status, createdAt, rotatedAt, revokedAt, lastDeliveryAt | label, url     |
+| summary | apiKeyId, label, prefix, subscriptionId, status                                                               | —              |
 
 ## Rules
 
 1. Webhook payloads must honor field-security projections.
 2. API keys must be rotatable and auditable.
-3. Failed deliveries must be retried with exponential backoff and visible in admin.
+3. Failed deliveries must be retried with exponential backoff and leave durable repair evidence for the shared operator recovery surfaces.
 4. Inbound provider webhooks must be authenticated, idempotent, and auditable before any billing or entitlement mutation runs.
 5. Return-url handlers must not bypass webhook verification as the source of truth for payment outcomes.

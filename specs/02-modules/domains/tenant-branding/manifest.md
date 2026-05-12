@@ -18,15 +18,15 @@ Runtime-config for tenant-scoped effective values and entitlement-gated resoluti
 ## Ownership Metadata
 
 1. Owner module: `tenant-branding`.
-2. Primary admin surface: `admin-app` branding and domain management screens.
+2. Intended primary admin surface: `admin-app` branding and domain management screens when the broader operator UI lands.
 3. Downstream consumers: `public-web`, `product-app`, `email-delivery`, `notification-center`, and `identity-session`.
 4. Code-declared defaults, schemas, and allowed scopes remain versioned in the repository and synchronize through `runtime-config`.
 
 ## Permission Scopes
 
-| Scope             | Description                                               |
-| ----------------- | --------------------------------------------------------- |
-| `branding:manage` | Manage branding settings, assets, and custom-domain state |
+| Scope             | Description                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| `branding:manage` | Manage branding settings, branded sender identity metadata, assets, and custom-domain state |
 
 ## Feature Flags
 
@@ -54,21 +54,22 @@ Runtime-config for tenant-scoped effective values and entitlement-gated resoluti
 
 ## Data Classifications
 
-| Data                                                  | Classification      |
-| ----------------------------------------------------- | ------------------- |
-| Published brand assets and public company copy        | public              |
-| Effective branding tokens and asset references        | internal            |
-| Reply-to addresses and sender identity metadata       | tenant-confidential |
-| Custom-domain verification records and approval notes | tenant-confidential |
-| DNS challenge tokens or domain proofs                 | secret              |
+| Data                                                                                                  | Classification      |
+| ----------------------------------------------------------------------------------------------------- | ------------------- |
+| Published company copy, asset references, theme tokens, and public support email                      | public              |
+| Effective scope, change metadata, custom-domain lifecycle status, and operator-only lifecycle context | internal            |
+| Reply-to addresses, sender identity metadata, and requested custom-domain hostnames                   | tenant-confidential |
+| DNS challenge tokens, raw domain proofs, or undeclared verification records                           | secret              |
 
 ## Projection Profiles
 
-| Profile        | Visible Fields                                                                                                                                       | Audited Fields                 |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `summary`      | tenantId, companyName, logoUrl, faviconUrl, themeTokens, supportEmail                                                                                | —                              |
-| `admin`        | tenantId, companyName, assetIds, themeTokens, supportEmail, replyToEmail, customDomainHost, customDomainStatus, effectiveScope, changedBy, changedAt | replyToEmail, customDomainHost |
-| `support-safe` | tenantId, companyName, customDomainStatus, effectiveScope, changedAt                                                                                 | customDomainStatus             |
+| Profile        | Visible Fields                                                                                                           | Audited Fields                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `summary`      | companyName, logoAssetId, faviconAssetId, theme, supportEmail                                                            | —                              |
+| `admin`        | companyName, logoAssetId, faviconAssetId, theme, supportEmail, replyToEmail, customDomainHost, customDomainStatus, scope | replyToEmail, customDomainHost |
+| `support-safe` | companyName, customDomainStatus, scope, changedAt                                                                        | customDomainStatus             |
+
+These rows use the declared field vocabulary from the shared manifest. App-safe and service-level response shapes may derive fields such as `themeTokens` or `effectiveScope` from those declared fields.
 
 ## Rollout and Retirement Rules
 

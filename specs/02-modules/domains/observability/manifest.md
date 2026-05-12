@@ -9,11 +9,12 @@ OpenTelemetry Collector for telemetry ingestion. Prometheus for metrics. Loki fo
 ## Responsibilities
 
 1. Logging, tracing, and metric conventions.
-2. Module-level telemetry requirements.
-3. Alert metadata and correlation support.
-4. Grafana dashboard provisioning.
-5. Service-level objective declarations and dashboard ownership.
-6. Module health probe registration.
+2. Backend request-boundary request telemetry and uncaught-error capture.
+3. Module-level telemetry requirements.
+4. Alert metadata and correlation support.
+5. Grafana dashboard provisioning.
+6. Service-level objective declarations and dashboard ownership.
+7. Module health probe registration.
 
 ## Permission Scopes
 
@@ -56,5 +57,6 @@ OpenTelemetry Collector for telemetry ingestion. Prometheus for metrics. Loki fo
 
 1. Structured logs only.
 2. Permission and sensitive-read behavior should emit useful telemetry where appropriate.
-3. Modules must define their important health indicators.
-4. Critical SLOs must identify their source metrics or trace-derived indicators.
+3. Shared backend request boundaries should emit request telemetry through the observability adapter and route uncaught failures into the error-tracking adapter when the OTLP and error-tracking environment is configured.
+4. Modules must define their important health indicators.
+5. Critical SLOs must identify their source metrics or trace-derived indicators.

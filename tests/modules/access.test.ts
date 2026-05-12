@@ -112,11 +112,26 @@ const createIdentitySessionTestDatabase = () => {
   const transaction = {
     insert: (table: PersistedTable) => ({
       values: (values: PersistedValues) => ({
+        execute: async () => {
+          persistRows(table, values);
+        },
         onConflictDoUpdate: () => ({
           execute: async () => {
             persistRows(table, values);
           },
         }),
+      }),
+    }),
+    update: () => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => [],
+        }),
+      }),
+    }),
+    select: () => ({
+      from: () => ({
+        where: async () => [],
       }),
     }),
   };
@@ -156,17 +171,17 @@ const fieldSecurityTestProjections = defineProjectionDescriptors(
 
 const regulatedSensitiveProjection = defineProjectionDescriptors(
   defineModuleFields({
-    companyName: supportOperationsFields.companyName,
-    ssn: supportOperationsFields.ssn,
+    caseId: supportOperationsFields.caseId,
+    impersonatedUser: supportOperationsFields.impersonatedUser,
   }),
   [
     {
       profile: projectionProfile.detail,
       visibleFields: [
-        supportOperationsFields.companyName,
-        supportOperationsFields.ssn,
+        supportOperationsFields.caseId,
+        supportOperationsFields.impersonatedUser,
       ],
-      auditedFields: [supportOperationsFields.ssn],
+      auditedFields: [supportOperationsFields.impersonatedUser],
     },
   ],
 );
@@ -229,6 +244,39 @@ describe("modules access", () => {
     expect(explanation.matchedSubject).toBe("usr_member_1");
   });
 
+  it("maps member-manage checks onto tenant admin relations", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_1",
+            relation: authorizationRelation.admin,
+            subject: "usr_admin_1",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          ...organizationRequestContext,
+          actorId: "usr_admin_1",
+        },
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.admin,
+        permissionScope: permissionScope.memberManage,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+  });
+
   it("prefers delegated authorization checks over seeded tuples", async () => {
     const authorization = await Effect.runPromise(
       makeAuthorizationModule({
@@ -270,6 +318,64 @@ describe("modules access", () => {
     );
 
     expect(decision.allowed).toBe(true);
+    expect(decision.reason).toBe(
+      "Allowed via delegated authorization fallback without persisted tuple evidence.",
+    );
+    expect(decision).not.toHaveProperty("matchedTuple");
+    expect(explanation.matchedSubject).toBe(
+      `actor-type:${actorType.organizationMember}`,
+    );
+  });
+
+  it("prefers delegated persisted tuples for explainability when available", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_1",
+            relation: authorizationRelation.viewer,
+            subject: "usr_member_1",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+        delegatedCheck: () => Effect.succeed(false),
+        delegatedTupleLookup: () =>
+          Effect.succeed([
+            {
+              namespace: authorizationNamespace.tenant,
+              object: "org_1",
+              relation: authorizationRelation.viewer,
+              subject: `actor-type:${actorType.organizationMember}`,
+              tenantScope: platformScope.organization,
+              tenantScopeId: "org_1",
+            },
+          ]),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
     expect(decision.reason).toBe("Matched persisted authorization relation.");
     expect(decision.matchedTuple).toMatchObject({
       subject: `actor-type:${actorType.organizationMember}`,
@@ -279,6 +385,174 @@ describe("modules access", () => {
     expect(explanation.matchedSubject).toBe(
       `actor-type:${actorType.organizationMember}`,
     );
+  });
+
+  it("falls back to delegated authorization checks when persisted tuple lookup fails", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [],
+        cacheTtlSeconds: 60,
+        delegatedCheck: ({ subject }) =>
+          Effect.succeed(
+            subject === `actor-type:${actorType.organizationMember}`,
+          ),
+        delegatedTupleLookup: () =>
+          Effect.fail({
+            _tag: "AuthorizationDelegatedCheckError",
+            reason: "Keto tuple read unavailable",
+            cause: new Error("keto tuple read unavailable"),
+          } as const),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.reason).toBe(
+      "Allowed via delegated authorization fallback without persisted tuple evidence.",
+    );
+    expect(decision).not.toHaveProperty("matchedTuple");
+    expect(explanation.matchedSubject).toBe(
+      `actor-type:${actorType.organizationMember}`,
+    );
+  });
+
+  it("treats empty delegated tuple lookups as degraded explainability when delegated checks allow access", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [],
+        cacheTtlSeconds: 60,
+        delegatedCheck: ({ subject }) =>
+          Effect.succeed(
+            subject === `actor-type:${actorType.organizationMember}`,
+          ),
+        delegatedTupleLookup: () => Effect.succeed([]),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.reason).toBe(
+      "Allowed via delegated authorization fallback without persisted tuple evidence.",
+    );
+    expect(decision).not.toHaveProperty("matchedTuple");
+    expect(explanation.matchedSubject).toBe(
+      `actor-type:${actorType.organizationMember}`,
+    );
+  });
+
+  it("reports degraded deny reasons when tuple lookup fails and delegated fallback also denies", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [],
+        cacheTtlSeconds: 60,
+        delegatedCheck: () => Effect.succeed(false),
+        delegatedTupleLookup: () =>
+          Effect.fail({
+            _tag: "AuthorizationDelegatedCheckError",
+            reason: "Keto tuple read unavailable",
+            cause: new Error("keto tuple read unavailable"),
+          } as const),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe(
+      "Access denied because persisted tuple evidence was unavailable and delegated fallback found no match.",
+    );
+    expect(decision).not.toHaveProperty("matchedTuple");
+    expect(explanation).not.toHaveProperty("matchedSubject");
+  });
+
+  it("reports degraded deny reasons when empty tuple lookups leave delegated fallback without a match", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [],
+        cacheTtlSeconds: 60,
+        delegatedCheck: () => Effect.succeed(false),
+        delegatedTupleLookup: () => Effect.succeed([]),
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+    const explanation = await Effect.runPromise(
+      authorization.explain({
+        requestContext: organizationRequestContext,
+        namespace: authorizationNamespace.tenant,
+        object: "org_1",
+        relation: authorizationRelation.viewer,
+        permissionScope: permissionScope.tenantRead,
+      }),
+    );
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe(
+      "Access denied because persisted tuple evidence was unavailable and delegated fallback found no match.",
+    );
+    expect(decision).not.toHaveProperty("matchedTuple");
+    expect(explanation).not.toHaveProperty("matchedSubject");
   });
 
   it("allows active break-glass access without delegated authorization availability", async () => {
@@ -366,12 +640,12 @@ describe("modules access", () => {
   });
 
   it("does not reuse cached break-glass access after the break-glass expiry passes", async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
 
     try {
       const issuedAt = new Date("2026-04-22T12:00:00.000Z");
       const expiresAt = new Date(issuedAt.getTime() + 30_000).toISOString();
-      jest.setSystemTime(issuedAt.getTime());
+      vi.setSystemTime(issuedAt.getTime());
 
       const authorization = await Effect.runPromise(
         makeAuthorizationModule({
@@ -405,7 +679,7 @@ describe("modules access", () => {
         reason: "Allowed via break-glass context.",
       });
 
-      jest.setSystemTime(issuedAt.getTime() + 31_000);
+      vi.setSystemTime(issuedAt.getTime() + 31_000);
 
       const deniedDecision = await Effect.runPromise(
         authorization.check({
@@ -422,7 +696,7 @@ describe("modules access", () => {
         reason: "No matching authorization tuple was found.",
       });
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -567,6 +841,123 @@ describe("modules access", () => {
     expect(decision.allowed).toBe(true);
   });
 
+  it("maps retention manage permission to module admin access", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.module,
+            object: platformModuleId.retentionLegalHold,
+            relation: authorizationRelation.admin,
+            subject: `actor-type:${actorType.supportOperator}`,
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          actorType: actorType.supportOperator,
+          actorId: "usr_support_operator",
+          sessionId: "sess_retention_manage",
+          correlationId: "corr_retention_manage",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_1",
+          },
+        },
+        namespace: authorizationNamespace.module,
+        object: platformModuleId.retentionLegalHold,
+        relation: authorizationRelation.admin,
+        permissionScope: permissionScope.retentionManage,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("maps search admin permission to module admin access", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.module,
+            object: platformModuleId.search,
+            relation: authorizationRelation.admin,
+            subject: `actor-type:${actorType.supportOperator}`,
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          actorType: actorType.supportOperator,
+          actorId: "usr_search_operator",
+          sessionId: "sess_search_admin",
+          correlationId: "corr_search_admin",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_1",
+          },
+        },
+        namespace: authorizationNamespace.module,
+        object: platformModuleId.search,
+        relation: authorizationRelation.admin,
+        permissionScope: permissionScope.searchAdmin,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("maps webhook manage permission to module admin access", async () => {
+    const authorization = await Effect.runPromise(
+      makeAuthorizationModule({
+        tuples: [
+          {
+            namespace: authorizationNamespace.module,
+            object: platformModuleId.webhooksApiAccess,
+            relation: authorizationRelation.admin,
+            subject: `actor-type:${actorType.supportOperator}`,
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_1",
+          },
+        ],
+        cacheTtlSeconds: 60,
+      }),
+    );
+
+    const decision = await Effect.runPromise(
+      authorization.check({
+        requestContext: {
+          actorType: actorType.supportOperator,
+          actorId: "usr_webhook_operator",
+          sessionId: "sess_webhook_manage",
+          correlationId: "corr_webhook_manage",
+          tenant: {
+            scope: platformScope.organization,
+            scopeId: "org_1",
+          },
+        },
+        namespace: authorizationNamespace.module,
+        object: platformModuleId.webhooksApiAccess,
+        relation: authorizationRelation.admin,
+        permissionScope: permissionScope.webhookManage,
+      }),
+    );
+
+    expect(decision.allowed).toBe(true);
+  });
+
   it("applies field-security projection and redaction", async () => {
     const fieldSecurity = await Effect.runPromise(makeFieldSecurityModule());
 
@@ -611,14 +1002,14 @@ describe("modules access", () => {
           ...regulatedSensitiveProjection[0],
         },
         record: {
-          companyName: "Acme",
-          ssn: "123-45-6789",
+          caseId: "case_support_1",
+          impersonatedUser: "usr_member_1",
         },
       }),
     );
 
-    expect(result.projectedRecord.ssn).toBe("[REDACTED]");
-    expect(result.projectedRecord.companyName).toBe("Acme");
+    expect(result.projectedRecord.impersonatedUser).toBe("[REDACTED]");
+    expect(result.projectedRecord.caseId).toBe("case_support_1");
   });
 
   it("denies authorization when break-glass context is expired", async () => {
@@ -799,9 +1190,13 @@ describe("modules access", () => {
           },
         },
         tenantHint: "org_1",
+        displayNameHint: "Acme",
+        themeHint: "#111827",
         redirectUri: "https://product.example.com/auth/callback",
       }),
     );
+
+    const authStartUrl = new URL(authStart.redirect.url);
 
     const completion = await Effect.runPromise(
       identitySession.completeAuthentication({
@@ -831,7 +1226,12 @@ describe("modules access", () => {
 
     expect(authStart.redirect.realm).toBe("comvestec");
     expect(authStart.redirect.tenantHint).toBe("org_1");
+    expect(authStart.redirect.displayNameHint).toBe("Acme");
+    expect(authStart.redirect.themeHint).toBe("#111827");
     expect(authStart.correlationId).toBe("corr_auth_start");
+    expect(authStartUrl.searchParams.get("tenant_hint")).toBe("org_1");
+    expect(authStartUrl.searchParams.get("display_name_hint")).toBe("Acme");
+    expect(authStartUrl.searchParams.get("theme_hint")).toBe("#111827");
     expect(completion.requestContext.actorType).toBe(
       actorType.organizationAdmin,
     );
@@ -915,5 +1315,303 @@ describe("modules access", () => {
       requiredModuleId: platformModuleId.billingAndMetering,
       status: onboardingStepStatus.notStarted,
     });
+  });
+
+  it("persists logout lifecycle events and invalidates backend sessions", async () => {
+    const database = createIdentitySessionTestDatabase();
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter(createKeycloakTestOptions()),
+    );
+    const oryKeto = await Effect.runPromise(
+      makeOryKetoAdapter(createOryKetoTestOptions()),
+    );
+    const valkey = await Effect.runPromise(
+      makeValkeyAdapter({
+        url: "redis://localhost:6379",
+        client: createValkeyTestClient(),
+      }),
+    );
+    const tenantManagement = await Effect.runPromise(
+      makeTenantManagementModule(),
+    );
+    const identityRepository = await Effect.runPromise(
+      makeIdentitySessionPostgresRepository(database.database),
+    );
+    const provisioningRepository = await Effect.runPromise(
+      makeTenantProvisioningPostgresRepository(database.database),
+    );
+    const onboardingRepository = await Effect.runPromise(
+      makeTenantOnboardingPostgresRepository(database.database),
+    );
+    const identitySession = await Effect.runPromise(
+      makeIdentitySessionModule().pipe(
+        Effect.provideService(KeycloakAdapter, keycloak),
+        Effect.provideService(OryKetoAdapter, oryKeto),
+        Effect.provideService(ValkeyAdapter, valkey),
+        Effect.provideService(TenantManagementModule, tenantManagement),
+        Effect.provideService(
+          IdentitySessionPostgresRepository,
+          identityRepository,
+        ),
+        Effect.provideService(
+          TenantProvisioningPostgresRepository,
+          provisioningRepository,
+        ),
+        Effect.provideService(
+          TenantOnboardingPostgresRepository,
+          onboardingRepository,
+        ),
+      ),
+    );
+
+    await Effect.runPromise(
+      identitySession.completeAuthentication({
+        session: {
+          authenticated: true,
+          sessionId: "sess_logout_1",
+          actorId: "usr_logout_1",
+          realm: "comvestec",
+          tenantHint: "org_1",
+        },
+        correlationId: "corr_auth_logout_start",
+        host: "product.example.com",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_1",
+          enterpriseId: "ent_1",
+          organizationId: "org_1",
+          individualId: "usr_logout_1",
+        },
+        enabledModules: [
+          platformModuleId.tenantManagement,
+          platformModuleId.identitySession,
+          platformModuleId.billingAndMetering,
+        ],
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        identitySession.invalidateSession({
+          sessionId: "sess_logout_1",
+          correlationId: "corr_logout_1",
+          reason: "logout",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      sessionId: "sess_logout_1",
+      correlationId: "corr_logout_1",
+      reason: "logout",
+      invalidated: true,
+      requestContext: {
+        actorId: "usr_logout_1",
+      },
+      lifecycleEvent: {
+        eventType: identitySessionLifecycleEventType.logoutCompleted,
+      },
+    });
+
+    expect(
+      database.identitySessionEvents.get(
+        [
+          platformAdapterServiceName.keycloak,
+          "sess_logout_1",
+          "corr_logout_1",
+          identitySessionLifecycleEventType.logoutCompleted,
+        ].join(":"),
+      ),
+    ).toMatchObject({
+      actorId: "usr_logout_1",
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_1",
+      eventType: identitySessionLifecycleEventType.logoutCompleted,
+      provider: platformAdapterServiceName.keycloak,
+      metadata: {
+        correlationId: "corr_logout_1",
+        reason: "logout",
+      },
+    });
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          identitySession.resolveRequestContext({ sessionId: "sess_logout_1" }),
+        ),
+      ),
+    ).resolves.toEqual({
+      _tag: "IdentitySessionRequestContextNotFoundError",
+      sessionId: "sess_logout_1",
+    });
+  });
+
+  it("treats missing stale sessions as already invalidated", async () => {
+    const database = createIdentitySessionTestDatabase();
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter(createKeycloakTestOptions()),
+    );
+    const oryKeto = await Effect.runPromise(
+      makeOryKetoAdapter(createOryKetoTestOptions()),
+    );
+    const valkey = await Effect.runPromise(
+      makeValkeyAdapter({
+        url: "redis://localhost:6379",
+        client: createValkeyTestClient(),
+      }),
+    );
+    const tenantManagement = await Effect.runPromise(
+      makeTenantManagementModule(),
+    );
+    const identityRepository = await Effect.runPromise(
+      makeIdentitySessionPostgresRepository(database.database),
+    );
+    const provisioningRepository = await Effect.runPromise(
+      makeTenantProvisioningPostgresRepository(database.database),
+    );
+    const onboardingRepository = await Effect.runPromise(
+      makeTenantOnboardingPostgresRepository(database.database),
+    );
+    const identitySession = await Effect.runPromise(
+      makeIdentitySessionModule().pipe(
+        Effect.provideService(KeycloakAdapter, keycloak),
+        Effect.provideService(OryKetoAdapter, oryKeto),
+        Effect.provideService(ValkeyAdapter, valkey),
+        Effect.provideService(TenantManagementModule, tenantManagement),
+        Effect.provideService(
+          IdentitySessionPostgresRepository,
+          identityRepository,
+        ),
+        Effect.provideService(
+          TenantProvisioningPostgresRepository,
+          provisioningRepository,
+        ),
+        Effect.provideService(
+          TenantOnboardingPostgresRepository,
+          onboardingRepository,
+        ),
+      ),
+    );
+
+    await expect(
+      Effect.runPromise(
+        identitySession.invalidateSession({
+          sessionId: "sess_stale_missing",
+          correlationId: "corr_stale_missing",
+          reason: "stale-session",
+        }),
+      ),
+    ).resolves.toEqual({
+      sessionId: "sess_stale_missing",
+      correlationId: "corr_stale_missing",
+      reason: "stale-session",
+      invalidated: false,
+    });
+
+    expect(database.identitySessionEvents.size).toBe(0);
+  });
+
+  it("does not persist logout lifecycle evidence when backend session deletion fails", async () => {
+    const database = createIdentitySessionTestDatabase();
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter(createKeycloakTestOptions()),
+    );
+    const oryKeto = await Effect.runPromise(
+      makeOryKetoAdapter(createOryKetoTestOptions()),
+    );
+    const failingDeleteClient = {
+      ...createValkeyTestClient(),
+      del: async () => {
+        throw new Error("Simulated delete failure");
+      },
+    };
+    const valkey = await Effect.runPromise(
+      makeValkeyAdapter({
+        url: "redis://localhost:6379",
+        client: failingDeleteClient,
+      }),
+    );
+    const tenantManagement = await Effect.runPromise(
+      makeTenantManagementModule(),
+    );
+    const identityRepository = await Effect.runPromise(
+      makeIdentitySessionPostgresRepository(database.database),
+    );
+    const provisioningRepository = await Effect.runPromise(
+      makeTenantProvisioningPostgresRepository(database.database),
+    );
+    const onboardingRepository = await Effect.runPromise(
+      makeTenantOnboardingPostgresRepository(database.database),
+    );
+    const identitySession = await Effect.runPromise(
+      makeIdentitySessionModule().pipe(
+        Effect.provideService(KeycloakAdapter, keycloak),
+        Effect.provideService(OryKetoAdapter, oryKeto),
+        Effect.provideService(ValkeyAdapter, valkey),
+        Effect.provideService(TenantManagementModule, tenantManagement),
+        Effect.provideService(
+          IdentitySessionPostgresRepository,
+          identityRepository,
+        ),
+        Effect.provideService(
+          TenantProvisioningPostgresRepository,
+          provisioningRepository,
+        ),
+        Effect.provideService(
+          TenantOnboardingPostgresRepository,
+          onboardingRepository,
+        ),
+      ),
+    );
+
+    await Effect.runPromise(
+      identitySession.completeAuthentication({
+        session: {
+          authenticated: true,
+          sessionId: "sess_logout_delete_failure",
+          actorId: "usr_logout_delete_failure",
+          realm: "comvestec",
+          tenantHint: "org_1",
+        },
+        correlationId: "corr_auth_logout_delete_failure",
+        host: "product.example.com",
+        tenant: {
+          scope: platformScope.organization,
+          scopeId: "org_1",
+          enterpriseId: "ent_1",
+          organizationId: "org_1",
+          individualId: "usr_logout_delete_failure",
+        },
+        enabledModules: [
+          platformModuleId.tenantManagement,
+          platformModuleId.identitySession,
+          platformModuleId.billingAndMetering,
+        ],
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          identitySession.invalidateSession({
+            sessionId: "sess_logout_delete_failure",
+            correlationId: "corr_logout_delete_failure",
+            reason: "logout",
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "ValkeyAdapterOperationError",
+      operation: "deleteSession",
+    });
+
+    expect(
+      database.identitySessionEvents.has(
+        [
+          platformAdapterServiceName.keycloak,
+          "sess_logout_delete_failure",
+          "corr_logout_delete_failure",
+          identitySessionLifecycleEventType.logoutCompleted,
+        ].join(":"),
+      ),
+    ).toBe(false);
   });
 });

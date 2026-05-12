@@ -47,6 +47,7 @@ const IdentitySessionStartInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
   tenantHint: Schema.optional(Schema.NonEmptyString),
   displayNameHint: Schema.optional(Schema.NonEmptyString),
+  themeHint: Schema.optional(Schema.NonEmptyString),
   redirectUri: AbsoluteRedirectUriSchema,
   state: Schema.optional(Schema.NonEmptyString),
 });
@@ -65,6 +66,25 @@ const IdentitySessionCompletionInputSchema = Schema.Struct({
 
 export type IdentitySessionCompletionInput = Schema.Schema.Type<
   typeof IdentitySessionCompletionInputSchema
+>;
+
+export const IdentitySessionInvalidationReasonSchema = Schema.Literal(
+  "logout",
+  "stale-session",
+);
+
+export type IdentitySessionInvalidationReason = Schema.Schema.Type<
+  typeof IdentitySessionInvalidationReasonSchema
+>;
+
+const IdentitySessionInvalidationInputSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  correlationId: Schema.NonEmptyString,
+  reason: IdentitySessionInvalidationReasonSchema,
+});
+
+export type IdentitySessionInvalidationInput = Schema.Schema.Type<
+  typeof IdentitySessionInvalidationInputSchema
 >;
 
 export const IdentitySessionStartResultSchema = Schema.Struct({
@@ -87,6 +107,19 @@ export const IdentitySessionCompletionResultSchema = Schema.Struct({
 
 export type IdentitySessionCompletionResult = Schema.Schema.Type<
   typeof IdentitySessionCompletionResultSchema
+>;
+
+export const IdentitySessionInvalidationResultSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  correlationId: Schema.NonEmptyString,
+  reason: IdentitySessionInvalidationReasonSchema,
+  invalidated: Schema.Boolean,
+  requestContext: Schema.optional(RequestContextSchema),
+  lifecycleEvent: Schema.optional(IdentitySessionLifecycleEventSchema),
+});
+
+export type IdentitySessionInvalidationResult = Schema.Schema.Type<
+  typeof IdentitySessionInvalidationResultSchema
 >;
 
 export type IdentitySessionModuleError =
@@ -115,14 +148,37 @@ export type IdentitySessionRequestContextNotFoundError = {
   readonly sessionId: RequestContext["sessionId"];
 };
 
+export const resolveIdentitySessionRequestContext = (
+  valkey: ValkeyAdapter["Type"],
+  input: IdentitySessionRequestContextLookup,
+) =>
+  Schema.decodeUnknown(IdentitySessionRequestContextLookupSchema)(input).pipe(
+    Effect.flatMap((request) =>
+      valkey.readSession(request).pipe(
+        Effect.flatMap((sessionEntry) =>
+          sessionEntry === undefined
+            ? Effect.fail({
+                _tag: "IdentitySessionRequestContextNotFoundError",
+                sessionId: request.sessionId,
+              } satisfies IdentitySessionRequestContextNotFoundError)
+            : Effect.succeed(sessionEntry.requestContext),
+        ),
+      ),
+    ),
+  );
+
 const IdentitySessionLifecycleEventTypeConstantSchema = Schema.Struct({
   authCallbackCompleted: Schema.Literal("auth.callback.completed"),
+  logoutCompleted: Schema.Literal("auth.logout.completed"),
+  staleSessionInvalidated: Schema.Literal("auth.stale-session.invalidated"),
 });
 
 export const identitySessionLifecycleEventType = Schema.validateSync(
   IdentitySessionLifecycleEventTypeConstantSchema,
 )({
   authCallbackCompleted: "auth.callback.completed",
+  logoutCompleted: "auth.logout.completed",
+  staleSessionInvalidated: "auth.stale-session.invalidated",
 } satisfies Schema.Schema.Type<
   typeof IdentitySessionLifecycleEventTypeConstantSchema
 >);
@@ -147,7 +203,13 @@ const decodeIdentitySessionCompletionResult = Schema.decodeUnknown(
   IdentitySessionCompletionResultSchema,
 );
 
+const decodeIdentitySessionInvalidationResult = Schema.decodeUnknown(
+  IdentitySessionInvalidationResultSchema,
+);
+
 const decodeRequestContext = Schema.decodeUnknown(RequestContextSchema);
+
+const decodeActorId = Schema.decodeUnknown(Schema.NonEmptyString);
 
 const resolveAuthenticatedActorType = (tenant: TenantContext) => {
   switch (tenant.scope) {
@@ -176,6 +238,13 @@ const resolveCurrentStepId = (plan: TenantOnboardingPlan) =>
       step.status === onboardingStepStatus.notStarted,
   )?.stepId;
 
+const resolveInvalidationEventType = (
+  reason: IdentitySessionInvalidationReason,
+) =>
+  reason === "logout"
+    ? identitySessionLifecycleEventType.logoutCompleted
+    : identitySessionLifecycleEventType.staleSessionInvalidated;
+
 export type IdentitySessionModuleService = {
   readonly startAuthentication: (
     input: IdentitySessionStartInput,
@@ -185,6 +254,14 @@ export type IdentitySessionModuleService = {
   ) => Effect.Effect<
     IdentitySessionCompletionResult,
     IdentitySessionModuleError
+  >;
+  readonly invalidateSession: (
+    input: IdentitySessionInvalidationInput,
+  ) => Effect.Effect<
+    IdentitySessionInvalidationResult,
+    | ParseResult.ParseError
+    | IdentitySessionPostgresRepositoryError
+    | ValkeyAdapterOperationError
   >;
   readonly resolveRequestContext: (
     input: IdentitySessionRequestContextLookup,
@@ -226,6 +303,7 @@ export const makeIdentitySessionModule = () =>
                     ? undefined
                     : request.requestContext.tenant.scopeId),
                 displayNameHint: request.displayNameHint,
+                themeHint: request.themeHint,
                 redirectUri: request.redirectUri,
                 state: request.state,
               })
@@ -345,23 +423,66 @@ export const makeIdentitySessionModule = () =>
             }),
           ),
         ),
-      resolveRequestContext: (input: IdentitySessionRequestContextLookup) =>
-        Schema.decodeUnknown(IdentitySessionRequestContextLookupSchema)(
+      invalidateSession: (input: IdentitySessionInvalidationInput) =>
+        Schema.decodeUnknown(IdentitySessionInvalidationInputSchema)(
           input,
         ).pipe(
           Effect.flatMap((request) =>
-            valkey.readSession(request).pipe(
-              Effect.flatMap((sessionEntry) =>
-                sessionEntry === undefined
-                  ? Effect.fail({
-                      _tag: "IdentitySessionRequestContextNotFoundError",
+            valkey.readSession({ sessionId: request.sessionId }).pipe(
+              Effect.flatMap((sessionEntry) => {
+                if (sessionEntry === undefined) {
+                  return decodeIdentitySessionInvalidationResult({
+                    sessionId: request.sessionId,
+                    correlationId: request.correlationId,
+                    reason: request.reason,
+                    invalidated: false,
+                  });
+                }
+
+                return Effect.gen(function* () {
+                  const actorId = yield* decodeActorId(
+                    sessionEntry.requestContext.actorId,
+                  );
+                  const eventType = resolveInvalidationEventType(
+                    request.reason,
+                  );
+                  yield* valkey.deleteSession({ sessionId: request.sessionId });
+
+                  const lifecycleEvent =
+                    yield* identitySessionRepository.persistLifecycleEvent({
+                      eventId: [
+                        keycloak.serviceName,
+                        request.sessionId,
+                        request.correlationId,
+                        eventType,
+                      ].join(":"),
                       sessionId: request.sessionId,
-                    } satisfies IdentitySessionRequestContextNotFoundError)
-                  : Effect.succeed(sessionEntry.requestContext),
-              ),
+                      actorId,
+                      tenantScope: sessionEntry.requestContext.tenant.scope,
+                      tenantScopeId: sessionEntry.requestContext.tenant.scopeId,
+                      eventType,
+                      provider: keycloak.serviceName,
+                      metadata: {
+                        correlationId: request.correlationId,
+                        reason: request.reason,
+                      },
+                    });
+
+                  return yield* decodeIdentitySessionInvalidationResult({
+                    sessionId: request.sessionId,
+                    correlationId: request.correlationId,
+                    reason: request.reason,
+                    invalidated: true,
+                    requestContext: sessionEntry.requestContext,
+                    lifecycleEvent,
+                  });
+                });
+              }),
             ),
           ),
         ),
+      resolveRequestContext: (input: IdentitySessionRequestContextLookup) =>
+        resolveIdentitySessionRequestContext(valkey, input),
     } satisfies IdentitySessionModuleService;
   });
 

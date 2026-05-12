@@ -14,6 +14,8 @@ Convex-native scheduling and actions for background job orchestration and schedu
 4. Scheduled and targeted recovery-based workflow execution.
 5. Durable reconciliation deadlines and targeted follow-up recovery checks for cross-module repair workflows.
 6. Operator-visible unresolved repair-gap inspection for scheduled retry, stale-running, and blocked workflow runs.
+7. Operator-visible replay for unresolved repair-gap workflow runs through the owning module's repair execution path.
+8. Operator-visible cancellation for unresolved repair-gap workflow runs without deleting durable recovery evidence.
 
 ## Permission Scopes
 
@@ -47,10 +49,9 @@ Convex-native scheduling and actions for background job orchestration and schedu
 
 ## Projection Profiles
 
-| Profile | Visible Fields                                                                                      | Audited Fields |
-| ------- | --------------------------------------------------------------------------------------------------- | -------------- |
-| admin   | jobId, tenantScope, tenantScopeId, status, attempts, scheduledAt, completedAt, gapReason, lastError | lastError      |
-| summary | jobId, status, gapReason                                                                            | —              |
+- admin: Visible Fields: jobId, sourceModuleId, kind, trigger, tenantScope, tenantScopeId, status, attempts, scheduledAt, completedAt, gapReason, lastError. Audited Fields: lastError.
+- support-safe: Visible Fields: jobId, sourceModuleId, kind, trigger, tenantScope, tenantScopeId, status, attempts, scheduledAt, completedAt, gapReason. Audited Fields: none.
+- summary: Visible Fields: jobId, sourceModuleId, kind, trigger, status, gapReason. Audited Fields: none.
 
 ## Rules
 
@@ -59,3 +60,7 @@ Convex-native scheduling and actions for background job orchestration and schedu
 3. Job payloads containing sensitive data must be classified and redacted in logs.
 4. Convex scheduling is orchestration only; durable reconciliation evidence and operator-visible unresolved repair-gap state must be persisted in PostgreSQL.
 5. Reconciliation deadline and targeted recovery jobs must reuse the owning module's repair path instead of reimplementing domain recovery logic inside the scheduler.
+6. Operator-triggered repair-gap replay must clear the current workflow-owned dispatch metadata, preserve operator identity in authenticated execution, and re-enter the owning module's repair path instead of mutating module-owned repair state directly.
+7. Operator-triggered repair-gap cancellation must durably transition the current workflow job to a terminal canceled state instead of deleting the row or mutating module-owned repair state directly.
+8. A canceled workflow job must stop participating in unresolved repair-gap inspection and due-work polling for that workflow job identity until a new module-owned trigger produces a distinct recovery path.
+9. Support-operator tenant-health views may consume only the `support-safe` repair-gap projection and must not expose workflow `lastError` through the support-operations transport surface.

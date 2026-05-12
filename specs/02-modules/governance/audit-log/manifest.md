@@ -9,8 +9,8 @@ PostgreSQL via Drizzle for immutable audit event storage, query, and retention. 
 ## Responsibilities
 
 1. Immutable audit event capture.
-2. Query support for security, compliance, and operations.
-3. Retention and export behavior.
+2. Query support for security, compliance, and operations, including module-, target-, actor-, and tenant-scoped review.
+3. Retention and export behavior, including filtered exports that can be narrowed by recorded-before cutoffs.
 
 ## Mandatory Module Audit Declarations
 
@@ -59,5 +59,7 @@ Every module must declare at least:
 1. Capture actor, target, reason where relevant, and correlation context.
 2. Distinguish audit logs from general application logs.
 3. Sensitive-read events must be searchable.
-4. Audit declarations are part of module compatibility and may not be left implicit.
-5. Implemented audit actions must use the shared module-scoped audit action constants from contracts instead of ad hoc string literals.
+4. Operator review surfaces must support narrowing immutable event queries by module, target, actor, and tenant context.
+5. Audit declarations are part of module compatibility and may not be left implicit.
+6. Implemented audit actions must use the shared module-scoped audit action constants from contracts instead of ad hoc string literals.
+7. Audit-log exports over regulated data must emit an immutable audit-log-owned export event in addition to any field-security sensitive-read audit emitted by the projected read surface.

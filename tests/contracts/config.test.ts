@@ -28,9 +28,10 @@ describe("contract config", () => {
       ketoWriteUrl: "http://localhost:4467",
       errorTrackingDsn: "https://glitchtip.local/api/1/store/",
       openpanelClientId: "client_demo",
+      openpanelClientSecret: "client_secret_demo",
       openpanelApiUrl: "http://localhost:3005/api",
       novuApiKey: "novu-api-key",
-      novuApiUrl: "http://localhost:3100",
+      novuApiUrl: "http://localhost:3101",
       meilisearchUrl: "http://localhost:7700",
       meilisearchApiKey: "meili-master-key",
       polarAccessToken: "polar-access-token",
@@ -40,6 +41,9 @@ describe("contract config", () => {
       openmeterApiKey: "openmeter-api-key",
       postalApiUrl: "http://localhost:5000",
       postalApiKey: "postal-api-key",
+      platformEmailSenderDisplayName: "Comvestec Platform",
+      platformEmailSenderFromEmail: "support@platform.example",
+      platformEmailSenderReplyToEmail: "reply@platform.example",
     });
 
     expect(environment.keycloakRealm).toBe("comvestec");

@@ -2,11 +2,13 @@ import {
   actorType,
   customDomainLifecycleState,
   customDomainLifecycleStates,
+  featureFlagLifecycle,
   platformModuleId,
   platformScope,
   runtimeResolutionSource,
 } from "@comvestec/contracts";
 import {
+  emailDeliveryFeatureFlag,
   platformHost,
   tenantBrandingConfigKey,
   tenantBrandingFeatureFlag,
@@ -53,6 +55,11 @@ const validBrandingResolutionResultSeed = {
   },
   adminProjection: {
     companyName: "Acme",
+    themeTokens: {
+      primary: "#111827",
+      secondary: "#374151",
+      accent: "#10B981",
+    },
     customDomainStatus: customDomainLifecycleState.active,
     effectiveScope: platformScope.organization,
     entitled: true,
@@ -74,6 +81,11 @@ const invalidBrandingResolutionResultSeed = {
   },
   adminProjection: {
     companyName: "Acme",
+    themeTokens: {
+      primary: "#111827",
+      secondary: "#374151",
+      accent: "#10B981",
+    },
     // @ts-expect-error branding results must use shared custom-domain lifecycle literals
     customDomainStatus: "pending",
     effectiveScope: platformScope.organization,
@@ -110,6 +122,16 @@ const validPublicWebSnapshotSeed = {
   secureByDefault: true,
   branding: {
     moduleId: platformModuleId.tenantBranding,
+    projection: {
+      companyName: "Platform brand fallback",
+      effectiveScope: platformScope.platform,
+      entitled: false,
+      themeTokens: {
+        primary: "#0F172A",
+        secondary: "#334155",
+        accent: "#0EA5E9",
+      },
+    },
     companyName: "Platform brand fallback",
     supportedScopes: [
       platformScope.platform,
@@ -130,6 +152,8 @@ const validPublicWebSnapshotSeed = {
           platformScope.enterprise,
           platformScope.organization,
         ],
+        dependencies: [],
+        lifecycle: featureFlagLifecycle.active,
         retirementPlan: "None - premium capability.",
       },
       {
@@ -144,6 +168,8 @@ const validPublicWebSnapshotSeed = {
           platformScope.enterprise,
           platformScope.organization,
         ],
+        dependencies: [tenantBrandingFeatureFlag.enabled],
+        lifecycle: featureFlagLifecycle.active,
         retirementPlan: "Retire only with a domain migration plan.",
       },
       {
@@ -158,6 +184,11 @@ const validPublicWebSnapshotSeed = {
           platformScope.enterprise,
           platformScope.organization,
         ],
+        dependencies: [
+          tenantBrandingFeatureFlag.enabled,
+          emailDeliveryFeatureFlag.enabled,
+        ],
+        lifecycle: featureFlagLifecycle.active,
         retirementPlan:
           "Retire only with a fallback to platform email branding.",
       },
@@ -192,6 +223,16 @@ const invalidPublicWebSnapshotSeed = {
   secureByDefault: true,
   branding: {
     moduleId: platformModuleId.tenantBranding,
+    projection: {
+      companyName: "Platform brand fallback",
+      effectiveScope: platformScope.platform,
+      entitled: false,
+      themeTokens: {
+        primary: "#0F172A",
+        secondary: "#334155",
+        accent: "#0EA5E9",
+      },
+    },
     companyName: "Platform brand fallback",
     supportedScopes: [
       platformScope.platform,
@@ -212,6 +253,8 @@ const invalidPublicWebSnapshotSeed = {
           platformScope.enterprise,
           platformScope.organization,
         ],
+        dependencies: [],
+        lifecycle: featureFlagLifecycle.active,
         retirementPlan: "None - premium capability.",
       },
     ],

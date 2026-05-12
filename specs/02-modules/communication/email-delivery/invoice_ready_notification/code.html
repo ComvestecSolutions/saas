@@ -1,0 +1,324 @@
+<!doctype html>
+
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Comvestec - Invoice Ready</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;family=JetBrains+Mono:wght@500&amp;family=Metropolis:wght@600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-tint": "#cfbcff",
+              "on-secondary-container": "#bfb2da",
+              "on-surface-variant": "#cbc4d2",
+              "on-tertiary-fixed-variant": "#594400",
+              error: "#ffb4ab",
+              "surface-container-highest": "#36343a",
+              "surface-container-lowest": "#0f0d13",
+              "surface-container-low": "#1d1b20",
+              "surface-dim": "#141218",
+              "surface-variant": "#36343a",
+              background: "#141218",
+              "on-tertiary": "#3e2e00",
+              "on-tertiary-container": "#503d00",
+              "on-secondary-fixed": "#1f1635",
+              "on-primary-fixed": "#22005d",
+              "inverse-primary": "#6750a4",
+              "on-primary-container": "#e0d2ff",
+              "tertiary-container": "#c9a74d",
+              "tertiary-fixed": "#ffdf93",
+              "secondary-fixed": "#e9ddff",
+              "primary-fixed-dim": "#cfbcff",
+              "on-secondary": "#342b4b",
+              "inverse-surface": "#e6e0e9",
+              secondary: "#cdc0e9",
+              "secondary-container": "#4d4465",
+              "inverse-on-surface": "#322f35",
+              "primary-container": "#6750a4",
+              "surface-container": "#211f24",
+              "surface-container-high": "#2b292f",
+              primary: "#cfbcff",
+              "primary-fixed": "#e9ddff",
+              "on-primary-fixed-variant": "#4f378a",
+              "on-error-container": "#ffdad6",
+              "on-primary": "#381e72",
+              tertiary: "#e7c365",
+              "on-surface": "#e6e0e9",
+              "outline-variant": "#494551",
+              "error-container": "#93000a",
+              "on-background": "#e6e0e9",
+              "on-secondary-fixed-variant": "#4b4263",
+              surface: "#141218",
+              "tertiary-fixed-dim": "#e7c365",
+              "secondary-fixed-dim": "#cdc0e9",
+              "on-error": "#690005",
+              "on-tertiary-fixed": "#241a00",
+              outline: "#948e9c",
+              "surface-bright": "#3b383e",
+            },
+            borderRadius: {
+              DEFAULT: "0.125rem",
+              lg: "0.25rem",
+              xl: "0.5rem",
+              full: "0.75rem",
+            },
+            spacing: {
+              stack_md: "24px",
+              inline_gutter: "20px",
+              stack_sm: "16px",
+              container_max_width: "600px",
+              stack_xs: "8px",
+              stack_lg: "32px",
+              stack_xl: "48px",
+            },
+            fontFamily: {
+              body: ["Inter"],
+              "meta-code": ["JetBrains Mono"],
+              h2: ["Metropolis"],
+              h1: ["Metropolis"],
+              eyebrow: ["Inter"],
+              "body-sm": ["Inter"],
+            },
+            fontSize: {
+              body: ["15px", { lineHeight: "24px", fontWeight: "400" }],
+              "meta-code": ["12px", { lineHeight: "16px", fontWeight: "500" }],
+              h2: ["20px", { lineHeight: "28px", fontWeight: "600" }],
+              h1: [
+                "28px",
+                {
+                  lineHeight: "36px",
+                  letterSpacing: "-0.02em",
+                  fontWeight: "700",
+                },
+              ],
+              eyebrow: [
+                "12px",
+                {
+                  lineHeight: "16px",
+                  letterSpacing: "0.1em",
+                  fontWeight: "700",
+                },
+              ],
+              "body-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-[#121212] text-on-surface font-body antialiased min-h-screen">
+    <div class="w-full max-w-container_max_width mx-auto">
+      <!-- TopAppBar -->
+      <header
+        class="bg-surface-container-low border-b border-outline-variant flex justify-between items-center w-full px-inline_gutter py-stack_sm max-w-container_max_width mx-auto docked full-width top"
+      >
+        <div class="flex items-center gap-2">
+          <span
+            class="material-symbols-outlined text-primary"
+            data-icon="domain"
+            data-weight="fill"
+            style="font-variation-settings: &quot;FILL&quot; 1"
+            >domain</span
+          >
+          <span class="font-h2 text-h2 font-bold text-on-surface"
+            >Comvestec</span
+          >
+        </div>
+        <div
+          class="flex items-center gap-4 text-on-surface-variant font-medium"
+        >
+          <button
+            aria-label="notifications"
+            class="hover:bg-surface-container-highest transition-colors p-1 rounded-full flex items-center justify-center opacity-80 scale-95"
+          >
+            <span class="material-symbols-outlined" data-icon="notifications"
+              >notifications</span
+            >
+          </button>
+          <button
+            aria-label="settings"
+            class="hover:bg-surface-container-highest transition-colors p-1 rounded-full flex items-center justify-center"
+          >
+            <span class="material-symbols-outlined" data-icon="settings"
+              >settings</span
+            >
+          </button>
+        </div>
+      </header>
+      <!-- Main Content Canvas -->
+      <main class="py-stack_lg px-inline_gutter flex flex-col gap-stack_lg">
+        <!-- Eyebrow Context -->
+        <div class="flex flex-col gap-stack_xs">
+          <span
+            class="font-eyebrow text-eyebrow text-primary uppercase tracking-widest"
+            >Billing Notification</span
+          >
+          <h1 class="font-h1 text-h1 text-on-surface">New Invoice Available</h1>
+          <p class="font-body text-body text-on-surface-variant">
+            Hello recipient@example.com, a new invoice has been generated for
+            your Acme Corp workspace.
+          </p>
+        </div>
+        <!-- Primary Panel (Invoice Summary) -->
+        <div
+          class="bg-[#1A1A1B] border border-[#2A2A2B] rounded-lg p-stack_lg flex flex-col gap-stack_md shadow-[0_4px_24px_rgba(0,0,0,0.4)] relative overflow-hidden"
+        >
+          <!-- Decorative Accent -->
+          <div class="absolute top-0 left-0 w-1 h-full bg-primary"></div>
+          <div
+            class="flex justify-between items-start border-b border-outline-variant pb-stack_sm"
+          >
+            <div class="flex flex-col gap-1">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Invoice Number</span
+              >
+              <span
+                class="font-meta-code text-meta-code text-on-surface bg-surface-container-low px-2 py-1 rounded inline-block w-max border border-outline-variant"
+                >INV-2024-0892</span
+              >
+            </div>
+            <!-- Status Chip -->
+            <div
+              class="bg-primary/10 border border-primary/20 px-3 py-1 rounded-full flex items-center gap-2"
+            >
+              <div class="w-2 h-2 rounded-full bg-primary"></div>
+              <span class="font-meta-code text-meta-code text-primary"
+                >Pending Payment</span
+              >
+            </div>
+          </div>
+          <!-- Financial Highlights -->
+          <div class="flex justify-between items-end py-stack_sm">
+            <div class="flex flex-col gap-1">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Total Due</span
+              >
+              <span class="font-h1 text-h1 text-on-surface"
+                >$1,450.00
+                <span class="text-on-surface-variant text-body font-body ml-1"
+                  >USD</span
+                ></span
+              >
+            </div>
+            <div class="flex flex-col gap-1 text-right">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Due Date</span
+              >
+              <span class="font-h2 text-h2 text-error">Oct 15, 2024</span>
+            </div>
+          </div>
+          <!-- CTA -->
+          <div class="pt-stack_sm border-t border-outline-variant mt-stack_xs">
+            <a
+              class="inline-flex items-center justify-center bg-primary text-on-primary font-body text-body font-bold py-[12px] px-[24px] rounded hover:bg-primary-fixed transition-colors w-full sm:w-auto"
+              href="#"
+            >
+              View &amp; Pay Invoice
+              <span
+                class="material-symbols-outlined ml-2 text-[18px]"
+                data-icon="arrow_forward"
+                >arrow_forward</span
+              >
+            </a>
+          </div>
+        </div>
+        <!-- Compact Metadata Row -->
+        <div
+          class="bg-surface-container-low rounded p-stack_md border border-outline-variant"
+        >
+          <div class="grid grid-cols-2 gap-y-stack_sm gap-x-stack_md">
+            <div class="flex flex-col gap-1">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Billed To</span
+              >
+              <span class="font-body-sm text-body-sm text-on-surface"
+                >Acme Corp HQ</span
+              >
+            </div>
+            <div class="flex flex-col gap-1">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Period</span
+              >
+              <span class="font-body-sm text-body-sm text-on-surface"
+                >Sep 1 - Sep 30, 2024</span
+              >
+            </div>
+            <div class="flex flex-col gap-1">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Account ID</span
+              >
+              <span class="font-meta-code text-meta-code text-on-surface"
+                >ACC-993-X1</span
+              >
+            </div>
+            <div class="flex flex-col gap-1">
+              <span
+                class="font-eyebrow text-eyebrow text-on-surface-variant uppercase tracking-widest"
+                >Support</span
+              >
+              <a
+                class="font-body-sm text-body-sm text-primary underline hover:text-primary-fixed"
+                href="#"
+                >billing@comvestec.com</a
+              >
+            </div>
+          </div>
+        </div>
+      </main>
+      <!-- Footer -->
+      <footer
+        class="bg-background w-full max-w-container_max_width mx-auto py-stack_xl px-inline_gutter text-center flex flex-col gap-stack_sm docked full-width bottom"
+      >
+        <div
+          class="font-eyebrow text-eyebrow uppercase tracking-widest text-outline"
+        >
+          Comvestec Solutions
+        </div>
+        <div class="flex justify-center gap-4 text-body-sm font-body-sm">
+          <a
+            class="text-on-surface-variant hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary rounded"
+            href="#"
+            >Privacy Policy</a
+          >
+          <a
+            class="text-on-surface-variant hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary rounded"
+            href="#"
+            >Terms of Service</a
+          >
+          <a
+            class="text-on-surface-variant hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary rounded"
+            href="#"
+            >Email Preferences</a
+          >
+        </div>
+        <p
+          class="font-body-sm text-body-sm text-on-surface-variant mt-stack_xs"
+        >
+          © 2024 Comvestec Solutions. All rights reserved.
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

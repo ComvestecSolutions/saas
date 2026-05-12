@@ -8,7 +8,6 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { BillingRepairWorkflowPayload } from "@comvestec/contracts";
 
 export const workflowJobsTable = pgTable(
   "workflow_jobs",
@@ -26,7 +25,7 @@ export const workflowJobsTable = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     lastError: text("last_error"),
     gapReason: varchar("gap_reason", { length: 64 }),
-    payload: jsonb("payload").$type<BillingRepairWorkflowPayload>().notNull(),
+    payload: jsonb("payload").$type<unknown>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

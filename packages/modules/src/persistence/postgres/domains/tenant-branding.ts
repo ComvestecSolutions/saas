@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   jsonb,
   pgTable,
@@ -25,10 +26,8 @@ export const tenantBrandingDomainVerificationTable = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.verificationId] }),
-    uniqueIndex("tenant_branding_domain_scope_host_idx").on(
-      table.scope,
-      table.scopeId,
-      table.requestedHost,
-    ),
+    uniqueIndex("tenant_branding_domain_host_idx")
+      .on(table.requestedHost)
+      .where(sql`${table.lifecycleState} <> 'retired'`),
   ],
 );

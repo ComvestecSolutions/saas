@@ -1,26 +1,34 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
+  type CustomDomainVerificationReference,
+  type CustomDomainVerificationRecord,
+  CustomDomainVerificationReferenceSchema,
+  CustomDomainVerificationRecordSchema,
+  type CustomDomainVerificationScopeReference,
+  CustomDomainVerificationScopeReferenceSchema,
   type CustomDomainLifecycleState,
   customDomainLifecycleState,
   CustomDomainLifecycleStateSchema,
   identityBrandingHandoffMode,
   IdentityBrandingHandoffModeSchema,
   PlatformScopeSchema,
+  type PublicBrandingProjection,
+  PublicBrandingProjectionSchema,
+  type RequestCustomDomainVerificationInput,
+  RequestCustomDomainVerificationInputSchema,
   RequestContextSchema,
+  type ThemeToken,
+  ThemeTokenSchema,
 } from "@comvestec/contracts";
 import {
   platformHost,
   tenantBrandingConfigKey,
   tenantBrandingRuntimeValueKey,
 } from "@comvestec/config";
-
-const ThemeTokenSchema = Schema.Struct({
-  primary: Schema.NonEmptyString,
-  secondary: Schema.NonEmptyString,
-  accent: Schema.NonEmptyString,
-});
-
-export type ThemeToken = Schema.Schema.Type<typeof ThemeTokenSchema>;
+import {
+  type TenantBrandingDomainVerificationPostgresRepositoryService,
+  type TenantBrandingDomainVerificationPostgresRepositoryError,
+} from "../persistence";
 
 const BrandingResolutionInputSchema = Schema.Struct({
   requestContext: RequestContextSchema,
@@ -32,32 +40,23 @@ export type BrandingResolutionInput = Schema.Schema.Type<
   typeof BrandingResolutionInputSchema
 >;
 
-const BrandingProjectionBaseFields = {
+export { PublicBrandingProjectionSchema, ThemeTokenSchema };
+export type { PublicBrandingProjection, ThemeToken };
+
+export const AdminBrandingProjectionSchema = Schema.Struct({
   companyName: Schema.NonEmptyString,
   logoAssetId: Schema.optional(Schema.NonEmptyString),
   faviconAssetId: Schema.optional(Schema.NonEmptyString),
   supportEmail: Schema.optional(Schema.NonEmptyString),
+  themeTokens: ThemeTokenSchema,
   effectiveScope: PlatformScopeSchema,
   entitled: Schema.Boolean,
-};
-
-const PublicBrandingProjectionSchema = Schema.Struct({
-  ...BrandingProjectionBaseFields,
-  themeTokens: ThemeTokenSchema,
-});
-
-export type PublicBrandingProjection = Schema.Schema.Type<
-  typeof PublicBrandingProjectionSchema
->;
-
-const AdminBrandingProjectionSchema = Schema.Struct({
-  ...BrandingProjectionBaseFields,
   replyToEmail: Schema.optional(Schema.NonEmptyString),
   customDomainHost: Schema.optional(Schema.NonEmptyString),
   customDomainStatus: CustomDomainLifecycleStateSchema,
 });
 
-const BrandingResolutionResultSchema = Schema.Struct({
+export const BrandingResolutionResultSchema = Schema.Struct({
   publicProjection: PublicBrandingProjectionSchema,
   adminProjection: AdminBrandingProjectionSchema,
 });
@@ -96,6 +95,8 @@ const defaultThemeTokens = Schema.validateSync(ThemeTokenSchema)({
   accent: "#0EA5E9",
 } satisfies ThemeToken);
 
+export const platformBrandFallbackCompanyName = "Platform brand fallback";
+
 type BrandingValueMap = Schema.Schema.Type<
   typeof BrandingResolutionInputSchema
 >["values"];
@@ -115,6 +116,46 @@ export type TenantBrandingModuleService = {
   readonly buildIdentityHandoff: (
     input: IdentityBrandingHandoffInput,
   ) => Effect.Effect<IdentityBrandingHandoff, ParseResult.ParseError>;
+  readonly requestCustomDomainVerification: (
+    input: RequestCustomDomainVerificationInput,
+  ) => Effect.Effect<
+    CustomDomainVerificationRecord,
+    | ParseResult.ParseError
+    | TenantBrandingDomainVerificationPostgresRepositoryError
+    | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+  >;
+  readonly updateCustomDomainVerification: (
+    input: CustomDomainVerificationRecord,
+  ) => Effect.Effect<
+    CustomDomainVerificationRecord | undefined,
+    | ParseResult.ParseError
+    | TenantBrandingDomainVerificationPostgresRepositoryError
+    | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+  >;
+  readonly findCustomDomainVerification: (
+    input: CustomDomainVerificationReference,
+  ) => Effect.Effect<
+    CustomDomainVerificationRecord | undefined,
+    | ParseResult.ParseError
+    | TenantBrandingDomainVerificationPostgresRepositoryError
+    | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+  >;
+  readonly findCurrentCustomDomainVerification: (
+    input: CustomDomainVerificationScopeReference,
+  ) => Effect.Effect<
+    CustomDomainVerificationRecord | undefined,
+    | ParseResult.ParseError
+    | TenantBrandingDomainVerificationPostgresRepositoryError
+    | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+  >;
+};
+
+export type TenantBrandingDomainVerificationRepositoryNotConfiguredError = {
+  readonly _tag: "TenantBrandingDomainVerificationRepositoryNotConfiguredError";
+};
+
+export type TenantBrandingModuleOptions = {
+  readonly domainVerificationRepository?: TenantBrandingDomainVerificationPostgresRepositoryService;
 };
 
 export class TenantBrandingModule extends Context.Tag("TenantBrandingModule")<
@@ -122,20 +163,23 @@ export class TenantBrandingModule extends Context.Tag("TenantBrandingModule")<
   TenantBrandingModuleService
 >() {}
 
-export const makeTenantBrandingModule = () =>
-  Effect.succeed<TenantBrandingModuleService>({
+export const makeTenantBrandingModule = (
+  options: TenantBrandingModuleOptions = {},
+) =>
+  Effect.succeed({
     resolveBranding: (input: BrandingResolutionInput) =>
       Schema.decodeUnknown(BrandingResolutionInputSchema)(input).pipe(
         Effect.flatMap((request) => {
-          const companyName = request.entitled
+          const hasMaterializedValues = Object.keys(request.values).length > 0;
+          const companyName = hasMaterializedValues
             ? (getBrandingStringValue(
                 request.values,
                 tenantBrandingConfigKey.companyName,
-              ) ?? "Platform brand fallback")
-            : "Platform brand fallback";
+              ) ?? platformBrandFallbackCompanyName)
+            : platformBrandFallbackCompanyName;
 
           return (
-            request.entitled
+            hasMaterializedValues
               ? Schema.decodeUnknown(ThemeTokenSchema)({
                   primary:
                     getBrandingStringValue(
@@ -159,19 +203,19 @@ export const makeTenantBrandingModule = () =>
               Schema.decodeUnknown(BrandingResolutionResultSchema)({
                 publicProjection: {
                   companyName,
-                  logoAssetId: request.entitled
+                  logoAssetId: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.logoAssetId,
                       )
                     : undefined,
-                  faviconAssetId: request.entitled
+                  faviconAssetId: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.faviconAssetId,
                       )
                     : undefined,
-                  supportEmail: request.entitled
+                  supportEmail: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.supportEmail,
@@ -183,31 +227,31 @@ export const makeTenantBrandingModule = () =>
                 },
                 adminProjection: {
                   companyName,
-                  logoAssetId: request.entitled
+                  logoAssetId: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.logoAssetId,
                       )
                     : undefined,
-                  faviconAssetId: request.entitled
+                  faviconAssetId: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.faviconAssetId,
                       )
                     : undefined,
-                  supportEmail: request.entitled
+                  supportEmail: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.supportEmail,
                       )
                     : undefined,
-                  replyToEmail: request.entitled
+                  replyToEmail: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.replyToEmail,
                       )
                     : undefined,
-                  customDomainHost: request.entitled
+                  customDomainHost: hasMaterializedValues
                     ? getBrandingStringValue(
                         request.values,
                         tenantBrandingConfigKey.customDomainHost,
@@ -216,6 +260,7 @@ export const makeTenantBrandingModule = () =>
                   customDomainStatus:
                     getCustomDomainStatus(request.values) ??
                     customDomainLifecycleState.unverified,
+                  themeTokens,
                   effectiveScope: request.requestContext.tenant.scope,
                   entitled: request.entitled,
                 },
@@ -241,7 +286,116 @@ export const makeTenantBrandingModule = () =>
           }),
         ),
       ),
-  });
+    requestCustomDomainVerification: (
+      input: RequestCustomDomainVerificationInput,
+    ): Effect.Effect<
+      CustomDomainVerificationRecord,
+      | ParseResult.ParseError
+      | TenantBrandingDomainVerificationPostgresRepositoryError
+      | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+    > =>
+      Effect.gen(function* () {
+        const request = yield* Schema.decodeUnknown(
+          RequestCustomDomainVerificationInputSchema,
+        )(input);
+        const repository = options.domainVerificationRepository;
+
+        if (repository === undefined) {
+          return yield* Effect.fail({
+            _tag: "TenantBrandingDomainVerificationRepositoryNotConfiguredError",
+          } satisfies TenantBrandingDomainVerificationRepositoryNotConfiguredError);
+        }
+
+        const changedAt = new Date().toISOString();
+        const record = yield* repository.createCustomDomainVerification({
+          verificationId: [
+            "tenant-branding",
+            "custom-domain",
+            request.scope,
+            request.scopeId,
+            crypto.randomUUID(),
+          ].join(":"),
+          scope: request.scope,
+          scopeId: request.scopeId,
+          requestedHost: request.requestedHost.toLowerCase(),
+          lifecycleState: customDomainLifecycleState.unverified,
+          changedAt,
+        });
+
+        return yield* Schema.decodeUnknown(
+          CustomDomainVerificationRecordSchema,
+        )(record);
+      }),
+    updateCustomDomainVerification: (
+      input: CustomDomainVerificationRecord,
+    ): Effect.Effect<
+      CustomDomainVerificationRecord | undefined,
+      | ParseResult.ParseError
+      | TenantBrandingDomainVerificationPostgresRepositoryError
+      | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+    > =>
+      Effect.gen(function* () {
+        const record = yield* Schema.decodeUnknown(
+          CustomDomainVerificationRecordSchema,
+        )(input);
+        const repository = options.domainVerificationRepository;
+
+        if (repository === undefined) {
+          return yield* Effect.fail({
+            _tag: "TenantBrandingDomainVerificationRepositoryNotConfiguredError",
+          } satisfies TenantBrandingDomainVerificationRepositoryNotConfiguredError);
+        }
+
+        return yield* repository.updateCustomDomainVerification(record);
+      }),
+    findCustomDomainVerification: (
+      input: CustomDomainVerificationReference,
+    ): Effect.Effect<
+      CustomDomainVerificationRecord | undefined,
+      | ParseResult.ParseError
+      | TenantBrandingDomainVerificationPostgresRepositoryError
+      | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+    > =>
+      Effect.gen(function* () {
+        const reference = yield* Schema.decodeUnknown(
+          CustomDomainVerificationReferenceSchema,
+        )(input);
+        const repository = options.domainVerificationRepository;
+
+        if (repository === undefined) {
+          return yield* Effect.fail({
+            _tag: "TenantBrandingDomainVerificationRepositoryNotConfiguredError",
+          } satisfies TenantBrandingDomainVerificationRepositoryNotConfiguredError);
+        }
+
+        return yield* repository.findCustomDomainVerification({
+          ...reference,
+          requestedHost: reference.requestedHost.toLowerCase(),
+        });
+      }),
+    findCurrentCustomDomainVerification: (
+      input: CustomDomainVerificationScopeReference,
+    ): Effect.Effect<
+      CustomDomainVerificationRecord | undefined,
+      | ParseResult.ParseError
+      | TenantBrandingDomainVerificationPostgresRepositoryError
+      | TenantBrandingDomainVerificationRepositoryNotConfiguredError
+    > =>
+      Effect.gen(function* () {
+        const reference = yield* Schema.decodeUnknown(
+          CustomDomainVerificationScopeReferenceSchema,
+        )(input);
+        const repository = options.domainVerificationRepository;
+
+        if (repository === undefined) {
+          return yield* Effect.fail({
+            _tag: "TenantBrandingDomainVerificationRepositoryNotConfiguredError",
+          } satisfies TenantBrandingDomainVerificationRepositoryNotConfiguredError);
+        }
+
+        return yield* repository.findCurrentCustomDomainVerification(reference);
+      }),
+  } satisfies TenantBrandingModuleService);
 
 export const TenantBrandingModuleLive = Layer.effect(
   TenantBrandingModule,

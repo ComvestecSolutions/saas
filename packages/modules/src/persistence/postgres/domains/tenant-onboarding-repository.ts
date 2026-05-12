@@ -1,5 +1,13 @@
+import { and, eq, inArray } from "drizzle-orm";
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
-import { onboardingStepStatus } from "@comvestec/contracts";
+import {
+  onboardingStepStatus,
+  type TenantOnboardingReviewRun,
+  TenantOnboardingReviewRunSchema,
+  type TenantOnboardingRunStatus,
+  tenantOnboardingRunStatus,
+  TenantOnboardingRunStatusSchema,
+} from "@comvestec/contracts";
 import { TenantOnboardingPlanSchema } from "../../../domains/tenant-management";
 import type { OnboardingStep } from "../../../domains/tenant-management";
 import type { PostgresDatabase } from "../database";
@@ -8,41 +16,13 @@ import {
   tenantOnboardingStepsTable,
 } from "./tenant-onboarding";
 
-const TenantOnboardingRunStatusConstantSchema = Schema.Struct({
-  pending: Schema.Literal("pending"),
-  inProgress: Schema.Literal("in-progress"),
-  completed: Schema.Literal("completed"),
-  failed: Schema.Literal("failed"),
-});
-
-export const tenantOnboardingRunStatus = Schema.validateSync(
-  TenantOnboardingRunStatusConstantSchema,
-)({
-  pending: "pending",
-  inProgress: "in-progress",
-  completed: "completed",
-  failed: "failed",
-} satisfies Schema.Schema.Type<typeof TenantOnboardingRunStatusConstantSchema>);
-
-export const tenantOnboardingRunStatuses = [
-  tenantOnboardingRunStatus.pending,
-  tenantOnboardingRunStatus.inProgress,
-  tenantOnboardingRunStatus.completed,
-  tenantOnboardingRunStatus.failed,
-] as const;
-
-export const TenantOnboardingRunStatusSchema = Schema.Literal(
-  ...tenantOnboardingRunStatuses,
-);
+export { tenantOnboardingRunStatus, TenantOnboardingRunStatusSchema };
+export type { TenantOnboardingRunStatus };
 
 const TenantOnboardingRunMetadataSchema = Schema.Record({
   key: Schema.NonEmptyString,
   value: Schema.Any,
 });
-
-export type TenantOnboardingRunStatus = Schema.Schema.Type<
-  typeof TenantOnboardingRunStatusSchema
->;
 
 export const PersistTenantOnboardingRunSchema = Schema.Struct({
   runId: Schema.NonEmptyString,
@@ -93,9 +73,28 @@ export type TenantOnboardingPostgresRepositoryPersistenceError = {
   readonly cause: unknown;
 };
 
+export type TenantOnboardingPostgresRepositoryQueryError = {
+  readonly _tag: "TenantOnboardingPostgresRepositoryQueryError";
+  readonly operation: "getOnboardingRunByTenant";
+  readonly cause: unknown;
+};
+
 export type TenantOnboardingPostgresRepositoryError =
   | ParseResult.ParseError
-  | TenantOnboardingPostgresRepositoryPersistenceError;
+  | TenantOnboardingPostgresRepositoryPersistenceError
+  | TenantOnboardingPostgresRepositoryQueryError;
+
+const tenantOnboardingReviewHistoryLimit = 20;
+
+const tenantOnboardingStepReviewSortOrder = new Map(
+  [
+    "tenant-profile",
+    "team-invites",
+    "security-baseline",
+    "branding",
+    "billing",
+  ].map((stepId, index) => [stepId, index] as const),
+);
 
 const parseTimestamp = (value: string | undefined) =>
   value === undefined ? undefined : new Date(value);
@@ -165,11 +164,129 @@ const normalizeTenantOnboardingProjection = (
     metadata: input.metadata ?? {},
   });
 
+const decodeTenantOnboardingReviewRun = Schema.decodeUnknown(
+  TenantOnboardingReviewRunSchema,
+);
+
+const buildTenantOnboardingReviewStep = (step: {
+  readonly stepId: string;
+  readonly label: string;
+  readonly status: string;
+  readonly requiredModuleId: string | null;
+  readonly retryCount: number;
+}) => ({
+  stepId: step.stepId,
+  label: step.label,
+  status: step.status,
+  ...(step.requiredModuleId === null
+    ? {}
+    : { requiredModuleId: step.requiredModuleId }),
+  retryCount: step.retryCount,
+});
+
+const sortTenantOnboardingReviewSteps = (
+  steps: Array<ReturnType<typeof buildTenantOnboardingReviewStep>>,
+) =>
+  steps.sort((left, right) => {
+    const leftOrder = tenantOnboardingStepReviewSortOrder.get(left.stepId);
+    const rightOrder = tenantOnboardingStepReviewSortOrder.get(right.stepId);
+
+    if (leftOrder !== undefined && rightOrder !== undefined) {
+      return leftOrder - rightOrder;
+    }
+
+    if (leftOrder !== undefined) {
+      return -1;
+    }
+
+    if (rightOrder !== undefined) {
+      return 1;
+    }
+
+    return left.stepId.localeCompare(right.stepId);
+  });
+
+const buildTenantOnboardingReviewRun = (input: {
+  readonly run:
+    | {
+        readonly runId: string;
+        readonly tenantScope: string;
+        readonly tenantScopeId: string;
+        readonly triggeredBy: string;
+        readonly correlationId: string | null;
+        readonly status: string;
+        readonly currentStepId: string | null;
+        readonly startedAt: Date;
+        readonly completedAt: Date | null | undefined;
+      }
+    | undefined;
+  readonly steps: ReadonlyArray<{
+    readonly runId: string;
+    readonly stepId: string;
+    readonly label: string;
+    readonly status: string;
+    readonly requiredModuleId: string | null;
+    readonly retryCount: number;
+  }>;
+}) => {
+  if (input.run === undefined) {
+    return Effect.succeed(undefined);
+  }
+
+  const stepsByRunId = new Map<
+    string,
+    Array<ReturnType<typeof buildTenantOnboardingReviewStep>>
+  >();
+
+  for (const step of input.steps) {
+    const existingSteps = stepsByRunId.get(step.runId);
+    const reviewStep = buildTenantOnboardingReviewStep(step);
+
+    if (existingSteps === undefined) {
+      stepsByRunId.set(step.runId, [reviewStep]);
+      continue;
+    }
+
+    existingSteps.push(reviewStep);
+  }
+
+  for (const reviewSteps of stepsByRunId.values()) {
+    sortTenantOnboardingReviewSteps(reviewSteps);
+  }
+
+  const completedAt =
+    input.run.completedAt == null
+      ? undefined
+      : input.run.completedAt.toISOString();
+
+  return decodeTenantOnboardingReviewRun({
+    runId: input.run.runId,
+    triggeredBy: input.run.triggeredBy,
+    ...(input.run.correlationId === null
+      ? {}
+      : { correlationId: input.run.correlationId }),
+    status: input.run.status,
+    ...(input.run.currentStepId === null
+      ? {}
+      : { currentStepId: input.run.currentStepId }),
+    startedAt: input.run.startedAt.toISOString(),
+    ...(completedAt === undefined ? {} : { completedAt }),
+    steps: stepsByRunId.get(input.run.runId) ?? [],
+  });
+};
+
 export type TenantOnboardingPostgresRepositoryService = {
   readonly persistOnboardingRun: (
     input: PersistTenantOnboardingRun,
   ) => Effect.Effect<
     TenantOnboardingPersistenceProjection,
+    TenantOnboardingPostgresRepositoryError
+  >;
+  readonly getOnboardingRunByTenant: (input: {
+    readonly tenantScope: PersistTenantOnboardingRun["plan"]["tenantScope"];
+    readonly tenantScopeId: string;
+  }) => Effect.Effect<
+    TenantOnboardingReviewRun | undefined,
     TenantOnboardingPostgresRepositoryError
   >;
 };
@@ -251,6 +368,61 @@ export const makeTenantOnboardingPostgresRepository = (
             ),
         ),
       ),
+    getOnboardingRunByTenant: (input) =>
+      Effect.tryPromise({
+        try: async () => {
+          const runs = await database
+            .select()
+            .from(tenantOnboardingRunsTable)
+            .where(
+              and(
+                eq(tenantOnboardingRunsTable.tenantScope, input.tenantScope),
+                eq(
+                  tenantOnboardingRunsTable.tenantScopeId,
+                  input.tenantScopeId,
+                ),
+              ),
+            );
+
+          const currentRun = runs
+            .filter(
+              (run) =>
+                run.tenantScope === input.tenantScope &&
+                run.tenantScopeId === input.tenantScopeId,
+            )
+            .sort(
+              (left, right) =>
+                right.startedAt.getTime() - left.startedAt.getTime(),
+            )
+            .slice(0, tenantOnboardingReviewHistoryLimit)
+            .at(0);
+
+          if (currentRun === undefined) {
+            return {
+              run: undefined,
+              steps: [] as const,
+            };
+          }
+
+          const steps = await database
+            .select()
+            .from(tenantOnboardingStepsTable)
+            .where(
+              inArray(tenantOnboardingStepsTable.runId, [currentRun.runId]),
+            );
+
+          return {
+            run: currentRun,
+            steps: steps.filter((step) => step.runId === currentRun.runId),
+          };
+        },
+        catch: (cause) =>
+          ({
+            _tag: "TenantOnboardingPostgresRepositoryQueryError",
+            operation: "getOnboardingRunByTenant",
+            cause,
+          }) satisfies TenantOnboardingPostgresRepositoryQueryError,
+      }).pipe(Effect.flatMap((rows) => buildTenantOnboardingReviewRun(rows))),
   });
 
 export const makeTenantOnboardingPostgresRepositoryLayer = (

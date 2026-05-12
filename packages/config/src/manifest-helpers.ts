@@ -1,10 +1,12 @@
 import { Schema } from "effect";
 import {
+  type DeclaredModuleFeatureFlagKey,
   defineModuleConfigKeys,
   defineModuleFeatureFlags,
   defineModuleRuntimeValueKeys,
   type ConfigSchemaType,
   type DataClassificationDeclaration,
+  type FeatureFlagLifecycle,
   type ModuleConfigKey,
   type ModuleEntitlementFeatureKey,
   type ModuleFeatureFlagKey,
@@ -37,6 +39,8 @@ type ModuleFeatureFlagDeclarationSeed<TModule extends PlatformModuleId> = {
   defaultEnabled: boolean;
   billable: boolean;
   allowedScopes: readonly PlatformScope[];
+  dependencies: readonly DeclaredModuleFeatureFlagKey[];
+  lifecycle: FeatureFlagLifecycle;
   retirementPlan: string;
 };
 
