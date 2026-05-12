@@ -14,7 +14,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "secret": "change-me",
+      "secret": "__KEYCLOAK_CLIENT_SECRET__",
       "redirectUris": [
         "http://localhost:3000/*",
         "http://localhost:3002/*",

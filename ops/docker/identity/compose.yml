@@ -8,12 +8,12 @@ services:
         "keto migrate up -y -c /etc/keto/keto.yml && exec keto serve -c /etc/keto/keto.yml",
       ]
     environment:
-      DSN: ${KETO_DSN:-postgres://comvestec:comvestec@postgres:5432/keto?sslmode=disable}
+      DSN: ${KETO_DSN}
     depends_on:
       postgres-bootstrap:
         condition: service_completed_successfully
     ports:
-      - ${KETO_READ_PORT:-4466}:4466
-      - ${KETO_WRITE_PORT:-4467}:4467
+      - 127.0.0.1:${KETO_READ_PORT:-4466}:4466
+      - 127.0.0.1:${KETO_WRITE_PORT:-4467}:4467
     volumes:
       - ./keto.yml:/etc/keto/keto.yml:ro

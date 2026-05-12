@@ -208,6 +208,11 @@ const main = Effect.gen(function* () {
   );
   yield* runBunScript("db:migrate");
 
+  console.log(
+    "Syncing Convex deployment-managed environment for the subscriber journey backend...",
+  );
+  yield* runBunScript("convex:env:sync");
+
   console.log("Requesting a Keycloak admin session...");
   const adminAccessToken = yield* issueKeycloakPasswordGrant({
     baseUrl: environment.KEYCLOAK_BASE_URL,

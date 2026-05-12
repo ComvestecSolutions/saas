@@ -12,6 +12,10 @@ export const convexDeploymentManagedEnvironmentShape = {
   POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_API_URL: Schema.NonEmptyString,
   VALKEY_URL_INTERNAL: Schema.NonEmptyString,
+  UNLEASH_URL_INTERNAL: Schema.NonEmptyString,
+  UNLEASH_API_KEY: Schema.NonEmptyString,
+  MEILISEARCH_URL_INTERNAL: Schema.NonEmptyString,
+  MEILISEARCH_API_KEY: Schema.NonEmptyString,
   KETO_READ_URL_INTERNAL: Schema.NonEmptyString,
   KETO_WRITE_URL_INTERNAL: Schema.NonEmptyString,
 } as const;

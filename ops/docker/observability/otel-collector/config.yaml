@@ -12,24 +12,31 @@ processors:
 exporters:
   debug:
     verbosity: basic
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/logs:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
   prometheus:
     endpoint: 0.0.0.0:8889
   otlp/tempo:
-    endpoint: http://tempo:4317
+    endpoint: tempo:4317
     tls:
       insecure: true
 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki, debug]
+      exporters: [otlphttp/logs, debug]
     metrics:
       receivers: [otlp]
       processors: [batch]

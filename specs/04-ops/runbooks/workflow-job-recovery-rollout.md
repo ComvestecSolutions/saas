@@ -18,29 +18,52 @@ the new code path.
 1. Deploy the new workflow-jobs and Convex runtime code.
 2. Run a one-time due-job sweep against the active Convex deployment:
 
-   ```powershell
-    bunx convex run --push --typecheck disable --codegen disable `
-         workflowJobRunner:runDueBillingConvergenceJobsInternal "{}"
+   ```bash
+   bunx convex run --push --typecheck disable --codegen disable \
+     workflowJobRunner:runDueBillingConvergenceJobsInternal '{}'
    ```
 
 3. Inspect billing repair gaps through the backend operator surface and confirm
    there are no lingering stale-running or overdue legacy billing workflow jobs.
-   Use `GET /api/admin/billing/repair-gaps?sessionId=<sessionId>` for
-   inspection. When a targeted replay is required, call
+   Use `GET /api/admin/billing/repair-gaps` with a platform-operator session id
+   scoped to the platform tenant in the standard `x-comvestec-session-id`
+   header. Add an `inspectionReason` query parameter only when the operator
+   needs failure details in the response.
+   Use `POST /api/admin/billing/inspections` with the same platform-operator
+   session id when the operator needs the current projected billing summary or
+   invoice history for a specific tenant. Keep the inspection reason in the
+   JSON body, not in query parameters. When invoice history is requested, the
+   reason is required so the field-security audit path can record the sensitive
+   read.
+   When a targeted replay is required, call
    `POST /api/admin/billing/repair-gaps/replays` with the operator Keycloak
-   bearer token in `Authorization` and the operator session id in the standard
-   `x-comvestec-session-id` header. Do not send the replay session id in the
-   request body or query string.
+   bearer token in `Authorization` and the operator session id in the same
+   `x-comvestec-session-id` header. Do not send the session id in the request
+   body or query string.
 
-   ```powershell
-   Invoke-RestMethod -Method Post `
-     -Uri "http://localhost:3000/api/admin/billing/repair-gaps/replays" `
-     -Headers @{
-       Authorization = "Bearer $keycloakIdToken"
-       "x-comvestec-session-id" = $sessionId
-     } `
-     -ContentType "application/json" `
-     -Body '{"jobId":"workflow-jobs:billing-repair:org_gap"}'
+   ```bash
+   curl -sS \
+      -H "x-comvestec-session-id: ${SESSION_ID}" \
+      "http://127.0.0.1:3010/api/admin/billing/repair-gaps?inspectionReason=Investigate%20tenant%20repair%20failures"
+   ```
+
+   ```bash
+   curl -sS \
+      -X POST \
+      -H "x-comvestec-session-id: ${SESSION_ID}" \
+      -H "Content-Type: application/json" \
+      -d '{"tenant":{"scope":"organization","scopeId":"org_gap","organizationId":"org_gap"},"inspectionReason":"Investigate tenant billing history"}' \
+      http://127.0.0.1:3010/api/admin/billing/inspections
+   ```
+
+   ```bash
+   curl -sS \
+      -X POST \
+      -H "Authorization: Bearer ${KEYCLOAK_ID_TOKEN}" \
+      -H "x-comvestec-session-id: ${SESSION_ID}" \
+      -H "Content-Type: application/json" \
+      -d '{"jobId":"workflow-jobs:billing-repair:org_gap"}' \
+      http://127.0.0.1:3010/api/admin/billing/repair-gaps/replays
    ```
 
 4. If any legacy billing workflow jobs were still scheduled in the future

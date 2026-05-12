@@ -18,7 +18,7 @@ This roadmap defines the intended backend-ready slice. Use [implementation-track
 
 The backend-ready milestone is reached only when the platform supports the following without operator hand-editing of runtime state:
 
-1. Anonymous plan discovery through backend-owned HTTP routes, with public-web acting only as an optional shell consumer and first-party app routes remaining thin request-boundary server-function edges over shared backend services and app helpers.
+1. Anonymous plan discovery through backend-owned HTTP routes, with public-web acting only as an optional shell consumer and first-party app routes remaining thin request-boundary server-function edges over root-safe app helpers and the same shared backend services that power the HTTP layer.
 2. Keycloak-backed auth start and callback handling with auditable session activation.
 3. Tenant provisioning and owner membership creation after validated authentication.
 4. Polar hosted checkout session creation and return or cancel handling.
@@ -32,7 +32,7 @@ The backend-ready milestone is reached only when the platform supports the follo
 1. Update governing specs, manifests, and the implementation tracker so the first slice is explicit and reviewable.
 2. Add durable PostgreSQL-backed state for customer account mapping, subscription lifecycle, webhook receipts, onboarding runs, and billing event history.
 3. Extend shared contracts and module services around plan catalog, checkout, tenant provisioning, entitlement activation, and access bootstrap.
-4. Expose plan listing, auth start, auth callback, checkout start, and billing webhook intake through backend-owned HTTP handlers independent of public-web and product-app runtimes, composed from shared request-boundary and transport helpers; first-party app routes should prefer direct shared-service calls through TanStack Start server functions and shared app helpers, while true external callers continue to use the backend-owned HTTP layer.
+4. Expose plan listing, auth start, auth callback, checkout start, and billing webhook intake through backend-owned HTTP handlers independent of public-web and product-app runtimes, composed from shared request-boundary and transport helpers. First-party app routes should use TanStack Start server functions and root-safe shared app helpers over the same base services, while true external callers continue to use the backend-owned HTTP layer. Do not duplicate workflow or policy logic across those two transport layers.
 5. Replace caller-supplied demo entitlement inputs with persisted entitlement lookup in runtime config and feature-flag resolution.
 6. Enforce authorized product bootstrap through request-context resolution, authorization, and field-security before exposing product data.
 7. Wire metering, quota enforcement, audit persistence, replay, checkout-intent recovery, and operator recovery flows.
@@ -43,7 +43,7 @@ The backend-ready milestone is reached only when the platform supports the follo
 ### Phase 1: Governance First
 
 1. Update [implementation-tracker.md](implementation-tracker.md) with the backend-readiness priority and honest next gaps.
-2. Align [../02-apps/public-web/spec.md](../02-apps/public-web/spec.md), [../02-apps/product-app/spec.md](../02-apps/product-app/spec.md), [../02-apps/admin-app/spec.md](../02-apps/admin-app/spec.md), and [../03-adr/architecture/ADR-018-h3-backend-http-layer.md](../03-adr/architecture/ADR-018-h3-backend-http-layer.md) so first-party apps consume shared backend services directly through server functions and shared app helpers while H3 remains the external caller boundary and the request-boundary or transport shell stays centralized.
+2. Align [../02-apps/public-web/spec.md](../02-apps/public-web/spec.md), [../02-apps/product-app/spec.md](../02-apps/product-app/spec.md), [../02-apps/admin-app/spec.md](../02-apps/admin-app/spec.md), and [../03-adr/architecture/ADR-018-h3-backend-http-layer.md](../03-adr/architecture/ADR-018-h3-backend-http-layer.md) so first-party apps consume shared backend services through root-safe app helpers and server functions while H3 remains the external caller boundary, the request-boundary or transport shell stays centralized, and reusable business logic stays in shared services rather than in either transport adapter.
 3. Align the [identity-session](../02-modules/access/identity-session/manifest.md), [tenant-management](../02-modules/domains/tenant-management/manifest.md), [billing-and-metering](../02-modules/domains/billing-and-metering/manifest.md), and [webhooks-api-access](../02-modules/communication/webhooks-api-access/manifest.md) manifests with the first slice.
 
 ### Phase 2: Durable State
@@ -70,7 +70,7 @@ The backend-ready milestone is reached only when the platform supports the follo
 
 1. Extend metering and quota enforcement behind the same entitlement state.
 2. Persist renewals, cancellations, grace periods, invoice or payment-event history, and failed-payment states.
-3. Add operator-safe replay, customer-account convergence, onboarding recovery, and billing explanation flows.
+3. Close the remaining customer-account convergence and onboarding recovery flows while keeping operator-safe replay and billing explanation on the same projected admin billing backend surface.
 
 ## Acceptance Criteria
 
@@ -85,6 +85,6 @@ The backend-ready milestone is reached only when the platform supports the follo
 
 ## Out Of Scope For This Milestone
 
-1. Rich frontend flows beyond thin public-web, product-app, and admin-app route boundaries; first-party app routes remain thin direct callers of shared backend services rather than full-featured API clients.
+1. Rich frontend flows beyond thin public-web, product-app, and admin-app route boundaries; first-party app routes remain thin edges over root-safe app helpers that delegate to shared backend services rather than full-featured API clients or internal HTTP consumers.
 2. Custom payment collection instead of Polar hosted checkout.
 3. Parallel completion of non-critical modules such as search or import-export unless they become a hard dependency of onboarding or billing.

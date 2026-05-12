@@ -7,11 +7,26 @@ import {
   type ConvexDeploymentManagedEnvironment,
   convexDeploymentManagedEnvironmentVariableNames,
 } from "./environment-variables";
+import {
+  resolveOptionalOverride,
+  subscriberJourneyConvexServiceActorDefaults,
+} from "../subscriber-journey/common";
+
+type BunWithWhich = typeof Bun & {
+  readonly which?: (executable: string) => string | null | undefined;
+};
+
+const bunExecutableFromPath = (Bun as BunWithWhich).which?.("bun");
 
 const workspaceRootDirectory = Bun.resolveSync(
   "../../../package.json",
   import.meta.dir,
 ).replace(/[/\\]package\.json$/, "");
+
+const bunExecutablePath =
+  process.execPath.length > 0
+    ? process.execPath
+    : (bunExecutableFromPath ?? "bun");
 
 const decodeConvexDeploymentEnvironment = Schema.decodeUnknown(
   ConvexDeploymentManagedEnvironmentSchema,
@@ -44,11 +59,12 @@ const runConvexEnvSetFromFile = (filePath: string) =>
   Effect.tryPromise({
     try: async () => {
       const command = [
-        process.execPath,
+        bunExecutablePath,
         "x",
         "convex",
         "env",
         "set",
+        "--force",
         "--from-file",
         filePath,
       ] as const;
@@ -77,11 +93,12 @@ const runConvexEnvSetFromFile = (filePath: string) =>
 
       return buildConvexEnvironmentSyncProcessError(
         [
-          process.execPath,
+          bunExecutablePath,
           "x",
           "convex",
           "env",
           "set",
+          "--force",
           "--from-file",
           filePath,
         ],
@@ -91,7 +108,17 @@ const runConvexEnvSetFromFile = (filePath: string) =>
   });
 
 const syncConvexDeploymentEnvironment = Effect.gen(function* () {
-  const environment = yield* decodeConvexDeploymentEnvironment(Bun.env);
+  const environment = yield* decodeConvexDeploymentEnvironment({
+    ...Bun.env,
+    KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME: resolveOptionalOverride(
+      Bun.env.KEYCLOAK_CONVEX_SERVICE_ACTOR_USERNAME,
+      subscriberJourneyConvexServiceActorDefaults.username,
+    ),
+    KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD: resolveOptionalOverride(
+      Bun.env.KEYCLOAK_CONVEX_SERVICE_ACTOR_PASSWORD,
+      subscriberJourneyConvexServiceActorDefaults.password,
+    ),
+  });
   const temporaryDirectory = yield* Effect.tryPromise(() =>
     mkdtemp(join(tmpdir(), "comvestec-convex-env-")),
   );

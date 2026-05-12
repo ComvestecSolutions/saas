@@ -1,11 +1,135 @@
+x-openmeter-runtime-environment: &openmeter_runtime_environment
+  OPENMETER_POSTGRES_URL: ${OPENMETER_POSTGRES_URL}
+
+x-openmeter-runtime-command: &openmeter_runtime_command
+  - sh
+  - -euc
+  - |
+    cat <<EOF >/tmp/openmeter-config.yaml
+    ingest:
+      kafka:
+        broker: openmeter-kafka:9092
+        brokerAddressFamily: v4
+        socketKeepAliveEnable: true
+        topicMetadataRefreshInterval: 10s
+    aggregation:
+      clickhouse:
+        address: openmeter-clickhouse:9000
+    sink:
+      minCommitCount: 1
+      namespaceRefetch: 1s
+      namespaceRefetchTimeout: 1s
+      kafka:
+        brokers: openmeter-kafka:9092
+        brokerAddressFamily: v4
+        socketKeepAliveEnable: true
+        topicMetadataRefreshInterval: 10s
+      dedupe:
+        enabled: false
+    postgres:
+      url: $${OPENMETER_POSTGRES_URL}
+      autoMigrate: migration
+    EOF
+    exec $${OPENMETER_RUNTIME_COMMAND}
+
 services:
+  openmeter-kafka:
+    container_name: openmeter-kafka
+    image: confluentinc/cp-kafka:8.0.3@sha256:db5eac24a1d15a1689fa89642ef97a7e3bc4f55ad5159a07b213c4dc7d0114e3
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: da3ea8b2-7d61-4f55-a06d-ffb4f46ba6f0
+      KAFKA_BROKER_ID: 0
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "0@openmeter-kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://openmeter-kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENERS: INTERNAL://openmeter-kafka:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://openmeter-kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_MESSAGE_TIMESTAMP_AFTER_MAX_MS: 9223372036854775807
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z openmeter-kafka 9092"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - openmeter_kafka_data:/var/lib/kafka/data
+
+  openmeter-clickhouse:
+    container_name: openmeter-clickhouse
+    image: clickhouse/clickhouse-server:25.12.3-alpine@sha256:74da41cd61db84f652c6364fd30d59e19b7276d34f7c82515f5f0e70d6f325da
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: default
+      CLICKHOUSE_DB: openmeter
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://openmeter-clickhouse:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - openmeter_clickhouse_data:/var/lib/clickhouse
+      - openmeter_clickhouse_logs:/var/log/clickhouse-server
+
   openmeter:
     container_name: openmeter
     image: ghcr.io/openmeterio/openmeter:v1.0.0-beta.227
+    restart: unless-stopped
+    command: *openmeter_runtime_command
     environment:
-      POSTGRES_URL: ${OPENMETER_POSTGRES_URL:-postgres://comvestec:comvestec@postgres:5432/openmeter?sslmode=disable}
+      <<: *openmeter_runtime_environment
+      OPENMETER_RUNTIME_COMMAND: openmeter --address 0.0.0.0:8888 --config /tmp/openmeter-config.yaml
     depends_on:
       postgres-bootstrap:
         condition: service_completed_successfully
+      openmeter-kafka:
+        condition: service_healthy
+      openmeter-clickhouse:
+        condition: service_healthy
     ports:
-      - ${OPENMETER_PORT:-8889}:8888
+      - 127.0.0.1:${OPENMETER_PORT:-8889}:8888
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "http://127.0.0.1:8888/api/v1/debug/metrics",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  openmeter-sink-worker:
+    container_name: openmeter-sink-worker
+    image: ghcr.io/openmeterio/openmeter:v1.0.0-beta.227
+    restart: unless-stopped
+    command: *openmeter_runtime_command
+    environment:
+      <<: *openmeter_runtime_environment
+      OPENMETER_RUNTIME_COMMAND: openmeter-sink-worker --config /tmp/openmeter-config.yaml
+    depends_on:
+      openmeter:
+        condition: service_healthy
+      openmeter-kafka:
+        condition: service_healthy
+      openmeter-clickhouse:
+        condition: service_healthy
+
+volumes:
+  openmeter_kafka_data:
+  openmeter_clickhouse_data:
+  openmeter_clickhouse_logs:

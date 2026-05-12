@@ -4,8 +4,8 @@ services:
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-0.149.0}
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     ports:
-      - ${OTEL_COLLECTOR_PORT_GRPC:-4317}:4317
-      - ${OTEL_COLLECTOR_PORT_HTTP:-4318}:4318
+      - 127.0.0.1:${OTEL_COLLECTOR_PORT_GRPC:-4317}:4317
+      - 127.0.0.1:${OTEL_COLLECTOR_PORT_HTTP:-4318}:4318
     volumes:
       - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
 
@@ -21,7 +21,7 @@ services:
         "--storage.tsdb.path=/prometheus",
       ]
     ports:
-      - ${PROMETHEUS_PORT:-9090}:9090
+      - 127.0.0.1:${PROMETHEUS_PORT:-9090}:9090
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -31,7 +31,7 @@ services:
     image: grafana/loki:3.7.1
     command: ["-config.file=/etc/loki/config.yaml"]
     ports:
-      - ${LOKI_PORT:-3100}:3100
+      - 127.0.0.1:${LOKI_PORT:-3100}:3100
     volumes:
       - ./loki/config.yaml:/etc/loki/config.yaml:ro
       - loki_data:/loki
@@ -47,12 +47,12 @@ services:
       tempo:
         condition: service_started
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: false
       GF_AUTH_ANONYMOUS_ENABLED: false
     ports:
-      - ${GRAFANA_PORT:-3001}:3000
+      - 127.0.0.1:${GRAFANA_PORT:-3001}:3000
     volumes:
       - ./grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - grafana_data:/var/lib/grafana
@@ -62,7 +62,7 @@ services:
     image: grafana/tempo:2.8.3
     command: ["-config.file=/etc/tempo/config.yaml"]
     ports:
-      - ${TEMPO_PORT:-3200}:3200
+      - 127.0.0.1:${TEMPO_PORT:-3200}:3200
     volumes:
       - ./tempo/config.yaml:/etc/tempo/config.yaml:ro
       - tempo_data:/var/tempo
@@ -76,9 +76,9 @@ services:
       valkey:
         condition: service_started
     environment:
-      DATABASE_URL: ${GLITCHTIP_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/glitchtip}
+      DATABASE_URL: ${GLITCHTIP_DATABASE_URL}
       VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379}
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-change-me-in-local-env}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
       DEFAULT_FROM_EMAIL: ${GLITCHTIP_DEFAULT_FROM_EMAIL:-glitchtip@localhost}
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8001}
@@ -89,7 +89,7 @@ services:
       SERVER_ROLE: all_in_one
       PORT: 8000
     ports:
-      - ${GLITCHTIP_PORT:-8001}:8000
+      - 127.0.0.1:${GLITCHTIP_PORT:-8001}:8000
     volumes:
       - glitchtip_uploads:/code/uploads
 

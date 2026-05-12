@@ -1,4 +1,4 @@
-name: comvestec-saas-foundation
+name: comvestec-vendor-infra
 
 include:
   - observability/compose.yml
@@ -15,20 +15,16 @@ services:
     container_name: postgres
     image: postgres:18.3-alpine3.23
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-comvestec}
-      POSTGRES_USER: ${POSTGRES_USER:-comvestec}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-comvestec}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: ${POSTGRES_PGDATA:-/var/lib/postgresql/18/docker}
     ports:
-      - ${POSTGRES_PORT:-5432}:5432
+      - 127.0.0.1:${POSTGRES_PORT:-5432}:5432
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: [
-          "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-comvestec} -d
-          ${POSTGRES_DB:-comvestec}",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -43,16 +39,16 @@ services:
     environment:
       PGHOST: postgres
       PGPORT: 5432
-      PGUSER: ${POSTGRES_USER:-comvestec}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-comvestec}
-      PGDATABASE: ${POSTGRES_DB:-comvestec}
-      CONVEX_POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      CONVEX_POSTGRES_URL: ${CONVEX_POSTGRES_URL}
       CONVEX_INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-comvestec-foundation}
       KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak}
-      KETO_DSN: ${KETO_DSN:-postgres://comvestec:comvestec@postgres:5432/keto?sslmode=disable}
-      UNLEASH_DATABASE_URL: ${UNLEASH_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/unleash?sslmode=disable}
-      OPENMETER_POSTGRES_URL: ${OPENMETER_POSTGRES_URL:-postgres://comvestec:comvestec@postgres:5432/openmeter?sslmode=disable}
-      GLITCHTIP_DATABASE_URL: ${GLITCHTIP_DATABASE_URL:-postgres://comvestec:comvestec@postgres:5432/glitchtip}
+      KETO_DSN: ${KETO_DSN}
+      UNLEASH_DATABASE_URL: ${UNLEASH_DATABASE_URL}
+      OPENMETER_POSTGRES_URL: ${OPENMETER_POSTGRES_URL}
+      GLITCHTIP_DATABASE_URL: ${GLITCHTIP_DATABASE_URL}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -85,28 +81,32 @@ services:
     image: valkey/valkey:9.0.3-trixie
     command: ["valkey-server", "--save", "", "--appendonly", "no"]
     ports:
-      - ${VALKEY_PORT:-6379}:6379
+      - 127.0.0.1:${VALKEY_PORT:-6379}:6379
     volumes:
       - valkey_data:/data
 
   keycloak:
     container_name: keycloak
     image: quay.io/keycloak/keycloak:26.6.0
+    entrypoint: ["/bin/sh", "-ec"]
     command:
-      [
-        "start-dev",
-        "--import-realm",
-        "--http-port=8080",
-        "--http-management-port=9000",
-      ]
+      - |
+        mkdir -p /opt/keycloak/data/import
+        sed "s|__KEYCLOAK_CLIENT_SECRET__|$$KEYCLOAK_CLIENT_SECRET|g" \
+          /opt/keycloak/data/import-template/realm-export.json \
+          > /opt/keycloak/data/import/realm-export.json
+        exec /opt/keycloak/bin/kc.sh start-dev \
+          --import-realm \
+          --http-port=8080 \
+          --http-management-port=9000
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
       KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
-      KC_DB_USERNAME: ${POSTGRES_USER:-comvestec}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-comvestec}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HEALTH_ENABLED: true
       KC_METRICS_ENABLED: true
       KC_PROXY_HEADERS: xforwarded
@@ -114,10 +114,10 @@ services:
       postgres-bootstrap:
         condition: service_completed_successfully
     ports:
-      - ${KEYCLOAK_PORT:-8080}:8080
-      - 9000:9000
+      - 127.0.0.1:${KEYCLOAK_PORT:-8080}:8080
+      - 127.0.0.1:9000:9000
     volumes:
-      - ./identity/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+      - ./identity/keycloak/realm-export.json:/opt/keycloak/data/import-template/realm-export.json:ro
 
   convex-backend:
     container_name: convex-backend
@@ -129,27 +129,27 @@ services:
         condition: service_started
     environment:
       INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-comvestec-foundation}
-      POSTGRES_URL: ${CONVEX_POSTGRES_URL:-postgresql://comvestec:comvestec@postgres:5432}
-      POSTGRES_URL_INTERNAL: ${POSTGRES_URL_INTERNAL:-postgresql://comvestec:comvestec@postgres:5432/comvestec}
+      POSTGRES_URL: ${CONVEX_POSTGRES_URL}
+      POSTGRES_URL_INTERNAL: ${POSTGRES_URL_INTERNAL}
       DO_NOT_REQUIRE_SSL: 1
       CONVEX_CLOUD_ORIGIN: ${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}
       CONVEX_SITE_ORIGIN: ${CONVEX_SELF_HOSTED_SITE_URL:-http://127.0.0.1:3211}
       CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}
       CONVEX_SELF_HOSTED_SITE_URL: ${CONVEX_SELF_HOSTED_SITE_URL:-http://127.0.0.1:3211}
-      CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY:-generate-after-running-generate_admin_key}
+      CONVEX_SELF_HOSTED_ADMIN_KEY: ${CONVEX_SELF_HOSTED_ADMIN_KEY}
       KEYCLOAK_BASE_URL_INTERNAL: ${KEYCLOAK_BASE_URL_INTERNAL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-comvestec}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-saas-platform}
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-change-me}
-      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-set-from-polar-organization-access-token}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN}
       POLAR_API_URL: ${POLAR_API_URL:-https://api.polar.sh}
       VALKEY_URL_INTERNAL: ${VALKEY_URL_INTERNAL:-redis://valkey:6379}
       KETO_READ_URL_INTERNAL: ${KETO_READ_URL_INTERNAL:-http://ory-keto:4466}
       KETO_WRITE_URL_INTERNAL: ${KETO_WRITE_URL_INTERNAL:-http://ory-keto:4467}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
-      - 3210:3210
-      - 3211:3211
+      - 127.0.0.1:3210:3210
+      - 127.0.0.1:3211:3211
     volumes:
       - convex_data:/convex/data
 
@@ -162,7 +162,7 @@ services:
     environment:
       NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}
     ports:
-      - ${CONVEX_DASHBOARD_PORT:-6791}:6791
+      - 127.0.0.1:${CONVEX_DASHBOARD_PORT:-6791}:6791
 
 volumes:
   convex_data:

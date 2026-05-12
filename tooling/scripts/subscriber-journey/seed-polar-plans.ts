@@ -7,10 +7,11 @@ import {
 } from "@comvestec/contracts";
 import {
   adminBillingApiPath,
-  makeValkeyAdapter,
+  subscriberJourneySessionHeaderName,
   subscriberJourneyApiPath,
 } from "@comvestec/platform";
 import {
+  persistSyntheticRequestContextSession,
   printToolingScriptError,
   requestJson,
   type ToolingScriptConfigurationError,
@@ -83,27 +84,22 @@ const persistPlatformOperatorSession = (
   sessionId: string,
   correlationId: string,
 ) =>
-  makeValkeyAdapter({ url: environment.VALKEY_URL }).pipe(
-    Effect.flatMap((valkey) =>
-      valkey
-        .writeSession({
-          sessionId,
-          requestContext: {
-            actorType: actorType.platformOperator,
-            actorId: "usr_platform_operator_seed",
-            sessionId,
-            correlationId,
-            reason:
-              "Seed managed Polar billing plans for live subscriber journey smoke.",
-            tenant: {
-              scope: platformScope.platform,
-              scopeId: platformScope.platform,
-            },
-          },
-        })
-        .pipe(Effect.ensuring(Effect.ignore(valkey.close))),
-    ),
-  );
+  persistSyntheticRequestContextSession({
+    valkeyUrl: environment.VALKEY_URL,
+    sessionId,
+    requestContext: {
+      actorType: actorType.platformOperator,
+      actorId: "usr_platform_operator_seed",
+      sessionId,
+      correlationId,
+      reason:
+        "Seed managed Polar billing plans for live subscriber journey smoke.",
+      tenant: {
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+      },
+    },
+  });
 
 const main = Effect.gen(function* () {
   const environment = yield* decodeSeedEnvironment(Bun.env);
@@ -176,9 +172,9 @@ const main = Effect.gen(function* () {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
+          [subscriberJourneySessionHeaderName]: sessionId,
         },
         body: JSON.stringify({
-          sessionId,
           plan,
         }),
       },

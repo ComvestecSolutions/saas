@@ -1,29 +1,299 @@
 services:
+  novu-mongo:
+    container_name: novu-mongo
+    image: mongo:8.0.16
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${NOVU_MONGO_INITDB_ROOT_USERNAME:-novu}
+      MONGO_INITDB_ROOT_PASSWORD: ${NOVU_MONGO_INITDB_ROOT_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mongosh --quiet "mongodb://$${MONGO_INITDB_ROOT_USERNAME}:$${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:27017/admin?authSource=admin" --eval "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    volumes:
+      - novu_mongo_data:/data/db
+
   novu:
     container_name: novu
     image: ghcr.io/novuhq/novu/api:3.14.0
+    restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      API_ROOT_URL: ${NOVU_API_URL:-http://localhost:3100}
-      MONGO_URL: ""
+      NODE_ENV: local
+      PORT: 3000
+      LOG_LEVEL: ${NOVU_LOG_LEVEL:-warn}
+      API_ROOT_URL: ${NOVU_API_URL:-http://localhost:3101}
+      FRONT_BASE_URL: ${NOVU_FRONT_BASE_URL:-http://localhost:3103}
+      DASHBOARD_URL: ${NOVU_DASHBOARD_URL:-http://localhost:3103}
+      IS_SELF_HOSTED: "true"
+      MONGO_URL: ${NOVU_MONGO_URL}
       REDIS_HOST: valkey
       REDIS_PORT: 6379
+      REDIS_DB_INDEX: 0
+      REDIS_CACHE_SERVICE_HOST: valkey
+      REDIS_CACHE_SERVICE_PORT: 6379
+      REDIS_CACHE_PASSWORD: ""
+      JWT_SECRET: ${NOVU_JWT_SECRET}
+      STORE_ENCRYPTION_KEY: ${NOVU_STORE_ENCRYPTION_KEY}
+      DISABLE_USER_REGISTRATION: "${NOVU_DISABLE_USER_REGISTRATION:-true}"
     depends_on:
-      - valkey
+      novu-mongo:
+        condition: service_healthy
+      valkey:
+        condition: service_started
     ports:
-      - ${NOVU_PORT:-3100}:3000
+      - 127.0.0.1:${NOVU_PORT:-3101}:3000
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://127.0.0.1:$${PORT}/v1/health-check || exit 1",
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  novu-worker:
+    container_name: novu-worker
+    image: ghcr.io/novuhq/novu/worker:3.14.0
+    restart: unless-stopped
+    environment:
+      NODE_ENV: local
+      PORT: 3000
+      LOG_LEVEL: ${NOVU_LOG_LEVEL:-warn}
+      API_ROOT_URL: ${NOVU_API_URL:-http://localhost:3101}
+      FRONT_BASE_URL: ${NOVU_FRONT_BASE_URL:-http://localhost:3103}
+      DASHBOARD_URL: ${NOVU_DASHBOARD_URL:-http://localhost:3103}
+      IS_SELF_HOSTED: "true"
+      MONGO_URL: ${NOVU_MONGO_URL}
+      REDIS_HOST: valkey
+      REDIS_PORT: 6379
+      REDIS_DB_INDEX: 0
+      REDIS_CACHE_SERVICE_HOST: valkey
+      REDIS_CACHE_SERVICE_PORT: 6379
+      JWT_SECRET: ${NOVU_JWT_SECRET}
+      STORE_ENCRYPTION_KEY: ${NOVU_STORE_ENCRYPTION_KEY}
+    depends_on:
+      novu-mongo:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://127.0.0.1:$${PORT}/v1/health-check || exit 1",
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  novu-ws:
+    container_name: novu-ws
+    image: ghcr.io/novuhq/novu/ws:3.14.0
+    restart: unless-stopped
+    environment:
+      NODE_ENV: local
+      PORT: 3002
+      LOG_LEVEL: ${NOVU_LOG_LEVEL:-warn}
+      IS_SELF_HOSTED: "true"
+      MONGO_URL: ${NOVU_MONGO_URL}
+      REDIS_HOST: valkey
+      REDIS_PORT: 6379
+      REDIS_DB_INDEX: 0
+      JWT_SECRET: ${NOVU_JWT_SECRET}
+    depends_on:
+      novu-mongo:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+    ports:
+      - 127.0.0.1:${NOVU_WEBSOCKET_PORT:-3102}:3002
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://127.0.0.1:$${PORT}/v1/health-check || exit 1",
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  novu-dashboard:
+    container_name: novu-dashboard
+    image: ghcr.io/novuhq/novu/dashboard:3.14.0
+    restart: unless-stopped
+    environment:
+      VITE_API_HOSTNAME: ${NOVU_API_URL:-http://localhost:3101}
+      VITE_DASHBOARD_URL: ${NOVU_DASHBOARD_URL:-http://localhost:3103}
+      VITE_LEGACY_DASHBOARD_URL: ${NOVU_DASHBOARD_URL:-http://localhost:3103}
+      VITE_SELF_HOSTED: "true"
+      VITE_WEBSOCKET_HOSTNAME: ${NOVU_WEBSOCKET_URL:-http://localhost:3102}
+    depends_on:
+      novu:
+        condition: service_healthy
+      novu-worker:
+        condition: service_healthy
+      novu-ws:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${NOVU_DASHBOARD_PORT:-3103}:4000
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "const http = require(''http''); const req = http.get({ hostname: ''127.0.0.1'', port: 4000, path: ''/'', timeout: 5000 }, (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }); req.on(''error'', () => process.exit(1)); req.on(''timeout'', () => { req.destroy(); process.exit(1); });"',
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  postal-config-bootstrap:
+    container_name: postal-config-bootstrap
+    image: alpine:3.21
+    restart: "no"
+    environment:
+      POSTAL_SIGNING_KEY_BASE64: ${POSTAL_SIGNING_KEY_BASE64}
+    command:
+      [
+        "sh",
+        "-euc",
+        'mkdir -p /config && printf "%s" "$${POSTAL_SIGNING_KEY_BASE64}" | base64 -d > /config/signing.key && chmod 600 /config/signing.key',
+      ]
+    volumes:
+      - postal_config:/config
+
+  postal-mariadb:
+    container_name: postal-mariadb
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${POSTAL_MARIADB_DATABASE:-postal}
+      MARIADB_USER: ${POSTAL_MARIADB_USERNAME:-postal}
+      MARIADB_PASSWORD: ${POSTAL_MARIADB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${POSTAL_MARIADB_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mariadb-admin ping --host=127.0.0.1 --port=3306 --user=$${MARIADB_USER} --password=$${MARIADB_PASSWORD} --silent",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - postal_mariadb_data:/var/lib/mysql
+
+  postal-db-grants:
+    container_name: postal-db-grants
+    image: mariadb:11.8
+    restart: "no"
+    environment:
+      POSTAL_MARIADB_DATABASE: ${POSTAL_MARIADB_DATABASE:-postal}
+      POSTAL_MARIADB_USERNAME: ${POSTAL_MARIADB_USERNAME:-postal}
+      POSTAL_MARIADB_PASSWORD: ${POSTAL_MARIADB_PASSWORD}
+    command:
+      [
+        "sh",
+        "-euc",
+        "mariadb --host=postal-mariadb --port=3306 --user=root --password=\"$${POSTAL_MARIADB_PASSWORD}\" --execute=\"GRANT ALL PRIVILEGES ON \\`$${POSTAL_MARIADB_DATABASE}\\`.* TO '$${POSTAL_MARIADB_USERNAME}'@'%'; GRANT ALL PRIVILEGES ON \\`$${POSTAL_MARIADB_DATABASE}-%\\`.* TO '$${POSTAL_MARIADB_USERNAME}'@'%'; FLUSH PRIVILEGES;\"",
+      ]
+    depends_on:
+      postal-mariadb:
+        condition: service_healthy
+
+  postal-bootstrap:
+    container_name: postal-bootstrap
+    image: ghcr.io/postalserver/postal:3.3.4
+    restart: "no"
+    environment: &postal-runtime-environment
+      POSTAL_FNAME: ${POSTAL_FNAME}
+      POSTAL_LNAME: ${POSTAL_LNAME}
+      POSTAL_EMAIL: ${POSTAL_EMAIL}
+      POSTAL_WEB_PROTOCOL: ${POSTAL_WEB_PROTOCOL:-http}
+      POSTAL_WEB_HOSTNAME: ${POSTAL_WEB_HOSTNAME:-localhost}
+      POSTAL_SMTP_HOSTNAME: ${POSTAL_SMTP_HOSTNAME:-localhost}
+      POSTAL_SIGNING_KEY_PATH: /config/signing.key
+      MAIN_DB_HOST: postal-mariadb
+      MAIN_DB_PORT: 3306
+      MAIN_DB_USERNAME: ${POSTAL_MARIADB_USERNAME:-postal}
+      MAIN_DB_PASSWORD: ${POSTAL_MARIADB_PASSWORD}
+      MAIN_DB_DATABASE: ${POSTAL_MARIADB_DATABASE:-postal}
+      MESSAGE_DB_HOST: postal-mariadb
+      MESSAGE_DB_PORT: 3306
+      MESSAGE_DB_USERNAME: ${POSTAL_MARIADB_USERNAME:-postal}
+      MESSAGE_DB_PASSWORD: ${POSTAL_MARIADB_PASSWORD}
+      MESSAGE_DB_DATABASE_NAME_PREFIX: ${POSTAL_MARIADB_DATABASE:-postal}
+      LOGGING_ENABLED: "true"
+      RAILS_ENVIRONMENT: production
+      RAILS_SECRET_KEY: ${POSTAL_RAILS_SECRET_KEY}
+      WAIT_FOR_TIMEOUT: 90
+      WAIT_FOR_TARGETS: |-
+        postal-mariadb:3306
+    command: ["sh", "-euc", "postal initialize || postal update"]
+    depends_on:
+      postal-config-bootstrap:
+        condition: service_completed_successfully
+      postal-db-grants:
+        condition: service_completed_successfully
+      postal-mariadb:
+        condition: service_healthy
+    volumes:
+      - postal_config:/config:ro
+      - postal_data:/opt/postal/data
 
   postal:
     container_name: postal
     image: ghcr.io/postalserver/postal:3.3.4
+    restart: unless-stopped
     environment:
-      POSTAL_FNAME: ${POSTAL_FNAME:-Admin}
-      POSTAL_LNAME: ${POSTAL_LNAME:-User}
-      POSTAL_EMAIL: ${POSTAL_EMAIL:-admin@localhost}
+      <<: *postal-runtime-environment
+      BIND_ADDRESS: 0.0.0.0
+      PORT: 5000
+    command: ["postal", "web-server"]
+    depends_on:
+      postal-bootstrap:
+        condition: service_completed_successfully
     ports:
-      - ${POSTAL_API_PORT:-5000}:5000
+      - 127.0.0.1:${POSTAL_API_PORT:-5000}:5000
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'status="$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5000/)"; case "$$status" in 2*|3*|403) exit 0 ;; *) exit 1 ;; esac',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     volumes:
+      - postal_config:/config:ro
+      - postal_data:/opt/postal/data
+
+  postal-worker:
+    container_name: postal-worker
+    image: ghcr.io/postalserver/postal:3.3.4
+    restart: unless-stopped
+    environment: *postal-runtime-environment
+    command: ["postal", "worker"]
+    depends_on:
+      postal-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - postal_config:/config:ro
       - postal_data:/opt/postal/data
 
 volumes:
+  novu_mongo_data:
+  postal_config:
   postal_data:
+  postal_mariadb_data:

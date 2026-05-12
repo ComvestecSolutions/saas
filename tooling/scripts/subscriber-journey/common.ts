@@ -1,4 +1,6 @@
 import { Effect, ParseResult, Schema } from "effect";
+import { type RequestContext } from "@comvestec/contracts";
+import { makeValkeyAdapter } from "@comvestec/platform";
 
 export const subscriberJourneySmokeDefaults = {
   username: "smoke.owner",
@@ -98,10 +100,21 @@ const buildToolingScriptProcessError = (
   exitCode,
 });
 
+type BunWithWhich = typeof Bun & {
+  readonly which?: (executable: string) => string | null | undefined;
+};
+
+const bunExecutableFromPath = (Bun as BunWithWhich).which?.("bun");
+
 export const workspaceRootDirectory = Bun.resolveSync(
   "../../../package.json",
   import.meta.dir,
 ).replace(/[/\\]package\.json$/, "");
+
+export const bunExecutablePath =
+  process.execPath.length > 0
+    ? process.execPath
+    : (bunExecutableFromPath ?? "bun");
 
 export const decodeKeycloakTokenResponse = Schema.decodeUnknown(
   KeycloakTokenResponseSchema,
@@ -220,7 +233,7 @@ export const issueKeycloakPasswordGrant = (input: {
 export const runBunScript = (script: string) =>
   Effect.tryPromise({
     try: async () => {
-      const childProcess = Bun.spawn([process.execPath, "run", script], {
+      const childProcess = Bun.spawn([bunExecutablePath, "run", script], {
         cwd: workspaceRootDirectory,
         env: Bun.env,
         stdin: "inherit",
@@ -246,6 +259,22 @@ export const runBunScript = (script: string) =>
       return buildToolingScriptProcessError(script, -1);
     },
   });
+
+export const persistSyntheticRequestContextSession = (input: {
+  readonly valkeyUrl: string;
+  readonly sessionId: string;
+  readonly requestContext: RequestContext;
+}) =>
+  makeValkeyAdapter({ url: input.valkeyUrl }).pipe(
+    Effect.flatMap((valkey) =>
+      valkey
+        .writeSession({
+          sessionId: input.sessionId,
+          requestContext: input.requestContext,
+        })
+        .pipe(Effect.ensuring(Effect.ignore(valkey.close))),
+    ),
+  );
 
 export const resolveOptionalOverride = (
   value: string | undefined,

@@ -1,4 +1,13 @@
 _format_version: "3.0"
 _transform: true
 
-services: []
+services:
+  - name: backend-api
+    host: __KONG_BACKEND_API_UPSTREAM_HOST__
+    port: __KONG_BACKEND_API_UPSTREAM_PORT__
+    protocol: http
+    routes:
+      - name: backend-api-public
+        paths:
+          - /api
+        strip_path: false

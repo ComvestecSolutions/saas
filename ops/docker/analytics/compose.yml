@@ -1,5 +1,6 @@
 x-openpanel-runtime-environment: &openpanel_runtime_environment
-  NODE_ENV: ${NODE_ENV:-development}
+  NODE_ENV: ${OPENPANEL_NODE_ENV:-production}
+  API_HOST: 0.0.0.0
   SELF_HOSTED: "true"
   ALLOW_REGISTRATION: ${OPENPANEL_ALLOW_REGISTRATION:-false}
   ALLOW_INVITATION: ${OPENPANEL_ALLOW_INVITATION:-true}
@@ -8,11 +9,11 @@ x-openpanel-runtime-environment: &openpanel_runtime_environment
   API_URL: ${OPENPANEL_API_URL:-http://localhost:3005/api}
   DASHBOARD_URL: ${OPENPANEL_DASHBOARD_URL:-http://localhost:3005}
   API_CORS_ORIGINS: ${OPENPANEL_API_CORS_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:3004}
-  DATABASE_URL: ${OPENPANEL_DATABASE_URL:-postgresql://postgres:postgres@op-db:5432/postgres?schema=public}
-  DATABASE_URL_DIRECT: ${OPENPANEL_DATABASE_URL_DIRECT:-postgresql://postgres:postgres@op-db:5432/postgres?schema=public}
+  DATABASE_URL: ${OPENPANEL_DATABASE_URL}
+  DATABASE_URL_DIRECT: ${OPENPANEL_DATABASE_URL_DIRECT}
   REDIS_URL: ${OPENPANEL_REDIS_URL:-redis://op-kv:6379}
   CLICKHOUSE_URL: ${OPENPANEL_CLICKHOUSE_URL:-http://op-ch:8123/openpanel}
-  COOKIE_SECRET: ${OPENPANEL_COOKIE_SECRET:-openpanel-local-dev-secret-change-before-sharing}
+  COOKIE_SECRET: ${OPENPANEL_COOKIE_SECRET}
   EMAIL_SENDER: ${OPENPANEL_EMAIL_SENDER:-}
   RESEND_API_KEY: ${OPENPANEL_RESEND_API_KEY:-}
 
@@ -33,13 +34,17 @@ services:
     container_name: op-db
     image: postgres:14-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${OPENPANEL_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${OPENPANEL_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${OPENPANEL_POSTGRES_DB}
     volumes:
       - op-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${OPENPANEL_POSTGRES_USER} -d ${OPENPANEL_POSTGRES_DB}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -101,7 +106,14 @@ services:
   op-dashboard:
     container_name: op-dashboard
     image: lindesvard/openpanel-dashboard:${OPENPANEL_IMAGE_TAG:-2.0.0}
-    environment: *openpanel_runtime_environment
+    command: >
+      sh -lc "
+        node /opt/openpanel/local-api-proxy.js &
+        exec node .output/server/index.mjs
+      "
+    environment:
+      <<: *openpanel_runtime_environment
+      OPENPANEL_LOCAL_API_PROXY_PORT: ${OPENPANEL_PORT:-3005}
     depends_on:
       op-api:
         condition: service_healthy
@@ -111,6 +123,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./openpanel-local-api-proxy.js:/opt/openpanel/local-api-proxy.js:ro
 
   op-worker-a:
     <<: *openpanel_worker_service
@@ -129,7 +143,7 @@ services:
       op-api:
         condition: service_healthy
     ports:
-      - ${OPENPANEL_PORT:-3005}:80
+      - 127.0.0.1:${OPENPANEL_PORT:-3005}:80
     volumes:
       - op-proxy-data:/data
       - op-proxy-config:/config
