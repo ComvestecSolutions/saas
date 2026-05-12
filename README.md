@@ -40,6 +40,7 @@ flowchart LR
     Messaging[Novu and Postal]
     Metering[OpenMeter]
     Observe[OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana, and GlitchTip]
+    Edge[Edge and secrets: Kong and Vault]
     ExternalProviders[Polar billing and OpenPanel analytics boundaries]
   end
 
@@ -60,6 +61,7 @@ flowchart LR
   PlatformAdapters --> Messaging
   PlatformAdapters --> Metering
   PlatformAdapters --> Observe
+  PlatformAdapters --> Edge
   PlatformAdapters --> ExternalProviders
 
   Specs --> Contracts
@@ -83,12 +85,12 @@ flowchart LR
 
 The accepted specs describe the intended platform. Current delivery maturity for each area lives in [specs/00-governance/implementation-tracker.md](specs/00-governance/implementation-tracker.md).
 
-- Apps: TanStack Start shells for the public web, product app, and admin app, with first-party auth routes kept as thin request-boundary edges over shared platform helpers while backend-owned H3 routes remain the delivery gate for external callers, tooling, smoke coverage, and webhook providers.
+- Apps: TanStack Start shells for the public web and product app, plus a scaffolded admin app now centered on the tenant repair console, with first-party auth routes kept as thin request-boundary edges over shared platform helpers while backend-owned H3 routes remain the delivery gate for external callers, tooling, smoke coverage, and webhook providers.
 - Shared backend: Effect-based contracts, runtime services, backend-owned HTTP APIs, typed config helpers, and a 19-manifest module catalog with per-capability maturity tracked in the implementation tracker.
-- Governance: Core specs, backend-readiness roadmap, 19 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync.
-- Platform adapters: 14 adapter service boundaries across identity, storage, messaging, observability, search, and billing or metering concerns.
-- Local ops baseline: Pinned Compose services for PostgreSQL, Keycloak, Convex, Valkey, Ory Keto, Unleash, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, Prometheus, Loki, Tempo, Grafana, and the OpenTelemetry Collector.
-- Validation: Jest through Bun, Playwright scaffold, path-based labels, PR auto-assignment, and Trivy-backed security hygiene.
+- Governance: Core specs, backend-readiness roadmap, backend end-to-end test plan, 21 accepted ADRs, grouped commit enforcement, PR governance validation, and label sync.
+- Platform adapters: 14 named adapter service boundaries across identity, storage, messaging, observability, search, and billing or metering concerns.
+- Local ops baseline: Pinned Compose services for PostgreSQL, Keycloak, Convex, Valkey, Ory Keto, Unleash, Meilisearch, Novu, OpenMeter, Postal, GlitchTip, Prometheus, Loki, Tempo, Grafana, the OpenTelemetry Collector, OpenPanel, Kong, and Vault.
+- Validation: ADR-021 Vitest-through-Bun migration, browser projects on Vitest Browser Mode, Playwright end-to-end scaffold, path-based labels, PR auto-assignment, and Trivy-backed security hygiene.
 
 ## Workflow That Keeps The Repo Clean
 
@@ -106,24 +108,31 @@ bun run hooks:install
 bun run format:check
 bun run typecheck
 bun run test
-docker compose --env-file .env -f ops/docker/compose.yml up -d
-# Generate the Convex admin key, write it to .env, then sync the deployment env.
-bun run convex:env:sync
-bun run db:migrate
-bun run backend:subscriber-journey:bootstrap
+docker compose -f ops/docker/compose.yml up -d vault
+# Initialize and unseal Vault, then enable the platform KV mount per the ops runbook.
+bun run ops:secrets:bootstrap
+bun run ops:docker:compose -- up -d
+# Provision or reuse the Vault-backed runtime credentials generated after startup.
+bun run ops:runtime:bootstrap
+# Generate the Convex admin key, write it to Vault, then sync the deployment env.
+bun run convex:env:sync:local
+bun run db:migrate:local
+bun run backend:subscriber-journey:bootstrap:local
 ```
 
-Use Bun for all repo-owned commands, hooks, automation, CI workflow examples, and documentation snippets. The current runtime exception is Convex action files that must keep `"use node"`, because Convex only supports its default runtime or Node.js for those functions.
+Use Bun for all repo-owned commands, hooks, automation, CI workflow examples, and documentation snippets. Prefer Bun-native process launching such as `Bun.spawn(...)` when Bun exposes an equivalent, and treat Bun's Node-compat modules as compatibility shims rather than a reason to switch the runtime to Node. The current runtime exception is Convex action files that must keep `"use node"`, because Convex only supports its default runtime or Node.js for those functions.
 
-Before starting the local stack, copy `.env.example` to `.env` if you have not already done so. The example env file now uses three provenance categories that match the current runtime pattern: seeded locally, generated during bootstrap, and external-provider supplied. Leave the seeded local defaults in place, then replace only the bootstrap-generated or external-provider sentinel values when those services are actually provisioned. For the self-hosted Convex path, generate the local Convex admin key, write it back to `.env` as `CONVEX_SELF_HOSTED_ADMIN_KEY`, and run `bun run convex:env:sync` after any deployment-managed worker env change because Convex deployment env is separate from the Compose container env. Convex actions receive the deployment URL and site URL from Convex system environment variables, not from the synced worker env file.
+The root `bun run typecheck` and `bun run check` paths now validate coverage for every first-party TypeScript surface under `apps/`, `packages/`, `convex/`, `tooling/`, `tests/`, and `drizzle.config.ts` by comparing those files against the real file lists produced by the owning tsconfig entrypoints. Explicitly excluded surfaces stay outside that audit: non-owned trees such as `vendor/` and `node_modules/`, repo infrastructure paths such as `.git/` and `.turbo/`, root output folders `build/`, `coverage/`, and `dist/`, plus workspace app and package output folders such as `apps/*/build`, `apps/*/dist`, `packages/*/build`, and `packages/*/dist`.
 
-Use [ops/docker/README.md](ops/docker/README.md) as the operator index for first-run commands, concern-owned service groups, and the runbooks that explain bootstrap-generated values such as the Convex admin key, GlitchTip DSN, OpenPanel client id, and other service credentials.
+Before starting the local stack, keep tracked defaults in `.env.example`, optional non-secret host overrides in ignored `.env.local`, and store generated or captured local secrets in Vault. Concrete values for placeholder-backed keys should live in Vault or a one-off shell command, not in `.env.local` or other ad hoc env files. If a legacy repo-root `.env` still exists, rerun `bun run ops:secrets:bootstrap` after Vault is available: it now treats `.env` as one-time migration input, copies placeholder-backed concrete secret values into Vault, and scrubs them from the file after a successful Vault write. The example env file still documents the three provenance categories that match the current runtime pattern: generated locally before first start, generated during bootstrap, and external-provider supplied. For the self-hosted Convex path, generate the local Convex admin key, write it back to Vault as `CONVEX_SELF_HOSTED_ADMIN_KEY`, and run `bun run convex:env:sync:local` after any deployment-managed worker env change because Convex deployment env is separate from the Compose container env. Convex actions receive the deployment URL and site URL from Convex system environment variables, not from the synced worker env file.
 
-The PostgreSQL-backed backend modules now ship with a repo-owned Drizzle workflow. `bun run db:generate` creates reviewable SQL migrations from [packages/modules/src/persistence/postgres/schema.ts](packages/modules/src/persistence/postgres/schema.ts), and `bun run db:migrate` applies them against `POSTGRES_URL` from the shell or `.env`.
+Use [ops/docker/README.md](ops/docker/README.md) as the operator index for first-run commands, concern-owned service groups, and the runbooks that explain bootstrap-generated values such as the Convex admin key and other service credentials. `bun run ops:runtime:bootstrap` now owns the local GlitchTip DSN plus the OpenPanel backend client credentials alongside the existing Novu, Postal, and Unleash runtime reconciliation flow.
 
-The backend subscriber-journey operator flow now has two focused entrypoints. `bun run backend:subscriber-journey:bootstrap` wraps `db:migrate`, keeps the local Keycloak client redirect surface aligned with the repo defaults, and creates or updates the Keycloak smoke user. `bun run backend:subscriber-journey` starts the backend-owned HTTP API, and `bun run backend:subscriber-journey:live-smoke` drives the live Keycloak-to-Polar kickoff through those HTTP contracts up to the hosted Polar checkout session.
+The PostgreSQL-backed backend modules now ship with a repo-owned Drizzle workflow. For the local stack, `bun run db:generate:local` creates reviewable SQL migrations from [packages/modules/src/persistence/postgres/schema.ts](packages/modules/src/persistence/postgres/schema.ts) and `bun run db:migrate:local` applies them against the Vault-backed runtime environment. The plain `db:generate` and `db:migrate` scripts now expect `POSTGRES_URL` in the current shell and no longer read `.env` files.
 
-The live smoke kickoff requires a real `POLAR_ACCESS_TOKEN` and a `POLAR_WEBHOOK_SECRET` captured from Polar CLI local forwarding. With the backend API running, use `polar listen http://127.0.0.1:3010/api/subscriber-journey/billing/webhooks/polar`, copy the reported secret into `.env`, and then run `bun run backend:subscriber-journey:live-smoke`. `SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL` is now optional and only needed when you want the smoke script to print externally reachable webhook and replay URLs.
+The backend subscriber-journey operator flow now has three focused local entrypoints. `bun run backend:subscriber-journey:bootstrap:local` wraps the Vault-backed local Drizzle migration path, keeps the local Keycloak client redirect surface aligned with the repo defaults, and creates or updates the Keycloak smoke user. `bun run backend:subscriber-journey:local` starts the backend-owned HTTP API when you want to keep it running for manual work. `bun run backend:subscriber-journey:ready:local` is the one-command readiness path: it bootstraps the backend slice, starts the API, waits for the public plan route to respond, runs the live smoke kickoff, and then keeps the local API running so the hosted checkout return path and webhook reconciliation can complete. Stop that command with `Ctrl+C` after verification. `bun run backend:subscriber-journey:live-smoke:local` remains available when the backend API is already running and you only want to drive the live Keycloak-to-Polar kickoff through those HTTP contracts up to the hosted Polar checkout session.
+
+The live smoke kickoff requires a real `POLAR_ACCESS_TOKEN` and a `POLAR_WEBHOOK_SECRET` captured from Polar CLI local forwarding. With the backend API running, use `polar listen http://127.0.0.1:3010/api/subscriber-journey/billing/webhooks/polar`, write the reported secret into Vault, and then run `bun run backend:subscriber-journey:live-smoke:local`. When the current organization access token is scoped to Polar sandbox, set `POLAR_API_URL=https://sandbox-api.polar.sh/v1` in `.env.local` so the local operator wrappers use the matching API host instead of the production default from `.env.example`. `SUBSCRIBER_JOURNEY_PUBLIC_BASE_URL` is now optional and only needed when you want the smoke script to print externally reachable webhook and replay URLs.
 
 `ops/docker/compose.yml` is the only Compose entrypoint. It includes concern-owned Compose files from `ops/docker/observability/`, `ops/docker/identity/`, `ops/docker/feature-flags/`, `ops/docker/search/`, `ops/docker/messaging/`, `ops/docker/metering/`, `ops/docker/analytics/`, and `ops/docker/security/` while keeping one operator command surface.
 
@@ -163,35 +172,40 @@ See [ops/docker/README.md](ops/docker/README.md) for the compose file split, pro
 - [SUPPORT.md](SUPPORT.md)
 - [LICENSE](LICENSE)
 - [specs/README.md](specs/README.md)
+- [specs/00-governance/current-platform-overview.md](specs/00-governance/current-platform-overview.md)
 - [specs/00-governance/implementation-tracker.md](specs/00-governance/implementation-tracker.md)
 - [specs/00-governance/backend-readiness-roadmap.md](specs/00-governance/backend-readiness-roadmap.md)
+- [specs/00-governance/backend-end-to-end-test-plan.md](specs/00-governance/backend-end-to-end-test-plan.md)
 - [.github/copilot-instructions.md](.github/copilot-instructions.md)
 
 ## Local Platform Endpoints
 
-| Surface          | URL                         | Profile |
-| ---------------- | --------------------------- | ------- |
-| Public web       | `http://localhost:3000`     | default |
-| Product app      | `http://localhost:3002`     | default |
-| Admin app        | `http://localhost:3004`     | default |
-| Convex API       | `http://127.0.0.1:3210`     | default |
-| Convex dashboard | `http://localhost:6791`     | default |
-| Keycloak         | `http://localhost:8080`     | default |
-| Ory Keto read    | `http://localhost:4466`     | default |
-| Ory Keto write   | `http://localhost:4467`     | default |
-| Unleash          | `http://localhost:4242`     | default |
-| Valkey           | `redis://localhost:6379`    | default |
-| Meilisearch      | `http://localhost:7700`     | default |
-| Novu             | `http://localhost:3100`     | default |
-| OpenMeter        | `http://localhost:8889`     | default |
-| Postal           | `http://localhost:5000`     | default |
-| GlitchTip        | `http://localhost:8001`     | default |
-| Grafana          | `http://localhost:3001`     | default |
-| Prometheus       | `http://localhost:9090`     | default |
-| Tempo            | `http://localhost:3200`     | default |
-| OpenPanel        | `http://localhost:3005`     | default |
-| OpenPanel API    | `http://localhost:3005/api` | default |
-| Kong proxy       | `http://localhost:8000`     | default |
-| Kong admin API   | `http://localhost:18001`    | default |
-| Kong manager     | `http://localhost:18002`    | default |
-| Vault            | `http://localhost:8200`     | default |
+| Surface          | URL                         | Profile   |
+| ---------------- | --------------------------- | --------- |
+| Public web       | `http://localhost:3000`     | default   |
+| Product app      | `http://localhost:3002`     | default   |
+| Admin app        | `http://localhost:3004`     | default   |
+| Backend API      | `http://127.0.0.1:3010`     | on-demand |
+| Convex API       | `http://127.0.0.1:3210`     | default   |
+| Convex dashboard | `http://localhost:6791`     | default   |
+| Keycloak         | `http://localhost:8080`     | default   |
+| Ory Keto read    | `http://localhost:4466`     | default   |
+| Ory Keto write   | `http://localhost:4467`     | default   |
+| Unleash          | `http://localhost:4242`     | default   |
+| Valkey           | `redis://localhost:6379`    | default   |
+| Meilisearch      | `http://localhost:7700`     | default   |
+| Novu             | `http://localhost:3101`     | default   |
+| OpenMeter        | `http://localhost:8889`     | default   |
+| Postal           | `http://localhost:5000`     | default   |
+| GlitchTip        | `http://localhost:8001`     | default   |
+| Grafana          | `http://localhost:3001`     | default   |
+| Prometheus       | `http://localhost:9090`     | default   |
+| Tempo            | `http://localhost:3200`     | default   |
+| OpenPanel        | `http://localhost:3005`     | default   |
+| OpenPanel API    | `http://localhost:3005/api` | default   |
+| Kong proxy       | `http://localhost:8000`     | default   |
+| Kong admin API   | `http://localhost:18001`    | default   |
+| Kong manager     | `http://localhost:18002`    | default   |
+| Vault            | `http://localhost:8200`     | default   |
+
+The backend API origin is available when `bun run backend:subscriber-journey:local` or `bun run backend:subscriber-journey:ready:local` is running. Its documentation and schema surfaces are `http://127.0.0.1:3010/api/docs` and `http://127.0.0.1:3010/api/openapi.json`.

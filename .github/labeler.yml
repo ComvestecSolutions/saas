@@ -47,6 +47,7 @@
   - changed-files:
       - any-glob-to-any-file:
           - "tests/**"
+          - "vitest.config.ts"
 
 "ops":
   - changed-files:
@@ -92,7 +93,7 @@
           - "bun.lock"
           - "tsconfig*.json"
           - "turbo.json"
-          - "jest.config.cjs"
+          - "vitest.config.ts"
           - ".prettierrc.json"
           - ".prettierignore"
           - ".gitattributes"

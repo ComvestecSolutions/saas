@@ -3,7 +3,14 @@
   "compilerOptions": {
     "noEmit": true,
     "strict": true,
-    "types": ["node", "jest"]
+    "types": ["node", "vitest/globals"]
   },
-  "include": ["tests/**/*.ts"]
+  "include": [
+    "drizzle.config.ts",
+    "vitest.config.ts",
+    "tests/**/*.ts",
+    "tests/**/*.d.ts",
+    "tooling/**/*.d.ts",
+    "tooling/**/*.ts"
+  ]
 }

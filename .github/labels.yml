@@ -48,7 +48,7 @@
 
 - name: tests
   color: 4f46e5
-  description: Changes affect Jest or shared test fixtures.
+  description: Changes affect Vitest or shared test fixtures.
   aliases:
     - area:tests
 
