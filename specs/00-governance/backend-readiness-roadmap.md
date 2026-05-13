@@ -4,9 +4,14 @@ Status: accepted
 
 ## Goal
 
-Deliver one backend-ready subscriber journey before expanding frontend scope. For this milestone, a user must be able to:
+Deliver one backend-ready subscriber journey before expanding frontend scope.
 
 This roadmap defines the intended backend-ready slice. Use [implementation-tracker.md](implementation-tracker.md) as the source of truth for the current maturity of each step in that slice.
+
+> [!NOTE]
+> The backend-ready subscriber journey defined here is now delivered and validated in the current workspace. This roadmap remains the accepted target definition and historical ordering reference; use the implementation tracker for current maturity and follow-on admin-enabling backend work.
+
+For this milestone, a user must be able to:
 
 1. View a public-safe plan catalog.
 2. Start authentication and complete the identity callback.

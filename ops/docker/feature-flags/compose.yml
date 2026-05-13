@@ -1,7 +1,7 @@
 services:
   unleash:
     container_name: unleash
-    image: unleashorg/unleash-server:7.6.1
+    image: unleashorg/unleash-server:7.6.3
     environment:
       DATABASE_URL: ${UNLEASH_DATABASE_URL}
       DATABASE_SSL: "false"

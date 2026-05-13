@@ -1422,9 +1422,11 @@ describe("platform adapters", () => {
             if (url === "http://localhost:3101/v1/events/trigger") {
               return new Response(
                 JSON.stringify({
-                  acknowledged: true,
-                  status: "processed",
-                  transactionId: "novu_tx_1",
+                  data: {
+                    acknowledged: true,
+                    status: "processed",
+                    transactionId: "novu_tx_1",
+                  },
                 }),
                 {
                   status: 201,
@@ -1719,7 +1721,7 @@ describe("platform adapters", () => {
           expect.objectContaining({
             url: "http://localhost:3101/v1/events/trigger",
             method: "POST",
-            body: expect.stringContaining("billing.invoice-ready"),
+            body: expect.stringContaining("billing-invoice-ready"),
           }),
         ]),
       );
@@ -2175,14 +2177,10 @@ describe("platform adapters", () => {
 
           return new Response(
             JSON.stringify({
-              status: 400,
-              error: {
-                statusCode: 400,
-                code: "FST_ERR_VALIDATION",
-              },
+              ok: true,
             }),
             {
-              status: 400,
+              status: 200,
               headers: {
                 "Content-Type": "application/json",
               },
@@ -2207,10 +2205,13 @@ describe("platform adapters", () => {
           "openpanel-client-secret": "client_secret_demo",
         }),
         body: JSON.stringify({
+          type: "track",
           payload: {
+            name: "platform.openpanel.healthcheck",
             properties: {
-              __revenue: 1,
+              source: "platform-adapter-healthcheck",
             },
+            profileId: "platform-openpanel-healthcheck",
           },
         }),
       },

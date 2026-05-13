@@ -40,7 +40,7 @@ The hardened profile provides:
    docker compose -f ops/docker/compose.yml up -d kong vault
    ```
 
-   Kong renders the current `SUBSCRIBER_JOURNEY_API_PORT` into its backend-api upstream when the container starts.
+   Kong renders the current `SUBSCRIBER_JOURNEY_API_PORT` into its backend-api upstream when the container starts. The current local Vault profile keeps `disable_mlock = true` and sets `SKIP_SETCAP=1`, so the `hashicorp/vault:2.0.0` container stays compatible with Docker Desktop without carrying the extra Linux capability path that the image otherwise tries to configure at startup.
 
 3. Confirm the services are up.
 

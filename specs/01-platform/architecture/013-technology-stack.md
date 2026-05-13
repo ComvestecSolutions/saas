@@ -1,5 +1,7 @@
 # 013 Technology Stack
 
+Status: accepted
+
 ## Purpose
 
 Canonical list of every runtime dependency the SaaS foundation relies on, with explicit hosting model and swap-path notes. Every integration listed here must have a corresponding adapter under the concern folders in `packages/platform/src/adapters/` and flow through `packages/platform/src/adapters/index.ts`, or must explicitly run on top of an already-listed platform adapter when the capability is part of an existing service boundary.
@@ -67,7 +69,7 @@ Repository-owned validation uses two distinct paths:
 
 ## Version Verification
 
-Last verified against vendor release sources: 2026-05-12.
+Last verified against vendor release sources: 2026-05-13.
 
 Repo-owned version verification is now split into two expectations:
 
@@ -76,41 +78,41 @@ Repo-owned version verification is now split into two expectations:
 
 Version-verification disposition for every catalog row on 2026-05-12:
 
-| Tool                    | Current in repo                             | 2026-05-12 disposition                      | Notes                                                                                     |
-| ----------------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Bun                     | `1.3.11`                                    | behind latest stable                        | Update to `1.3.13`.                                                                       |
-| Turborepo               | `2.9.6`                                     | behind latest stable                        | Update to `2.9.12`.                                                                       |
-| Vitest                  | resolved `4.1.5`                            | behind latest stable                        | Update the repo Vitest family to `4.1.6`.                                                 |
-| Vitest browser mode     | resolved `4.1.5`                            | behind latest stable                        | Update `@vitest/browser-playwright` to `4.1.6`.                                           |
-| Playwright              | `1.59.1`                                    | behind latest stable                        | Update to `1.60.0`.                                                                       |
-| TanStack Start          | `1.167.16`                                  | behind latest stable                        | Update to `1.167.65`.                                                                     |
-| H3 v2                   | `2.0.1-rc.20`                               | behind selected pre-release channel         | Update to `2.0.1-rc.22`.                                                                  |
-| Effect                  | `3.21.0`                                    | behind latest stable                        | Update to `3.21.2`.                                                                       |
-| TypeScript 6            | `6.0.2`                                     | behind latest stable                        | Update to `6.0.3`.                                                                        |
-| Convex (self-hosted)    | npm `1.35.1`; backend/dashboard image SHAs  | mixed: package behind, images pending       | Update the npm package to `1.38.0`; refresh image SHAs as an artifact-specific follow-up. |
-| PostgreSQL 18           | `18.3-alpine3.23`                           | current                                     | Docker Hub `18` line matched the repo pin checked in this pass.                           |
-| Drizzle                 | `drizzle-kit 0.31.10`, `drizzle-orm 0.45.2` | current                                     | Bun package audit did not surface a newer stable version for the repo-owned packages.     |
-| Keycloak 26             | `26.6.0`                                    | behind latest stable                        | Update to `26.6.1`.                                                                       |
-| Ory Keto                | `v0.14.0`                                   | current                                     | Docker Hub `0.14` line matched the repo pin checked in this pass.                         |
-| Unleash                 | server `7.6.1`; client `6.10.1`             | behind latest stable                        | Update server to `7.6.3` and client to `6.11.0`.                                          |
-| Valkey 9                | `9.0.3-trixie`                              | behind latest stable                        | Update to `9.0.4-trixie`.                                                                 |
-| OpenTelemetry Collector | `0.149.0`                                   | behind latest stable                        | Update to `0.151.0`.                                                                      |
-| Prometheus              | `3.11.1-distroless`                         | behind latest stable                        | Update to `3.11.3-distroless`.                                                            |
-| Loki                    | `3.7.1`                                     | current                                     | Latest checked release matched the repo pin.                                              |
-| Tempo                   | `2.8.3`                                     | behind latest stable                        | Update to `2.10.5`.                                                                       |
-| Grafana OSS 13          | `12.4.2`                                    | behind latest stable                        | Update to `13.0.1` to align the selected product line with the latest stable release.     |
-| OpenPanel (self-hosted) | `2.0.0`                                     | current                                     | `2.0.1` is currently only an RC tag; `2.0.0` remains the latest stable image line.        |
-| GlitchTip               | floating major tag `6`                      | current via major-tag policy                | The repo tracks the latest stable `6.x` line; switch to an explicit patch tag if needed.  |
-| Convex native workflows | bundled in Convex                           | inherits Convex status                      | Treat workflow runtime refresh together with the Convex package and image update.         |
-| Novu                    | `3.14.0`                                    | pending registry-specific verification      | Refresh alongside the messaging image bump so the exact GHCR artifact is checked.         |
-| Polar                   | SDK `0.47.0`                                | behind latest stable                        | Update SDK to `0.47.1`.                                                                   |
-| OpenMeter               | `1.0.0-beta.227`                            | current within selected pre-release channel | Latest checked release matched the repo pin.                                              |
-| Meilisearch             | `1.41.0`                                    | behind latest stable                        | Update to `1.43.0`.                                                                       |
-| Postal                  | `3.3.4`                                     | behind latest stable                        | Update to `3.3.6`.                                                                        |
-| Kong                    | `3.9.1`                                     | current                                     | Latest checked release matched the repo pin.                                              |
-| Vault                   | `1.21.4`                                    | behind latest stable                        | Latest container tag is `2.0.0`; plan the upgrade explicitly for the hardened profile.    |
+| Tool                    | Current in repo                                                                        | 2026-05-12 disposition                      | Notes                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Bun                     | `1.3.13`                                                                               | current                                     | Repo pin now matches the latest stable Bun release used for the admin start gate.                                               |
+| Turborepo               | `2.9.12`                                                                               | current                                     | Repo pin now matches the latest stable Turborepo release checked in this pass.                                                  |
+| Vitest                  | resolved `4.1.6`                                                                       | current                                     | Repo Vitest family now matches the latest stable release checked in this pass.                                                  |
+| Vitest browser mode     | resolved `4.1.6`                                                                       | current                                     | `@vitest/browser-playwright` now matches the latest stable release checked in this pass.                                        |
+| Playwright              | `1.60.0`                                                                               | current                                     | Repo pin now matches the latest stable Playwright release checked in this pass.                                                 |
+| TanStack Start          | `1.167.65`                                                                             | current                                     | Admin-app-facing TanStack Start pins now match the latest stable release checked in this pass.                                  |
+| H3 v2                   | `2.0.1-rc.22`                                                                          | current within selected pre-release channel | Repo pin now matches the latest approved H3 v2 RC in the selected pre-release line.                                             |
+| Effect                  | `3.21.2`                                                                               | current                                     | Repo pin now matches the latest stable Effect release checked in this pass.                                                     |
+| TypeScript 6            | `6.0.3`                                                                                | current                                     | Repo pin now matches the latest stable TypeScript 6 release checked in this pass.                                               |
+| Convex (self-hosted)    | npm `1.38.0`; backend/dashboard commit pins `4499dd4fd7f2148687a7774599c613d052950f46` | current                                     | The npm package and the latest public explicit GHCR backend/dashboard commit pins were refreshed together in this pass.         |
+| PostgreSQL 18           | `18.3-alpine3.23`                                                                      | current                                     | Docker Hub `18` line matched the repo pin checked in this pass.                                                                 |
+| Drizzle                 | `drizzle-kit 0.31.10`, `drizzle-orm 0.45.2`                                            | current                                     | Bun package audit did not surface a newer stable version for the repo-owned packages.                                           |
+| Keycloak 26             | `26.6.1`                                                                               | current                                     | Repo pin now matches the latest stable Keycloak 26 release checked in this pass.                                                |
+| Ory Keto                | `v0.14.0`                                                                              | current                                     | Docker Hub `0.14` line matched the repo pin checked in this pass.                                                               |
+| Unleash                 | server `7.6.3`; client `6.11.0`                                                        | current                                     | Repo server and client pins now match the latest stable releases checked in this pass.                                          |
+| Valkey 9                | `9.0.4-trixie`                                                                         | current                                     | Repo pin now matches the latest stable Valkey 9 release checked in this pass.                                                   |
+| OpenTelemetry Collector | `0.151.0`                                                                              | current                                     | Repo pin now matches the latest stable collector release checked in this pass.                                                  |
+| Prometheus              | `3.11.3-distroless`                                                                    | current                                     | Repo pin now matches the latest stable Prometheus release checked in this pass.                                                 |
+| Loki                    | `3.7.1`                                                                                | current                                     | Latest checked release matched the repo pin.                                                                                    |
+| Tempo                   | `2.10.5`                                                                               | current                                     | Repo pin now matches the latest stable Tempo release checked in this pass.                                                      |
+| Grafana OSS 13          | `13.0.1`                                                                               | current                                     | Repo pin now matches the latest stable Grafana OSS 13 release checked in this pass.                                             |
+| OpenPanel (self-hosted) | `2.0.0`                                                                                | current                                     | `2.0.1` is currently only an RC tag; `2.0.0` remains the latest stable image line.                                              |
+| GlitchTip               | floating major tag `6`                                                                 | current via major-tag policy                | The repo tracks the latest stable `6.x` line; switch to an explicit patch tag if needed.                                        |
+| Convex native workflows | bundled in Convex                                                                      | inherits Convex status                      | Workflow runtime inherits the refreshed Convex package and public self-hosted image pins.                                       |
+| Novu                    | API/dashboard `3.15.0`; worker/ws `3.14.0`                                             | current                                     | Latest stable GHCR tags are split by component; the repo now pins each container to the newest stable tag checked in this pass. |
+| Polar                   | SDK `0.47.1`                                                                           | current                                     | Repo pin now matches the latest stable Polar SDK release checked in this pass.                                                  |
+| OpenMeter               | `1.0.0-beta.227`                                                                       | current within selected pre-release channel | Latest checked release matched the repo pin.                                                                                    |
+| Meilisearch             | `1.43.0`                                                                               | current                                     | Repo pin now matches the latest stable Meilisearch release checked in this pass.                                                |
+| Postal                  | `3.3.6`                                                                                | current                                     | Repo pin now matches the latest stable Postal release checked in this pass.                                                     |
+| Kong                    | `3.9.1`                                                                                | current                                     | Latest checked release matched the repo pin.                                                                                    |
+| Vault                   | `2.0.0`                                                                                | current                                     | Repo pin now matches the latest stable Vault release checked in this pass.                                                      |
 
-Anything marked `behind latest stable` is part of the required refresh backlog before the next delivery wave. Anything marked `pending registry-specific verification` or `mixed` must not be treated as already current.
+The 2026-05-13 refresh cleared the previously behind-latest rows that participate in local development, validation, and the initial admin-app delivery wave. Keep this table current when upstream releases move again, and keep the selected H3 and OpenMeter pre-release channels explicit until their accepted ADR-backed exceptions are retired.
 
 The platform does not claim that every pinned image is permanently CVE-free. Instead, pinned versions are kept current and continuously checked through `bun audit`, Dependabot, and Trivy image/filesystem/config scans.
 

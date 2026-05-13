@@ -20,7 +20,7 @@ services:
 
   novu:
     container_name: novu
-    image: ghcr.io/novuhq/novu/api:3.14.0
+    image: ghcr.io/novuhq/novu/api:3.15.0
     restart: unless-stopped
     environment:
       NODE_ENV: local
@@ -128,7 +128,7 @@ services:
 
   novu-dashboard:
     container_name: novu-dashboard
-    image: ghcr.io/novuhq/novu/dashboard:3.14.0
+    image: ghcr.io/novuhq/novu/dashboard:3.15.0
     restart: unless-stopped
     environment:
       VITE_API_HOSTNAME: ${NOVU_API_URL:-http://localhost:3101}
@@ -213,7 +213,7 @@ services:
 
   postal-bootstrap:
     container_name: postal-bootstrap
-    image: ghcr.io/postalserver/postal:3.3.4
+    image: ghcr.io/postalserver/postal:3.3.6
     restart: "no"
     environment: &postal-runtime-environment
       POSTAL_FNAME: ${POSTAL_FNAME}
@@ -253,7 +253,7 @@ services:
 
   postal:
     container_name: postal
-    image: ghcr.io/postalserver/postal:3.3.4
+    image: ghcr.io/postalserver/postal:3.3.6
     restart: unless-stopped
     environment:
       <<: *postal-runtime-environment
@@ -281,7 +281,7 @@ services:
 
   postal-worker:
     container_name: postal-worker
-    image: ghcr.io/postalserver/postal:3.3.4
+    image: ghcr.io/postalserver/postal:3.3.6
     restart: unless-stopped
     environment: *postal-runtime-environment
     command: ["postal", "worker"]

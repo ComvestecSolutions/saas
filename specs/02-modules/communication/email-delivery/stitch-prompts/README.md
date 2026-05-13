@@ -1,6 +1,6 @@
 # Stitch Prompts: Email Templates
 
-Use these prompts as the repo-owned source when generating email-template concepts in [Stitch](https://stitch.withgoogle.com).
+Use these prompts as the repo-owned source when generating email-template concepts in [Stitch](https://stitch.withgoogle.com). These files are design-reference prompts, not governing specs or delivery-status documents.
 
 For a **single Stitch project that covers the full template family**, start with [all-email-templates-stitch-project.md](all-email-templates-stitch-project.md). That file now consolidates the current template-level guidance into one master prompt, while the individual files remain the per-template maintenance references.
 

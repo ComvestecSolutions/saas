@@ -15,11 +15,25 @@ This directory is the source of truth for the Comvestec Solutions reusable SaaS 
 
 ## Document Status
 
-Use one of these statuses at the top of every future spec:
+Use the status line to make the document's role explicit.
+
+### Governing specs, manifests, ADRs, and runbooks
 
 - `draft`: under discussion.
 - `accepted`: approved baseline.
 - `superseded`: replaced by another document.
+
+### Delivery plans and implementation records
+
+Implementation plans, working slices, validated delivery records, and similar execution-tracking docs may use narrower labels when they describe delivery posture rather than the accepted platform baseline itself:
+
+- `planning`: scope or design is being settled before implementation starts.
+- `working slice`: an accepted slice is actively being landed and is not yet closed.
+- `validated`: the described slice meets the same evidence bar and meaning used in [00-governance/implementation-tracker.md](00-governance/implementation-tracker.md).
+
+### Design-reference artifacts
+
+Prompt files, design-token files, mockup notes, and similar design-reference artifacts that live under `specs/` are reference inputs rather than governing specs. They may omit a `Status:` line when they do not claim delivery maturity and are explicitly labeled as design material in the first paragraph or front matter, for example: `This file is a design-reference artifact, not a governing spec or delivery-status document.`
 
 ## Authoring Rules
 

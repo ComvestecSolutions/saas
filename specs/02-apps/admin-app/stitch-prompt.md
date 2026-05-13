@@ -1,6 +1,6 @@
 # Stitch Prompt: Admin App
 
-Use this prompt in its own Stitch project. Do not combine it with the public web or product app prompt.
+Use this prompt in its own Stitch project. Do not combine it with the public web or product app prompt. This file is a design-reference prompt, not a governing spec or implementation-status document.
 
 ## Prompt
 

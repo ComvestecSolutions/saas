@@ -46,6 +46,18 @@ const createAdminGovernanceServiceDouble = (
   writeAuthorizationTuple:
     overrides.writeAuthorizationTuple ??
     (() => unexpectedAdminGovernanceServiceEffect()),
+  listAuthorizationTuples:
+    overrides.listAuthorizationTuples ??
+    (() => unexpectedAdminGovernanceServiceEffect()),
+  deleteAuthorizationTuple:
+    overrides.deleteAuthorizationTuple ??
+    (() => unexpectedAdminGovernanceServiceEffect()),
+  listProjectionProfiles:
+    overrides.listProjectionProfiles ??
+    (() => unexpectedAdminGovernanceServiceEffect()),
+  listActionPolicies:
+    overrides.listActionPolicies ??
+    (() => unexpectedAdminGovernanceServiceEffect()),
   submitRuntimeConfigOverrideProposal:
     overrides.submitRuntimeConfigOverrideProposal ??
     (() => unexpectedAdminGovernanceServiceEffect()),

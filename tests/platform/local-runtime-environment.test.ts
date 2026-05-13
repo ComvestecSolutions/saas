@@ -85,6 +85,74 @@ describe("local runtime environment resolution", () => {
     }
   });
 
+  it("still reads existing Vault data when allowMissingVault is true and Vault is reachable", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-optional-vault-read-"),
+    );
+    const envFilePath = join(tempDirectoryPath, "runtime.env");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalFetch = global.fetch;
+
+    try {
+      writeFileSync(envFilePath, "VAULT_ADDR=http://configured-vault:8200\n");
+      process.env.VAULT_TOKEN = "local-test-token";
+
+      const fetchSpy = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                data: {
+                  POLAR_ACCESS_TOKEN: "vault-token",
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+              },
+            },
+          ),
+      );
+
+      global.fetch = fetchSpy as typeof fetch;
+
+      const resolution = await resolveLocalRuntimeEnvironment({
+        envFile: envFilePath,
+        allowMissingVault: true,
+      });
+
+      expect(resolution.vaultWasFound).toBe(true);
+      expect(resolution.vaultData).toEqual(
+        expect.objectContaining({
+          POLAR_ACCESS_TOKEN: "vault-token",
+        }),
+      );
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "http://configured-vault:8200/v1/platform/data/local-ops/runtime-env",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "X-Vault-Token": "local-test-token",
+          }),
+        }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
   it("rejects concrete secret values in env files", async () => {
     const tempDirectoryPath = mkdtempSync(
       join(tmpdir(), "comvestec-local-runtime-secret-env-"),
@@ -316,7 +384,7 @@ describe("local runtime environment resolution", () => {
     });
 
     expect(managedValues.glitchtipOperatorEmail).toBe(
-      "glitchtip.operator@local.test",
+      "glitchtip.operator@example.com",
     );
     expect(managedValues.novuEmail).toBe("novu.operator@local.test");
     expect(managedValues.openpanelOperatorEmail).toBe(

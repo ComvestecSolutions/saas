@@ -16,33 +16,33 @@
 
 ## Current Package Baseline
 
-These are the current package versions committed in `package.json` on 2026-05-01 for the repository-level tools called out most often in security reviews:
+These are the current package versions committed in `package.json` on 2026-05-13 for the repository-level tools called out most often in security reviews:
 
-1. `turbo` 2.9.6
-2. `typescript` 6.0.2
-3. `effect` 3.21.0
-4. `vitest` 4.0.7
-5. `@vitest/browser-playwright` 4.0.7
-6. `@vitest/coverage-v8` 4.0.7
-7. `@playwright/test` 1.59.1
+1. `turbo` 2.9.12
+2. `typescript` 6.0.3
+3. `effect` 3.21.2
+4. `vitest` 4.1.6
+5. `@vitest/browser-playwright` 4.1.6
+6. `@vitest/coverage-v8` 4.1.6
+7. `@playwright/test` 1.60.0
 8. `@types/node` 25.6.0
 
 ## Active Prerelease Exceptions
 
 These prerelease pins are currently present in the repository and should stay explicit in security and governance review:
 
-1. `h3-v2` resolves to `h3@2.0.1-rc.20` and `h3` is overridden to `2.0.1-rc.20` under the accepted H3 transport decision in ADR-018.
+1. `h3-v2` resolves to `h3@2.0.1-rc.22` and `h3` is overridden to `2.0.1-rc.22` under the accepted H3 transport decision in ADR-018.
 2. OpenMeter is pinned to `ghcr.io/openmeterio/openmeter:v1.0.0-beta.227`; keep that exception visible until the repository either records or removes the required ADR-backed approval.
 
 ## Current Compose Baseline
 
-These are the exact image tags currently committed under `ops/docker/**/*.yml` on 2026-04-30:
+These are the exact image tags currently committed under `ops/docker/**/*.yml` on 2026-05-13:
 
-1. Core platform: PostgreSQL `18.3-alpine3.23`, Valkey `9.0.3-trixie`, Keycloak `26.6.0`, Convex backend and dashboard `9e188cd84ef96146ee101bc95e6365ca35871e4a`
-2. Access and governance dependencies: Ory Keto `v0.14.0`, Unleash `7.6.1`, Meilisearch `v1.41.0`
-3. Observability: OpenTelemetry Collector `0.149.0`, Prometheus `v3.11.1-distroless`, Loki `3.7.1`, Grafana `12.4.2`, Tempo `2.8.3`, GlitchTip `6`
+1. Core platform: PostgreSQL `18.3-alpine3.23`, Valkey `9.0.4-trixie`, Keycloak `26.6.1`, Convex backend and dashboard `4499dd4fd7f2148687a7774599c613d052950f46`
+2. Access and governance dependencies: Ory Keto `v0.14.0`, Unleash server `7.6.3`, Meilisearch `v1.43.0`
+3. Observability: OpenTelemetry Collector `0.151.0`, Prometheus `v3.11.3-distroless`, Loki `3.7.1`, Grafana `13.0.1`, Tempo `2.10.5`, GlitchTip `6`
 4. Analytics: OpenPanel API, dashboard, and worker `2.0.0`, analytics PostgreSQL `14-alpine`, analytics Redis `7.2.5-alpine`, ClickHouse `25.10.2.65`, Caddy `2-alpine`
-5. Messaging and metering: Novu `3.14.0`, Postal `3.3.4`, OpenMeter `v1.0.0-beta.227`
-6. Edge and secrets: Kong `3.9.1`, Vault `1.21.4`
+5. Messaging and metering: Novu API/dashboard `3.15.0`, Novu worker/ws `3.14.0`, Postal `3.3.6`, OpenMeter `v1.0.0-beta.227`
+6. Edge and secrets: Kong `3.9.1`, Vault `2.0.0`
 
 Update this section in the same change whenever a pinned package version or image tag changes.

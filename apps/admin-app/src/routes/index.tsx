@@ -1,5 +1,6 @@
 import { useEffect, useState, useTransition } from "react";
 import {
+  adminOperatorCapability,
   actorType,
   workflowJobStatus,
   type BillingRepairGap,
@@ -227,6 +228,7 @@ function AdminShell() {
   }
 
   const jobs = routeData.jobs;
+  const summary = routeData.summary;
   const blockedCount = countRepairGapsByStatus(jobs, workflowJobStatus.blocked);
   const scheduledCount = countRepairGapsByStatus(
     jobs,
@@ -236,27 +238,49 @@ function AdminShell() {
     jobs,
     workflowJobStatus.running,
   );
+  const repairOperationsCapability = summary.capabilities.capabilities.find(
+    (capability) =>
+      capability.capability === adminOperatorCapability.repairOperations,
+  );
+  const enabledCapabilities = summary.capabilities.capabilities.filter(
+    (capability) => capability.allowed,
+  );
 
   return (
     <main className="app-shell">
       <section className="hero-panel">
         <p className="eyebrow">Platform governance</p>
-        <h1>Tenant repair console</h1>
+        <h1>Operations Home</h1>
         <p className="lede">
-          The admin app now inspects unresolved tenant repair gaps through the
-          shared request-backed helper path and can replay or cancel those
-          durable repair workflows without routing through internal HTTP hops.
+          The backend now aggregates current operator capabilities, governance
+          posture, support queues, recent activity, and tenant repair workflow
+          state through shared app-safe helpers instead of app-local stitching.
         </p>
       </section>
 
       <section className="grid">
         <article className="card featured-card">
           <h2>Open repair gaps</h2>
-          <p>{jobs.length}</p>
+          <p>{summary.posture.openRepairGaps}</p>
           <p className="meta">
             Tenant provisioning and onboarding repair state stays durable in the
             shared workflow-jobs boundary.
           </p>
+        </article>
+
+        <article className="card">
+          <h2>Open support cases</h2>
+          <p>{summary.posture.openSupportCases}</p>
+        </article>
+
+        <article className="card">
+          <h2>Pending break-glass reviews</h2>
+          <p>{summary.posture.pendingBreakGlassIncidents}</p>
+        </article>
+
+        <article className="card">
+          <h2>Pending runtime proposals</h2>
+          <p>{summary.posture.pendingRuntimeConfigProposals}</p>
         </article>
 
         <article className="card">
@@ -275,8 +299,48 @@ function AdminShell() {
         </article>
       </section>
 
+      <section className="card list-card">
+        <h2>Current operator surface</h2>
+        <p className="meta">
+          Enabled backend-backed capabilities for this trusted session:
+        </p>
+        <ul className="repair-list">
+          {enabledCapabilities.map((capability) => (
+            <li key={capability.capability} className="repair-item">
+              <strong className="repair-title">{capability.label}</strong>
+              <span className="inline-meta">{capability.routePath}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {summary.alerts.length === 0 ? null : (
+        <section className="card list-card">
+          <h2>Operator alerts</h2>
+          <ul className="repair-list">
+            {summary.alerts.map((alert) => (
+              <li key={alert.id} className="repair-item">
+                <div className="repair-header">
+                  <strong className="repair-title">{alert.title}</strong>
+                  <span className="status-chip">{alert.severity}</span>
+                </div>
+                <span className="inline-meta">
+                  {alert.detail} · {alert.count}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="card control-card">
-        <h2>Operator execution</h2>
+        <h2>Repair workflow execution</h2>
+        {repairOperationsCapability?.allowed !== true ? (
+          <p className="meta">
+            {repairOperationsCapability?.reason ??
+              "Repair workflow controls are not available for this operator session."}
+          </p>
+        ) : null}
         <div className="action-bar">
           <label className="token-field">
             <span className="field-label">Inspection reason</span>
@@ -292,7 +356,7 @@ function AdminShell() {
           <button
             className="action-button secondary"
             type="button"
-            disabled={isPending}
+            disabled={isPending || repairOperationsCapability?.allowed !== true}
             onClick={applyInspectionReason}
           >
             {routeSearch.inspectionReason === undefined
@@ -341,8 +405,35 @@ function AdminShell() {
       </section>
 
       <section className="card list-card">
+        <h2>Recent backend activity</h2>
+        {summary.recentActivity.items.length === 0 ? (
+          <p className="meta">
+            No recent projected audit activity is available.
+          </p>
+        ) : (
+          <ul className="repair-list">
+            {summary.recentActivity.items.map((event) => (
+              <li key={event.eventId} className="repair-item">
+                <strong className="repair-title">{event.moduleId}</strong>
+                <span className="inline-meta">
+                  {event.action} · {event.target}
+                </span>
+                <span className="inline-meta">{event.timestamp}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card list-card">
         <h2>Unresolved tenant repair gaps</h2>
-        {jobs.length === 0 ? (
+        {repairOperationsCapability?.allowed !== true ? (
+          <p className="meta">
+            This operator can inspect shared operations posture, but repair-gap
+            replay and cancellation remain hidden until a platform-operator
+            session opens this screen.
+          </p>
+        ) : jobs.length === 0 ? (
           <p className="meta">
             No unresolved tenant provisioning or onboarding repair gaps are
             waiting for operator action.
@@ -380,7 +471,9 @@ function AdminShell() {
                   <button
                     className="action-button"
                     type="button"
-                    disabled={isPending}
+                    disabled={
+                      isPending || repairOperationsCapability?.allowed !== true
+                    }
                     onClick={() =>
                       runTenantRepairAction({
                         action: "replay",
@@ -393,7 +486,9 @@ function AdminShell() {
                   <button
                     className="action-button secondary"
                     type="button"
-                    disabled={isPending}
+                    disabled={
+                      isPending || repairOperationsCapability?.allowed !== true
+                    }
                     onClick={() =>
                       runTenantRepairAction({
                         action: "cancel",

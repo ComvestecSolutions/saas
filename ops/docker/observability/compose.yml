@@ -1,7 +1,7 @@
 services:
   otel-collector:
     container_name: otel-collector
-    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-0.149.0}
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-0.151.0}
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     ports:
       - 127.0.0.1:${OTEL_COLLECTOR_PORT_GRPC:-4317}:4317
@@ -11,7 +11,7 @@ services:
 
   prometheus:
     container_name: prometheus
-    image: prom/prometheus:v3.11.1-distroless
+    image: prom/prometheus:v3.11.3-distroless
     depends_on:
       otel-collector:
         condition: service_started
@@ -38,7 +38,7 @@ services:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:12.4.2
+    image: grafana/grafana:13.0.1
     depends_on:
       prometheus:
         condition: service_started
@@ -59,7 +59,7 @@ services:
 
   tempo:
     container_name: tempo
-    image: grafana/tempo:2.8.3
+    image: grafana/tempo:2.10.5
     command: ["-config.file=/etc/tempo/config.yaml"]
     ports:
       - 127.0.0.1:${TEMPO_PORT:-3200}:3200

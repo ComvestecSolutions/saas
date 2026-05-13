@@ -44,7 +44,7 @@ Tracked files must not ship reusable local secrets, guessable bootstrap password
 4. Run `bun run ops:secrets:bootstrap` so generated machine-local secrets such as PostgreSQL passwords, the Unleash backend API token, GlitchTip/OpenPanel/Postal/Unleash operator passwords, Novu runtime secrets, Postal bootstrap secrets, Meilisearch keys, and the local OpenMeter adapter key land in Vault at `platform/local-ops/runtime-env` instead of a persistent repo-root `.env` file.
    If a legacy `.env` still exists, the bootstrap command now treats it as one-time migration input and scrubs placeholder-backed concrete secret values from the file after writing them to Vault.
 5. Start the current full local platform footprint with `bun run ops:docker:compose -- up -d`.
-6. Run `bun run ops:runtime:bootstrap` after the messaging services are healthy so the repo-owned GlitchTip, Novu, OpenPanel, Postal, and Unleash human operator logins are provisioned or reconciled, the repo-owned Postal and Novu operator/API credentials are provisioned, the repo-owned Unleash backend token is reconciled when needed, the repo-owned OpenPanel backend client plus GlitchTip project DSN are provisioned or reused, and the resulting values are written back to Vault. Keep the raw GlitchTip project DSN form with its public key when possible, because backend document responses now derive a report-only browser security `report-uri` header from that DSN automatically; store-endpoint-only values still support uncaught-error capture but cannot advertise the browser security-report endpoint. Continue to use the remaining service-specific bootstrap flows for values such as the Convex admin key and any stricter OpenMeter auth token you later enable. Until those generated values are stored in Vault, backend readiness intentionally stays degraded instead of reporting a fake green state.
+6. Run `bun run ops:runtime:bootstrap` after the messaging services are healthy so the repo-owned GlitchTip, Novu, OpenPanel, Postal, and Unleash human operator logins are provisioned or reconciled, the repo-owned Postal and Novu operator/API credentials are provisioned, the repo-owned Unleash backend token is reconciled when needed, the repo-owned Postal sender domain that matches `PLATFORM_EMAIL_SENDER_FROM_EMAIL` is verified, the repo-owned Novu workflows used by the current backend billing-notification path are seeded, the repo-owned OpenPanel backend client plus GlitchTip project DSN are provisioned or reused, and the resulting values are written back to Vault. Keep the raw GlitchTip project DSN form with its public key when possible, because backend document responses now derive a report-only browser security `report-uri` header from that DSN automatically; store-endpoint-only values still support uncaught-error capture but cannot advertise the browser security-report endpoint. Continue to use the remaining service-specific bootstrap flows for values such as the Convex admin key and any stricter OpenMeter auth token you later enable. OpenMeter remains transport-ready in the local stack, but it is not yet a backend-owned module capability. Until those generated values are stored in Vault, backend readiness intentionally stays degraded instead of reporting a fake green state.
 7. After the Convex admin key is present in Vault, run `bun run convex:env:sync:local` whenever the deployment-managed worker values change so the active Convex deployment gets the current Postgres, Keycloak, Polar, Valkey, and Keto settings.
 8. Use `bun run ops:docker:compose -- <docker compose args>` for service-specific `up`, `restart`, `logs`, or `ps` commands when you are intentionally troubleshooting a subset of the platform.
 9. Run `bun run backend:subscriber-journey:bootstrap:local` once PostgreSQL, Convex, and Keycloak are healthy so the shared schema is applied and the local Keycloak smoke user is ready for backend-owned subscriber-journey validation.
@@ -58,17 +58,19 @@ Convex follows the upstream self-hosted Postgres contract: `CONVEX_POSTGRES_URL`
 The repo now ships `bun run ops:runtime:bootstrap` for the current backend-owned
 messaging credentials, the repo-owned GlitchTip/Novu/OpenPanel/Postal/Unleash
 human operator login paths, the local Unleash backend-token reconciliation
-path, the
-OpenPanel backend client bootstrap path, and the GlitchTip project DSN bootstrap
-path, so those integrations no longer depend on ad hoc manual key capture after
-the stack starts. Other generated values still rely on service-specific setup
-flows and runbooks, including the Convex admin key, any stricter OpenMeter auth
-token you layer on top of the seeded backend adapter key, and the hardened-profile
-Vault bootstrap artifacts. Postal itself now boots through repo-owned config,
-database, and schema-bootstrap containers instead of a success-shaped single
-container. Use `bun run ops:local:command -- <command...>` when a local tool or
-CLI still needs the Vault-backed runtime env but does not have its own `:local`
-package script.
+path, the OpenPanel backend client bootstrap path, the Postal sender-domain
+reconciliation path, the repo-owned Novu workflow seeding path, and the
+GlitchTip project DSN bootstrap path, so those integrations no longer depend on
+ad hoc manual key capture after the stack starts. Other generated values still
+rely on service-specific setup flows and runbooks, including the Convex admin
+key, any stricter OpenMeter auth token you layer on top of the seeded backend
+adapter key, and the hardened-profile Vault bootstrap artifacts. OpenMeter
+itself remains transport-ready instead of a backend-owned metering capability.
+Postal itself now boots through repo-owned config, database, and
+schema-bootstrap containers instead of a success-shaped single container. Use
+`bun run ops:local:command -- <command...>` when a local tool or CLI still
+needs the Vault-backed runtime env but does not have its own `:local` package
+script.
 
 Operator-facing observability smoke surfaces remain directly available on the
 host even though the backend readiness path only owns the OTLP, OpenPanel, and

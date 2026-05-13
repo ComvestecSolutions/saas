@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@comvestec/contracts": "workspace:*",
-    "effect": "^3.21.0"
+    "effect": "^3.21.2"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

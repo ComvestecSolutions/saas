@@ -38,11 +38,10 @@ services:
 
   vault:
     container_name: vault
-    image: hashicorp/vault:1.21.4
+    image: hashicorp/vault:2.0.0
     command: server
-    cap_add:
-      - IPC_LOCK
     environment:
+      SKIP_SETCAP: "1"
       VAULT_ADDR: ${VAULT_ADDR:-http://127.0.0.1:8200}
     ports:
       - 127.0.0.1:${VAULT_PORT:-8200}:8200

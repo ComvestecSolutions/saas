@@ -78,7 +78,7 @@ services:
 
   valkey:
     container_name: valkey
-    image: valkey/valkey:9.0.3-trixie
+    image: valkey/valkey:9.0.4-trixie
     command: ["valkey-server", "--save", "", "--appendonly", "no"]
     ports:
       - 127.0.0.1:${VALKEY_PORT:-6379}:6379
@@ -87,7 +87,7 @@ services:
 
   keycloak:
     container_name: keycloak
-    image: quay.io/keycloak/keycloak:26.6.0
+    image: quay.io/keycloak/keycloak:26.6.1
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -121,7 +121,7 @@ services:
 
   convex-backend:
     container_name: convex-backend
-    image: ghcr.io/get-convex/convex-backend:9e188cd84ef96146ee101bc95e6365ca35871e4a
+    image: ghcr.io/get-convex/convex-backend:4499dd4fd7f2148687a7774599c613d052950f46
     depends_on:
       postgres-bootstrap:
         condition: service_completed_successfully
@@ -155,7 +155,7 @@ services:
 
   convex-dashboard:
     container_name: convex-dashboard
-    image: ghcr.io/get-convex/convex-dashboard:9e188cd84ef96146ee101bc95e6365ca35871e4a
+    image: ghcr.io/get-convex/convex-dashboard:4499dd4fd7f2148687a7774599c613d052950f46
     depends_on:
       convex-backend:
         condition: service_started

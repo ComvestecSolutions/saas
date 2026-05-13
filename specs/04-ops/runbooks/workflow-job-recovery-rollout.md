@@ -1,5 +1,7 @@
 # Workflow Job Recovery Rollout
 
+Status: accepted
+
 Use this runbook when deploying the billing workflow change that removes
 the global `billing-convergence-recovery-sweep` cron and replaces it with
 targeted per-job recovery scheduling.

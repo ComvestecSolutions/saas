@@ -217,6 +217,16 @@ export type SupportOperationsListBreakGlassIncidentsRequest =
     typeof SupportOperationsListBreakGlassIncidentsRequestSchema
   >;
 
+export const SupportOperationsGetBreakGlassIncidentRequestSchema =
+  Schema.Struct({
+    sessionId: Schema.NonEmptyString,
+    caseId: Schema.NonEmptyString,
+  });
+
+export type SupportOperationsGetBreakGlassIncidentRequest = Schema.Schema.Type<
+  typeof SupportOperationsGetBreakGlassIncidentRequestSchema
+>;
+
 export const SupportOperationsReviewBreakGlassIncidentRequestSchema =
   Schema.Struct({
     sessionId: Schema.NonEmptyString,
@@ -373,6 +383,12 @@ export type SupportOperationsService = {
     input: SupportOperationsListBreakGlassIncidentsRequest,
   ) => Effect.Effect<
     readonly SupportOperationsBreakGlassIncidentSupportView[],
+    SupportOperationsServiceError
+  >;
+  readonly getBreakGlassIncident: (
+    input: SupportOperationsGetBreakGlassIncidentRequest,
+  ) => Effect.Effect<
+    SupportOperationsBreakGlassIncidentSupportView,
     SupportOperationsServiceError
   >;
   readonly reviewBreakGlassIncident: (
@@ -2052,6 +2068,55 @@ export const makeSupportOperationsService = (dependencies: {
                       requestContext,
                       incidents,
                     }),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      getBreakGlassIncident: (
+        input: SupportOperationsGetBreakGlassIncidentRequest,
+      ) =>
+        Schema.decodeUnknown(
+          SupportOperationsGetBreakGlassIncidentRequestSchema,
+        )(input).pipe(
+          Effect.flatMap((request) =>
+            resolveIdentitySessionRequestContext(valkey, {
+              sessionId: request.sessionId,
+            }).pipe(
+              Effect.flatMap((requestContext) =>
+                ensureSupportOperationsReadAccess(
+                  supportOperations,
+                  requestContext,
+                ).pipe(
+                  Effect.flatMap(() =>
+                    dependencies.persistence.getBreakGlassIncident(
+                      request.caseId,
+                    ),
+                  ),
+                  Effect.flatMap((incident) =>
+                    Effect.fromNullable(incident).pipe(
+                      Effect.orElseFail(
+                        (): SupportOperationsBreakGlassIncidentNotFoundError => ({
+                          _tag: "SupportOperationsBreakGlassIncidentNotFoundError",
+                          caseId: request.caseId,
+                        }),
+                      ),
+                    ),
+                  ),
+                  Effect.flatMap((incident) =>
+                    resolveSupportSafeProjection(
+                      platformModuleId.supportOperations,
+                    ).pipe(
+                      Effect.flatMap((projection) =>
+                        projectBreakGlassIncidentSupportView({
+                          fieldSecurity,
+                          requestContext,
+                          projection,
+                          incident,
+                        }),
+                      ),
+                    ),
                   ),
                 ),
               ),

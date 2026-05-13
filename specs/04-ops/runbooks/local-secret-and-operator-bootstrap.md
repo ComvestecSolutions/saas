@@ -1,5 +1,7 @@
 # Local Secret And Operator Bootstrap Runbook
 
+Status: accepted
+
 Use this runbook to bootstrap machine-local secrets, provision human operator access where the current local stack supports it, and keep tracked files free of reusable credentials.
 
 ## Scope
@@ -62,12 +64,18 @@ Use this runbook to bootstrap machine-local secrets, provision human operator ac
    ```
 
    This command provisions or reuses the current GlitchTip, OpenPanel, Postal,
-   and Unleash local human operator logins, captures the Postal and Novu backend
-   API keys, reconciles the repo-owned Unleash backend token when the live local
-   DB drifts from Vault, provisions or reuses the repo-owned OpenPanel backend
-   client credentials and the local GlitchTip project DSN, writes those values
-   back to Vault, and temporarily recreates Novu with registration enabled only
-   while the first operator is being seeded.
+   Novu, and Unleash local human operator logins, captures the Postal and Novu
+   backend API keys, reconciles the repo-owned Unleash backend token when the
+   live local DB drifts from Vault, reconciles every manifest-declared feature
+   flag into the default Unleash project and development environment so backend
+   rollout evaluation stops falling back to missing definitions, provisions or
+   reuses the repo-owned OpenPanel backend client credentials with the live
+   OpenPanel hash contract, verifies the repo-owned Postal sender domain that
+   matches `PLATFORM_EMAIL_SENDER_FROM_EMAIL`, seeds the repo-owned Novu
+   workflows used by the current backend billing-notification path, provisions
+   or reuses the local GlitchTip project DSN, writes the generated runtime
+   values back to Vault, and temporarily recreates Novu with registration
+   enabled only while the first operator is being seeded.
 
 3. Capture any remaining runtime-only values that are still generated after
    services start, such as the Convex admin key, any stricter OpenMeter auth
@@ -94,9 +102,13 @@ login path for Keycloak, Grafana, GlitchTip, OpenPanel, Novu, Postal, and
 Unleash. Novu now exposes its self-hosted dashboard on the repo-managed local
 footprint and reuses the same Vault-backed `NOVU_EMAIL` / `NOVU_PASSWORD`
 credentials that the runtime bootstrap path already provisions for the Novu
-auth API. OpenMeter, Kong Manager, Meilisearch, and Ory Keto may still require
+auth API, while the same bootstrap path seeds the repo-owned workflows the
+current backend notification-center slice triggers. Postal sender verification
+also now lands in the repo-owned bootstrap path instead of a manual console
+step. OpenMeter, Kong Manager, Meilisearch, and Ory Keto may still require
 service-specific follow-up even though the backend readiness and adapter
-boundaries now probe them through their real transport surfaces.
+boundaries now probe them through their real transport surfaces. OpenMeter is
+still transport-ready rather than a backend-owned module capability.
 
 For the current direct host smoke surfaces, use these URLs after the stack is
 up:
@@ -122,3 +134,4 @@ up:
 4. `bun run format:check`
 5. `bun run typecheck`
 6. `bun run test`
+7. `bun run test:backend:e2e:local` when the local vendor stack is running and you want live backend-owned Unleash, GlitchTip, OpenPanel, Novu, and Postal smoke coverage

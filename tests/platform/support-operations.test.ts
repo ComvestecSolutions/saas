@@ -1818,8 +1818,47 @@ describe("support-operations platform service", () => {
         caseId: grant.auditEvent.eventId,
         status: supportOperationsBreakGlassIncidentStatus.pendingReview,
         startedAt: grant.auditEvent.timestamp,
+        approvedBy: supportOperatorRequestContext.actorId,
+        reason: "Resolve emergency tenant outage",
+        expiresAt,
       },
     ]);
+  });
+
+  it("projects break-glass incident detail with support-safe expiry context", async () => {
+    const { service, valkey } = await createSupportOperationsHarness();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: supportOperatorRequestContext.sessionId,
+        requestContext: supportOperatorRequestContext,
+      }),
+    );
+
+    const grant = await Effect.runPromise(
+      service.grantBreakGlassAccess({
+        sessionId: supportOperatorRequestContext.sessionId,
+        reason: "Resolve emergency tenant outage",
+        expiresAt,
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        service.getBreakGlassIncident({
+          sessionId: supportOperatorRequestContext.sessionId,
+          caseId: grant.auditEvent.eventId,
+        }),
+      ),
+    ).resolves.toEqual({
+      caseId: grant.auditEvent.eventId,
+      status: supportOperationsBreakGlassIncidentStatus.pendingReview,
+      startedAt: grant.auditEvent.timestamp,
+      approvedBy: supportOperatorRequestContext.actorId,
+      reason: "Resolve emergency tenant outage",
+      expiresAt,
+    });
   });
 
   it("reviews pending break-glass incidents and persists a distinct review audit event", async () => {
@@ -1867,6 +1906,9 @@ describe("support-operations platform service", () => {
       caseId: grant.auditEvent.eventId,
       status: supportOperationsBreakGlassIncidentStatus.reviewed,
       startedAt: grant.auditEvent.timestamp,
+      approvedBy: supportOperatorRequestContext.actorId,
+      reason: "Resolve emergency tenant outage",
+      expiresAt,
     });
     expect(pendingIncidents).toEqual([]);
     expect(reviewedIncidents).toEqual([
@@ -1874,6 +1916,9 @@ describe("support-operations platform service", () => {
         caseId: grant.auditEvent.eventId,
         status: supportOperationsBreakGlassIncidentStatus.reviewed,
         startedAt: grant.auditEvent.timestamp,
+        approvedBy: supportOperatorRequestContext.actorId,
+        reason: "Resolve emergency tenant outage",
+        expiresAt,
       },
     ]);
     expect(insertedAuditEvents).toEqual([

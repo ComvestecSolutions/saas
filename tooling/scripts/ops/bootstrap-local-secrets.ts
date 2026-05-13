@@ -206,8 +206,10 @@ export const buildBootstrapManagedValues = (input: {
   const glitchtipOperatorEmail = resolveStableValue({
     state,
     key: "GLITCHTIP_OPERATOR_EMAIL",
-    nextValue: "glitchtip.operator@local.test",
-    isWeakValue: (value) => value.trim().length === 0,
+    nextValue: "glitchtip.operator@example.com",
+    isWeakValue: (value) =>
+      value.trim().length === 0 ||
+      value.trim().toLowerCase() === "glitchtip.operator@local.test",
   });
   const glitchtipOperatorPassword = resolveStableValue({
     state,

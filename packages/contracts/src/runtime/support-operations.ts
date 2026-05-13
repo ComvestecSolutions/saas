@@ -120,6 +120,9 @@ export const SupportOperationsBreakGlassIncidentSupportViewSchema =
     caseId: Schema.NonEmptyString,
     status: SupportOperationsBreakGlassIncidentStatusSchema,
     startedAt: IsoTimestampSchema,
+    approvedBy: Schema.NonEmptyString,
+    reason: Schema.NonEmptyString,
+    expiresAt: IsoTimestampSchema,
   });
 
 export type SupportOperationsBreakGlassIncidentSupportView = Schema.Schema.Type<

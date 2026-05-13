@@ -1,14 +1,23 @@
 import {
+  authorizationFeatureFlag,
+  observabilityFeatureFlag,
+} from "@comvestec/contracts";
+import {
   buildGlitchtipBootstrapScript,
+  buildUnleashDefaultStrategyBody,
+  buildUnleashFeatureCreateBody,
   buildOpenPanelOperatorStateSql,
   buildOpenPanelBootstrapSql,
   buildPostalOperatorValidationScript,
   buildUnleashOperatorBootstrapSql,
   buildUnleashBackendTokenReconcileSql,
+  collectUnleashManifestFeatureFlags,
   buildPostalBootstrapScript,
+  extractCookieHeaderFromSetCookieHeaders,
   extractGlitchtipBootstrapResult,
   extractNovuApiKey,
   extractNovuSessionToken,
+  normalizeGlitchtipOperatorEmail,
   extractOpenPanelOperatorAuthState,
   extractOpenPanelBootstrapResult,
   extractPostalOperatorLoginState,
@@ -85,12 +94,15 @@ describe("runtime bootstrap credentials", () => {
       organizationName: "Local Postal",
       serverName: "Local Backend",
       credentialName: "backend-api",
+      domainName: "localhost",
     });
 
     expect(script).toContain(
       'credential_name = config.fetch("credentialName")',
     );
+    expect(script).toContain('domain_name = config.fetch("domainName")');
     expect(script).toContain("O\\\\'Brien");
+    expect(script).toContain("server.domains.create!");
     expect(script).toContain("server.credentials.create!");
   });
 
@@ -116,6 +128,9 @@ describe("runtime bootstrap credentials", () => {
       organizationName: "Comvestec O'Brien",
       projectName: "Comvestec SaaS Foundation",
       clientName: "Backend Writer",
+      clientSecret: "openpanel-secret",
+      clientSecretHash:
+        "0123456789abcdef0123456789abcdef.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       operatorEmail: "openpanel.operator@local.test",
       operatorPasswordHash: "$argon2id$hashed",
       operatorFirstName: "OpenPanel",
@@ -134,10 +149,14 @@ describe("runtime bootstrap credentials", () => {
     expect(sql).toContain(
       'INSERT INTO clients (name, secret, "projectId", "organizationId", type, "ignoreCorsAndSecret")',
     );
-    expect(sql).toContain("replace(gen_random_uuid()::text, '-', '')");
+    expect(sql).toContain("openpanel-secret");
+    expect(sql).toContain(
+      "0123456789abcdef0123456789abcdef.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    );
     expect(sql).toContain("Comvestec O''Brien");
     expect(sql).toContain("'org:admin'");
     expect(sql).toContain("$argon2id$hashed");
+    expect(sql).not.toContain("first_client AS");
   });
 
   it("extracts the OpenPanel operator auth state from psql output", () => {
@@ -204,6 +223,15 @@ describe("runtime bootstrap credentials", () => {
     expect(script).toContain("authenticate(email=config['operatorEmail']");
     expect(script).toContain("Comvestec O\\'Brien");
     expect(script).toContain("project_key.get_dsn()");
+  });
+
+  it("normalizes the legacy GlitchTip operator email to a validator-safe domain", () => {
+    expect(
+      normalizeGlitchtipOperatorEmail("glitchtip.operator@local.test"),
+    ).toBe("glitchtip.operator@example.com");
+    expect(
+      normalizeGlitchtipOperatorEmail("glitchtip.operator@example.com"),
+    ).toBe("glitchtip.operator@example.com");
   });
 
   it("extracts the Postal operator login state from console output", () => {
@@ -295,5 +323,48 @@ describe("runtime bootstrap credentials", () => {
     expect(sql).toContain("Unleash O''Brien");
     expect(sql).toContain("'Admin'");
     expect(sql).toContain("$2b$10$hashed");
+  });
+
+  it("collects manifest-declared Unleash feature seeds for runtime reconciliation", () => {
+    expect(collectUnleashManifestFeatureFlags()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: authorizationFeatureFlag.enabled,
+          defaultEnabled: true,
+        }),
+        expect.objectContaining({
+          key: observabilityFeatureFlag.errorTrackingEnabled,
+          defaultEnabled: false,
+        }),
+      ]),
+    );
+  });
+
+  it("extracts a Cookie header from Unleash Set-Cookie headers", () => {
+    expect(
+      extractCookieHeaderFromSetCookieHeaders([
+        "unleash-session=session-token; Path=/; HttpOnly",
+        "unleash-user-id=operator-id; Path=/; SameSite=Lax",
+      ]),
+    ).toBe("unleash-session=session-token; unleash-user-id=operator-id");
+  });
+
+  it("builds Unleash feature creation and default strategy payloads", () => {
+    expect(
+      buildUnleashFeatureCreateBody({
+        key: observabilityFeatureFlag.errorTrackingEnabled,
+        description: "Toggle GlitchTip-backed error tracking.",
+        defaultEnabled: false,
+      }),
+    ).toEqual({
+      name: observabilityFeatureFlag.errorTrackingEnabled,
+      description: "Toggle GlitchTip-backed error tracking.",
+      impressionData: false,
+    });
+    expect(buildUnleashDefaultStrategyBody()).toEqual({
+      name: "default",
+      parameters: {},
+      constraints: [],
+    });
   });
 });

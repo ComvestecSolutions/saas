@@ -94,7 +94,13 @@ export const createGetAdminTenantRepairData = (
         readonly data: AdminTenantRepairRouteLoaderInput;
       }) =>
         Effect.runPromise(
-          loadRouteData(context.request, environment, undefined, data),
+          loadRouteData(
+            context.request,
+            environment,
+            undefined,
+            undefined,
+            data,
+          ),
         ),
     );
 

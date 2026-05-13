@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { randomBytes, scryptSync } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,13 +12,17 @@ import {
   workspaceRootDirectory,
   writeVaultKvRecord,
 } from "./local-runtime-environment";
+import { emailDeliveryTemplateId } from "../../../packages/contracts/src/domains/email-delivery";
 import {
   buildUnleashClientFeaturesEndpoint,
   buildUnleashValidationHeaders,
   unleashBackendClientName,
 } from "../../../packages/platform/src/adapters/features-billing/unleash-shared";
+import { makeUnleashAdapter } from "../../../packages/platform/src/adapters/features-billing/unleash";
 import { makeGlitchtipAdapter } from "../../../packages/platform/src/adapters/observability/glitchtip";
+import { buildNovuWorkflowIdentifier } from "../../../packages/platform/src/adapters/messaging/novu";
 import { makeOpenPanelAdapter } from "../../../packages/platform/src/adapters/observability/openpanel";
+import { platformModuleManifests } from "../../../packages/config/src/manifests";
 
 const rootComposeFilePath = resolve(
   workspaceRootDirectory,
@@ -27,6 +32,8 @@ const novuRegistrationToggleEnvKey = "NOVU_DISABLE_USER_REGISTRATION";
 const novuHealthcheckPath = "/v1/health-check";
 const novuAuthenticatedEnvironmentPath = "/v1/environments/me";
 const novuEnvironmentListPath = "/v1/environments";
+const novuNotificationGroupsPath = "/v1/notification-groups";
+const novuWorkflowsPath = "/v1/workflows";
 const postalSendMessagePath = "/api/v1/send/message";
 const unleashHealthcheckPath = "/health";
 const postalBootstrapOrganizationName = "Local Postal";
@@ -46,12 +53,22 @@ const glitchtipBootstrapProjectName = "Comvestec SaaS Foundation";
 const glitchtipBootstrapProjectKeyName = "Comvestec SaaS Foundation Backend";
 const glitchtipOrganizationOwnerRole = 3;
 const glitchtipOperatorName = "GlitchTip Operator";
+const glitchtipLegacyOperatorEmail = "glitchtip.operator@local.test";
+const glitchtipDefaultOperatorEmail = "glitchtip.operator@example.com";
 const unleashOperatorName = "Unleash Operator";
 const unleashAdminRoleName = "Admin";
 const unleashDefaultProject = "default";
+const unleashDefaultEnvironment = "development";
+const unleashSimpleLoginPath = "/auth/simple/login";
+const unleashAdminApiBasePath = "/api/admin";
+const unleashDefaultStrategyName = "default";
 const novuRegistrationOrigin = "cli";
 const novuRegistrationJobTitle = "engineer";
 const novuRegistrationProductUseCases = ["notifications"] as const;
+const novuBootstrapWorkflowTemplates = [
+  emailDeliveryTemplateId.billingInvoiceReady,
+  emailDeliveryTemplateId.billingInvoiceReadyDigest,
+] as const;
 const invalidPostalAuthCodes = new Set([
   "AccessDenied",
   "InvalidServerAPIKey",
@@ -85,6 +102,29 @@ const getBunPassword = (): BunPasswordApi => {
   return bunPassword;
 };
 
+const generateOpenPanelClientSecret = () => randomBytes(32).toString("hex");
+
+const hashOpenPanelClientSecret = (clientSecret: string) => {
+  const salt = randomBytes(16).toString("hex");
+  const derivedKey = scryptSync(clientSecret, salt, 32);
+
+  return `${salt}.${derivedKey.toString("hex")}`;
+};
+
+const extractEmailDomain = (input: {
+  readonly emailAddress: string;
+  readonly description: string;
+}) => {
+  const trimmedAddress = input.emailAddress.trim().toLowerCase();
+  const [, domain] = trimmedAddress.split("@", 2);
+
+  if (domain === undefined || domain.trim().length === 0) {
+    throw new Error(`${input.description} must include a valid email domain.`);
+  }
+
+  return domain.trim();
+};
+
 const bootstrapRuntimeEnvironmentKeys = [
   "NOVU_API_URL",
   "NOVU_EMAIL",
@@ -97,6 +137,7 @@ const bootstrapRuntimeEnvironmentKeys = [
   "POSTAL_PASSWORD",
   "POSTAL_FNAME",
   "POSTAL_LNAME",
+  "PLATFORM_EMAIL_SENDER_FROM_EMAIL",
   "GLITCHTIP_OPERATOR_EMAIL",
   "GLITCHTIP_OPERATOR_PASSWORD",
   "UNLEASH_URL",
@@ -168,6 +209,42 @@ export type PostalOperatorLoginState = {
   readonly authenticated: boolean;
 };
 
+export type UnleashManifestFeatureSeed = {
+  readonly key: string;
+  readonly description: string;
+  readonly defaultEnabled: boolean;
+};
+
+type UnleashAdminFeatureStrategy = {
+  readonly name?: string;
+  readonly disabled?: boolean;
+};
+
+type UnleashAdminFeatureEnvironment = {
+  readonly name: string;
+  readonly strategies?: readonly UnleashAdminFeatureStrategy[];
+};
+
+type UnleashAdminProjectFeature = {
+  readonly name: string;
+  readonly environments?: readonly UnleashAdminFeatureEnvironment[];
+};
+
+type NovuNotificationGroup = {
+  readonly _id: string;
+  readonly name: string;
+};
+
+type NovuWorkflowTrigger = {
+  readonly identifier: string;
+};
+
+type NovuWorkflow = {
+  readonly _id: string;
+  readonly name: string;
+  readonly triggers?: readonly NovuWorkflowTrigger[];
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -178,6 +255,40 @@ const sleep = (delayMs: number) =>
 
 const buildUrl = (baseUrl: string, path: string) =>
   new URL(path, baseUrl).toString();
+
+const buildUnleashOperatorLoginUrl = (apiUrl: string) =>
+  buildUrl(apiUrl, unleashSimpleLoginPath);
+
+const buildUnleashProjectFeaturesUrl = (input: {
+  readonly apiUrl: string;
+  readonly projectId: string;
+}) =>
+  buildUrl(
+    input.apiUrl,
+    `${unleashAdminApiBasePath}/projects/${encodeURIComponent(input.projectId)}/features`,
+  );
+
+const buildUnleashFeatureStrategiesUrl = (input: {
+  readonly apiUrl: string;
+  readonly projectId: string;
+  readonly featureName: string;
+  readonly environment: string;
+}) =>
+  buildUrl(
+    input.apiUrl,
+    `${unleashAdminApiBasePath}/projects/${encodeURIComponent(input.projectId)}/features/${encodeURIComponent(input.featureName)}/environments/${encodeURIComponent(input.environment)}/strategies`,
+  );
+
+const buildNovuApiKeyHeaders = (input: {
+  readonly apiKey: string;
+  readonly includeJsonBodyHeader?: boolean;
+}) => ({
+  Accept: "application/json",
+  Authorization: `ApiKey ${input.apiKey}`,
+  ...(input.includeJsonBodyHeader === true
+    ? { "Content-Type": "application/json" }
+    : {}),
+});
 
 export const shouldBootstrapRuntimeCredential = (value: string | undefined) => {
   const normalizedValue = value?.trim();
@@ -216,6 +327,14 @@ const normalizeConfiguredRuntimeCredential = (value: string | undefined) => {
   return normalizedValue;
 };
 
+export const normalizeGlitchtipOperatorEmail = (email: string) => {
+  const normalizedEmail = email.trim();
+
+  return normalizedEmail.toLowerCase() === glitchtipLegacyOperatorEmail
+    ? glitchtipDefaultOperatorEmail
+    : normalizedEmail;
+};
+
 export const selectUnleashBackendApiToken = (input: {
   readonly configuredApiKey: string | undefined;
   readonly configuredBootstrapToken: string | undefined;
@@ -252,6 +371,62 @@ export const buildUnleashBackendTokenReconcileSql = (apiToken: string) => {
     `INSERT INTO api_tokens (secret, username, type, environment, token_name) VALUES ('${escapedToken}', '${escapedTokenName}', 'backend', 'development', '${escapedTokenName}') ON CONFLICT (secret) DO UPDATE SET username = EXCLUDED.username, type = EXCLUDED.type, environment = EXCLUDED.environment, token_name = EXCLUDED.token_name, expires_at = NULL;`,
     "COMMIT;",
   ].join("\n");
+};
+
+export const collectUnleashManifestFeatureFlags = () => {
+  const flags = new Map<string, UnleashManifestFeatureSeed>();
+
+  for (const manifest of platformModuleManifests) {
+    for (const flag of manifest.featureFlags) {
+      if (flags.has(flag.key)) {
+        throw new Error(
+          `Duplicate manifest feature flag declaration detected for ${flag.key}.`,
+        );
+      }
+
+      flags.set(flag.key, {
+        key: flag.key,
+        description: flag.description,
+        defaultEnabled: flag.defaultEnabled,
+      });
+    }
+  }
+
+  return [...flags.values()].sort((left, right) =>
+    left.key.localeCompare(right.key),
+  );
+};
+
+export const buildUnleashFeatureCreateBody = (
+  feature: UnleashManifestFeatureSeed,
+) => ({
+  name: feature.key,
+  description: feature.description,
+  impressionData: false,
+});
+
+export const buildUnleashDefaultStrategyBody = () => ({
+  name: unleashDefaultStrategyName,
+  parameters: {},
+  constraints: [],
+});
+
+export const extractCookieHeaderFromSetCookieHeaders = (
+  setCookieHeaders: readonly string[],
+) => {
+  const cookiePairs = setCookieHeaders
+    .map((header) => header.split(";")[0]?.trim())
+    .filter(
+      (header): header is string => header !== undefined && header.length > 0,
+    );
+
+  if (cookiePairs.length === 0) {
+    throw new Error(
+      "Unleash login response did not include any session cookies.",
+    );
+  }
+
+  return cookiePairs.join("; ");
 };
 
 const assertBootstrapRuntimeEnvironment: (
@@ -755,6 +930,7 @@ export const buildPostalBootstrapScript = (input: {
   readonly organizationName: string;
   readonly serverName: string;
   readonly credentialName: string;
+  readonly domainName: string;
 }) => {
   const encodedConfiguration = escapeRubySingleQuotedString(
     JSON.stringify(input),
@@ -771,6 +947,7 @@ export const buildPostalBootstrapScript = (input: {
     'organization_name = config.fetch("organizationName")',
     'server_name = config.fetch("serverName")',
     'credential_name = config.fetch("credentialName")',
+    'domain_name = config.fetch("domainName")',
     "",
     "user = User.find_by(email_address: email)",
     "if user.nil?",
@@ -809,6 +986,14 @@ export const buildPostalBootstrapScript = (input: {
     "if server.nil?",
     '  server = organization.servers.create!(name: server_name, mode: "Live")',
     "end",
+    "",
+    "domain = server.domains.find_by(name: domain_name)",
+    "if domain.nil?",
+    '  domain = server.domains.create!(name: domain_name, verification_method: "DNS", outgoing: true)',
+    "else",
+    '  domain.update!(verification_method: domain.verification_method.presence || "DNS", outgoing: true)',
+    "end",
+    "domain.mark_as_verified unless domain.verified?",
     "",
     'credential = server.credentials.find_by(name: credential_name, type: "API")',
     "if credential.nil?",
@@ -853,6 +1038,8 @@ export const buildOpenPanelBootstrapSql = (input: {
   readonly organizationName: string;
   readonly projectName: string;
   readonly clientName: string;
+  readonly clientSecret: string;
+  readonly clientSecretHash: string;
   readonly operatorEmail: string;
   readonly operatorPasswordHash: string;
   readonly operatorFirstName: string;
@@ -862,14 +1049,14 @@ export const buildOpenPanelBootstrapSql = (input: {
   const organizationName = escapePostgresLiteral(input.organizationName);
   const projectName = escapePostgresLiteral(input.projectName);
   const clientName = escapePostgresLiteral(input.clientName);
+  const clientSecret = escapePostgresLiteral(input.clientSecret);
+  const clientSecretHash = escapePostgresLiteral(input.clientSecretHash);
   const operatorEmail = escapePostgresLiteral(input.operatorEmail);
   const operatorPasswordHash = escapePostgresLiteral(
     input.operatorPasswordHash,
   );
   const operatorFirstName = escapePostgresLiteral(input.operatorFirstName);
   const operatorLastName = escapePostgresLiteral(input.operatorLastName);
-  const generatedSecretSql =
-    "replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')";
 
   return [
     "WITH repo_user AS (",
@@ -961,39 +1148,27 @@ export const buildOpenPanelBootstrapSql = (input: {
     "  RETURNING m.email",
     "),",
     "named_client AS (",
-    '  SELECT id::text AS id, secret FROM clients WHERE "organizationId" = (SELECT id FROM chosen_org) AND "projectId" = (SELECT id FROM chosen_project) AND name = ' +
+    '  SELECT id::text AS id FROM clients WHERE "organizationId" = (SELECT id FROM chosen_org) AND "projectId" = (SELECT id FROM chosen_project) AND name = ' +
       `'${clientName}' LIMIT 1`,
-    "),",
-    "first_client AS (",
-    '  SELECT id::text AS id, secret FROM clients WHERE "organizationId" = (SELECT id FROM chosen_org) AND "projectId" = (SELECT id FROM chosen_project) ORDER BY id LIMIT 1',
     "),",
     "inserted_client AS (",
     '  INSERT INTO clients (name, secret, "projectId", "organizationId", type, "ignoreCorsAndSecret")',
-    `  SELECT '${clientName}', ${generatedSecretSql}, (SELECT id FROM chosen_project), (SELECT id FROM chosen_org), 'write', false`,
+    `  SELECT '${clientName}', '${clientSecretHash}', (SELECT id FROM chosen_project), (SELECT id FROM chosen_org), 'write', false`,
     "  WHERE NOT EXISTS (SELECT 1 FROM named_client)",
-    "    AND NOT EXISTS (SELECT 1 FROM first_client)",
-    "  RETURNING id::text AS id, secret",
+    "  RETURNING id::text AS id",
     "),",
     "chosen_client_seed AS (",
-    "  SELECT id, secret FROM named_client",
+    "  SELECT id FROM named_client",
     "  UNION ALL",
-    "  SELECT id, secret FROM first_client WHERE NOT EXISTS (SELECT 1 FROM named_client)",
-    "  UNION ALL",
-    "  SELECT id, secret FROM inserted_client",
+    "  SELECT id FROM inserted_client",
     "  LIMIT 1",
     "),",
     "updated_client AS (",
-    `  UPDATE clients AS c SET secret = ${generatedSecretSql} WHERE c.id::text = (SELECT id FROM chosen_client_seed) AND (c.secret IS NULL OR LENGTH(TRIM(c.secret)) = 0) RETURNING c.id::text AS id, c.secret`,
-    "),",
-    "chosen_client AS (",
-    "  SELECT id, secret FROM updated_client",
-    "  UNION ALL",
-    "  SELECT id, secret FROM chosen_client_seed WHERE secret IS NOT NULL AND LENGTH(TRIM(secret)) > 0 AND NOT EXISTS (SELECT 1 FROM updated_client)",
-    "  LIMIT 1",
+    `  UPDATE clients AS c SET secret = '${clientSecretHash}', type = 'write', "ignoreCorsAndSecret" = false WHERE c.id::text = (SELECT id FROM chosen_client_seed) RETURNING c.id::text AS id`,
     ")",
     "SELECT json_build_object(",
-    "  'clientId', (SELECT id FROM chosen_client),",
-    "  'clientSecret', (SELECT secret FROM chosen_client),",
+    "  'clientId', (SELECT id FROM updated_client),",
+    `  'clientSecret', '${clientSecret}',`,
     "  'organizationId', (SELECT id FROM chosen_org),",
     "  'projectId', (SELECT id FROM chosen_project)",
     ")::text;",
@@ -1475,6 +1650,400 @@ const validateUnleashOperatorLogin = async (input: {
   }
 };
 
+const getResponseSetCookieHeaders = (response: Response) => {
+  const headersWithSetCookie = response.headers as Headers & {
+    readonly getSetCookie?: () => string[];
+  };
+  const setCookieHeaders = headersWithSetCookie.getSetCookie?.();
+
+  if (setCookieHeaders !== undefined && setCookieHeaders.length > 0) {
+    return setCookieHeaders;
+  }
+
+  const setCookieHeader = response.headers.get("set-cookie");
+
+  return setCookieHeader === null ? [] : [setCookieHeader];
+};
+
+const toUnleashAdminFeatureStrategy = (
+  value: unknown,
+): UnleashAdminFeatureStrategy | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    ...(typeof value.name === "string" && value.name.trim().length > 0
+      ? { name: value.name }
+      : {}),
+    ...(typeof value.disabled === "boolean"
+      ? { disabled: value.disabled }
+      : {}),
+  };
+};
+
+const toUnleashAdminFeatureEnvironment = (
+  value: unknown,
+): UnleashAdminFeatureEnvironment | undefined => {
+  if (
+    !isRecord(value) ||
+    typeof value.name !== "string" ||
+    !value.name.trim()
+  ) {
+    return undefined;
+  }
+
+  const strategies = Array.isArray(value.strategies)
+    ? value.strategies
+        .map(toUnleashAdminFeatureStrategy)
+        .filter(
+          (strategy): strategy is UnleashAdminFeatureStrategy =>
+            strategy !== undefined,
+        )
+    : undefined;
+
+  return {
+    name: value.name,
+    ...(strategies !== undefined ? { strategies } : {}),
+  };
+};
+
+const toUnleashAdminProjectFeature = (
+  value: unknown,
+): UnleashAdminProjectFeature | undefined => {
+  if (
+    !isRecord(value) ||
+    typeof value.name !== "string" ||
+    !value.name.trim()
+  ) {
+    return undefined;
+  }
+
+  const environments = Array.isArray(value.environments)
+    ? value.environments
+        .map(toUnleashAdminFeatureEnvironment)
+        .filter(
+          (environment): environment is UnleashAdminFeatureEnvironment =>
+            environment !== undefined,
+        )
+    : undefined;
+
+  return {
+    name: value.name,
+    ...(environments !== undefined ? { environments } : {}),
+  };
+};
+
+const extractUnleashProjectFeatures = (value: unknown) => {
+  const rawFeatures = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.features)
+      ? value.features
+      : undefined;
+
+  if (rawFeatures === undefined) {
+    throw new Error(
+      "Unleash project feature listing did not include a features array.",
+    );
+  }
+
+  const features = rawFeatures
+    .map(toUnleashAdminProjectFeature)
+    .filter(
+      (feature): feature is UnleashAdminProjectFeature => feature !== undefined,
+    );
+
+  if (features.length !== rawFeatures.length) {
+    throw new Error(
+      "Unleash project feature listing contained malformed feature entries.",
+    );
+  }
+
+  return features;
+};
+
+const resolveUnleashEnvironmentStrategies = (
+  feature: UnleashAdminProjectFeature | undefined,
+  environment: string,
+) =>
+  feature?.environments?.find((entry) => entry.name === environment)
+    ?.strategies ?? [];
+
+const buildUnleashFallbackValidationFlagKeys = (
+  features: readonly UnleashManifestFeatureSeed[],
+) => {
+  if (features.length === 0) {
+    throw new Error("No manifest feature flags were available for Unleash.");
+  }
+
+  return Array.from(new Set([features[0]!.key, features.at(-1)!.key]));
+};
+
+const loginUnleashOperatorSession = async (
+  environment: BootstrapRuntimeEnvironment,
+) => {
+  const result = await requestJson({
+    url: buildUnleashOperatorLoginUrl(environment.UNLEASH_URL),
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: {
+      username: environment.UNLEASH_OPERATOR_USERNAME,
+      password: environment.UNLEASH_OPERATOR_PASSWORD,
+    },
+  });
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Unleash operator login failed with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+    );
+  }
+
+  return extractCookieHeaderFromSetCookieHeaders(
+    getResponseSetCookieHeaders(result.response),
+  );
+};
+
+const listUnleashProjectFeatures = async (input: {
+  readonly apiUrl: string;
+  readonly sessionCookieHeader: string;
+  readonly projectId: string;
+}) => {
+  const result = await requestJson({
+    url: buildUnleashProjectFeaturesUrl({
+      apiUrl: input.apiUrl,
+      projectId: input.projectId,
+    }),
+    headers: {
+      Accept: "application/json",
+      Cookie: input.sessionCookieHeader,
+    },
+  });
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Unleash project feature listing failed with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+    );
+  }
+
+  return extractUnleashProjectFeatures(result.body);
+};
+
+const createUnleashProjectFeature = async (input: {
+  readonly apiUrl: string;
+  readonly sessionCookieHeader: string;
+  readonly projectId: string;
+  readonly feature: UnleashManifestFeatureSeed;
+}) => {
+  const result = await requestJson({
+    url: buildUnleashProjectFeaturesUrl({
+      apiUrl: input.apiUrl,
+      projectId: input.projectId,
+    }),
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Cookie: input.sessionCookieHeader,
+    },
+    body: buildUnleashFeatureCreateBody(input.feature),
+  });
+
+  if (result.response.ok || result.response.status === 409) {
+    return result.response.ok;
+  }
+
+  throw new Error(
+    `Unleash feature creation failed for ${input.feature.key} with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+  );
+};
+
+const addUnleashEnvironmentDefaultStrategy = async (input: {
+  readonly apiUrl: string;
+  readonly sessionCookieHeader: string;
+  readonly projectId: string;
+  readonly featureName: string;
+  readonly environment: string;
+}) => {
+  const result = await requestJson({
+    url: buildUnleashFeatureStrategiesUrl({
+      apiUrl: input.apiUrl,
+      projectId: input.projectId,
+      featureName: input.featureName,
+      environment: input.environment,
+    }),
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Cookie: input.sessionCookieHeader,
+    },
+    body: buildUnleashDefaultStrategyBody(),
+  });
+
+  if (result.response.ok || result.response.status === 409) {
+    return result.response.ok;
+  }
+
+  throw new Error(
+    `Unleash default strategy creation failed for ${input.featureName} in ${input.environment} with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+  );
+};
+
+const reconcileUnleashManifestFeatureFlags = async (
+  environment: BootstrapRuntimeEnvironment,
+) => {
+  const manifestFeatures = collectUnleashManifestFeatureFlags();
+  const sessionCookieHeader = await loginUnleashOperatorSession(environment);
+  const existingFeatures = await listUnleashProjectFeatures({
+    apiUrl: environment.UNLEASH_URL,
+    sessionCookieHeader,
+    projectId: unleashDefaultProject,
+  });
+  const featureMap = new Map(
+    existingFeatures.map((feature) => [feature.name, feature] as const),
+  );
+  let updatedCount = 0;
+
+  for (const feature of manifestFeatures) {
+    let projectFeature = featureMap.get(feature.key);
+
+    if (projectFeature === undefined) {
+      const featureCreated = await createUnleashProjectFeature({
+        apiUrl: environment.UNLEASH_URL,
+        sessionCookieHeader,
+        projectId: unleashDefaultProject,
+        feature,
+      });
+
+      if (featureCreated) {
+        updatedCount += 1;
+      }
+
+      projectFeature = {
+        name: feature.key,
+      };
+      featureMap.set(feature.key, projectFeature);
+    }
+
+    if (
+      feature.defaultEnabled &&
+      resolveUnleashEnvironmentStrategies(
+        projectFeature,
+        unleashDefaultEnvironment,
+      ).length === 0
+    ) {
+      const strategyCreated = await addUnleashEnvironmentDefaultStrategy({
+        apiUrl: environment.UNLEASH_URL,
+        sessionCookieHeader,
+        projectId: unleashDefaultProject,
+        featureName: feature.key,
+        environment: unleashDefaultEnvironment,
+      });
+
+      if (strategyCreated) {
+        updatedCount += 1;
+      }
+    }
+  }
+
+  const reconciledFeatures = await listUnleashProjectFeatures({
+    apiUrl: environment.UNLEASH_URL,
+    sessionCookieHeader,
+    projectId: unleashDefaultProject,
+  });
+  const reconciledKeys = new Set(
+    reconciledFeatures.map((feature) => feature.name),
+  );
+  const missingManifestFeatures = manifestFeatures
+    .map((feature) => feature.key)
+    .filter((featureKey) => !reconciledKeys.has(featureKey));
+
+  if (missingManifestFeatures.length > 0) {
+    throw new Error(
+      `Unleash project reconciliation is still missing manifest feature flags: ${missingManifestFeatures.join(", ")}`,
+    );
+  }
+
+  return {
+    featureCount: manifestFeatures.length,
+    updatedCount,
+  };
+};
+
+const validateUnleashManifestFeatureFlags = async (input: {
+  readonly apiUrl: string;
+  readonly apiKey: string;
+}) => {
+  const manifestFeatures = collectUnleashManifestFeatureFlags();
+  const fallbackValidationFlagKeys =
+    buildUnleashFallbackValidationFlagKeys(manifestFeatures);
+  const unleash = await Effect.runPromise(
+    makeUnleashAdapter({
+      url: input.apiUrl,
+      apiKey: input.apiKey,
+    }),
+  );
+
+  try {
+    const missingDefinitions: string[] = [];
+
+    for (const feature of manifestFeatures) {
+      const definition = await Effect.runPromise(
+        unleash.getFeatureFlagDefinition({
+          flagKey: feature.key,
+        }),
+      );
+
+      if (definition === undefined) {
+        missingDefinitions.push(feature.key);
+      }
+    }
+
+    if (missingDefinitions.length > 0) {
+      throw new Error(
+        `Unleash backend client is missing manifest feature definitions: ${missingDefinitions.join(", ")}`,
+      );
+    }
+
+    for (const flagKey of fallbackValidationFlagKeys) {
+      const disabledFallbackEvaluation = await Effect.runPromise(
+        unleash.evaluateFeatureFlag({
+          flagKey,
+          fallbackEnabled: false,
+        }),
+      );
+      const enabledFallbackEvaluation = await Effect.runPromise(
+        unleash.evaluateFeatureFlag({
+          flagKey,
+          fallbackEnabled: true,
+        }),
+      );
+
+      if (
+        !disabledFallbackEvaluation.definitionExists ||
+        !enabledFallbackEvaluation.definitionExists
+      ) {
+        throw new Error(
+          `Unleash backend client still falls back instead of resolving ${flagKey} from the live project definition.`,
+        );
+      }
+
+      if (
+        disabledFallbackEvaluation.enabled !== enabledFallbackEvaluation.enabled
+      ) {
+        throw new Error(
+          `Unleash backend client still depends on fallbackEnabled for ${flagKey}, so the manifest definition is not active yet.`,
+        );
+      }
+    }
+  } finally {
+    await Effect.runPromise(Effect.ignore(unleash.close));
+  }
+};
+
 const isUnleashApiKeyValid = async (input: {
   readonly apiUrl: string;
   readonly apiKey: string;
@@ -1664,6 +2233,180 @@ const listNovuApiKey = async (input: {
   }
 };
 
+const listNovuNotificationGroups = async (input: {
+  readonly apiUrl: string;
+  readonly apiKey: string;
+}) => {
+  const result = await requestJson({
+    url: buildUrl(input.apiUrl, novuNotificationGroupsPath),
+    headers: buildNovuApiKeyHeaders({
+      apiKey: input.apiKey,
+    }),
+  });
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Novu notification group listing failed with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+    );
+  }
+
+  if (
+    !isRecord(result.body) ||
+    !Array.isArray(result.body.data) ||
+    !result.body.data.every(
+      (group) =>
+        isRecord(group) &&
+        typeof group._id === "string" &&
+        group._id.trim().length > 0 &&
+        typeof group.name === "string" &&
+        group.name.trim().length > 0,
+    )
+  ) {
+    throw new Error(
+      "Novu notification group listing did not include the expected data array.",
+    );
+  }
+
+  return result.body.data as readonly NovuNotificationGroup[];
+};
+
+const listNovuWorkflows = async (input: {
+  readonly apiUrl: string;
+  readonly apiKey: string;
+}) => {
+  const result = await requestJson({
+    url: buildUrl(input.apiUrl, novuWorkflowsPath),
+    headers: buildNovuApiKeyHeaders({
+      apiKey: input.apiKey,
+    }),
+  });
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Novu workflow listing failed with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+    );
+  }
+
+  if (
+    !isRecord(result.body) ||
+    !Array.isArray(result.body.data) ||
+    !result.body.data.every((workflow) => {
+      if (
+        !isRecord(workflow) ||
+        typeof workflow._id !== "string" ||
+        workflow._id.trim().length === 0 ||
+        typeof workflow.name !== "string" ||
+        workflow.name.trim().length === 0
+      ) {
+        return false;
+      }
+
+      if (workflow.triggers === undefined) {
+        return true;
+      }
+
+      return (
+        Array.isArray(workflow.triggers) &&
+        workflow.triggers.every(
+          (trigger) =>
+            isRecord(trigger) &&
+            typeof trigger.identifier === "string" &&
+            trigger.identifier.trim().length > 0,
+        )
+      );
+    })
+  ) {
+    throw new Error("Novu workflow listing did not include the expected data.");
+  }
+
+  return result.body.data as readonly NovuWorkflow[];
+};
+
+const createNovuWorkflow = async (input: {
+  readonly apiUrl: string;
+  readonly apiKey: string;
+  readonly notificationGroupId: string;
+  readonly templateId: (typeof novuBootstrapWorkflowTemplates)[number];
+}) => {
+  const result = await requestJson({
+    url: buildUrl(input.apiUrl, novuWorkflowsPath),
+    method: "POST",
+    headers: buildNovuApiKeyHeaders({
+      apiKey: input.apiKey,
+      includeJsonBodyHeader: true,
+    }),
+    body: {
+      name: input.templateId,
+      notificationGroupId: input.notificationGroupId,
+      active: true,
+      steps: [
+        {
+          name: `Send ${input.templateId} email`,
+          template: {
+            type: "email",
+            subject: "{{payload.subject}}",
+            content: "{{payload.subject}}",
+          },
+        },
+      ],
+    },
+  });
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Novu workflow creation failed for ${input.templateId} with ${result.response.status}: ${result.bodyText.trim() || "(empty body)"}`,
+    );
+  }
+};
+
+const reconcileNovuWorkflows = async (input: {
+  readonly apiUrl: string;
+  readonly apiKey: string;
+}) => {
+  const notificationGroups = await listNovuNotificationGroups(input);
+  const notificationGroupId =
+    notificationGroups.find((group) => group.name === "General")?._id ??
+    notificationGroups[0]?._id;
+
+  if (notificationGroupId === undefined) {
+    throw new Error(
+      "Novu bootstrap could not find a notification group to attach repo-owned workflows to.",
+    );
+  }
+
+  const workflows = await listNovuWorkflows(input);
+  const workflowNames = new Set(workflows.map((workflow) => workflow.name));
+  const workflowIdentifiers = new Set(
+    workflows.flatMap(
+      (workflow) =>
+        workflow.triggers?.map((trigger) => trigger.identifier) ?? [],
+    ),
+  );
+  let createdCount = 0;
+
+  for (const templateId of novuBootstrapWorkflowTemplates) {
+    const workflowIdentifier = buildNovuWorkflowIdentifier(templateId);
+
+    if (
+      workflowNames.has(templateId) ||
+      workflowIdentifiers.has(workflowIdentifier)
+    ) {
+      continue;
+    }
+
+    await createNovuWorkflow({
+      ...input,
+      notificationGroupId,
+      templateId,
+    });
+    workflowNames.add(templateId);
+    workflowIdentifiers.add(workflowIdentifier);
+    createdCount += 1;
+  }
+
+  return createdCount;
+};
+
 const ensureNovuApiKey = async (environment: BootstrapRuntimeEnvironment) => {
   await waitForNovuRuntime(environment.NOVU_API_URL);
   const configuredApiKey = environment.NOVU_API_KEY?.trim();
@@ -1676,10 +2419,15 @@ const ensureNovuApiKey = async (environment: BootstrapRuntimeEnvironment) => {
       apiKey: configuredApiKey,
     }))
   ) {
+    const workflowUpdates = await reconcileNovuWorkflows({
+      apiUrl: environment.NOVU_API_URL,
+      apiKey: configuredApiKey,
+    });
+
     return {
       apiKey: configuredApiKey,
       operatorEmail: environment.NOVU_EMAIL,
-      wasUpdated: false,
+      wasUpdated: workflowUpdates > 0,
     };
   }
 
@@ -1736,6 +2484,11 @@ const ensureNovuApiKey = async (environment: BootstrapRuntimeEnvironment) => {
     );
   }
 
+  await reconcileNovuWorkflows({
+    apiUrl: environment.NOVU_API_URL,
+    apiKey,
+  });
+
   return {
     apiKey,
     operatorEmail: environment.NOVU_EMAIL,
@@ -1746,6 +2499,10 @@ const ensureNovuApiKey = async (environment: BootstrapRuntimeEnvironment) => {
 const ensurePostalApiKey = async (environment: BootstrapRuntimeEnvironment) => {
   await waitForPostalRuntime(environment.POSTAL_API_URL);
   const configuredApiKey = environment.POSTAL_API_KEY?.trim();
+  const senderDomainName = extractEmailDomain({
+    emailAddress: environment.PLATFORM_EMAIL_SENDER_FROM_EMAIL,
+    description: "PLATFORM_EMAIL_SENDER_FROM_EMAIL",
+  });
   let operatorWasUpdated = false;
   let postalBootstrapResult: PostalBootstrapResult | undefined;
 
@@ -1758,23 +2515,6 @@ const ensurePostalApiKey = async (environment: BootstrapRuntimeEnvironment) => {
     operatorWasUpdated = true;
   }
 
-  if (
-    !operatorWasUpdated &&
-    configuredApiKey !== undefined &&
-    !shouldBootstrapRuntimeCredential(configuredApiKey) &&
-    (await isPostalApiKeyValid({
-      apiUrl: environment.POSTAL_API_URL,
-      apiKey: configuredApiKey,
-    }))
-  ) {
-    return {
-      apiKey: configuredApiKey,
-      operatorEmail: environment.POSTAL_EMAIL,
-      serverName: postalBootstrapServerName,
-      wasUpdated: operatorWasUpdated,
-    };
-  }
-
   if (postalBootstrapResult === undefined) {
     const postalBootstrapScript = buildPostalBootstrapScript({
       email: environment.POSTAL_EMAIL,
@@ -1784,6 +2524,7 @@ const ensurePostalApiKey = async (environment: BootstrapRuntimeEnvironment) => {
       organizationName: postalBootstrapOrganizationName,
       serverName: postalBootstrapServerName,
       credentialName: postalBootstrapCredentialName,
+      domainName: senderDomainName,
     });
     const result = await runProcess({
       command: [
@@ -1829,6 +2570,7 @@ const ensureUnleashBackendApiKey = async (
 ) => {
   await waitForUnleashRuntime(environment.UNLEASH_URL);
   let operatorWasUpdated = false;
+  let apiKeyWasUpdated = false;
 
   try {
     await validateUnleashOperatorLogin({
@@ -1887,25 +2629,11 @@ const ensureUnleashBackendApiKey = async (
       apiKey,
     })
   ) {
-    return {
-      apiKey,
-      wasUpdated: operatorWasUpdated || wasVaultDrifted,
-    };
-  }
-
-  await reconcileUnleashBackendToken(apiKey);
-
-  if (
-    !(await isUnleashApiKeyValid({
-      apiUrl: environment.UNLEASH_URL,
-      apiKey,
-    }))
-  ) {
-    await runDockerComposeCommand({
-      environment,
-      args: ["restart", "unleash"],
-    });
-    await waitForUnleashRuntime(environment.UNLEASH_URL);
+    // Continue below so local bootstrap also reconciles manifest-backed feature
+    // definitions into the live Unleash project before the backend uses rollout.
+  } else {
+    await reconcileUnleashBackendToken(apiKey);
+    apiKeyWasUpdated = true;
 
     if (
       !(await isUnleashApiKeyValid({
@@ -1913,15 +2641,44 @@ const ensureUnleashBackendApiKey = async (
         apiKey,
       }))
     ) {
-      throw new Error(
-        "Unleash bootstrap did not yield a usable backend API token.",
-      );
+      await runDockerComposeCommand({
+        environment,
+        args: ["restart", "unleash"],
+      });
+      await waitForUnleashRuntime(environment.UNLEASH_URL);
+
+      if (
+        !(await isUnleashApiKeyValid({
+          apiUrl: environment.UNLEASH_URL,
+          apiKey,
+        }))
+      ) {
+        throw new Error(
+          "Unleash bootstrap did not yield a usable backend API token.",
+        );
+      }
     }
   }
 
+  const manifestFeatureFlagResult =
+    await reconcileUnleashManifestFeatureFlags(environment);
+  await waitForValidatedRuntimeCredential({
+    description: "Unleash manifest feature definitions",
+    validate: async () =>
+      await validateUnleashManifestFeatureFlags({
+        apiUrl: environment.UNLEASH_URL,
+        apiKey,
+      }),
+    attempts: 45,
+    delayMs: 2_000,
+  });
+
   return {
     apiKey,
-    wasUpdated: true,
+    vaultValuesWereUpdated: wasVaultDrifted || apiKeyWasUpdated,
+    operatorWasUpdated,
+    manifestFeatureFlagCount: manifestFeatureFlagResult.featureCount,
+    manifestFeatureFlagUpdates: manifestFeatureFlagResult.updatedCount,
   };
 };
 
@@ -1973,6 +2730,8 @@ const ensureOpenPanelClientCredentials = async (
     environment.OPENPANEL_OPERATOR_PASSWORD,
     "argon2id",
   );
+  const clientSecret = generateOpenPanelClientSecret();
+  const clientSecretHash = hashOpenPanelClientSecret(clientSecret);
   const result = await runProcess({
     command: [
       "docker",
@@ -1993,6 +2752,8 @@ const ensureOpenPanelClientCredentials = async (
         organizationName: openpanelBootstrapOrganizationName,
         projectName: openpanelBootstrapProjectName,
         clientName: openpanelBootstrapClientName,
+        clientSecret,
+        clientSecretHash,
         operatorEmail: environment.OPENPANEL_OPERATOR_EMAIL,
         operatorPasswordHash,
         operatorFirstName: openpanelOperatorFirstName,
@@ -2031,12 +2792,17 @@ const ensureOpenPanelClientCredentials = async (
 
 const ensureGlitchtipDsn = async (environment: BootstrapRuntimeEnvironment) => {
   const configuredDsn = environment.ERROR_TRACKING_DSN?.trim();
+  const operatorEmail = normalizeGlitchtipOperatorEmail(
+    environment.GLITCHTIP_OPERATOR_EMAIL,
+  );
+  const operatorEmailWasUpdated =
+    operatorEmail !== environment.GLITCHTIP_OPERATOR_EMAIL.trim();
   let operatorWasUpdated = false;
   let configuredDsnWasValid = false;
 
   try {
     await validateGlitchtipOperatorLogin({
-      email: environment.GLITCHTIP_OPERATOR_EMAIL,
+      email: operatorEmail,
       password: environment.GLITCHTIP_OPERATOR_PASSWORD,
     });
   } catch {
@@ -2066,6 +2832,8 @@ const ensureGlitchtipDsn = async (environment: BootstrapRuntimeEnvironment) => {
   ) {
     return {
       dsn: configuredDsn,
+      operatorEmail,
+      operatorEmailWasUpdated,
       wasUpdated: false,
     };
   }
@@ -2081,7 +2849,7 @@ const ensureGlitchtipDsn = async (environment: BootstrapRuntimeEnvironment) => {
       "--no-imports",
       "-c",
       buildGlitchtipBootstrapScript({
-        operatorEmail: environment.GLITCHTIP_OPERATOR_EMAIL,
+        operatorEmail,
         operatorPassword: environment.GLITCHTIP_OPERATOR_PASSWORD,
         operatorName: glitchtipOperatorName,
         organizationSlug: glitchtipBootstrapOrganizationSlug,
@@ -2099,7 +2867,7 @@ const ensureGlitchtipDsn = async (environment: BootstrapRuntimeEnvironment) => {
   );
 
   await validateGlitchtipOperatorLogin({
-    email: environment.GLITCHTIP_OPERATOR_EMAIL,
+    email: operatorEmail,
     password: environment.GLITCHTIP_OPERATOR_PASSWORD,
   });
   await waitForValidatedRuntimeCredential({
@@ -2112,6 +2880,7 @@ const ensureGlitchtipDsn = async (environment: BootstrapRuntimeEnvironment) => {
   return {
     dsn: glitchtipBootstrapResult.dsn,
     operatorEmail: glitchtipBootstrapResult.operatorEmail,
+    operatorEmailWasUpdated,
     organizationSlug: glitchtipBootstrapResult.organizationSlug,
     projectSlug: glitchtipBootstrapResult.projectSlug,
     teamSlug: glitchtipBootstrapResult.teamSlug,
@@ -2133,6 +2902,7 @@ const main = async () => {
   const updatedValues = {
     ...resolution.vaultData,
     ERROR_TRACKING_DSN: glitchtipResult.dsn,
+    GLITCHTIP_OPERATOR_EMAIL: glitchtipResult.operatorEmail,
     OPENPANEL_CLIENT_ID: openpanelResult.clientId,
     OPENPANEL_CLIENT_SECRET: openpanelResult.clientSecret,
     UNLEASH_API_KEY: unleashResult.apiKey,
@@ -2161,17 +2931,26 @@ const main = async () => {
     console.log(`OpenPanel organization id: ${openpanelResult.organizationId}`);
     console.log(`OpenPanel project id: ${openpanelResult.projectId}`);
   }
+  if (unleashResult.operatorWasUpdated) {
+    console.log("Unleash operator login: reconciled");
+  }
+  console.log(
+    `Unleash manifest feature flags: ${unleashResult.manifestFeatureFlagCount} tracked, ${unleashResult.manifestFeatureFlagUpdates} reconciled.`,
+  );
   console.log(`Novu operator email: ${novuResult.operatorEmail}`);
   console.log(`Postal operator email: ${postalResult.operatorEmail}`);
   console.log(`Postal server credential: ${postalResult.serverName}`);
   console.log(
     `Updated values: ${
       [
+        ...(glitchtipResult.operatorEmailWasUpdated
+          ? ["GLITCHTIP_OPERATOR_EMAIL"]
+          : []),
         ...(glitchtipResult.wasUpdated ? ["ERROR_TRACKING_DSN"] : []),
         ...(openpanelResult.wasUpdated
           ? ["OPENPANEL_CLIENT_ID", "OPENPANEL_CLIENT_SECRET"]
           : []),
-        ...(unleashResult.wasUpdated
+        ...(unleashResult.vaultValuesWereUpdated
           ? ["UNLEASH_API_KEY", "UNLEASH_API_TOKEN"]
           : []),
         ...(novuResult.wasUpdated ? ["NOVU_API_KEY"] : []),

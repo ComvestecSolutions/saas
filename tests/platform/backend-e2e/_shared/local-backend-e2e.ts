@@ -20,6 +20,23 @@ const LocalBackendE2eFeatureFlagsEnvironmentSchema = Schema.Struct({
   UNLEASH_API_KEY: Schema.NonEmptyString,
 });
 
+const LocalBackendE2eErrorTrackingEnvironmentSchema = Schema.Struct({
+  ERROR_TRACKING_DSN: Schema.NonEmptyString,
+});
+
+const LocalBackendE2eBusinessEventsEnvironmentSchema = Schema.Struct({
+  OPENPANEL_API_URL: Schema.NonEmptyString,
+  OPENPANEL_CLIENT_ID: Schema.NonEmptyString,
+  OPENPANEL_CLIENT_SECRET: Schema.NonEmptyString,
+});
+
+const LocalBackendE2eMessagingEnvironmentSchema = Schema.Struct({
+  NOVU_API_URL: Schema.NonEmptyString,
+  NOVU_API_KEY: Schema.NonEmptyString,
+  POSTAL_API_URL: Schema.NonEmptyString,
+  POSTAL_API_KEY: Schema.NonEmptyString,
+});
+
 const LocalBackendE2ePolarEnvironmentSchema = Schema.Struct({
   POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_API_URL: Schema.NonEmptyString,
@@ -37,6 +54,9 @@ const localRuntimePlaceholderPrefixes = [
 ] as const;
 
 let localBackendE2eFeatureFlagsReady: boolean | undefined;
+let localBackendE2eErrorTrackingReady: boolean | undefined;
+let localBackendE2eBusinessEventsReady: boolean | undefined;
+let localBackendE2eMessagingReady: boolean | undefined;
 let localBackendE2ePolarReady: boolean | undefined;
 
 const isPlaceholderValue = (value: string | undefined) =>
@@ -69,6 +89,22 @@ export const tryResolveLocalBackendE2eFeatureFlagsEnvironment = () => {
   }
 };
 
+export const tryResolveLocalBackendE2eBusinessEventsEnvironment = () => {
+  try {
+    const environment = Schema.decodeUnknownSync(
+      LocalBackendE2eBusinessEventsEnvironmentSchema,
+    )(process.env);
+
+    return isPlaceholderValue(environment.OPENPANEL_API_URL) ||
+      isPlaceholderValue(environment.OPENPANEL_CLIENT_ID) ||
+      isPlaceholderValue(environment.OPENPANEL_CLIENT_SECRET)
+      ? undefined
+      : environment;
+  } catch {
+    return undefined;
+  }
+};
+
 export const tryResolveLocalBackendE2ePolarEnvironment = () => {
   try {
     const environment = Schema.decodeUnknownSync(
@@ -77,6 +113,37 @@ export const tryResolveLocalBackendE2ePolarEnvironment = () => {
 
     return isPlaceholderValue(environment.POLAR_ACCESS_TOKEN) ||
       isPlaceholderValue(environment.POLAR_API_URL)
+      ? undefined
+      : environment;
+  } catch {
+    return undefined;
+  }
+};
+
+export const tryResolveLocalBackendE2eErrorTrackingEnvironment = () => {
+  try {
+    const environment = Schema.decodeUnknownSync(
+      LocalBackendE2eErrorTrackingEnvironmentSchema,
+    )(process.env);
+
+    return isPlaceholderValue(environment.ERROR_TRACKING_DSN)
+      ? undefined
+      : environment;
+  } catch {
+    return undefined;
+  }
+};
+
+export const tryResolveLocalBackendE2eMessagingEnvironment = () => {
+  try {
+    const environment = Schema.decodeUnknownSync(
+      LocalBackendE2eMessagingEnvironmentSchema,
+    )(process.env);
+
+    return isPlaceholderValue(environment.NOVU_API_URL) ||
+      isPlaceholderValue(environment.NOVU_API_KEY) ||
+      isPlaceholderValue(environment.POSTAL_API_URL) ||
+      isPlaceholderValue(environment.POSTAL_API_KEY)
       ? undefined
       : environment;
   } catch {
@@ -129,6 +196,138 @@ if (exit._tag === 'Success') {
     (probe.stdout ?? "").toString().trim() === "true";
 
   return localBackendE2eFeatureFlagsReady;
+};
+
+export const isLocalBackendE2eErrorTrackingReady = () => {
+  if (localBackendE2eErrorTrackingReady !== undefined) {
+    return localBackendE2eErrorTrackingReady;
+  }
+
+  if (tryResolveLocalBackendE2eErrorTrackingEnvironment() === undefined) {
+    localBackendE2eErrorTrackingReady = false;
+    return localBackendE2eErrorTrackingReady;
+  }
+
+  const probe = spawnSync(
+    "bun",
+    [
+      "-e",
+      `import { Effect } from 'effect';
+import { makeGlitchtipAdapter } from '@comvestec/platform';
+
+const exit = await Effect.runPromiseExit(
+  makeGlitchtipAdapter({
+    dsn: process.env.ERROR_TRACKING_DSN,
+  }).pipe(Effect.flatMap((glitchtip) => glitchtip.healthcheck)),
+);
+
+console.log(exit._tag === 'Success' ? 'true' : 'false');`,
+    ],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      timeout: 15_000,
+      killSignal: "SIGKILL",
+    },
+  );
+
+  localBackendE2eErrorTrackingReady =
+    probe.error === undefined &&
+    probe.status === 0 &&
+    (probe.stdout ?? "").toString().trim() === "true";
+
+  return localBackendE2eErrorTrackingReady;
+};
+
+export const isLocalBackendE2eBusinessEventsReady = () => {
+  if (localBackendE2eBusinessEventsReady !== undefined) {
+    return localBackendE2eBusinessEventsReady;
+  }
+
+  if (tryResolveLocalBackendE2eBusinessEventsEnvironment() === undefined) {
+    localBackendE2eBusinessEventsReady = false;
+    return localBackendE2eBusinessEventsReady;
+  }
+
+  const probe = spawnSync(
+    "bun",
+    [
+      "-e",
+      `import { Effect } from 'effect';
+import { makeOpenPanelAdapter } from '@comvestec/platform';
+
+const exit = await Effect.runPromiseExit(
+  makeOpenPanelAdapter({
+    apiUrl: process.env.OPENPANEL_API_URL,
+    clientId: process.env.OPENPANEL_CLIENT_ID,
+    clientSecret: process.env.OPENPANEL_CLIENT_SECRET,
+  }).pipe(Effect.flatMap((openpanel) => openpanel.healthcheck)),
+);
+
+console.log(exit._tag === 'Success' ? 'true' : 'false');`,
+    ],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      timeout: 15_000,
+      killSignal: "SIGKILL",
+    },
+  );
+
+  localBackendE2eBusinessEventsReady =
+    probe.error === undefined &&
+    probe.status === 0 &&
+    (probe.stdout ?? "").toString().trim() === "true";
+
+  return localBackendE2eBusinessEventsReady;
+};
+
+export const isLocalBackendE2eMessagingReady = () => {
+  if (localBackendE2eMessagingReady !== undefined) {
+    return localBackendE2eMessagingReady;
+  }
+
+  if (tryResolveLocalBackendE2eMessagingEnvironment() === undefined) {
+    localBackendE2eMessagingReady = false;
+    return localBackendE2eMessagingReady;
+  }
+
+  const probe = spawnSync(
+    "bun",
+    [
+      "-e",
+      `import { Effect } from 'effect';
+import { makeNovuAdapter, makePostalAdapter } from '@comvestec/platform';
+
+const exit = await Effect.runPromiseExit(
+  Effect.all({
+    novu: makeNovuAdapter({
+      apiUrl: process.env.NOVU_API_URL,
+      apiKey: process.env.NOVU_API_KEY,
+    }).pipe(Effect.flatMap((novu) => novu.healthcheck)),
+    postal: makePostalAdapter({
+      apiUrl: process.env.POSTAL_API_URL,
+      apiKey: process.env.POSTAL_API_KEY,
+    }).pipe(Effect.flatMap((postal) => postal.healthcheck)),
+  }),
+);
+
+console.log(exit._tag === 'Success' ? 'true' : 'false');`,
+    ],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      timeout: 15_000,
+      killSignal: "SIGKILL",
+    },
+  );
+
+  localBackendE2eMessagingReady =
+    probe.error === undefined &&
+    probe.status === 0 &&
+    (probe.stdout ?? "").toString().trim() === "true";
+
+  return localBackendE2eMessagingReady;
 };
 
 export const isLocalBackendE2ePolarReady = () => {

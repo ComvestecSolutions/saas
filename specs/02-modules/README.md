@@ -6,7 +6,7 @@ This directory defines reusable platform modules for the SaaS foundation. Each m
 
 Modules are grouped by domain concern.
 
-Accepted module manifests describe the approved capability catalog for the foundation. They do not imply that every module is already implemented or validated in code.
+Accepted module manifests describe the approved capability catalog for the foundation. Do not infer current implementation or validation status from manifest presence alone; use [../00-governance/implementation-tracker.md](../00-governance/implementation-tracker.md) for live maturity.
 
 Use [../00-governance/implementation-tracker.md](../00-governance/implementation-tracker.md) as the source of truth for whether a module is still documented, scaffolded, implemented, validated, or blocked.
 

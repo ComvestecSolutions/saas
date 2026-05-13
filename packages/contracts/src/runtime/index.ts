@@ -1,3 +1,4 @@
+export * from "./admin-app";
 export * from "./audit-actions";
 export * from "./governance";
 export * from "./redirect-uris";

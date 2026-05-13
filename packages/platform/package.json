@@ -10,15 +10,15 @@
   "dependencies": {
     "@comvestec/config": "workspace:*",
     "@comvestec/contracts": "workspace:*",
-    "@polar-sh/sdk": "^0.47.0",
-    "convex": "^1.35.1",
+    "@polar-sh/sdk": "^0.47.1",
+    "convex": "^1.38.0",
     "drizzle-orm": "^0.45.2",
-    "effect": "^3.21.0",
-    "h3-v2": "npm:h3@2.0.1-rc.20",
+    "effect": "^3.21.2",
+    "h3-v2": "npm:h3@2.0.1-rc.22",
     "postgres": "^3.4.7",
     "redis": "^5.12.1",
     "swagger-ui-dist": "^5.32.4",
-    "unleash-client": "^6.10.1"
+    "unleash-client": "^6.11.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

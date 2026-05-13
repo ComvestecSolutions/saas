@@ -25,8 +25,8 @@ Status: accepted
 4. Permission and projection-profile administration require backend-owned operator review surfaces over authorization tuples, revocation flows, and projection vocabularies before a first-party management screen can ship safely.
 5. Sensitive reveal, approval, rejection, and other high-risk actions must use governed backend-owned reason catalogs and policy metadata; the UI must not invent its own reason options.
 6. Data-dense admin screens must expose typed query contracts for filtering, pagination, sorting, exports, and detail lookup instead of relying on oversized client-filtered payloads.
-7. Support Operations may ship against the current validated core slice, but the final break-glass detail experience depends on richer support-safe incident projections when reviewer and expiry context are required.
-8. If secret reveals or high-risk actions need step-up re-authentication, the challenge state and audit trail must be backend-owned and not implemented as a client-only interaction.
+7. Support Operations now has richer support-safe break-glass incident projections for approval and expiry context; if future UI needs reviewer metadata beyond that shape, the backend must first persist and project it explicitly.
+8. Step-up re-authentication is not a current backend requirement, but if secret reveals or other high-risk actions later need it, the challenge state and audit trail must be backend-owned and not implemented as a client-only interaction.
 
 ## Delivery Rules For New Backend Concepts
 

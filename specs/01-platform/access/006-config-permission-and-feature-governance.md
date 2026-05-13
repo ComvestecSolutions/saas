@@ -95,9 +95,10 @@ PostgreSQL rows keyed by `(moduleId, key, scope, scopeId)` where `scopeId` is th
 
 1. Shared sync or reconciliation flows must support bidirectional synchronization between code-declared config and PostgreSQL-backed records.
 2. Code-to-database sync must create, update, retire, or reconcile the required runtime records from committed code declarations.
-3. Database-to-code sync must surface runtime changes approved by users with the proper permissions as reviewable code updates or agent-consumable change proposals instead of silently mutating the codebase.
-4. Removed or renamed config keys must go through explicit retirement or migration handling; they are not silently dropped from the database.
-5. Drift between code declarations and database state must be detectable, reviewable, and auditable in both directions.
+3. When an external rollout engine backs manifest-owned feature flags, code-to-runtime sync must also reconcile the declared flag definitions and manifest default rollout state into that engine through its authenticated admin surface so live evaluation does not fall back to missing-definition behavior.
+4. Database-to-code sync must surface runtime changes approved by users with the proper permissions as reviewable code updates or agent-consumable change proposals instead of silently mutating the codebase.
+5. Removed or renamed config keys must go through explicit retirement or migration handling; they are not silently dropped from the database.
+6. Drift between code declarations and database state must be detectable, reviewable, and auditable in both directions.
 
 ## No-Guessing Rule
 

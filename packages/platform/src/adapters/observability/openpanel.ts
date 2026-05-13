@@ -101,10 +101,13 @@ const buildOpenPanelHeaders = (input: {
 });
 
 const OpenPanelAuthenticatedHealthcheckPayload = {
+  type: "track",
   payload: {
+    name: "platform.openpanel.healthcheck",
     properties: {
-      __revenue: 1,
+      source: "platform-adapter-healthcheck",
     },
+    profileId: "platform-openpanel-healthcheck",
   },
 } as const;
 
@@ -131,7 +134,7 @@ const createOpenPanelHealthcheck = (input: {
   }).pipe(
     Effect.flatMap(
       (response): Effect.Effect<OpenPanelHealthcheck, OpenPanelAdapterError> =>
-        response.ok || response.status === 400 || response.status === 422
+        response.ok
           ? decodeOpenPanelHealthcheck({
               healthy: true,
               service: platformAdapterServiceName.openpanel,

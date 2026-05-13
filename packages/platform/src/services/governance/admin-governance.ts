@@ -1,7 +1,20 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Effect, ParseResult, Schema } from "effect";
-import { configDefaultValue, findModuleManifest } from "@comvestec/config";
 import {
+  configDefaultValue,
+  findModuleManifest,
+  platformModuleManifests,
+} from "@comvestec/config";
+import {
+  AdminGovernanceActionPolicyMetadataListSchema,
+  AdminGovernanceActionPolicyMetadataSchema,
+  type AdminGovernanceActionPolicyMetadata,
+  type AdminGovernanceActionPolicyId,
+  adminGovernanceActionPolicyId,
+  adminGovernanceActionPolicySeverity,
+  AdminQueryPageInfoSchema,
+  AdminQueryPageSchema,
+  AdminQuerySortDirectionSchema,
   AuthorizationNamespaceSchema,
   AuthorizationRelationSchema,
   ActorTypeSchema,
@@ -25,6 +38,7 @@ import {
   platformModuleId,
   PlatformScopeSchema,
   type ProjectionDescriptor,
+  ProjectionProfileSchema,
   projectionProfile,
   type RequestContext,
   RequestContextSchema,
@@ -95,6 +109,7 @@ import {
   makeUnleashAdapter,
   makeValkeyAdapter,
   type OryKetoAdapterRequestError,
+  type OryKetoListTuplesInput,
   type OryKetoTuple,
   type PostgresAdapterConnectionError,
   ValkeyAdapter,
@@ -569,6 +584,130 @@ export type AdminGovernanceWriteAuthorizationTupleResponse = Schema.Schema.Type<
   typeof AdminGovernanceWriteAuthorizationTupleResponseSchema
 >;
 
+const AdminGovernanceAuthorizationTupleSortFieldConstantSchema = Schema.Struct({
+  namespace: Schema.Literal("namespace"),
+  object: Schema.Literal("object"),
+  relation: Schema.Literal("relation"),
+  subject: Schema.Literal("subject"),
+});
+
+export const adminGovernanceAuthorizationTupleSortField = Schema.validateSync(
+  AdminGovernanceAuthorizationTupleSortFieldConstantSchema,
+)({
+  namespace: "namespace",
+  object: "object",
+  relation: "relation",
+  subject: "subject",
+} satisfies Schema.Schema.Type<
+  typeof AdminGovernanceAuthorizationTupleSortFieldConstantSchema
+>);
+
+export const AdminGovernanceAuthorizationTupleSortFieldSchema = Schema.Literal(
+  adminGovernanceAuthorizationTupleSortField.namespace,
+  adminGovernanceAuthorizationTupleSortField.object,
+  adminGovernanceAuthorizationTupleSortField.relation,
+  adminGovernanceAuthorizationTupleSortField.subject,
+);
+
+export type AdminGovernanceAuthorizationTupleSortField = Schema.Schema.Type<
+  typeof AdminGovernanceAuthorizationTupleSortFieldSchema
+>;
+
+export const AdminGovernanceAuthorizationTupleQuerySchema = Schema.Struct({
+  namespace: AuthorizationNamespaceSchema,
+  object: Schema.NonEmptyString,
+  relation: AuthorizationRelationSchema,
+  subject: Schema.optional(Schema.NonEmptyString),
+  page: AdminQueryPageSchema,
+  sortField: AdminGovernanceAuthorizationTupleSortFieldSchema,
+  sortDirection: AdminQuerySortDirectionSchema,
+  exportMode: Schema.Boolean,
+  detailLookup: Schema.optional(AdminGovernanceAuthorizationTupleViewSchema),
+});
+
+export type AdminGovernanceAuthorizationTupleQuery = Schema.Schema.Type<
+  typeof AdminGovernanceAuthorizationTupleQuerySchema
+>;
+
+export const AdminGovernanceAuthorizationTupleQueryResultSchema = Schema.Struct(
+  {
+    items: Schema.Array(AdminGovernanceAuthorizationTupleViewSchema),
+    pageInfo: AdminQueryPageInfoSchema,
+    detail: Schema.optional(AdminGovernanceAuthorizationTupleViewSchema),
+  },
+);
+
+export type AdminGovernanceAuthorizationTupleQueryResult = Schema.Schema.Type<
+  typeof AdminGovernanceAuthorizationTupleQueryResultSchema
+>;
+
+export const AdminGovernanceListAuthorizationTuplesRequestSchema =
+  Schema.Struct({
+    requestContext: RequestContextSchema,
+    query: AdminGovernanceAuthorizationTupleQuerySchema,
+  });
+
+type ListAuthorizationTuplesCommand = Schema.Schema.Type<
+  typeof AdminGovernanceListAuthorizationTuplesRequestSchema
+>;
+
+export const AdminGovernanceDeleteAuthorizationTupleRequestSchema =
+  Schema.Struct({
+    requestContext: RequestContextSchema,
+    tuple: AdminGovernanceAuthorizationTupleViewSchema,
+    reason: Schema.NonEmptyString,
+  });
+
+type DeleteAuthorizationTupleCommand = Schema.Schema.Type<
+  typeof AdminGovernanceDeleteAuthorizationTupleRequestSchema
+>;
+
+export const AdminGovernanceDeleteAuthorizationTupleResponseSchema =
+  Schema.Struct({
+    mutation: Schema.Literal("deleted"),
+    tuple: AdminGovernanceAuthorizationTupleViewSchema,
+    auditEvent: AdminGovernanceAuditEventViewSchema,
+  });
+
+export type AdminGovernanceDeleteAuthorizationTupleResponse =
+  Schema.Schema.Type<
+    typeof AdminGovernanceDeleteAuthorizationTupleResponseSchema
+  >;
+
+export const AdminGovernanceProjectionProfileViewSchema = Schema.Struct({
+  moduleId: PlatformModuleIdSchema,
+  profile: ProjectionProfileSchema,
+  visibleFields: Schema.Array(Schema.NonEmptyString),
+  auditedFields: Schema.Array(Schema.NonEmptyString),
+});
+
+export type AdminGovernanceProjectionProfileView = Schema.Schema.Type<
+  typeof AdminGovernanceProjectionProfileViewSchema
+>;
+
+export const AdminGovernanceProjectionProfileViewListSchema = Schema.Array(
+  AdminGovernanceProjectionProfileViewSchema,
+);
+
+export const AdminGovernanceListProjectionProfilesRequestSchema = Schema.Struct(
+  {
+    requestContext: RequestContextSchema,
+    moduleId: Schema.optional(PlatformModuleIdSchema),
+  },
+);
+
+type ListProjectionProfilesCommand = Schema.Schema.Type<
+  typeof AdminGovernanceListProjectionProfilesRequestSchema
+>;
+
+const ListActionPoliciesCommandSchema = Schema.Struct({
+  requestContext: RequestContextSchema,
+});
+
+type ListActionPoliciesCommand = Schema.Schema.Type<
+  typeof ListActionPoliciesCommandSchema
+>;
+
 export type AdminGovernanceProjectionConfigurationError = {
   readonly _tag: "AdminGovernanceProjectionConfigurationError";
   readonly moduleId: PlatformModuleId;
@@ -682,6 +821,16 @@ type AdminGovernanceAuthorizationTupleWriter = (
   ParseResult.ParseError | OryKetoAdapterRequestError
 >;
 
+type AdminGovernanceAuthorizationTupleDeleter =
+  AdminGovernanceAuthorizationTupleWriter;
+
+type AdminGovernanceAuthorizationTupleLister = (
+  input: OryKetoListTuplesInput,
+) => Effect.Effect<
+  readonly OryKetoTuple[],
+  ParseResult.ParseError | OryKetoAdapterRequestError
+>;
+
 type RuntimeConfigGovernanceProposalRecord =
   | RuntimeConfigOverrideProposalRecord
   | RuntimeConfigSyncArtifactRecord;
@@ -757,6 +906,30 @@ export type AdminGovernanceService = {
     input: WriteAuthorizationTupleCommand,
   ) => Effect.Effect<
     AdminGovernanceWriteAuthorizationTupleResponse,
+    AdminGovernanceServiceError
+  >;
+  readonly listAuthorizationTuples: (
+    input: ListAuthorizationTuplesCommand,
+  ) => Effect.Effect<
+    AdminGovernanceAuthorizationTupleQueryResult,
+    AdminGovernanceServiceError
+  >;
+  readonly deleteAuthorizationTuple: (
+    input: DeleteAuthorizationTupleCommand,
+  ) => Effect.Effect<
+    AdminGovernanceDeleteAuthorizationTupleResponse,
+    AdminGovernanceServiceError
+  >;
+  readonly listProjectionProfiles: (
+    input: ListProjectionProfilesCommand,
+  ) => Effect.Effect<
+    readonly AdminGovernanceProjectionProfileView[],
+    AdminGovernanceServiceError
+  >;
+  readonly listActionPolicies: (
+    input: ListActionPoliciesCommand,
+  ) => Effect.Effect<
+    readonly AdminGovernanceActionPolicyMetadata[],
     AdminGovernanceServiceError
   >;
   readonly submitRuntimeConfigOverrideProposal: (
@@ -1288,12 +1461,182 @@ const decodeAdminGovernanceAuthorizationTupleView = Schema.decodeUnknown(
   AdminGovernanceAuthorizationTupleViewSchema,
 );
 
+const decodeAdminGovernanceAuthorizationTupleQueryResult = Schema.decodeUnknown(
+  AdminGovernanceAuthorizationTupleQueryResultSchema,
+);
+
+const decodeAdminGovernanceDeleteAuthorizationTupleResponse =
+  Schema.decodeUnknown(AdminGovernanceDeleteAuthorizationTupleResponseSchema);
+
+const decodeAdminGovernanceProjectionProfileViewList = Schema.decodeUnknown(
+  AdminGovernanceProjectionProfileViewListSchema,
+);
+
+const decodeAdminGovernanceActionPolicyMetadataList = Schema.decodeUnknown(
+  AdminGovernanceActionPolicyMetadataListSchema,
+);
+
 const decodeAdminGovernanceAuthorizationTupleMutationRecord =
   Schema.decodeUnknown(
     Schema.Struct({
       tuple: AdminGovernanceAuthorizationTupleViewSchema,
     }),
   );
+
+const defaultAdminGovernanceActionPolicies = Schema.validateSync(
+  AdminGovernanceActionPolicyMetadataListSchema,
+)([
+  {
+    actionId: adminGovernanceActionPolicyId.authorizationTupleWrite,
+    label: "Grant authorization tuple",
+    description:
+      "Use the delegated Ory Keto control surface to add an explicit authorization tuple.",
+    severity: adminGovernanceActionPolicySeverity.guarded,
+    projectionProfile: projectionProfile.admin,
+    requiresReason: true,
+    requiresComment: false,
+    stepUpRequired: false,
+    reasonOptions: [
+      {
+        value: "reviewed-access-request",
+        label: "Reviewed access request",
+        description:
+          "The operator verified the subject, scope, and requested relation before granting access.",
+      },
+      {
+        value: "tenant-admin-approved",
+        label: "Tenant admin approved",
+        description:
+          "A tenant or platform owner approved the access grant through an audited operator workflow.",
+      },
+    ],
+  },
+  {
+    actionId: adminGovernanceActionPolicyId.authorizationTupleDelete,
+    label: "Revoke authorization tuple",
+    description:
+      "Remove an explicit authorization tuple when access should no longer resolve through Ory Keto.",
+    severity: adminGovernanceActionPolicySeverity.highRisk,
+    projectionProfile: projectionProfile.admin,
+    requiresReason: true,
+    requiresComment: true,
+    stepUpRequired: false,
+    reasonOptions: [
+      {
+        value: "access-no-longer-required",
+        label: "Access no longer required",
+        description:
+          "The subject no longer needs the relation for the requested tenant or platform object.",
+      },
+      {
+        value: "policy-violation-remediation",
+        label: "Policy violation remediation",
+        description:
+          "The tuple is being revoked to remediate an operator or policy exception.",
+      },
+    ],
+  },
+  {
+    actionId: adminGovernanceActionPolicyId.runtimeConfigProposalSubmit,
+    label: "Submit runtime proposal",
+    description:
+      "Stage a durable runtime-config override proposal for review before the effective runtime state changes.",
+    severity: adminGovernanceActionPolicySeverity.guarded,
+    projectionProfile: projectionProfile.admin,
+    requiresReason: true,
+    requiresComment: false,
+    stepUpRequired: false,
+    reasonOptions: [
+      {
+        value: "operator-change-request",
+        label: "Operator change request",
+        description:
+          "An operator is submitting a reviewed runtime change request for later approval.",
+      },
+      {
+        value: "incident-mitigation",
+        label: "Incident mitigation",
+        description:
+          "The proposal supports a bounded operational mitigation while preserving the approval gate.",
+      },
+    ],
+  },
+  {
+    actionId: adminGovernanceActionPolicyId.runtimeConfigProposalReview,
+    label: "Review runtime proposal",
+    description:
+      "Approve or reject a runtime-config proposal with a durable decision reason.",
+    severity: adminGovernanceActionPolicySeverity.highRisk,
+    projectionProfile: projectionProfile.admin,
+    requiresReason: true,
+    requiresComment: false,
+    stepUpRequired: false,
+    reasonOptions: [
+      {
+        value: "approved-after-review",
+        label: "Approved after review",
+        description:
+          "The operator verified the proposal and approved it for durable application.",
+      },
+      {
+        value: "rejected-after-review",
+        label: "Rejected after review",
+        description:
+          "The operator rejected the proposal after reviewing its impact and policy fit.",
+      },
+    ],
+  },
+  {
+    actionId: adminGovernanceActionPolicyId.breakGlassIncidentReview,
+    label: "Review break-glass incident",
+    description:
+      "Complete the post-incident review for a support-safe break-glass grant.",
+    severity: adminGovernanceActionPolicySeverity.highRisk,
+    projectionProfile: projectionProfile.supportSafe,
+    requiresReason: true,
+    requiresComment: true,
+    stepUpRequired: false,
+    reasonOptions: [
+      {
+        value: "incident-closed",
+        label: "Incident closed",
+        description:
+          "The emergency access window is no longer needed and the incident review is complete.",
+      },
+      {
+        value: "follow-up-required",
+        label: "Follow-up required",
+        description:
+          "The review is complete, but documented follow-up remains on the operator backlog.",
+      },
+    ],
+  },
+  {
+    actionId: adminGovernanceActionPolicyId.repairGapInspection,
+    label: "Reveal repair failure details",
+    description:
+      "Reveal redacted tenant repair failure details for an audited operator inspection.",
+    severity: adminGovernanceActionPolicySeverity.guarded,
+    projectionProfile: projectionProfile.admin,
+    requiresReason: true,
+    requiresComment: false,
+    stepUpRequired: false,
+    reasonOptions: [
+      {
+        value: "operator-investigation",
+        label: "Operator investigation",
+        description:
+          "The operator is investigating a durable repair-gap workflow failure before replay or cancellation.",
+      },
+      {
+        value: "tenant-support-follow-up",
+        label: "Tenant support follow-up",
+        description:
+          "A tenant-facing support workflow needs the backend repair detail before the next step.",
+      },
+    ],
+  },
+]);
 
 const resolveAuthorizationAllowSource = (input: {
   readonly decision: AdminGovernanceAuthorizationDecisionView;
@@ -1723,6 +2066,245 @@ const projectAuthorizationTupleMutationResponse = (input: {
           tuple: projectedTuple.record.tuple,
           auditEvent: projectedAuditEvent.record,
         })),
+      ),
+    ),
+  );
+
+const buildAdminQueryPageInfo = (input: {
+  readonly totalItems: number;
+  readonly page: Schema.Schema.Type<typeof AdminQueryPageSchema>;
+  readonly exportMode: boolean;
+}) =>
+  Schema.decodeUnknown(AdminQueryPageInfoSchema)({
+    page: input.page,
+    totalItems: input.totalItems,
+    totalPages:
+      input.exportMode || input.totalItems === 0
+        ? input.exportMode && input.totalItems > 0
+          ? 1
+          : 0
+        : Math.ceil(input.totalItems / input.page.pageSize),
+    exportMode: input.exportMode,
+  });
+
+const sortAuthorizationTuples = (
+  tuples: readonly AdminGovernanceAuthorizationTupleView[],
+  sortField: AdminGovernanceAuthorizationTupleQuery["sortField"],
+  sortDirection: AdminGovernanceAuthorizationTupleQuery["sortDirection"],
+) =>
+  [...tuples].sort((left, right) => {
+    const leftValue = left[sortField];
+    const rightValue = right[sortField];
+    const comparison = String(leftValue).localeCompare(String(rightValue));
+
+    return sortDirection === "asc" ? comparison : comparison * -1;
+  });
+
+const selectAuthorizationTuplePage = (input: {
+  readonly tuples: readonly AdminGovernanceAuthorizationTupleView[];
+  readonly query: AdminGovernanceAuthorizationTupleQuery;
+}) => {
+  if (input.query.exportMode) {
+    return input.tuples;
+  }
+
+  const offset = (input.query.page.page - 1) * input.query.page.pageSize;
+
+  return input.tuples.slice(offset, offset + input.query.page.pageSize);
+};
+
+const listAuthorizationTuples = (input: {
+  readonly tupleLister: AdminGovernanceAuthorizationTupleLister;
+  readonly auditLog: AuditLogModuleService;
+  readonly fieldSecurity: AdminGovernanceFieldSecurity;
+  readonly authorizationProjection: ProjectionDescriptor;
+  readonly request: ListAuthorizationTuplesCommand;
+}): Effect.Effect<
+  AdminGovernanceAuthorizationTupleQueryResult,
+  AdminGovernanceServiceError
+> =>
+  Schema.decodeUnknown(AdminGovernanceListAuthorizationTuplesRequestSchema)(
+    input.request,
+  ).pipe(
+    Effect.flatMap((request) =>
+      ensureAdminGovernanceReadAccess(request.requestContext).pipe(
+        Effect.flatMap(() =>
+          input.tupleLister({
+            namespace: request.query.namespace,
+            object: request.query.object,
+            relation: request.query.relation,
+            ...(request.query.subject === undefined
+              ? {}
+              : { subject: request.query.subject }),
+          }),
+        ),
+        Effect.map((tuples) => tuples.map((tuple) => ({ tuple }))),
+        Effect.flatMap((records) =>
+          projectAdminGovernanceRecords({
+            fieldSecurity: input.fieldSecurity,
+            moduleId: platformModuleId.authorization,
+            requestContext: request.requestContext,
+            projection: input.authorizationProjection,
+            records,
+            recordType: "authorizationTupleMutation",
+            decode: decodeAdminGovernanceAuthorizationTupleMutationRecord,
+          }),
+        ),
+        Effect.flatMap((projectedRecords) => {
+          const sortedTuples = sortAuthorizationTuples(
+            projectedRecords.map((record) => record.record.tuple),
+            request.query.sortField,
+            request.query.sortDirection,
+          );
+          const pageItems = selectAuthorizationTuplePage({
+            tuples: sortedTuples,
+            query: request.query,
+          });
+          const auditedFields = collectAuditedFields(projectedRecords);
+          const detail =
+            request.query.detailLookup === undefined
+              ? undefined
+              : sortedTuples.find(
+                  (tuple) =>
+                    tuple.namespace === request.query.detailLookup?.namespace &&
+                    tuple.object === request.query.detailLookup?.object &&
+                    tuple.relation === request.query.detailLookup?.relation &&
+                    tuple.subject === request.query.detailLookup?.subject,
+                );
+
+          return buildAdminQueryPageInfo({
+            totalItems: sortedTuples.length,
+            page: request.query.page,
+            exportMode: request.query.exportMode,
+          }).pipe(
+            Effect.flatMap((pageInfo) =>
+              appendSensitiveReadAudit(input.auditLog, {
+                requestContext: request.requestContext,
+                target: `${platformModuleId.authorization}:${request.query.namespace}:${request.query.object}:${request.query.relation}:tuples:${auditedFields.join(",")}`,
+                reason: `Inspect projected authorization tuples for ${request.query.namespace}:${request.query.object}:${request.query.relation}.`,
+                auditedFields,
+              }).pipe(
+                Effect.flatMap(() =>
+                  decodeAdminGovernanceAuthorizationTupleQueryResult({
+                    items: pageItems,
+                    pageInfo,
+                    ...(detail === undefined ? {} : { detail }),
+                  }),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    ),
+  );
+
+const deleteAuthorizationTuple = (input: {
+  readonly tupleDeleter: AdminGovernanceAuthorizationTupleDeleter;
+  readonly auditLog: AuditLogModuleService;
+  readonly fieldSecurity: AdminGovernanceFieldSecurity;
+  readonly authorizationProjection: ProjectionDescriptor;
+  readonly auditLogProjection: ProjectionDescriptor;
+  readonly request: DeleteAuthorizationTupleCommand;
+}): Effect.Effect<
+  AdminGovernanceDeleteAuthorizationTupleResponse,
+  AdminGovernanceServiceError
+> =>
+  Schema.decodeUnknown(AdminGovernanceDeleteAuthorizationTupleRequestSchema)(
+    input.request,
+  ).pipe(
+    Effect.flatMap((request) =>
+      ensureAdminGovernanceMutationAccess(request.requestContext).pipe(
+        Effect.flatMap((requestContext) =>
+          input.tupleDeleter(request.tuple).pipe(
+            Effect.flatMap(decodeAdminGovernanceAuthorizationTupleView),
+            Effect.flatMap((tuple) =>
+              input.auditLog
+                .append({
+                  requestContext: {
+                    ...requestContext,
+                    reason: request.reason,
+                  },
+                  moduleId: platformModuleId.authorization,
+                  action: authorizationAuditAction.tupleChanged,
+                  target: buildAuthorizationTupleTarget(tuple),
+                  reason: request.reason,
+                })
+                .pipe(
+                  Effect.flatMap((auditEvent) =>
+                    projectAuthorizationTupleMutationResponse({
+                      auditLog: input.auditLog,
+                      fieldSecurity: input.fieldSecurity,
+                      requestContext,
+                      authorizationProjection: input.authorizationProjection,
+                      auditLogProjection: input.auditLogProjection,
+                      tuple,
+                      auditEvent,
+                    }).pipe(
+                      Effect.flatMap(({ tuple, auditEvent }) =>
+                        decodeAdminGovernanceDeleteAuthorizationTupleResponse({
+                          mutation: "deleted",
+                          tuple,
+                          auditEvent,
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+const listProjectionProfiles = (
+  input: ListProjectionProfilesCommand,
+): Effect.Effect<
+  readonly AdminGovernanceProjectionProfileView[],
+  AdminGovernanceServiceError
+> =>
+  Schema.decodeUnknown(AdminGovernanceListProjectionProfilesRequestSchema)(
+    input,
+  ).pipe(
+    Effect.flatMap((request) =>
+      ensureAdminGovernanceReadAccess(request.requestContext).pipe(
+        Effect.flatMap(() =>
+          decodeAdminGovernanceProjectionProfileViewList(
+            platformModuleManifests.flatMap((manifest) =>
+              manifest.projectionProfiles
+                .filter(
+                  (projection) =>
+                    request.moduleId === undefined ||
+                    manifest.moduleId === request.moduleId,
+                )
+                .map((projection) => ({
+                  moduleId: manifest.moduleId,
+                  profile: projection.profile,
+                  visibleFields: [...projection.visibleFields],
+                  auditedFields: [...projection.auditedFields],
+                })),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+const listActionPolicies = (
+  input: ListActionPoliciesCommand,
+): Effect.Effect<
+  readonly AdminGovernanceActionPolicyMetadata[],
+  AdminGovernanceServiceError
+> =>
+  Schema.decodeUnknown(ListActionPoliciesCommandSchema)(input).pipe(
+    Effect.flatMap((request) =>
+      ensureAdminGovernanceReadAccess(request.requestContext).pipe(
+        Effect.flatMap(() =>
+          decodeAdminGovernanceActionPolicyMetadataList(
+            defaultAdminGovernanceActionPolicies,
+          ),
+        ),
       ),
     ),
   );
@@ -2419,6 +3001,8 @@ export const makeAdminGovernanceService = (
   options: {
     readonly authorization: AdminGovernanceAuthorization;
     readonly writeAuthorizationTuple: AdminGovernanceAuthorizationTupleWriter;
+    readonly deleteAuthorizationTuple: AdminGovernanceAuthorizationTupleDeleter;
+    readonly listAuthorizationTuples: AdminGovernanceAuthorizationTupleLister;
   },
 ) =>
   Effect.gen(function* () {
@@ -2505,6 +3089,27 @@ export const makeAdminGovernanceService = (
           auditLogAdminProjection,
           input,
         ),
+      listAuthorizationTuples: (input: ListAuthorizationTuplesCommand) =>
+        listAuthorizationTuples({
+          tupleLister: options.listAuthorizationTuples,
+          auditLog,
+          fieldSecurity,
+          authorizationProjection: authorizationAdminProjection,
+          request: input,
+        }),
+      deleteAuthorizationTuple: (input: DeleteAuthorizationTupleCommand) =>
+        deleteAuthorizationTuple({
+          tupleDeleter: options.deleteAuthorizationTuple,
+          auditLog,
+          fieldSecurity,
+          authorizationProjection: authorizationAdminProjection,
+          auditLogProjection: auditLogAdminProjection,
+          request: input,
+        }),
+      listProjectionProfiles: (input: ListProjectionProfilesCommand) =>
+        listProjectionProfiles(input),
+      listActionPolicies: (input: ListActionPoliciesCommand) =>
+        listActionPolicies(input),
       submitRuntimeConfigOverrideProposal: (
         input: SubmitRuntimeConfigOverrideProposalCommand,
       ): Effect.Effect<
@@ -3293,6 +3898,8 @@ const makeAdminGovernanceRuntime = (options: AdminGovernanceRuntimeOptions) =>
     const service = yield* makeAdminGovernanceService(proposalPersistence, {
       authorization,
       writeAuthorizationTuple: oryKeto.writeTuple,
+      deleteAuthorizationTuple: oryKeto.deleteTuple,
+      listAuthorizationTuples: oryKeto.listTuples,
     }).pipe(
       Effect.provideService(RuntimeConfigModule, runtimeConfig),
       Effect.provideService(

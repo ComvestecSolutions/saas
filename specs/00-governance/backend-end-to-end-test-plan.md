@@ -1,6 +1,6 @@
 # Backend End-To-End Test Plan
 
-Status: refreshed working plan
+Status: validated
 
 Last updated: 2026-05-12
 
@@ -11,6 +11,8 @@ Establish one reusable backend-only end-to-end validation program that drives th
 This plan is intentionally narrower than general application testing. It exists to make backend completion reviewable, repeatable, and trackable across sessions without letting browser or UI work blur the delivery bar.
 
 `implementation-tracker.md` remains the maturity source of truth. This plan defines the current scope, transport rules, active phases, evidence bar, and the current next gaps for the backend e2e program.
+
+The backend-only delivery program described here is now complete for backend-completion purposes. This document remains the maintained evidence bar for preserving validated backend status as backend routes, operators, and runtime integrations evolve.
 
 ## Backend-Only Scope Lock
 
@@ -35,7 +37,7 @@ This plan is intentionally narrower than general application testing. It exists 
    - `tooling/scripts/subscriber-journey/live-smoke.ts`
 5. The dedicated `tests/platform/backend-e2e/` lane now covers the currently audited backend-owned route families, including admin billing, import/export, search, workflow jobs, and backend-owned email-delivery provider-event handling, plus first-party app server-side parity where the same backend workflow is exposed through app boundaries.
 
-### What is still missing
+### Current validated posture
 
 1. There is no current implementation blocker in the validated local backend lane. `bun run format:check`, `bun run typecheck`, `bun run test`, `bun run test:backend:e2e:local`, and the backend-ready smoke kickoff all complete successfully after aligning the local `POLAR_API_URL` override with the sandbox-scoped Polar organization access token.
 2. Security invariants are now explicit in the backend-e2e lane rather than only transitive: no-session app-shell fallbacks, trusted-session spoofing denial, break-glass expiry and allow behavior, support-safe or secret field omission, cross-tenant denial, and webhook replay idempotency all have direct backend evidence and must stay explicit as future routes land.
@@ -61,7 +63,9 @@ This plan is intentionally narrower than general application testing. It exists 
 | Governance and operator repair    | Admin governance, support operations, retention, admin billing HTTP handlers                                                           | Admin tenant repair route loader and server functions                       | `tests/platform/admin-governance*.test.ts`, `tests/platform/support-operations*.test.ts`, `tests/platform/admin-home-route.test.ts`               | Primary on backend-owned HTTP, targeted parity on admin app server-side transport                                                               |
 | Domain and communication services | File storage, import/export, search, workflow jobs, email delivery, notification center, tenant branding, tenant invitations, webhooks | Limited or no first-party server-side exposure today                        | Focused platform and backend-api tests across `tests/platform/`                                                                                   | Primary on backend-owned HTTP unless a first-party server-side boundary is added                                                                |
 
-## Active Implementation Phases
+## Implementation Phases
+
+The original delivery phases below are complete in the current workspace. They remain here as the structure the program used, while the evidence bar and next-gap sections now define the ongoing maintenance posture.
 
 ### Phase 1: Governance And Command Surface
 

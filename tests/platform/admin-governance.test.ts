@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 import {
+  adminGovernanceActionPolicyId,
+  adminQuerySortDirection,
   authorizationAuditAction,
   authorizationNamespace,
   authorizationRelation,
@@ -14,6 +16,7 @@ import {
   runtimeChangeProposalAction,
   runtimeResolutionSource,
   tenantBrandingFeatureFlag,
+  projectionProfile,
   type AuditEvent,
 } from "@comvestec/contracts";
 import {
@@ -210,7 +213,16 @@ const createAdminGovernanceHarness = async (input?: {
     AuthorizationModuleService,
     "check" | "explain"
   >;
+  readonly listAuthorizationTuples?: (input: {
+    readonly namespace: string;
+    readonly object: string;
+    readonly relation: string;
+    readonly subject?: string | undefined;
+  }) => Effect.Effect<readonly OryKetoTuple[], never>;
   readonly writeAuthorizationTuple?: (
+    tuple: OryKetoTuple,
+  ) => Effect.Effect<OryKetoTuple, never>;
+  readonly deleteAuthorizationTuple?: (
     tuple: OryKetoTuple,
   ) => Effect.Effect<OryKetoTuple, never>;
 }) => {
@@ -543,8 +555,24 @@ const createAdminGovernanceHarness = async (input?: {
   const service = await Effect.runPromise(
     makeAdminGovernanceService(proposalReviewPersistence, {
       authorization,
+      listAuthorizationTuples:
+        input?.listAuthorizationTuples ??
+        ((query) =>
+          Effect.succeed(
+            authorizationTuples
+              .filter((tuple) => tuple.namespace === query.namespace)
+              .filter((tuple) => tuple.object === query.object)
+              .filter((tuple) => tuple.relation === query.relation)
+              .filter(
+                (tuple) =>
+                  query.subject === undefined ||
+                  tuple.subject === query.subject,
+              ),
+          )),
       writeAuthorizationTuple:
         input?.writeAuthorizationTuple ?? ((tuple) => Effect.succeed(tuple)),
+      deleteAuthorizationTuple:
+        input?.deleteAuthorizationTuple ?? ((tuple) => Effect.succeed(tuple)),
     }).pipe(
       Effect.provideService(RuntimeConfigModule, runtimeConfig),
       Effect.provideService(
@@ -2445,6 +2473,184 @@ describe("platform admin governance", () => {
           moduleId: platformModuleId.fieldSecurity,
           action: fieldSecurityAuditAction.sensitiveRead,
           target: `${platformModuleId.authorization}:${authorizationNamespace.tenant}:org_demo:${authorizationRelation.viewer}:usr_member_2:tuple-mutation:tuple.subject`,
+        }),
+      ]),
+    );
+  });
+
+  it("lists exact-scope authorization tuples through the admin query envelope", async () => {
+    const { insertedAuditEvents, service } = await createAdminGovernanceHarness(
+      {
+        authorizationTuples: [
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_demo",
+            relation: authorizationRelation.viewer,
+            subject: "usr_member_2",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_demo",
+          },
+          {
+            namespace: authorizationNamespace.tenant,
+            object: "org_demo",
+            relation: authorizationRelation.viewer,
+            subject: "usr_member_1",
+            tenantScope: platformScope.organization,
+            tenantScopeId: "org_demo",
+          },
+        ],
+      },
+    );
+
+    const result = await Effect.runPromise(
+      service.listAuthorizationTuples({
+        requestContext: supportOperatorGovernanceRequestContext,
+        query: {
+          namespace: authorizationNamespace.tenant,
+          object: "org_demo",
+          relation: authorizationRelation.viewer,
+          page: {
+            page: 1,
+            pageSize: 1,
+          },
+          sortField: "subject",
+          sortDirection: adminQuerySortDirection.asc,
+          exportMode: false,
+          detailLookup: {
+            namespace: authorizationNamespace.tenant,
+            object: "org_demo",
+            relation: authorizationRelation.viewer,
+            subject: "usr_member_2",
+          },
+        },
+      }),
+    );
+
+    expect(result.items).toEqual([
+      {
+        namespace: authorizationNamespace.tenant,
+        object: "org_demo",
+        relation: authorizationRelation.viewer,
+        subject: "usr_member_1",
+      },
+    ]);
+    expect(result.detail).toEqual({
+      namespace: authorizationNamespace.tenant,
+      object: "org_demo",
+      relation: authorizationRelation.viewer,
+      subject: "usr_member_2",
+    });
+    expect(result.pageInfo.totalItems).toBe(2);
+    expect(insertedAuditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: platformModuleId.fieldSecurity,
+          action: fieldSecurityAuditAction.sensitiveRead,
+          target: `${platformModuleId.authorization}:${authorizationNamespace.tenant}:org_demo:${authorizationRelation.viewer}:tuples:tuple.subject`,
+        }),
+      ]),
+    );
+  });
+
+  it("deletes authorization tuples for support operators", async () => {
+    const deleteAuthorizationTuple = vi.fn((tuple: OryKetoTuple) =>
+      Effect.succeed(tuple),
+    );
+    const { insertedAuditEvents, service } = await createAdminGovernanceHarness(
+      {
+        deleteAuthorizationTuple,
+      },
+    );
+
+    const result = await Effect.runPromise(
+      service.deleteAuthorizationTuple({
+        requestContext: supportOperatorGovernanceRequestContext,
+        tuple: {
+          namespace: authorizationNamespace.tenant,
+          object: "org_demo",
+          relation: authorizationRelation.viewer,
+          subject: "usr_member_2",
+        },
+        reason: "Revoke reviewed tenant viewer access.",
+      }),
+    );
+
+    expect(deleteAuthorizationTuple).toHaveBeenCalledWith({
+      namespace: authorizationNamespace.tenant,
+      object: "org_demo",
+      relation: authorizationRelation.viewer,
+      subject: "usr_member_2",
+    });
+    expect(result).toMatchObject({
+      mutation: "deleted",
+      tuple: {
+        namespace: authorizationNamespace.tenant,
+        object: "org_demo",
+        relation: authorizationRelation.viewer,
+        subject: "usr_member_2",
+      },
+      auditEvent: {
+        action: authorizationAuditAction.tupleChanged,
+        reason: "Revoke reviewed tenant viewer access.",
+      },
+    });
+    expect(insertedAuditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: platformModuleId.authorization,
+          action: authorizationAuditAction.tupleChanged,
+        }),
+        expect.objectContaining({
+          moduleId: platformModuleId.fieldSecurity,
+          action: fieldSecurityAuditAction.sensitiveRead,
+          target: `${platformModuleId.authorization}:${authorizationNamespace.tenant}:org_demo:${authorizationRelation.viewer}:usr_member_2:tuple-mutation:tuple.subject`,
+        }),
+      ]),
+    );
+  });
+
+  it("lists declared projection profiles for operator review surfaces", async () => {
+    const { service } = await createAdminGovernanceHarness();
+
+    const result = await Effect.runPromise(
+      service.listProjectionProfiles({
+        requestContext: supportOperatorGovernanceRequestContext,
+        moduleId: platformModuleId.supportOperations,
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: platformModuleId.supportOperations,
+          profile: projectionProfile.admin,
+        }),
+        expect.objectContaining({
+          moduleId: platformModuleId.supportOperations,
+          profile: projectionProfile.supportSafe,
+        }),
+      ]),
+    );
+  });
+
+  it("returns governed action-policy metadata without step-up requirements", async () => {
+    const { service } = await createAdminGovernanceHarness();
+
+    const result = await Effect.runPromise(
+      service.listActionPolicies({
+        requestContext: supportOperatorGovernanceRequestContext,
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionId: adminGovernanceActionPolicyId.authorizationTupleDelete,
+          stepUpRequired: false,
+        }),
+        expect.objectContaining({
+          actionId: adminGovernanceActionPolicyId.breakGlassIncidentReview,
+          stepUpRequired: false,
         }),
       ]),
     );

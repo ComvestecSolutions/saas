@@ -58,7 +58,7 @@ const decodeNovuNotificationDispatchReceipt = Schema.decodeUnknown(
   NovuNotificationDispatchReceiptSchema,
 );
 
-const NovuTriggerEventResponseSchema = Schema.Union(
+const NovuTriggerEventPayloadSchema = Schema.Union(
   Schema.Struct({
     acknowledged: Schema.Boolean,
     status: Schema.optional(Schema.NonEmptyString),
@@ -77,6 +77,17 @@ const NovuTriggerEventResponseSchema = Schema.Union(
     }),
   }),
 );
+
+const NovuTriggerEventResponseSchema = Schema.Union(
+  NovuTriggerEventPayloadSchema,
+  Schema.Struct({
+    data: NovuTriggerEventPayloadSchema,
+  }),
+);
+
+type NovuTriggerEventPayload = Schema.Schema.Type<
+  typeof NovuTriggerEventPayloadSchema
+>;
 
 type NovuTriggerEventResponse = Schema.Schema.Type<
   typeof NovuTriggerEventResponseSchema
@@ -129,8 +140,11 @@ const buildNovuHeaders = (apiKey: string) => ({
   "Content-Type": "application/json",
 });
 
+export const buildNovuWorkflowIdentifier = (template: string) =>
+  template.replaceAll(".", "-");
+
 const buildNovuTriggerRequestBody = (input: NovuTriggerNotificationInput) => ({
-  name: input.template,
+  name: buildNovuWorkflowIdentifier(input.template),
   to: {
     subscriberId: input.recipient.toLowerCase(),
     email: input.recipient,
@@ -146,7 +160,12 @@ const buildNovuTriggerRequestBody = (input: NovuTriggerNotificationInput) => ({
   },
 });
 
-const resolveNovuReceiptId = (response: NovuTriggerEventResponse) => {
+const unwrapNovuTriggerEventResponse = (
+  response: NovuTriggerEventResponse,
+): NovuTriggerEventPayload =>
+  "acknowledged" in response ? response : response.data;
+
+const resolveNovuReceiptId = (response: NovuTriggerEventPayload) => {
   if ("transactionId" in response) {
     return response.transactionId;
   }
@@ -253,10 +272,12 @@ const createNovuTriggerNotification = (input: {
             ): Effect.Effect<
               NovuNotificationDispatchReceipt,
               NovuAdapterError
-            > =>
-              response.acknowledged
+            > => {
+              const payload = unwrapNovuTriggerEventResponse(response);
+
+              return payload.acknowledged
                 ? decodeNovuNotificationDispatchReceipt({
-                    id: resolveNovuReceiptId(response),
+                    id: resolveNovuReceiptId(payload),
                     channel: request.channel,
                     status: "queued",
                     recipient: request.recipient,
@@ -269,9 +290,10 @@ const createNovuTriggerNotification = (input: {
                       "triggerNotification",
                       endpoint,
                       202,
-                      JSON.stringify(response),
+                      JSON.stringify(payload),
                     ),
-                  ),
+                  );
+            },
           ),
         ),
       ),

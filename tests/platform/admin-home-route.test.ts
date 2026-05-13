@@ -1,5 +1,8 @@
 import { Effect } from "effect";
 import {
+  actorType,
+  adminOperatorCapability,
+  adminRoutePath,
   platformScope,
   workflowJobGapReason,
   workflowJobStatus,
@@ -16,6 +19,58 @@ import {
 import { loadAdminTenantRepairRouteDataFromRequest } from "../../apps/admin-app/src/lib/tenant-repair-route-data";
 import { createTanstackStartTestServerRuntime } from "../tanstack-start-test-runtime";
 
+const operationsSummary = {
+  capabilities: {
+    actorType: actorType.platformOperator,
+    actorId: "usr_platform_operator",
+    sessionId: "sess_admin_ready",
+    capabilities: [
+      {
+        capability: adminOperatorCapability.operationsHome,
+        routePath: adminRoutePath.operationsHome,
+        visible: true,
+        allowed: true,
+        label: "Operations Home",
+        actionPolicyIds: [],
+      },
+      {
+        capability: adminOperatorCapability.repairOperations,
+        routePath: adminRoutePath.repairOperations,
+        visible: true,
+        allowed: true,
+        label: "Repair Operations",
+        actionPolicyIds: [],
+      },
+    ],
+  },
+  posture: {
+    openRepairGaps: 1,
+    blockedRepairGaps: 1,
+    scheduledRepairGaps: 0,
+    staleRunningRepairGaps: 0,
+    openSupportCases: 0,
+    escalatedSupportCases: 0,
+    activeImpersonationSessions: 0,
+    revocationPendingImpersonationSessions: 0,
+    pendingBreakGlassIncidents: 0,
+    pendingRuntimeConfigProposals: 0,
+    pendingBrandingProposals: 0,
+  },
+  alerts: [],
+  recentActivity: {
+    pageInfo: {
+      page: {
+        page: 1,
+        pageSize: 5,
+      },
+      totalItems: 0,
+      totalPages: 0,
+      exportMode: false,
+    },
+    items: [],
+  },
+} as const;
+
 describe("admin tenant repair route data", () => {
   it("falls back to the shell when the operator session transport is missing", async () => {
     const listBillingRepairGaps = vi.fn(() => {
@@ -29,6 +84,7 @@ describe("admin tenant repair route data", () => {
         loadAdminTenantRepairRouteDataFromRequest(
           new Request("http://localhost:3001/"),
           {},
+          () => Effect.succeed(operationsSummary),
           listBillingRepairGaps,
         ),
       ),
@@ -47,6 +103,11 @@ describe("admin tenant repair route data", () => {
             },
           }),
           {},
+          () =>
+            Effect.fail({
+              _tag: "AdminGovernanceRequestContextNotFoundError",
+              sessionId: "sess_admin_stale",
+            } as const),
           () =>
             Effect.fail({
               _tag: "IdentitySessionRequestContextNotFoundError",
@@ -68,6 +129,24 @@ describe("admin tenant repair route data", () => {
           }),
           {},
           () =>
+            Effect.succeed({
+              ...operationsSummary,
+              capabilities: {
+                ...operationsSummary.capabilities,
+                capabilities: [
+                  {
+                    capability: adminOperatorCapability.operationsHome,
+                    routePath: adminRoutePath.operationsHome,
+                    visible: false,
+                    allowed: false,
+                    label: "Operations Home",
+                    reason: "Denied by trusted operator capability resolution.",
+                    actionPolicyIds: [],
+                  },
+                ],
+              },
+            }),
+          () =>
             Effect.fail({
               _tag: "ManagedBillingPlanAccessDeniedError",
               reason:
@@ -78,8 +157,7 @@ describe("admin tenant repair route data", () => {
       ),
     ).resolves.toEqual({
       kind: "denied",
-      reason:
-        "Admin billing operations require a platform-operator session scoped to the platform tenant.",
+      reason: "Denied by trusted operator capability resolution.",
     });
   });
 
@@ -109,11 +187,13 @@ describe("admin tenant repair route data", () => {
             },
           }),
           {},
+          () => Effect.succeed(operationsSummary),
           () => Effect.succeed(result),
         ),
       ),
     ).resolves.toEqual({
       kind: "ready",
+      summary: operationsSummary,
       jobs: result.jobs,
     });
   });
@@ -135,6 +215,7 @@ describe("admin tenant repair route data", () => {
             },
           }),
           {},
+          () => Effect.succeed(operationsSummary),
           (_environment, input) => {
             capturedInput = input;
 
@@ -143,7 +224,11 @@ describe("admin tenant repair route data", () => {
           { inspectionReason: "Investigate org onboarding repair failures" },
         ),
       ),
-    ).resolves.toEqual({ kind: "ready", jobs: [] });
+    ).resolves.toEqual({
+      kind: "ready",
+      summary: operationsSummary,
+      jobs: [],
+    });
 
     expect(capturedInput).toEqual({
       sessionId: "sess_admin_reasoned",

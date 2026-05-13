@@ -2,7 +2,7 @@
 
 This TanStack Start shell hosts the authenticated tenant-facing experience for future Comvestec SaaS products.
 
-Current status: implemented. The intended backend-ready flow lives in [../../specs/02-apps/product-app/spec.md](../../specs/02-apps/product-app/spec.md), and current delivery maturity lives in [../../specs/00-governance/implementation-tracker.md](../../specs/00-governance/implementation-tracker.md).
+Current status: validated. The intended backend-ready flow lives in [../../specs/02-apps/product-app/spec.md](../../specs/02-apps/product-app/spec.md), and current delivery maturity lives in [../../specs/00-governance/implementation-tracker.md](../../specs/00-governance/implementation-tracker.md).
 
 Local development:
 

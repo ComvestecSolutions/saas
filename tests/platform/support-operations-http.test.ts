@@ -46,6 +46,9 @@ const createSupportOperationsServiceDouble = (
   listBreakGlassIncidents:
     overrides.listBreakGlassIncidents ??
     (() => unexpectedSupportOperationsServiceEffect()),
+  getBreakGlassIncident:
+    overrides.getBreakGlassIncident ??
+    (() => unexpectedSupportOperationsServiceEffect()),
   reviewBreakGlassIncident:
     overrides.reviewBreakGlassIncident ??
     (() => unexpectedSupportOperationsServiceEffect()),
@@ -618,6 +621,9 @@ describe("platform support-operations http", () => {
             caseId: "evt_break_glass_1",
             status: supportOperationsBreakGlassIncidentStatus.pendingReview,
             startedAt: "2026-04-28T20:00:00.000Z",
+            approvedBy: "usr_support_operator_1",
+            reason: "Resolve emergency tenant outage",
+            expiresAt: "2026-04-28T20:15:00.000Z",
           },
         ]),
     });
@@ -647,6 +653,9 @@ describe("platform support-operations http", () => {
         caseId: "evt_break_glass_1",
         status: supportOperationsBreakGlassIncidentStatus.pendingReview,
         startedAt: "2026-04-28T20:00:00.000Z",
+        approvedBy: "usr_support_operator_1",
+        reason: "Resolve emergency tenant outage",
+        expiresAt: "2026-04-28T20:15:00.000Z",
       },
     ]);
   });
