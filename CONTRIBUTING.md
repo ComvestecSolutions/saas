@@ -16,6 +16,12 @@
 3. Keep hooks enabled. `pre-commit` blocks invalid local branch names, and `pre-push` revalidates the exact branch refs being published, lints outbound commit messages, then runs `bun run format:check`, `bun run typecheck`, and `bun run test`.
 4. Use `bun run format:check`, `bun run typecheck`, and `bun run test` before pushing.
 
+## Copilot Defaults
+
+1. Use the built-in `Copilot` agent as the default working agent when the client exposes agent selection.
+2. When the client exposes these selectors, prefer `Autopilot`, `GPT-5.4`, and `xhigh` for routine repository work.
+3. Use `SaaS Foundation Steward` for the required final stewardship pass on review-worthy work or when a task explicitly needs the repo-specific steward workflow.
+
 ## Type Hygiene
 
 1. Reuse existing named schema types when they already exist. For example, use `RequestContext` instead of repeating `Schema.Schema.Type<typeof RequestContextSchema>` in downstream code.
@@ -91,6 +97,8 @@ Allowed commit types:
 
 Commit scopes use the branch scope list above, plus `docs` and `ci` for repository documentation or workflow automation changes.
 
+Do not add automatic AI-attribution or `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailers to commit messages. Add co-author trailers only when a human contributor explicitly requests them or when a documented repository policy requires them.
+
 Examples:
 
 1. `chore(repo): add contribution governance baseline`
@@ -102,7 +110,7 @@ Examples:
 1. Each commit should have one primary change area.
 2. Companion updates in `tests/`, `specs/`, docs, or repo tooling are allowed when they directly support that same primary area.
 3. If a change touches more than one primary area, split it into separate commits.
-4. Repo-wide meta changes such as hook setup, GitHub templates, dependency policy, or formatter rules belong in `repo`, `ci`, `deps`, or `tooling` scoped commits.
+4. Repo-wide meta changes such as hook setup, GitHub templates, dependency policy, formatter rules, or commit-policy automation belong in `repo`, `ci`, `deps`, or `tooling` scoped commits.
 
 ## Pull Requests
 

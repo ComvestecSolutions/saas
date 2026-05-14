@@ -24,9 +24,11 @@ Accepted specs, manifests, and ADRs may intentionally lead the codebase. Use `sp
 
 ## Copilot Agent Workflow
 
-1. The repo-local implementation and review agent is `SaaS Foundation Steward` in `.github/agents/foundation-steward.agent.md`.
-2. Treat any code change, multi-file refactor, folder reorganization, or spec, ADR, manifest, tracker, runbook, or instruction update as review-worthy work.
-3. Before concluding a review-worthy task, route the touched slice through `SaaS Foundation Steward`. If `SaaS Foundation Steward` is already the active implementation agent, it must still perform a distinct final stewardship step after implementation. The retired split engineer/reviewer workflow is not part of the repo pattern. Trivial wording-only edits are the normal exception.
+1. The default working profile is the built-in `Copilot` agent. When the client exposes these selectors, prefer `Autopilot`, `GPT-5.4`, and `xhigh`.
+2. Treat `SaaS Foundation Steward` in `.github/agents/foundation-steward.agent.md` as the required final stewardship pass for review-worthy work, and use it directly when a task explicitly needs the repo-specific implementation or review workflow.
+3. Treat any code change, multi-file refactor, folder reorganization, or spec, ADR, manifest, tracker, runbook, or instruction update as review-worthy work.
+4. Before concluding a review-worthy task, route the touched slice through `SaaS Foundation Steward`. If `SaaS Foundation Steward` is already the active implementation agent, it must still perform a distinct final stewardship step after implementation. The retired split engineer/reviewer workflow is not part of the repo pattern. Trivial wording-only edits are the normal exception.
+5. Do not add automatic AI-attribution or `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailers to commit messages. Only include co-author trailers when the user explicitly requests them or a documented repository policy requires them.
 
 ## Bun-first Tooling
 
