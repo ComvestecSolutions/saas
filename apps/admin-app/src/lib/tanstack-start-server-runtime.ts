@@ -1,5 +1,69 @@
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 
+/**
+ * During SSR loader execution, server functions created through the
+ * `serverRuntime.createServerFn(...)` factory pattern are not recognised by
+ * the TanStack Start Vite plugin (which requires direct `createServerFn` calls
+ * at the top level of a module). As a result they execute via the "client"
+ * middleware path instead of `__executeServer`, so `context.request` is never
+ * populated by the server-only middleware chain.
+ *
+ * This function reads the current HTTP request from the h3 event-storage
+ * AsyncLocalStorage (set by `requestHandler` in `start-server-core`) as a
+ * fallback when `context.request` is absent during server-side execution.
+ * It accesses the storage solely through the `Symbol.for` key on `globalThis`
+ * so no server-only import is needed and the call is safe in browser bundles
+ * (returns `undefined` when `window` is defined or the store is absent).
+ */
+const getH3EventStorageRequest = (): Request | undefined => {
+  if (typeof window !== "undefined") return undefined;
+  try {
+    const key = Symbol.for("tanstack-start:event-storage");
+    const storage = (
+      globalThis as Record<
+        symbol,
+        | {
+            getStore():
+              | { readonly h3Event: { readonly req: Request } }
+              | undefined;
+          }
+        | undefined
+      >
+    )[key];
+    return storage?.getStore()?.h3Event?.req;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Wraps a server-function handler so that `context.request` is back-filled
+ * from the h3 event store when it is absent during SSR loader execution.
+ *
+ * This is needed because the TanStack Start Vite plugin cannot recognise
+ * server functions declared inside factory functions (the callee root resolves
+ * to the factory variable rather than `createServerFn`). The handler therefore
+ * runs via the "client" middleware path where the server-only middleware that
+ * normally injects `context.request` is never invoked.
+ */
+const withSsrRequestFallback =
+  <TData, TContext, TResult>(
+    handler: (input: ServerHandlerInput<TData, TContext>) => Promise<TResult>,
+  ) =>
+  (input: ServerHandlerInput<TData, TContext>): Promise<TResult> => {
+    const ctx = (input.context ?? {}) as Record<string, unknown>;
+    if (ctx["request"] == null && typeof window === "undefined") {
+      const req = getH3EventStorageRequest();
+      if (req != null) {
+        return handler({
+          ...input,
+          context: { ...ctx, request: req } as unknown as TContext,
+        });
+      }
+    }
+    return handler(input);
+  };
+
 type ServerMiddlewareInput = {
   readonly request: Request;
   readonly next: (options?: { readonly context?: unknown }) => Promise<unknown>;
@@ -83,7 +147,10 @@ const createTanstackStartServerFnRuntime = (options?: {
           handler: (
             input: ServerHandlerInput<unknown, TContext>,
           ) => Promise<TResult>,
-        ) => serverFnChain.handler(handler as any) as ServerFetcher<TResult>,
+        ) =>
+          serverFnChain.handler(
+            withSsrRequestFallback(handler) as any,
+          ) as ServerFetcher<TResult>,
         inputValidator: <TInput, TOutput = TInput>(
           validator: (input: TInput) => TOutput,
         ) => {
@@ -98,7 +165,7 @@ const createTanstackStartServerFnRuntime = (options?: {
               ) => Promise<TResult>,
             ) =>
               validatedServerFnChain.handler(
-                handler as any,
+                withSsrRequestFallback(handler) as any,
               ) as ServerFetcher<TResult>,
           };
         },

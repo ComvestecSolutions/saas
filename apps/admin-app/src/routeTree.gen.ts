@@ -9,38 +9,250 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TenantsRouteImport } from './routes/tenants'
+import { Route as SupportOperationsRouteImport } from './routes/support-operations'
+import { Route as RepairOperationsRouteImport } from './routes/repair-operations'
+import { Route as ComplianceRetentionRouteImport } from './routes/compliance-retention'
+import { Route as BrandingRouteImport } from './routes/branding'
+import { Route as BillingRouteImport } from './routes/billing'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TenantsIndexRouteImport } from './routes/tenants/index'
+import { Route as TenantsTenantIdRouteImport } from './routes/tenants/$tenantId'
+import { Route as IntegrationsWebhooksApiAccessRouteImport } from './routes/integrations/webhooks-api-access'
+import { Route as GovernanceRuntimeConfigRouteImport } from './routes/governance/runtime-config'
+import { Route as GovernanceFeatureFlagsRouteImport } from './routes/governance/feature-flags'
+import { Route as GovernanceAuditLogRouteImport } from './routes/governance/audit-log'
+import { Route as GovernanceAccessControlRouteImport } from './routes/governance/access-control'
 
+const TenantsRoute = TenantsRouteImport.update({
+  id: '/tenants',
+  path: '/tenants',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportOperationsRoute = SupportOperationsRouteImport.update({
+  id: '/support-operations',
+  path: '/support-operations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RepairOperationsRoute = RepairOperationsRouteImport.update({
+  id: '/repair-operations',
+  path: '/repair-operations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComplianceRetentionRoute = ComplianceRetentionRouteImport.update({
+  id: '/compliance-retention',
+  path: '/compliance-retention',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandingRoute = BrandingRouteImport.update({
+  id: '/branding',
+  path: '/branding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingRoute = BillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TenantsIndexRoute = TenantsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TenantsRoute,
+} as any)
+const TenantsTenantIdRoute = TenantsTenantIdRouteImport.update({
+  id: '/$tenantId',
+  path: '/$tenantId',
+  getParentRoute: () => TenantsRoute,
+} as any)
+const IntegrationsWebhooksApiAccessRoute =
+  IntegrationsWebhooksApiAccessRouteImport.update({
+    id: '/integrations/webhooks-api-access',
+    path: '/integrations/webhooks-api-access',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const GovernanceRuntimeConfigRoute = GovernanceRuntimeConfigRouteImport.update({
+  id: '/governance/runtime-config',
+  path: '/governance/runtime-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GovernanceFeatureFlagsRoute = GovernanceFeatureFlagsRouteImport.update({
+  id: '/governance/feature-flags',
+  path: '/governance/feature-flags',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GovernanceAuditLogRoute = GovernanceAuditLogRouteImport.update({
+  id: '/governance/audit-log',
+  path: '/governance/audit-log',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GovernanceAccessControlRoute = GovernanceAccessControlRouteImport.update({
+  id: '/governance/access-control',
+  path: '/governance/access-control',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/billing': typeof BillingRoute
+  '/branding': typeof BrandingRoute
+  '/compliance-retention': typeof ComplianceRetentionRoute
+  '/repair-operations': typeof RepairOperationsRoute
+  '/support-operations': typeof SupportOperationsRoute
+  '/tenants': typeof TenantsRouteWithChildren
+  '/governance/access-control': typeof GovernanceAccessControlRoute
+  '/governance/audit-log': typeof GovernanceAuditLogRoute
+  '/governance/feature-flags': typeof GovernanceFeatureFlagsRoute
+  '/governance/runtime-config': typeof GovernanceRuntimeConfigRoute
+  '/integrations/webhooks-api-access': typeof IntegrationsWebhooksApiAccessRoute
+  '/tenants/$tenantId': typeof TenantsTenantIdRoute
+  '/tenants/': typeof TenantsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/billing': typeof BillingRoute
+  '/branding': typeof BrandingRoute
+  '/compliance-retention': typeof ComplianceRetentionRoute
+  '/repair-operations': typeof RepairOperationsRoute
+  '/support-operations': typeof SupportOperationsRoute
+  '/governance/access-control': typeof GovernanceAccessControlRoute
+  '/governance/audit-log': typeof GovernanceAuditLogRoute
+  '/governance/feature-flags': typeof GovernanceFeatureFlagsRoute
+  '/governance/runtime-config': typeof GovernanceRuntimeConfigRoute
+  '/integrations/webhooks-api-access': typeof IntegrationsWebhooksApiAccessRoute
+  '/tenants/$tenantId': typeof TenantsTenantIdRoute
+  '/tenants': typeof TenantsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/billing': typeof BillingRoute
+  '/branding': typeof BrandingRoute
+  '/compliance-retention': typeof ComplianceRetentionRoute
+  '/repair-operations': typeof RepairOperationsRoute
+  '/support-operations': typeof SupportOperationsRoute
+  '/tenants': typeof TenantsRouteWithChildren
+  '/governance/access-control': typeof GovernanceAccessControlRoute
+  '/governance/audit-log': typeof GovernanceAuditLogRoute
+  '/governance/feature-flags': typeof GovernanceFeatureFlagsRoute
+  '/governance/runtime-config': typeof GovernanceRuntimeConfigRoute
+  '/integrations/webhooks-api-access': typeof IntegrationsWebhooksApiAccessRoute
+  '/tenants/$tenantId': typeof TenantsTenantIdRoute
+  '/tenants/': typeof TenantsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/billing'
+    | '/branding'
+    | '/compliance-retention'
+    | '/repair-operations'
+    | '/support-operations'
+    | '/tenants'
+    | '/governance/access-control'
+    | '/governance/audit-log'
+    | '/governance/feature-flags'
+    | '/governance/runtime-config'
+    | '/integrations/webhooks-api-access'
+    | '/tenants/$tenantId'
+    | '/tenants/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/billing'
+    | '/branding'
+    | '/compliance-retention'
+    | '/repair-operations'
+    | '/support-operations'
+    | '/governance/access-control'
+    | '/governance/audit-log'
+    | '/governance/feature-flags'
+    | '/governance/runtime-config'
+    | '/integrations/webhooks-api-access'
+    | '/tenants/$tenantId'
+    | '/tenants'
+  id:
+    | '__root__'
+    | '/'
+    | '/billing'
+    | '/branding'
+    | '/compliance-retention'
+    | '/repair-operations'
+    | '/support-operations'
+    | '/tenants'
+    | '/governance/access-control'
+    | '/governance/audit-log'
+    | '/governance/feature-flags'
+    | '/governance/runtime-config'
+    | '/integrations/webhooks-api-access'
+    | '/tenants/$tenantId'
+    | '/tenants/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BillingRoute: typeof BillingRoute
+  BrandingRoute: typeof BrandingRoute
+  ComplianceRetentionRoute: typeof ComplianceRetentionRoute
+  RepairOperationsRoute: typeof RepairOperationsRoute
+  SupportOperationsRoute: typeof SupportOperationsRoute
+  TenantsRoute: typeof TenantsRouteWithChildren
+  GovernanceAccessControlRoute: typeof GovernanceAccessControlRoute
+  GovernanceAuditLogRoute: typeof GovernanceAuditLogRoute
+  GovernanceFeatureFlagsRoute: typeof GovernanceFeatureFlagsRoute
+  GovernanceRuntimeConfigRoute: typeof GovernanceRuntimeConfigRoute
+  IntegrationsWebhooksApiAccessRoute: typeof IntegrationsWebhooksApiAccessRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tenants': {
+      id: '/tenants'
+      path: '/tenants'
+      fullPath: '/tenants'
+      preLoaderRoute: typeof TenantsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support-operations': {
+      id: '/support-operations'
+      path: '/support-operations'
+      fullPath: '/support-operations'
+      preLoaderRoute: typeof SupportOperationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/repair-operations': {
+      id: '/repair-operations'
+      path: '/repair-operations'
+      fullPath: '/repair-operations'
+      preLoaderRoute: typeof RepairOperationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compliance-retention': {
+      id: '/compliance-retention'
+      path: '/compliance-retention'
+      fullPath: '/compliance-retention'
+      preLoaderRoute: typeof ComplianceRetentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/branding': {
+      id: '/branding'
+      path: '/branding'
+      fullPath: '/branding'
+      preLoaderRoute: typeof BrandingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing': {
+      id: '/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +260,84 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tenants/': {
+      id: '/tenants/'
+      path: '/'
+      fullPath: '/tenants/'
+      preLoaderRoute: typeof TenantsIndexRouteImport
+      parentRoute: typeof TenantsRoute
+    }
+    '/tenants/$tenantId': {
+      id: '/tenants/$tenantId'
+      path: '/$tenantId'
+      fullPath: '/tenants/$tenantId'
+      preLoaderRoute: typeof TenantsTenantIdRouteImport
+      parentRoute: typeof TenantsRoute
+    }
+    '/integrations/webhooks-api-access': {
+      id: '/integrations/webhooks-api-access'
+      path: '/integrations/webhooks-api-access'
+      fullPath: '/integrations/webhooks-api-access'
+      preLoaderRoute: typeof IntegrationsWebhooksApiAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/governance/runtime-config': {
+      id: '/governance/runtime-config'
+      path: '/governance/runtime-config'
+      fullPath: '/governance/runtime-config'
+      preLoaderRoute: typeof GovernanceRuntimeConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/governance/feature-flags': {
+      id: '/governance/feature-flags'
+      path: '/governance/feature-flags'
+      fullPath: '/governance/feature-flags'
+      preLoaderRoute: typeof GovernanceFeatureFlagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/governance/audit-log': {
+      id: '/governance/audit-log'
+      path: '/governance/audit-log'
+      fullPath: '/governance/audit-log'
+      preLoaderRoute: typeof GovernanceAuditLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/governance/access-control': {
+      id: '/governance/access-control'
+      path: '/governance/access-control'
+      fullPath: '/governance/access-control'
+      preLoaderRoute: typeof GovernanceAccessControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface TenantsRouteChildren {
+  TenantsTenantIdRoute: typeof TenantsTenantIdRoute
+  TenantsIndexRoute: typeof TenantsIndexRoute
+}
+
+const TenantsRouteChildren: TenantsRouteChildren = {
+  TenantsTenantIdRoute: TenantsTenantIdRoute,
+  TenantsIndexRoute: TenantsIndexRoute,
+}
+
+const TenantsRouteWithChildren =
+  TenantsRoute._addFileChildren(TenantsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BillingRoute: BillingRoute,
+  BrandingRoute: BrandingRoute,
+  ComplianceRetentionRoute: ComplianceRetentionRoute,
+  RepairOperationsRoute: RepairOperationsRoute,
+  SupportOperationsRoute: SupportOperationsRoute,
+  TenantsRoute: TenantsRouteWithChildren,
+  GovernanceAccessControlRoute: GovernanceAccessControlRoute,
+  GovernanceAuditLogRoute: GovernanceAuditLogRoute,
+  GovernanceFeatureFlagsRoute: GovernanceFeatureFlagsRoute,
+  GovernanceRuntimeConfigRoute: GovernanceRuntimeConfigRoute,
+  IntegrationsWebhooksApiAccessRoute: IntegrationsWebhooksApiAccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

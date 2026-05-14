@@ -194,11 +194,15 @@ export interface CreateStartHandlerOptions {
 }
 
 function getStartResponseHeaders(opts: { router: AnyRouter }) {
+  // router-core >=1.169 renamed activeMatchesSnapshot.state → matches.get()
+  const stores = opts.router.stores as any
+  const activeMatches: Array<{ headers?: HeadersInit }> =
+    stores.matches?.get() ?? stores.activeMatchesSnapshot?.state ?? []
   const headers = mergeHeaders(
     {
       'Content-Type': 'text/html; charset=utf-8',
     },
-    ...opts.router.stores.activeMatchesSnapshot.state.map((match) => {
+    ...activeMatches.map((match) => {
       return match.headers
     }),
   )

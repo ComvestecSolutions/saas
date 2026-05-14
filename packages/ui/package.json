@@ -1,0 +1,17 @@
+{
+  "name": "@comvestec/ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "scripts": {
+    "check": "bun run typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

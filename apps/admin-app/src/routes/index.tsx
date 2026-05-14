@@ -1,509 +1,229 @@
-import { useEffect, useState, useTransition } from "react";
-import {
-  adminOperatorCapability,
-  actorType,
-  workflowJobStatus,
-  type BillingRepairGap,
-} from "@comvestec/contracts";
-import {
-  useNavigate,
-  useRouter,
-  createFileRoute,
-} from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { createAdminAppFileRoute } from "../file-route";
-import { loadAdminTenantRepairLoaderData } from "../lib/tenant-repair-route-loader";
-import {
-  cancelAdminTenantRepairGap,
-  replayAdminTenantRepairGap,
-} from "../lib/tenant-repair-route-server";
-
-type AdminTenantRepairRouteSearch = {
-  readonly inspectionReason?: string;
-};
-
-const parseAdminTenantRepairRouteSearch = (
-  search: Record<string, unknown>,
-): AdminTenantRepairRouteSearch => {
-  const inspectionReason =
-    typeof search.inspectionReason === "string"
-      ? search.inspectionReason.trim()
-      : undefined;
-
-  return inspectionReason === undefined || inspectionReason.length === 0
-    ? {}
-    : { inspectionReason };
-};
+import { loadAdminOperationsHomeLoaderData } from "../lib/operations-home-loader";
+import { EmptyState, PermissionDeniedState, LoadingState } from "@comvestec/ui";
+import { adminOperatorCapability } from "@comvestec/contracts";
 
 export const Route = createAdminAppFileRoute("/")({
-  validateSearch: parseAdminTenantRepairRouteSearch,
-  loaderDeps: ({ search: { inspectionReason } }) => ({ inspectionReason }),
-  loader: ({ deps }) =>
-    loadAdminTenantRepairLoaderData({
-      ...(deps.inspectionReason === undefined
-        ? {}
-        : { inspectionReason: deps.inspectionReason }),
-    }),
-  component: AdminShell,
+  loader: () => loadAdminOperationsHomeLoaderData(),
+  component: OperationsHome,
+  pendingComponent: () => <LoadingState title="Loading operations summary…" />,
 });
 
-type ActionStatus =
-  | {
-      readonly kind: "success";
-      readonly message: string;
-    }
-  | {
-      readonly kind: "error";
-      readonly message: string;
-    };
+function OperationsHome() {
+  const data = Route.useLoaderData();
 
-const formatTenantRepairActionError = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (typeof error === "object" && error !== null) {
-    if ("reason" in error && typeof error.reason === "string") {
-      return error.reason;
-    }
-
-    if ("message" in error && typeof error.message === "string") {
-      return error.message;
-    }
-  }
-
-  return "The tenant repair action failed before the shared backend workflow completed.";
-};
-
-const countRepairGapsByStatus = (
-  jobs: readonly BillingRepairGap[],
-  status: (typeof workflowJobStatus)[keyof typeof workflowJobStatus],
-) => jobs.filter((job) => job.status === status).length;
-
-function AdminShell() {
-  const routeData = Route.useLoaderData();
-  const routeSearch = Route.useSearch();
-  const router = useRouter();
-  const navigate = useNavigate({ from: Route.fullPath });
-  const replayTenantRepairGap = useServerFn(replayAdminTenantRepairGap);
-  const cancelTenantRepairGap = useServerFn(cancelAdminTenantRepairGap);
-  const [inspectionReasonInput, setInspectionReasonInput] = useState(
-    routeSearch.inspectionReason ?? "",
-  );
-  const [workflowToken, setWorkflowToken] = useState("");
-  const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setInspectionReasonInput(routeSearch.inspectionReason ?? "");
-  }, [routeSearch.inspectionReason]);
-
-  const applyInspectionReason = () => {
-    const trimmedInspectionReason = inspectionReasonInput.trim();
-
-    startTransition(() => {
-      void navigate({
-        search: () =>
-          trimmedInspectionReason.length === 0
-            ? {}
-            : { inspectionReason: trimmedInspectionReason },
-      });
-    });
-  };
-
-  const runTenantRepairAction = (input: {
-    readonly action: "replay" | "cancel";
-    readonly jobId: string;
-  }) => {
-    const trimmedWorkflowToken = workflowToken.trim();
-
-    if (trimmedWorkflowToken.length === 0) {
-      setActionStatus({
-        kind: "error",
-        message:
-          "A Keycloak bearer token from the same platform-operator session is required before replay or cancel can run.",
-      });
-      return;
-    }
-
-    startTransition(() => {
-      void (async () => {
-        try {
-          if (input.action === "replay") {
-            const result = await replayTenantRepairGap({
-              data: {
-                jobId: input.jobId,
-                workflowToken: trimmedWorkflowToken,
-                ...(routeSearch.inspectionReason === undefined
-                  ? {}
-                  : { inspectionReason: routeSearch.inspectionReason }),
-              },
-            });
-
-            setActionStatus({
-              kind: "success",
-              message: `Replayed repair gap for ${result.job.tenantScopeId}.`,
-            });
-          } else {
-            const result = await cancelTenantRepairGap({
-              data: {
-                jobId: input.jobId,
-                workflowToken: trimmedWorkflowToken,
-                ...(routeSearch.inspectionReason === undefined
-                  ? {}
-                  : { inspectionReason: routeSearch.inspectionReason }),
-              },
-            });
-
-            setActionStatus({
-              kind: "success",
-              message: `Canceled repair gap for ${result.job.tenantScopeId}.`,
-            });
-          }
-
-          await router.invalidate({ sync: true });
-        } catch (error) {
-          setActionStatus({
-            kind: "error",
-            message: formatTenantRepairActionError(error),
-          });
-        }
-      })();
-    });
-  };
-
-  if (routeData.kind === "shell") {
+  if (data.kind === "shell") {
     return (
-      <main className="app-shell">
-        <section className="hero-panel">
-          <p className="eyebrow">Platform governance</p>
-          <h1>Tenant repair console</h1>
-          <p className="lede">
-            Tenant repair controls now live behind the same request-backed
-            session boundary as the shared admin-billing service. Sign in with a
-            platform-operator session before the admin app will load unresolved
-            tenant repair gaps.
-          </p>
-        </section>
-
-        <section className="card list-card">
-          <h2>Current posture</h2>
-          <p>An authenticated operator session is required.</p>
-          <p className="meta">
-            The admin app no longer falls back to preview snapshots or demo
-            governance state when the repair workflow session boundary is
-            missing.
-          </p>
-        </section>
-      </main>
+      <PermissionDeniedState
+        title="Operator session required"
+        description="Sign in with a platform-operator or support-operator session to access the admin operations workspace."
+      />
     );
   }
 
-  if (routeData.kind === "stale-session") {
+  if (data.kind === "stale-session") {
     return (
-      <main className="app-shell">
-        <section className="hero-panel">
-          <p className="eyebrow">Platform governance</p>
-          <h1>Session refresh required</h1>
-          <p className="lede">
-            The admin session cookie reached the app, but the shared identity
-            session lookup could no longer resolve request context for it.
-            Reauthenticate before replaying or canceling tenant repair gaps.
-          </p>
-        </section>
-      </main>
+      <PermissionDeniedState
+        title="Session refresh required"
+        description="The operator session could not be resolved. Please re-authenticate before continuing."
+      />
     );
   }
 
-  if (routeData.kind === "denied") {
+  if (data.kind === "denied") {
     return (
-      <main className="app-shell">
-        <section className="hero-panel">
-          <p className="eyebrow">Platform governance</p>
-          <h1>Repair access denied</h1>
-          <p className="lede">{routeData.reason}</p>
-        </section>
-      </main>
+      <PermissionDeniedState title="Access denied" description={data.reason} />
     );
   }
 
-  const jobs = routeData.jobs;
-  const summary = routeData.summary;
-  const blockedCount = countRepairGapsByStatus(jobs, workflowJobStatus.blocked);
-  const scheduledCount = countRepairGapsByStatus(
-    jobs,
-    workflowJobStatus.scheduled,
-  );
-  const staleRunningCount = countRepairGapsByStatus(
-    jobs,
-    workflowJobStatus.running,
-  );
-  const repairOperationsCapability = summary.capabilities.capabilities.find(
-    (capability) =>
-      capability.capability === adminOperatorCapability.repairOperations,
-  );
-  const enabledCapabilities = summary.capabilities.capabilities.filter(
-    (capability) => capability.allowed,
+  const { summary } = data;
+  const posture = summary.posture;
+  const capabilities = summary.capabilities.capabilities;
+  const enabledCapabilities = capabilities.filter((c) => c.allowed);
+  const repairCapability = capabilities.find(
+    (c) => c.capability === adminOperatorCapability.repairOperations,
   );
 
   return (
-    <main className="app-shell">
-      <section className="hero-panel">
-        <p className="eyebrow">Platform governance</p>
-        <h1>Operations Home</h1>
-        <p className="lede">
-          The backend now aggregates current operator capabilities, governance
-          posture, support queues, recent activity, and tenant repair workflow
-          state through shared app-safe helpers instead of app-local stitching.
+    <div className="ops-screen">
+      <div className="ops-screen-header">
+        <h1 className="ops-screen-title">Operations Home</h1>
+        <p className="ops-screen-subtitle">
+          Operator posture, active queues, and recent platform activity for{" "}
+          <span
+            style={{ fontFamily: "var(--ops-font-mono)", fontSize: "0.85em" }}
+          >
+            {summary.capabilities.actorType}
+          </span>
         </p>
+      </div>
+
+      {/* Posture grid */}
+      <section>
+        <p className="ops-card-title">Platform posture</p>
+        <div className="ops-posture-grid">
+          <div
+            className={`ops-posture-card${posture.openRepairGaps > 0 ? " accent" : ""}`}
+          >
+            <p className="ops-posture-label">Open repair gaps</p>
+            <p className="ops-posture-value">{posture.openRepairGaps}</p>
+          </div>
+          <div className="ops-posture-card">
+            <p className="ops-posture-label">Open support cases</p>
+            <p className="ops-posture-value">{posture.openSupportCases}</p>
+          </div>
+          <div
+            className={`ops-posture-card${posture.pendingBreakGlassIncidents > 0 ? " accent" : ""}`}
+          >
+            <p className="ops-posture-label">Pending break-glass</p>
+            <p className="ops-posture-value">
+              {posture.pendingBreakGlassIncidents}
+            </p>
+          </div>
+          <div
+            className={`ops-posture-card${posture.pendingRuntimeConfigProposals > 0 ? " accent" : ""}`}
+          >
+            <p className="ops-posture-label">Pending proposals</p>
+            <p className="ops-posture-value">
+              {posture.pendingRuntimeConfigProposals}
+            </p>
+          </div>
+          <div className="ops-posture-card">
+            <p className="ops-posture-label">Blocked repairs</p>
+            <p className="ops-posture-value">{posture.blockedRepairGaps}</p>
+          </div>
+          <div className="ops-posture-card">
+            <p className="ops-posture-label">Active impersonations</p>
+            <p className="ops-posture-value">
+              {posture.activeImpersonationSessions}
+            </p>
+          </div>
+          <div className="ops-posture-card">
+            <p className="ops-posture-label">Pending branding</p>
+            <p className="ops-posture-value">
+              {posture.pendingBrandingProposals}
+            </p>
+          </div>
+        </div>
       </section>
 
-      <section className="grid">
-        <article className="card featured-card">
-          <h2>Open repair gaps</h2>
-          <p>{summary.posture.openRepairGaps}</p>
-          <p className="meta">
-            Tenant provisioning and onboarding repair state stays durable in the
-            shared workflow-jobs boundary.
-          </p>
-        </article>
-
-        <article className="card">
-          <h2>Open support cases</h2>
-          <p>{summary.posture.openSupportCases}</p>
-        </article>
-
-        <article className="card">
-          <h2>Pending break-glass reviews</h2>
-          <p>{summary.posture.pendingBreakGlassIncidents}</p>
-        </article>
-
-        <article className="card">
-          <h2>Pending runtime proposals</h2>
-          <p>{summary.posture.pendingRuntimeConfigProposals}</p>
-        </article>
-
-        <article className="card">
-          <h2>Scheduled retries</h2>
-          <p>{scheduledCount}</p>
-        </article>
-
-        <article className="card">
-          <h2>Blocked repairs</h2>
-          <p>{blockedCount}</p>
-        </article>
-
-        <article className="card">
-          <h2>Stale running</h2>
-          <p>{staleRunningCount}</p>
-        </article>
-      </section>
-
-      <section className="card list-card">
-        <h2>Current operator surface</h2>
-        <p className="meta">
-          Enabled backend-backed capabilities for this trusted session:
-        </p>
-        <ul className="repair-list">
-          {enabledCapabilities.map((capability) => (
-            <li key={capability.capability} className="repair-item">
-              <strong className="repair-title">{capability.label}</strong>
-              <span className="inline-meta">{capability.routePath}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {summary.alerts.length === 0 ? null : (
-        <section className="card list-card">
-          <h2>Operator alerts</h2>
-          <ul className="repair-list">
+      {/* Alerts */}
+      {summary.alerts.length > 0 && (
+        <section>
+          <p className="ops-card-title">Active alerts</p>
+          <div className="ops-alert-list">
             {summary.alerts.map((alert) => (
-              <li key={alert.id} className="repair-item">
-                <div className="repair-header">
-                  <strong className="repair-title">{alert.title}</strong>
-                  <span className="status-chip">{alert.severity}</span>
+              <div key={alert.id} className={`ops-alert ${alert.severity}`}>
+                <div className="ops-alert-body">
+                  <p className="ops-alert-title">{alert.title}</p>
+                  <p className="ops-alert-detail">
+                    {alert.detail} · {alert.count} item
+                    {alert.count !== 1 ? "s" : ""}
+                  </p>
                 </div>
-                <span className="inline-meta">
-                  {alert.detail} · {alert.count}
-                </span>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
 
-      <section className="card control-card">
-        <h2>Repair workflow execution</h2>
-        {repairOperationsCapability?.allowed !== true ? (
-          <p className="meta">
-            {repairOperationsCapability?.reason ??
-              "Repair workflow controls are not available for this operator session."}
-          </p>
-        ) : null}
-        <div className="action-bar">
-          <label className="token-field">
-            <span className="field-label">Inspection reason</span>
-            <input
-              className="field-input"
-              type="text"
-              value={inspectionReasonInput}
-              onChange={(event) => setInspectionReasonInput(event.target.value)}
-              placeholder="State why you need failure details for these tenant repair gaps"
-              autoComplete="off"
-            />
-          </label>
-          <button
-            className="action-button secondary"
-            type="button"
-            disabled={isPending || repairOperationsCapability?.allowed !== true}
-            onClick={applyInspectionReason}
+      {/* Enabled capabilities */}
+      {enabledCapabilities.length > 0 && (
+        <div className="ops-card">
+          <p className="ops-card-title">Operator surface</p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+              gap: "8px",
+              marginTop: "4px",
+            }}
           >
-            {routeSearch.inspectionReason === undefined
-              ? "Reveal failure details"
-              : "Update inspection reason"}
-          </button>
+            {enabledCapabilities.map((cap) => (
+              <a
+                key={cap.capability}
+                href={cap.routePath}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                  padding: "10px 12px",
+                  borderRadius: "var(--ops-radius)",
+                  border: "1px solid var(--ops-border-strong)",
+                  background: "var(--ops-surface-3)",
+                  textDecoration: "none",
+                  transition: "border-color 0.12s",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    color: "var(--ops-text)",
+                  }}
+                >
+                  {cap.label}
+                </span>
+                <span
+                  style={{
+                    fontSize: "0.72rem",
+                    fontFamily: "var(--ops-font-mono)",
+                    color: "var(--ops-text-muted)",
+                  }}
+                >
+                  {cap.routePath}
+                </span>
+              </a>
+            ))}
+          </div>
         </div>
+      )}
 
-        <p className="meta">
-          {routeSearch.inspectionReason === undefined
-            ? "Failure details remain redacted until a platform operator records an inspection reason on this route. The shared backend uses that reason in the sensitive-read audit event for any visible lastError fields."
-            : `Failure details are currently visible for inspection reason: ${routeSearch.inspectionReason}`}
-        </p>
-
-        <div className="action-bar">
-          <label className="token-field">
-            <span className="field-label">Workflow bearer token</span>
-            <input
-              className="field-input"
-              type="password"
-              value={workflowToken}
-              onChange={(event) => setWorkflowToken(event.target.value)}
-              placeholder="Paste the Keycloak bearer token for this platform-operator session"
-              autoComplete="off"
-            />
-          </label>
+      {/* Repair capability hint */}
+      {repairCapability?.allowed !== true && (
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: "var(--ops-radius)",
+            border: "1px solid var(--ops-border)",
+            background: "var(--ops-surface-2)",
+            fontSize: "0.85rem",
+            color: "var(--ops-text-muted)",
+          }}
+        >
+          {repairCapability?.reason ??
+            "Repair Operations controls require a platform-operator session."}
         </div>
-        <p className="meta">
-          Replay and cancel reuse the same platform-operator identity across the
-          admin session, audit trail, and Convex workflow execution. Use a token
-          minted for the same {actorType.platformOperator} session that opened
-          this route.
-        </p>
+      )}
 
-        {actionStatus === null ? null : (
-          <p
-            className={
-              actionStatus.kind === "success"
-                ? "feedback-message feedback-success"
-                : "feedback-message feedback-error"
-            }
-          >
-            {actionStatus.message}
-          </p>
-        )}
-      </section>
-
-      <section className="card list-card">
-        <h2>Recent backend activity</h2>
+      {/* Recent activity */}
+      <div className="ops-card">
+        <p className="ops-card-title">Recent activity</p>
         {summary.recentActivity.items.length === 0 ? (
-          <p className="meta">
-            No recent projected audit activity is available.
-          </p>
+          <EmptyState
+            title="No recent activity"
+            description="No recent audit events are available for this session."
+          />
         ) : (
-          <ul className="repair-list">
+          <div className="ops-activity-list">
             {summary.recentActivity.items.map((event) => (
-              <li key={event.eventId} className="repair-item">
-                <strong className="repair-title">{event.moduleId}</strong>
-                <span className="inline-meta">
-                  {event.action} · {event.target}
-                </span>
-                <span className="inline-meta">{event.timestamp}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="card list-card">
-        <h2>Unresolved tenant repair gaps</h2>
-        {repairOperationsCapability?.allowed !== true ? (
-          <p className="meta">
-            This operator can inspect shared operations posture, but repair-gap
-            replay and cancellation remain hidden until a platform-operator
-            session opens this screen.
-          </p>
-        ) : jobs.length === 0 ? (
-          <p className="meta">
-            No unresolved tenant provisioning or onboarding repair gaps are
-            waiting for operator action.
-          </p>
-        ) : (
-          <ul className="repair-list">
-            {jobs.map((job) => (
-              <li key={job.jobId} className="repair-item">
-                <div className="repair-header">
-                  <div>
-                    <strong className="repair-title">
-                      {job.tenantScopeId}
-                    </strong>
-                    <span className="inline-meta">
-                      {job.tenantScope} repair gap
-                      {job.gapReason === undefined ? "" : " · ${job.gapReason}"}
-                    </span>
-                  </div>
-                  <span className={`status-chip status-${job.status}`}>
-                    {job.status}
+              <div key={event.eventId} className="ops-activity-item">
+                <div>
+                  <span className="ops-activity-module">{event.moduleId}</span>
+                  <span className="ops-activity-action">
+                    {" · "}
+                    {event.action}
+                    {event.target !== undefined ? ` · ${event.target}` : ""}
                   </span>
                 </div>
-
-                <span className="inline-meta">Job: {job.jobId}</span>
-                <span className="inline-meta">
-                  Attempts: {job.attempts} · Scheduled: {job.scheduledAt}
+                <span className="ops-activity-time">
+                  {event.timestamp.slice(0, 19).replace("T", " ")}
                 </span>
-                {job.lastError === undefined ? null : (
-                  <span className="inline-meta">
-                    Last error: {job.lastError}
-                  </span>
-                )}
-
-                <div className="repair-actions">
-                  <button
-                    className="action-button"
-                    type="button"
-                    disabled={
-                      isPending || repairOperationsCapability?.allowed !== true
-                    }
-                    onClick={() =>
-                      runTenantRepairAction({
-                        action: "replay",
-                        jobId: job.jobId,
-                      })
-                    }
-                  >
-                    Replay
-                  </button>
-                  <button
-                    className="action-button secondary"
-                    type="button"
-                    disabled={
-                      isPending || repairOperationsCapability?.allowed !== true
-                    }
-                    onClick={() =>
-                      runTenantRepairAction({
-                        action: "cancel",
-                        jobId: job.jobId,
-                      })
-                    }
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }

@@ -25,7 +25,8 @@
       "@comvestec/config": ["packages/config/src/index.ts"],
       "@comvestec/platform": ["packages/platform/src/index.ts"],
       "@comvestec/platform/http": ["packages/platform/src/http/index.ts"],
-      "@comvestec/modules": ["packages/modules/src/index.ts"]
+      "@comvestec/modules": ["packages/modules/src/index.ts"],
+      "@comvestec/ui": ["packages/ui/src/index.ts"]
     }
   }
 }
