@@ -1,8 +1,8 @@
 # Admin App Implementation Plan
 
-Status: planning
+Status: accepted
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 ## Outcome
 

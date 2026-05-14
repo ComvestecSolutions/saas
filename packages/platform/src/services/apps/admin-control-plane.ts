@@ -41,6 +41,7 @@ import type {
   AdminGovernanceService,
   AdminGovernanceServiceError,
 } from "../governance/admin-governance";
+import type { UnleashAdapterInitializationError } from "../../adapters";
 import { loadRuntimeModuleOrDie } from "./runtime-loader";
 
 const AdminAuditSliceQuerySchema = Schema.Struct({
@@ -957,70 +958,164 @@ export const buildAdminTenantWorkspaceProjection = (input: {
     audit: input.audit,
   });
 
-export const listAdminAuthorizationTuplesFromSessionId = (
-  environment: unknown,
-  input: {
-    readonly sessionId: string;
-    readonly query: AdminGovernanceAuthorizationTupleQuery;
-  },
-) =>
-  withAdminGovernanceSession(
-    environment,
-    input.sessionId,
-    ({ requestContext, service }) =>
-      service.listAuthorizationTuples({
-        requestContext,
-        query: input.query,
-      }),
-  );
+type AdminAuthorizationTupleSessionRequest = {
+  readonly sessionId: string;
+  readonly query: AdminGovernanceAuthorizationTupleQuery;
+};
 
-export const deleteAdminAuthorizationTupleFromSessionId = (
-  environment: unknown,
-  input: {
-    readonly sessionId: string;
-    readonly tuple: AdminGovernanceAuthorizationTupleView;
-    readonly reason: string;
-  },
-) =>
-  withAdminGovernanceSession(
-    environment,
-    input.sessionId,
-    ({ requestContext, service }) =>
-      service.deleteAuthorizationTuple({
-        requestContext,
-        tuple: input.tuple,
-        reason: input.reason,
-      }),
-  );
+type AdminAuthorizationTupleList = Effect.Effect.Success<
+  ReturnType<AdminGovernanceService["listAuthorizationTuples"]>
+>;
 
-export const listAdminGovernanceProjectionProfilesFromSessionId = (
-  environment: unknown,
-  input: {
-    readonly sessionId: string;
-    readonly moduleId?: PlatformModuleId;
-  },
-) =>
-  withAdminGovernanceSession(
-    environment,
-    input.sessionId,
-    ({ requestContext, service }) =>
-      service.listProjectionProfiles({
-        requestContext,
-        ...(input.moduleId === undefined ? {} : { moduleId: input.moduleId }),
-      }),
-  );
+type ListAdminAuthorizationTuples = (
+  input: AdminAuthorizationTupleSessionRequest,
+) => Effect.Effect<
+  AdminAuthorizationTupleList,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+>;
 
-export const listAdminGovernanceActionPoliciesFromSessionId = (
+export const listAdminAuthorizationTuplesFromSessionId: (
   environment: unknown,
-  input: {
-    readonly sessionId: string;
-  },
-) =>
-  withAdminGovernanceSession(
-    environment,
-    input.sessionId,
-    ({ requestContext, service }) =>
-      service.listActionPolicies({
-        requestContext,
-      }),
-  );
+  input: AdminAuthorizationTupleSessionRequest,
+  listAdminAuthorizationTuples?: ListAdminAuthorizationTuples,
+) => Effect.Effect<
+  AdminAuthorizationTupleList,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+> = (
+  environment,
+  input,
+  listAdminAuthorizationTuples = (requestInput) =>
+    withAdminGovernanceSession(
+      environment,
+      requestInput.sessionId,
+      ({ requestContext, service }) =>
+        service.listAuthorizationTuples({
+          requestContext,
+          query: requestInput.query,
+        }),
+    ),
+) => listAdminAuthorizationTuples(input);
+
+type AdminDeleteAuthorizationTupleSessionRequest = {
+  readonly sessionId: string;
+  readonly tuple: AdminGovernanceAuthorizationTupleView;
+  readonly reason: string;
+};
+
+type AdminDeleteAuthorizationTupleResult = Effect.Effect.Success<
+  ReturnType<AdminGovernanceService["deleteAuthorizationTuple"]>
+>;
+
+type DeleteAdminAuthorizationTuple = (
+  input: AdminDeleteAuthorizationTupleSessionRequest,
+) => Effect.Effect<
+  AdminDeleteAuthorizationTupleResult,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+>;
+
+export const deleteAdminAuthorizationTupleFromSessionId: (
+  environment: unknown,
+  input: AdminDeleteAuthorizationTupleSessionRequest,
+  deleteAdminAuthorizationTuple?: DeleteAdminAuthorizationTuple,
+) => Effect.Effect<
+  AdminDeleteAuthorizationTupleResult,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+> = (
+  environment,
+  input,
+  deleteAdminAuthorizationTuple = (requestInput) =>
+    withAdminGovernanceSession(
+      environment,
+      requestInput.sessionId,
+      ({ requestContext, service }) =>
+        service.deleteAuthorizationTuple({
+          requestContext,
+          tuple: requestInput.tuple,
+          reason: requestInput.reason,
+        }),
+    ),
+) => deleteAdminAuthorizationTuple(input);
+
+type AdminProjectionProfilesSessionRequest = {
+  readonly sessionId: string;
+  readonly moduleId?: PlatformModuleId;
+};
+
+type AdminProjectionProfilesList = Effect.Effect.Success<
+  ReturnType<AdminGovernanceService["listProjectionProfiles"]>
+>;
+
+type ListAdminGovernanceProjectionProfiles = (
+  input: AdminProjectionProfilesSessionRequest,
+) => Effect.Effect<
+  AdminProjectionProfilesList,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+>;
+
+export const listAdminGovernanceProjectionProfilesFromSessionId: (
+  environment: unknown,
+  input: AdminProjectionProfilesSessionRequest,
+  listAdminGovernanceProjectionProfiles?: ListAdminGovernanceProjectionProfiles,
+) => Effect.Effect<
+  AdminProjectionProfilesList,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+> = (
+  environment,
+  input,
+  listAdminGovernanceProjectionProfiles = (requestInput) =>
+    withAdminGovernanceSession(
+      environment,
+      requestInput.sessionId,
+      ({ requestContext, service }) =>
+        service.listProjectionProfiles({
+          requestContext,
+          ...(requestInput.moduleId === undefined
+            ? {}
+            : { moduleId: requestInput.moduleId }),
+        }),
+    ),
+) => listAdminGovernanceProjectionProfiles(input);
+
+type AdminActionPoliciesSessionRequest = {
+  readonly sessionId: string;
+};
+
+type AdminActionPoliciesList = Effect.Effect.Success<
+  ReturnType<AdminGovernanceService["listActionPolicies"]>
+>;
+
+type ListAdminGovernanceActionPolicies = (
+  input: AdminActionPoliciesSessionRequest,
+) => Effect.Effect<
+  AdminActionPoliciesList,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+>;
+
+export const listAdminGovernanceActionPoliciesFromSessionId: (
+  environment: unknown,
+  input: AdminActionPoliciesSessionRequest,
+  listAdminGovernanceActionPolicies?: ListAdminGovernanceActionPolicies,
+) => Effect.Effect<
+  AdminActionPoliciesList,
+  UnleashAdapterInitializationError | AdminGovernanceServiceError,
+  never
+> = (
+  environment,
+  input,
+  listAdminGovernanceActionPolicies = (requestInput) =>
+    withAdminGovernanceSession(
+      environment,
+      requestInput.sessionId,
+      ({ requestContext, service }) =>
+        service.listActionPolicies({
+          requestContext,
+        }),
+    ),
+) => listAdminGovernanceActionPolicies(input);

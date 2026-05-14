@@ -1,11 +1,20 @@
 import { Effect } from "effect";
 import {
+  deleteAdminAuthorizationTupleFromSessionId,
   listAdminRuntimeConfigOverridesFromSessionId,
+  listAdminAuthorizationTuplesFromSessionId,
   listRetentionPoliciesFromSessionId,
   listSupportCasesFromSessionId,
   listWebhookSubscriptionsFromSessionId,
 } from "@comvestec/platform";
-import { platformModuleId, platformScope } from "@comvestec/contracts";
+import {
+  adminQuerySortDirection,
+  authorizationAuditAction,
+  authorizationNamespace,
+  authorizationRelation,
+  platformModuleId,
+  platformScope,
+} from "@comvestec/contracts";
 
 describe("admin app action helpers", () => {
   it("delegates governance route reads through the app-safe helper seam", async () => {
@@ -94,5 +103,97 @@ describe("admin app action helpers", () => {
     ).resolves.toBe(expected);
 
     expect(listWebhookSubscriptions).toHaveBeenCalledWith(request);
+  });
+
+  it("delegates access-control tuple queries through the app-safe helper seam", async () => {
+    const request: Parameters<
+      typeof listAdminAuthorizationTuplesFromSessionId
+    >[1] = {
+      sessionId: "sess_admin_access_control",
+      query: {
+        namespace: authorizationNamespace.tenant,
+        object: "org_demo",
+        relation: authorizationRelation.viewer,
+        page: {
+          page: 1,
+          pageSize: 10,
+        },
+        sortField: "subject",
+        sortDirection: adminQuerySortDirection.asc,
+        exportMode: false,
+      },
+    };
+    const expected = {
+      items: [],
+      pageInfo: {
+        page: {
+          page: 1,
+          pageSize: 10,
+        },
+        totalItems: 0,
+        totalPages: 0,
+        exportMode: false,
+      },
+    } as const;
+    const listAdminAuthorizationTuples: NonNullable<
+      Parameters<typeof listAdminAuthorizationTuplesFromSessionId>[2]
+    > = vi.fn(() => Effect.succeed(expected));
+
+    await expect(
+      Effect.runPromise(
+        listAdminAuthorizationTuplesFromSessionId(
+          {},
+          request,
+          listAdminAuthorizationTuples,
+        ),
+      ),
+    ).resolves.toBe(expected);
+
+    expect(listAdminAuthorizationTuples).toHaveBeenCalledWith(request);
+  });
+
+  it("delegates access-control tuple deletion through the app-safe helper seam", async () => {
+    const request: Parameters<
+      typeof deleteAdminAuthorizationTupleFromSessionId
+    >[1] = {
+      sessionId: "sess_admin_access_delete",
+      tuple: {
+        namespace: authorizationNamespace.tenant,
+        object: "org_demo",
+        relation: authorizationRelation.viewer,
+        subject: "usr_member_2",
+      },
+      reason: "Revoke reviewed tenant viewer access.",
+    };
+    const expected = {
+      mutation: "deleted",
+      tuple: request.tuple,
+      auditEvent: {
+        eventId: "audit_evt_tuple_delete",
+        timestamp: "2026-05-14T14:00:00.000Z",
+        actorId: "usr_support_operator",
+        tenantScope: platformScope.platform,
+        tenantScopeId: platformScope.platform,
+        moduleId: platformModuleId.authorization,
+        action: authorizationAuditAction.tupleChanged,
+        target: "authorization:tenant:org_demo:viewer:usr_member_2",
+        reason: request.reason,
+      },
+    } as const;
+    const deleteAdminAuthorizationTuple: NonNullable<
+      Parameters<typeof deleteAdminAuthorizationTupleFromSessionId>[2]
+    > = vi.fn(() => Effect.succeed(expected));
+
+    await expect(
+      Effect.runPromise(
+        deleteAdminAuthorizationTupleFromSessionId(
+          {},
+          request,
+          deleteAdminAuthorizationTuple,
+        ),
+      ),
+    ).resolves.toBe(expected);
+
+    expect(deleteAdminAuthorizationTuple).toHaveBeenCalledWith(request);
   });
 });

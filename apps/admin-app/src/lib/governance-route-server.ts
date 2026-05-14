@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import { platformModuleId, type PlatformModuleId } from "@comvestec/contracts";
+import type { AdminAccessControlLoaderInput } from "./access-control-route-data";
 import {
   adminRequestServerMiddleware,
   createAdminRequestMiddleware,
@@ -38,12 +39,13 @@ const loadAdminFeatureFlagsData = async (
 const loadAdminAccessControlData = async (
   request: Request,
   environment: unknown,
+  input: AdminAccessControlLoaderInput = {},
 ) => {
   const { loadAdminAccessControlRouteDataFromRequest } =
     await import("./access-control-route-data");
 
   return Effect.runPromise(
-    loadAdminAccessControlRouteDataFromRequest(request, environment),
+    loadAdminAccessControlRouteDataFromRequest(request, environment, input),
   );
 };
 
@@ -89,8 +91,17 @@ export const createGetAdminAccessControlData = (
   governanceServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(governanceServerFn)])
-    .handler(({ context }: { readonly context: AdminRequestContext }) =>
-      loadAdminAccessControlData(context.request, environment),
+    .inputValidator(
+      (input: AdminAccessControlLoaderInput | undefined) => input ?? {},
+    )
+    .handler(
+      ({
+        context,
+        data,
+      }: {
+        readonly context: AdminRequestContext;
+        readonly data: AdminAccessControlLoaderInput;
+      }) => loadAdminAccessControlData(context.request, environment, data),
     );
 
 export const createGetAdminAuditLogData = (
@@ -133,8 +144,17 @@ export const getAdminFeatureFlagsData = createServerFn({ method: "GET" })
 
 export const getAdminAccessControlData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .handler(({ context }: { readonly context: AdminRequestContext }) =>
-    loadAdminAccessControlData(context.request, process.env),
+  .inputValidator(
+    (input: AdminAccessControlLoaderInput | undefined) => input ?? {},
+  )
+  .handler(
+    ({
+      context,
+      data,
+    }: {
+      readonly context: AdminRequestContext;
+      readonly data: AdminAccessControlLoaderInput;
+    }) => loadAdminAccessControlData(context.request, process.env, data),
   );
 
 export const getAdminAuditLogData = createServerFn({ method: "GET" })
