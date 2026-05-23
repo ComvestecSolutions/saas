@@ -1,7 +1,18 @@
-import { existsSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildPrePushValidationCommands,
   pushRefsFileEnvironmentVariableName,
+  readPushRefsFromStdin,
   withTemporaryPushRefsFile,
 } from "../../tooling/scripts/tests/run-pre-push-validation";
 
@@ -59,6 +70,28 @@ describe("buildPrePushValidationCommands", () => {
       environmentOverrides: {
         [pushRefsFileEnvironmentVariableName]: "C:\\temp\\push-refs.txt",
       },
+    });
+  });
+
+  describe("readPushRefsFromStdin", () => {
+    it("reads push refs from a provided file descriptor", () => {
+      const tempDirectoryPath = mkdtempSync(
+        join(tmpdir(), "comvestec-pre-push-stdin-"),
+      );
+      const pushRefsFilePath = join(tempDirectoryPath, "push-refs.txt");
+      const pushRefs =
+        "refs/heads/feature/repo-contribution abc123 refs/heads/feature/repo-contribution 0000000000000000000000000000000000000000\n";
+
+      writeFileSync(pushRefsFilePath, pushRefs);
+
+      const fileDescriptor = openSync(pushRefsFilePath, "r");
+
+      try {
+        expect(readPushRefsFromStdin(fileDescriptor)).toBe(pushRefs);
+      } finally {
+        closeSync(fileDescriptor);
+        rmSync(tempDirectoryPath, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,15 +18,8 @@ type PrePushValidationCommand = {
   readonly input?: string;
 };
 
-const readPushRefsFromStdin = async () => {
-  let input = "";
-
-  for await (const chunk of process.stdin) {
-    input += chunk;
-  }
-
-  return input;
-};
+export const readPushRefsFromStdin = (fileDescriptor = 0) =>
+  readFileSync(fileDescriptor, "utf8");
 
 export const withTemporaryPushRefsFile = async <T>(
   pushRefs: string,
@@ -106,7 +99,7 @@ const runPrePushValidationCommands = async (
 };
 
 if (import.meta.main) {
-  const pushRefs = await readPushRefsFromStdin();
+  const pushRefs = readPushRefsFromStdin();
 
   const exitCode = await withTemporaryPushRefsFile(
     pushRefs,

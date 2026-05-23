@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 import {
   getInvalidBranchNameMessage,
@@ -20,14 +21,8 @@ const runGit = (args) =>
     stdio: "pipe",
   }).trim();
 
-const readPushRefs = async () => {
-  let input = "";
-
-  for await (const chunk of process.stdin) {
-    input += chunk;
-  }
-
-  return input
+const readPushRefs = () =>
+  readFileSync(0, "utf8")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
@@ -41,7 +36,6 @@ const readPushRefs = async () => {
         remoteSha,
       };
     });
-};
 
 const isZeroObjectId = (value) => zeroObjectIdPattern.test(value);
 
@@ -169,7 +163,7 @@ const validateCommitMessages = (commitIds) => {
   process.exit(1);
 };
 
-const pushRefs = await readPushRefs();
+const pushRefs = readPushRefs();
 
 if (pushRefs.length === 0) {
   process.stdout.write("No refs received for pre-push validation.\n");
