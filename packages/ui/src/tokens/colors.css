@@ -1,0 +1,156 @@
+/**
+ * Comvestec Signal Deck — semantic color palette (dark-only, v1).
+ *
+ * Status semantics (binding — see admin-app implementation-plan §13):
+ *   neutral  → Slate    → current / steady / passive
+ *   active   → Emerald  → healthy / applied / live
+ *   pending  → Amber    → queued / waiting / verifying
+ *   drift    → Violet   → mismatch / review / degraded
+ *   error    → Crimson  → blocked / failed / expired / denied
+ *
+ * Layer rule: only two depths exist — matte canvas + liquid glass.
+ * Never nest glass inside glass (admin-app spec §14, plan §14).
+ */
+
+@layer tokens {
+  :root {
+    /* Slate (neutral) */
+    --slate-50: #f8fafc;
+    --slate-100: #f1f5f9;
+    --slate-200: #e2e8f0;
+    --slate-300: #cbd5e1;
+    --slate-400: #94a3b8;
+    --slate-500: #64748b;
+    --slate-600: #475569;
+    --slate-700: #334155;
+    --slate-800: #1e293b;
+    --slate-900: #0f172a;
+    --slate-950: #020617;
+
+    /* Emerald (active / healthy) */
+    --emerald-300: #6ee7b7;
+    --emerald-400: #34d399;
+    --emerald-500: #10b981;
+    --emerald-600: #059669;
+    --emerald-700: #047857;
+
+    /* Amber (pending / verifying) */
+    --amber-300: #fcd34d;
+    --amber-400: #fbbf24;
+    --amber-500: #f59e0b;
+    --amber-600: #d97706;
+
+    /* Violet (drift / deprecated) */
+    --violet-300: #c4b5fd;
+    --violet-400: #a78bfa;
+    --violet-500: #8b5cf6;
+    --violet-600: #7c3aed;
+
+    /* Crimson (error / denied) */
+    --crimson-300: #fda4af;
+    --crimson-400: #fb7185;
+    --crimson-500: #f43f5e;
+    --crimson-600: #e11d48;
+
+    /* Matte canvas — richer but still restrained dark mineral base. */
+    --canvas-975: #030409;
+    --canvas-950: #05070d;
+    --canvas-925: #090c14;
+    --canvas-900: #0d1119;
+    --canvas-875: #111723;
+    --canvas-850: #151c2a;
+    --canvas-825: #1a2233;
+
+    /* Matte content surfaces */
+    --surface-matte-1: color-mix(in oklab, var(--canvas-850) 92%, black);
+    --surface-matte-2: color-mix(in oklab, var(--canvas-825) 86%, black);
+    --surface-matte-3: color-mix(in oklab, var(--canvas-875) 82%, white 2%);
+    --surface-etched: color-mix(in oklab, white 7%, transparent);
+    --surface-etched-strong: color-mix(in oklab, white 12%, transparent);
+
+    /* Canonical status semantic tokens (do not hardcode hex anywhere else). */
+    --status-neutral-fg: var(--slate-300);
+    --status-neutral-bg: color-mix(in oklab, var(--slate-500) 14%, transparent);
+    --status-neutral-border: color-mix(
+      in oklab,
+      var(--slate-400) 20%,
+      transparent
+    );
+
+    --status-active-fg: var(--emerald-300);
+    --status-active-bg: color-mix(
+      in oklab,
+      var(--emerald-500) 14%,
+      transparent
+    );
+    --status-active-border: color-mix(
+      in oklab,
+      var(--emerald-400) 28%,
+      transparent
+    );
+
+    --status-pending-fg: var(--amber-300);
+    --status-pending-bg: color-mix(in oklab, var(--amber-500) 14%, transparent);
+    --status-pending-border: color-mix(
+      in oklab,
+      var(--amber-400) 28%,
+      transparent
+    );
+
+    --status-drift-fg: var(--violet-300);
+    --status-drift-bg: color-mix(in oklab, var(--violet-500) 14%, transparent);
+    --status-drift-border: color-mix(
+      in oklab,
+      var(--violet-400) 28%,
+      transparent
+    );
+
+    --status-error-fg: var(--crimson-300);
+    --status-error-bg: color-mix(in oklab, var(--crimson-500) 14%, transparent);
+    --status-error-border: color-mix(
+      in oklab,
+      var(--crimson-400) 32%,
+      transparent
+    );
+
+    /* Foreground / text */
+    --fg-default: var(--slate-100);
+    --fg-secondary: var(--slate-300);
+    --fg-muted: var(--slate-400);
+    --fg-disabled: color-mix(in oklab, var(--slate-400) 55%, transparent);
+    --fg-inverse: var(--slate-900);
+    --fg-elevated: #f6f8fb;
+
+    /* Focus ring (accessible against canvas + glass). */
+    --focus-ring: color-mix(in oklab, #6cc8ff 64%, transparent);
+
+    /* Liquid-glass surface variables (binding — plan §13).
+     * Glass is the only layer allowed above the matte canvas. */
+    --glass-bg: color-mix(in oklab, var(--canvas-900) 76%, transparent);
+    --glass-overlay-top: color-mix(in oklab, white 4%, transparent);
+    --glass-overlay-bottom: color-mix(in oklab, black 22%, transparent);
+    --glass-blur: 30px;
+    --glass-border: 1px solid color-mix(in oklab, white 10%, transparent);
+    --glass-highlight:
+      inset 0 1px 0 color-mix(in oklab, white 8%, transparent),
+      inset 0 -1px 0 color-mix(in oklab, black 28%, transparent);
+    --glass-shadow:
+      0 22px 48px -30px rgb(0 0 0 / 0.82), 0 8px 18px -12px rgb(0 0 0 / 0.52);
+    --glass-tint-domain: var(--domain-tint, transparent); /* 8% alpha */
+
+    /* Reusable shell detailing */
+    --signal-grid:
+      linear-gradient(
+        to right,
+        color-mix(in oklab, white 4%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, white 4%, transparent) 1px,
+        transparent 1px
+      );
+    --signal-grid-size: 28px 28px;
+    --signal-seam: 1px solid color-mix(in oklab, white 7%, transparent);
+  }
+}

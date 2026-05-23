@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import {
   withTemporaryLocalRuntimeEnvironmentFile,
   workspaceRootDirectory,
@@ -5,6 +6,18 @@ import {
 
 const removeLeadingDoubleDash = (argv: readonly string[]) =>
   argv[0] === "--" ? argv.slice(1) : argv;
+
+const extractInDirectoryPrefix = (
+  args: readonly string[],
+): {
+  readonly inDirectory: string | undefined;
+  readonly rest: readonly string[];
+} => {
+  if (args[0] === "--in" && args[1] !== undefined) {
+    return { inDirectory: args[1], rest: args.slice(2) };
+  }
+  return { inDirectory: undefined, rest: args };
+};
 
 const normalizeCommand = (
   commandName: string,
@@ -25,7 +38,9 @@ const normalizeCommand = (
 
 const printUsage = () => {
   console.log(
-    "Usage: bun run ops:local:command -- <command> [args...]; bun invocations automatically disable root dotenv loading, and bun or bunx commands inherit the resolved Vault-backed environment directly.",
+    "Usage: bun run ops:local:command -- [--in <relative-dir>] <command> [args...];\n" +
+      "  --in <dir>  run command from <workspace-root>/<dir> instead of workspace root;\n" +
+      "  bun invocations automatically disable root dotenv loading, and bun or bunx commands inherit the resolved Vault-backed environment directly.",
   );
 };
 
@@ -35,7 +50,11 @@ if (import.meta.main) {
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     printUsage();
   } else {
-    const [commandName, ...commandArgs] = args;
+    const { inDirectory, rest } = extractInDirectoryPrefix(args);
+    const spawnCwd = inDirectory
+      ? resolve(workspaceRootDirectory, inDirectory)
+      : workspaceRootDirectory;
+    const [commandName, ...commandArgs] = rest;
 
     if (commandName === undefined) {
       printUsage();
@@ -49,7 +68,7 @@ if (import.meta.main) {
           const processHandle = Bun.spawn(
             normalizeCommand(commandName, commandArgs),
             {
-              cwd: workspaceRootDirectory,
+              cwd: spawnCwd,
               env: {
                 ...Bun.env,
                 ...environment,

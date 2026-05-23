@@ -4,7 +4,6 @@ type ConvexAuthEnvironment = {
   readonly KEYCLOAK_REALM: string;
   readonly KEYCLOAK_CLIENT_ID: string;
   readonly KEYCLOAK_BASE_URL: string;
-  readonly KEYCLOAK_BASE_URL_INTERNAL: string;
 };
 
 const requireNonEmptyEnvironmentValue = (
@@ -27,8 +26,6 @@ const buildIssuerUrl = (input: {
   readonly realm: string;
 }) => `${trimTrailingSlash(input.baseUrl)}/realms/${input.realm}`;
 
-const deduplicate = <A>(values: ReadonlyArray<A>) => [...new Set(values)];
-
 const convexAuthEnvironment: ConvexAuthEnvironment = {
   KEYCLOAK_REALM: requireNonEmptyEnvironmentValue(
     "KEYCLOAK_REALM",
@@ -42,31 +39,26 @@ const convexAuthEnvironment: ConvexAuthEnvironment = {
     "KEYCLOAK_BASE_URL",
     process.env.KEYCLOAK_BASE_URL,
   ),
-  KEYCLOAK_BASE_URL_INTERNAL: requireNonEmptyEnvironmentValue(
-    "KEYCLOAK_BASE_URL_INTERNAL",
-    process.env.KEYCLOAK_BASE_URL_INTERNAL,
-  ),
 };
 
 const keycloakRealm = convexAuthEnvironment.KEYCLOAK_REALM;
 
 const keycloakClientId = convexAuthEnvironment.KEYCLOAK_CLIENT_ID;
 
-const keycloakIssuerUrls = deduplicate(
-  [
-    convexAuthEnvironment.KEYCLOAK_BASE_URL,
-    convexAuthEnvironment.KEYCLOAK_BASE_URL_INTERNAL,
-  ].map((baseUrl) =>
-    buildIssuerUrl({
-      baseUrl,
-      realm: keycloakRealm,
-    }),
-  ),
-);
+// Convex auth providers must use the public issuer URL. Internal Docker-only
+// transport hosts such as http://keycloak:8080 remain valid for worker runtime
+// calls, but Convex rejects them in auth.config because they are not HTTPS or
+// localhost-resolvable provider domains.
+const keycloakIssuerUrl = buildIssuerUrl({
+  baseUrl: convexAuthEnvironment.KEYCLOAK_BASE_URL,
+  realm: keycloakRealm,
+});
 
 export default {
-  providers: keycloakIssuerUrls.map((domain) => ({
-    domain,
-    applicationID: keycloakClientId,
-  })),
+  providers: [
+    {
+      domain: keycloakIssuerUrl,
+      applicationID: keycloakClientId,
+    },
+  ],
 } satisfies AuthConfig;

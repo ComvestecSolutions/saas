@@ -18,11 +18,16 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3004,
+      strictPort: true,
+      hmr: false,
     },
     test: {
       name: "admin-browser",
       include: ["src/**/*.browser.test.ts", "src/**/*.browser.test.tsx"],
       passWithNoTests: true,
+      setupFiles: ["./src/testing/admin-browser.setup.ts"],
+      maxWorkers: 1,
+      fileParallelism: false,
       browser: {
         enabled: true,
         provider: playwright(),
@@ -34,6 +39,7 @@ export default defineConfig(({ mode }) => {
       tanstackStart({
         srcDirectory: "src",
         router: {
+          routeFileIgnorePattern: "\\.browser\\.test\\.tsx?$",
           plugin: {
             vite: {
               environmentName: "client",

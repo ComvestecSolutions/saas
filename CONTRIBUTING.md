@@ -13,8 +13,8 @@
 
 1. Install dependencies with `bun install`.
 2. Run `bun run hooks:install` if the hooks were not configured automatically.
-3. Keep hooks enabled. `pre-commit` blocks invalid local branch names, and `pre-push` revalidates the exact branch refs being published, lints outbound commit messages, then runs `bun run format:check`, `bun run typecheck`, and `bun run test`.
-4. Use `bun run format:check`, `bun run typecheck`, and `bun run test` before pushing.
+3. Keep hooks enabled. `pre-commit` blocks invalid local branch names, and `pre-push` scopes validation to the outbound ref diff, lints outbound commit messages, then runs `bun run format:check`, `bun run typecheck`, and `bun run test` from the current checkout. The push hook bypasses the local validation caches so the outbound change set is always rechecked before push.
+4. Use `bun run format:check`, `bun run typecheck`, and `bun run test` before pushing. Local reruns now execute only affected validation slices and skip unchanged cached fingerprints; use `bun run format:check:all`, `bun run typecheck:all`, or `bun run test:all` when you intentionally need a full sweep. Run `bun run format:check:all` after changing Prettier configuration or formatter dependency wiring in `package.json` or lockfiles.
 
 ## Copilot Defaults
 
@@ -130,9 +130,13 @@ Before push:
 1. `bun run format:check`
 2. `bun run typecheck`
 3. `bun run test`
-4. Let the configured `pre-push` hook validate the exact branch refs being published, lint the commit messages leaving your machine, and rerun formatting, typecheck, and tests against the staged repository state.
-5. Make sure `bun run typecheck` covers every first-party TypeScript surface touched by the change. Root tooling and config files such as `tooling/**/*.ts` and `drizzle.config.ts`, and TypeScript workspaces such as `packages/e2e`, need explicit `tsconfig` and script wiring instead of ad hoc local-only checks.
-6. Convex changes must stay green under the root `bun run typecheck` path via `tsconfig.convex.json`. Because local pre-typecheck codegen is not reliable here, keep the generated `convex/_generated/` bindings committed so Convex source keeps resolving on fresh clones.
+4. `bun run test:e2e` — Playwright operator-journey suite (skips when `ADMIN_E2E_*` env values are absent; runs end-to-end against the pinned platform target in CI).
+5. `bun run test:visual` — Playwright visual regression suite (per-route screenshots at desktop / tablet / mobile; same env-bound trusted-session fixture).
+6. `bun run test:a11y` — `@axe-core/playwright` WCAG 2.1 AA audit per primary route; serious + critical violations fail the gate; `packages/e2e/a11y/a11y-allowlist.ts` carries justified waivers.
+7. Let the configured `pre-push` hook lint the commit messages leaving your machine and rerun formatting, typecheck, and tests using outbound-ref change detection from the current checkout.
+8. Use `bun run format:check:all`, `bun run typecheck:all`, or `bun run test:all` only when you intentionally need the full sweep; the default root validation paths are selective and cache-aware by design.
+9. Make sure `bun run typecheck` covers every first-party TypeScript surface touched by the change. Root tooling and config files such as `tooling/**/*.ts` and `drizzle.config.ts`, and TypeScript workspaces such as `packages/e2e`, need explicit `tsconfig` and script wiring instead of ad hoc local-only checks.
+10. Convex changes must stay green under the root `bun run typecheck` path via `tsconfig.convex.json`. Because local pre-typecheck codegen is not reliable here, keep the generated `convex/_generated/` bindings committed so Convex source keeps resolving on fresh clones.
 
 Before merge:
 

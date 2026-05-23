@@ -885,6 +885,11 @@ export const makeSupportOperationsModule = () =>
                 } satisfies InvalidBreakGlassExpiryError);
               }
 
+              const {
+                reason: _requestContextReason,
+                ...requestContextWithoutReason
+              } = request.requestContext;
+
               return buildAuditEvent({
                 requestContext: request.requestContext,
                 moduleId: platformModuleId.supportOperations,
@@ -895,8 +900,7 @@ export const makeSupportOperationsModule = () =>
                 Effect.flatMap((auditEvent) =>
                   Schema.decodeUnknown(BreakGlassGrantSchema)({
                     grantedRequestContext: {
-                      ...request.requestContext,
-                      reason: request.reason,
+                      ...requestContextWithoutReason,
                       breakGlass: {
                         approvedBy: request.approvedBy,
                         reason: request.reason,

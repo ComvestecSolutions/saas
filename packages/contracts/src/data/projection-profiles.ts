@@ -7,6 +7,7 @@ const ProjectionProfileConstantSchema = Schema.Struct({
   supportSafe: Schema.Literal("support-safe"),
   billing: Schema.Literal("billing"),
   complianceReview: Schema.Literal("compliance-review"),
+  adminOwnerOnly: Schema.Literal("admin-owner-only"),
 });
 
 export const projectionProfile = Schema.validateSync(
@@ -18,6 +19,7 @@ export const projectionProfile = Schema.validateSync(
   supportSafe: "support-safe",
   billing: "billing",
   complianceReview: "compliance-review",
+  adminOwnerOnly: "admin-owner-only",
 } satisfies Schema.Schema.Type<typeof ProjectionProfileConstantSchema>);
 
 export const projectionProfiles = [
@@ -27,6 +29,7 @@ export const projectionProfiles = [
   projectionProfile.supportSafe,
   projectionProfile.billing,
   projectionProfile.complianceReview,
+  projectionProfile.adminOwnerOnly,
 ] as const;
 
 export const ProjectionProfileSchema = Schema.Literal(...projectionProfiles);

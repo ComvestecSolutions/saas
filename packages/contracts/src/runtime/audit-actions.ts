@@ -143,6 +143,202 @@ export const retentionLegalHoldAuditAction = defineModuleAuditActions(
   },
 );
 
+export const adminOrganizationAuditAction = defineModuleAuditActions(
+  platformModuleId.adminOrganization,
+  {
+    memberInvited: "member.invited",
+    invitationRedeemed: "invitation.redeemed",
+    memberRoleChanged: "member.role-changed",
+    memberRemoved: "member.removed",
+    ownerSeeded: "owner.seeded",
+  },
+);
+
+export const adminSavedViewsAuditAction = defineModuleAuditActions(
+  platformModuleId.adminSavedViews,
+  {
+    created: "created",
+    updated: "updated",
+    deleted: "deleted",
+    pinned: "pinned",
+    unpinned: "unpinned",
+  },
+);
+
+export const adminWorkspacesAuditAction = defineModuleAuditActions(
+  platformModuleId.adminWorkspaces,
+  {
+    create: "created",
+    update: "updated",
+    delete: "deleted",
+    reorder: "reordered",
+  },
+);
+
+export const operationsHomeAuditAction = defineModuleAuditActions(
+  platformModuleId.operationsHome,
+  {
+    read: "read",
+  },
+);
+
+export const tenantWorkspaceAuditAction = defineModuleAuditActions(
+  platformModuleId.tenantWorkspace,
+  {
+    read: "read",
+  },
+);
+
+export const manualBreakGlassAuditAction = defineModuleAuditActions(
+  platformModuleId.manualBreakGlass,
+  {
+    issue: "issue",
+    release: "release",
+    autoExpire: "auto-expire",
+  },
+);
+
+export const operatorWebhookDeliveryAuditAction = defineModuleAuditActions(
+  platformModuleId.operatorWebhookDelivery,
+  {
+    enqueued: "enqueued",
+    attempted: "attempted",
+    delivered: "delivered",
+    failed: "failed",
+    exhausted: "exhausted",
+    replayed: "replayed",
+    retried: "retried",
+    canceled: "canceled",
+    replayGuardShortCircuit: "replay-guard.short-circuit",
+  },
+);
+
+export const polarRevenueProjectionAuditAction = defineModuleAuditActions(
+  platformModuleId.polarRevenueProjection,
+  {
+    snapshotComputed: "snapshot.computed",
+    backfillRequested: "backfill.requested",
+  },
+);
+
+export const openMeterUsageQueryAuditAction = defineModuleAuditActions(
+  platformModuleId.openMeterUsageQuery,
+  {
+    queryExecuted: "query.executed",
+    backfillRequested: "backfill.requested",
+  },
+);
+
+export const vendorHealthAggregatorAuditAction = defineModuleAuditActions(
+  platformModuleId.vendorHealthAggregator,
+  {
+    snapshotComputed: "snapshot.computed",
+  },
+);
+
+export const keycloakUserReadAuditAction = defineModuleAuditActions(
+  platformModuleId.keycloakUserRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const polarCustomerReadAuditAction = defineModuleAuditActions(
+  platformModuleId.polarCustomerRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const openMeterMeterReadAuditAction = defineModuleAuditActions(
+  platformModuleId.openMeterMeterRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const novuDeliveriesReadAuditAction = defineModuleAuditActions(
+  platformModuleId.novuDeliveriesRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const postalMailLogReadAuditAction = defineModuleAuditActions(
+  platformModuleId.postalMailLogRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const glitchTipIssuesReadAuditAction = defineModuleAuditActions(
+  platformModuleId.glitchTipIssuesRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const openPanelEventsReadAuditAction = defineModuleAuditActions(
+  platformModuleId.openPanelEventsRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
+export const universalSearchAuditAction = defineModuleAuditActions(
+  platformModuleId.universalSearch,
+  {
+    queryExecuted: "query.executed",
+    reindexRequested: "reindex.requested",
+  },
+);
+
+export const capabilitySnapshotV2AuditAction = defineModuleAuditActions(
+  platformModuleId.capabilitySnapshotV2,
+  {
+    snapshotDerived: "snapshot.derived",
+    cacheInvalidated: "cache.invalidated",
+  },
+);
+
+export const runAsBannerStateAuditAction = defineModuleAuditActions(
+  platformModuleId.runAsBannerState,
+  {
+    queried: "queried",
+    released: "released",
+  },
+);
+
+export const workflowRunsAdminAuditAction = defineModuleAuditActions(
+  platformModuleId.workflowRunsAdmin,
+  {
+    listed: "listed",
+    detailRead: "detail-read",
+    replayed: "replayed",
+    canceled: "canceled",
+  },
+);
+
+export const notificationCenterAdminAuditAction = defineModuleAuditActions(
+  platformModuleId.notificationCenterAdmin,
+  {
+    listed: "listed",
+    detailRead: "detail-read",
+    resent: "resent",
+  },
+);
+
+export const adminOperatorTestTokensAuditAction = defineModuleAuditActions(
+  platformModuleId.adminOperatorTestTokens,
+  {
+    issued: "issued",
+    revoked: "revoked",
+    listed: "listed",
+    usedSuccess: "used.success",
+    usedFailure: "used.failure",
+  },
+);
+
 export const auditActions = [
   authorizationAuditAction.decisionPrivileged,
   authorizationAuditAction.tupleChanged,
@@ -195,6 +391,64 @@ export const auditActions = [
   retentionLegalHoldAuditAction.policyUpserted,
   retentionLegalHoldAuditAction.holdPlaced,
   retentionLegalHoldAuditAction.holdReleased,
+  adminOrganizationAuditAction.memberInvited,
+  adminOrganizationAuditAction.invitationRedeemed,
+  adminOrganizationAuditAction.memberRoleChanged,
+  adminOrganizationAuditAction.memberRemoved,
+  adminOrganizationAuditAction.ownerSeeded,
+  adminSavedViewsAuditAction.created,
+  adminSavedViewsAuditAction.updated,
+  adminSavedViewsAuditAction.deleted,
+  adminSavedViewsAuditAction.pinned,
+  adminSavedViewsAuditAction.unpinned,
+  adminWorkspacesAuditAction.create,
+  adminWorkspacesAuditAction.update,
+  adminWorkspacesAuditAction.delete,
+  adminWorkspacesAuditAction.reorder,
+  operationsHomeAuditAction.read,
+  tenantWorkspaceAuditAction.read,
+  manualBreakGlassAuditAction.issue,
+  manualBreakGlassAuditAction.release,
+  manualBreakGlassAuditAction.autoExpire,
+  operatorWebhookDeliveryAuditAction.enqueued,
+  operatorWebhookDeliveryAuditAction.attempted,
+  operatorWebhookDeliveryAuditAction.delivered,
+  operatorWebhookDeliveryAuditAction.failed,
+  operatorWebhookDeliveryAuditAction.exhausted,
+  operatorWebhookDeliveryAuditAction.replayed,
+  operatorWebhookDeliveryAuditAction.retried,
+  operatorWebhookDeliveryAuditAction.canceled,
+  operatorWebhookDeliveryAuditAction.replayGuardShortCircuit,
+  polarRevenueProjectionAuditAction.snapshotComputed,
+  polarRevenueProjectionAuditAction.backfillRequested,
+  openMeterUsageQueryAuditAction.queryExecuted,
+  openMeterUsageQueryAuditAction.backfillRequested,
+  vendorHealthAggregatorAuditAction.snapshotComputed,
+  keycloakUserReadAuditAction.readPerformed,
+  polarCustomerReadAuditAction.readPerformed,
+  openMeterMeterReadAuditAction.readPerformed,
+  novuDeliveriesReadAuditAction.readPerformed,
+  postalMailLogReadAuditAction.readPerformed,
+  glitchTipIssuesReadAuditAction.readPerformed,
+  openPanelEventsReadAuditAction.readPerformed,
+  universalSearchAuditAction.queryExecuted,
+  universalSearchAuditAction.reindexRequested,
+  capabilitySnapshotV2AuditAction.snapshotDerived,
+  capabilitySnapshotV2AuditAction.cacheInvalidated,
+  runAsBannerStateAuditAction.queried,
+  runAsBannerStateAuditAction.released,
+  workflowRunsAdminAuditAction.listed,
+  workflowRunsAdminAuditAction.detailRead,
+  workflowRunsAdminAuditAction.replayed,
+  workflowRunsAdminAuditAction.canceled,
+  notificationCenterAdminAuditAction.listed,
+  notificationCenterAdminAuditAction.detailRead,
+  notificationCenterAdminAuditAction.resent,
+  adminOperatorTestTokensAuditAction.issued,
+  adminOperatorTestTokensAuditAction.revoked,
+  adminOperatorTestTokensAuditAction.listed,
+  adminOperatorTestTokensAuditAction.usedSuccess,
+  adminOperatorTestTokensAuditAction.usedFailure,
 ] as const;
 
 export const AuditActionSchema = Schema.Literal(...auditActions);

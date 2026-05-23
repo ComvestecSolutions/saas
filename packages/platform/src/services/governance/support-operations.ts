@@ -2037,7 +2037,15 @@ export const makeSupportOperationsService = (dependencies: {
                 ),
               ),
               Effect.flatMap((grant) =>
-                dependencies.persistence.persistGrantedBreakGlass(grant),
+                dependencies.persistence.persistGrantedBreakGlass(grant).pipe(
+                  Effect.flatMap(() =>
+                    valkey.writeSession({
+                      sessionId: request.sessionId,
+                      requestContext: grant.grantedRequestContext,
+                    }),
+                  ),
+                  Effect.as(grant),
+                ),
               ),
             ),
           ),

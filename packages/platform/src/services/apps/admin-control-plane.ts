@@ -243,7 +243,7 @@ const capabilityMatrix: ReadonlyArray<{
   },
   {
     capability: adminOperatorCapability.tenantWorkspace,
-    routePath: adminRoutePath.tenantWorkspace,
+    routePath: adminRoutePath.tenantWorkspaceDiscovery,
     label: "Tenant Workspace",
     allowedActorTypes: [actorType.platformOperator],
     actionPolicyIds: [],

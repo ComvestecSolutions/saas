@@ -23,9 +23,97 @@ import {
   handleAdminNotificationCenterHttpRequest,
 } from "../services/communication/admin-notification-center-http";
 import {
+  adminOrganizationApiBasePath,
+  handleAdminOrganizationHttpRequest,
+} from "../services/communication/admin-organization-http";
+import {
+  adminSavedViewsApiBasePath,
+  handleAdminSavedViewsHttpRequest,
+} from "../services/communication/admin-saved-views-http";
+import {
+  adminWorkspacesApiBasePath,
+  handleAdminWorkspacesHttpRequest,
+} from "../services/communication/admin-workspaces-http";
+import {
   emailDeliveryApiBasePath,
   handleEmailDeliveryHttpRequest,
 } from "../services/communication/email-delivery-http";
+import {
+  handleManualBreakGlassHttpRequest,
+  manualBreakGlassApiBasePath,
+} from "../services/communication/manual-break-glass-http";
+import {
+  handleOperationsHomeHttpRequest,
+  operationsHomeApiBasePath,
+} from "../services/communication/operations-home-http";
+import {
+  handleOperatorWebhookDeliveryHttpRequest,
+  operatorWebhookDeliveryApiBasePath,
+} from "../services/communication/operator-webhook-delivery-http";
+import {
+  handleKeycloakUserReadHttpRequest,
+  keycloakUserReadApiBasePath,
+} from "../services/communication/keycloak-user-read-http";
+import {
+  handlePolarCustomerReadHttpRequest,
+  polarCustomerReadApiBasePath,
+} from "../services/communication/polar-customer-read-http";
+import {
+  handleOpenMeterMeterReadHttpRequest,
+  openMeterMeterReadApiBasePath,
+} from "../services/communication/open-meter-meter-read-http";
+import {
+  handleNovuDeliveriesReadHttpRequest,
+  novuDeliveriesReadApiBasePath,
+} from "../services/communication/novu-deliveries-read-http";
+import {
+  handlePostalMailLogReadHttpRequest,
+  postalMailLogReadApiBasePath,
+} from "../services/communication/postal-mail-log-read-http";
+import {
+  handleGlitchTipIssuesReadHttpRequest,
+  glitchTipIssuesReadApiBasePath,
+} from "../services/communication/glitchtip-issues-read-http";
+import {
+  handleOpenPanelEventsReadHttpRequest,
+  openPanelEventsReadApiBasePath,
+} from "../services/communication/openpanel-events-read-http";
+import {
+  handleUniversalSearchHttpRequest,
+  universalSearchApiBasePath,
+} from "../services/communication/universal-search-http";
+import {
+  capabilitySnapshotV2ApiBasePath,
+  handleCapabilitySnapshotV2HttpRequest,
+} from "../services/communication/capability-snapshot-v2-http";
+import {
+  handleRunAsBannerStateHttpRequest,
+  runAsBannerStateApiBasePath,
+} from "../services/communication/run-as-banner-state-http";
+import {
+  handleWorkflowRunsAdminHttpRequest,
+  workflowRunsAdminApiBasePath,
+} from "../services/communication/workflow-runs-admin-http";
+import {
+  handleNotificationCenterAdminHttpRequest,
+  notificationCenterAdminApiBasePath,
+} from "../services/communication/notification-center-admin-http";
+import {
+  handleOpenMeterUsageQueryHttpRequest,
+  openMeterUsageQueryApiBasePath,
+} from "../services/communication/open-meter-usage-query-http";
+import {
+  handlePolarRevenueProjectionHttpRequest,
+  polarRevenueProjectionApiBasePath,
+} from "../services/communication/polar-revenue-projection-http";
+import {
+  handleTenantWorkspaceHttpRequest,
+  tenantWorkspaceApiBasePath,
+} from "../services/communication/tenant-workspace-http";
+import {
+  handleVendorHealthAggregatorHttpRequest,
+  vendorHealthAggregatorApiBasePath,
+} from "../services/communication/vendor-health-aggregator-http";
 import {
   adminBillingApiBasePath,
   handleAdminBillingHttpRequest,
@@ -90,7 +178,29 @@ export type BackendApiAppOptions = {
   readonly adminBillingHandler: BackendApiWebHandler;
   readonly adminEmailDeliveryHandler?: BackendApiWebHandler;
   readonly adminNotificationCenterHandler?: BackendApiWebHandler;
+  readonly adminOrganizationHandler?: BackendApiWebHandler;
+  readonly adminSavedViewsHandler?: BackendApiWebHandler;
+  readonly adminWorkspacesHandler?: BackendApiWebHandler;
   readonly emailDeliveryHandler?: BackendApiWebHandler;
+  readonly manualBreakGlassHandler?: BackendApiWebHandler;
+  readonly operationsHomeHandler?: BackendApiWebHandler;
+  readonly operatorWebhookDeliveryHandler?: BackendApiWebHandler;
+  readonly keycloakUserReadHandler?: BackendApiWebHandler;
+  readonly polarCustomerReadHandler?: BackendApiWebHandler;
+  readonly openMeterMeterReadHandler?: BackendApiWebHandler;
+  readonly novuDeliveriesReadHandler?: BackendApiWebHandler;
+  readonly postalMailLogReadHandler?: BackendApiWebHandler;
+  readonly glitchTipIssuesReadHandler?: BackendApiWebHandler;
+  readonly openPanelEventsReadHandler?: BackendApiWebHandler;
+  readonly universalSearchHandler?: BackendApiWebHandler;
+  readonly capabilitySnapshotV2Handler?: BackendApiWebHandler;
+  readonly runAsBannerStateHandler?: BackendApiWebHandler;
+  readonly workflowRunsAdminHandler?: BackendApiWebHandler;
+  readonly notificationCenterAdminHandler?: BackendApiWebHandler;
+  readonly openMeterUsageQueryHandler?: BackendApiWebHandler;
+  readonly polarRevenueProjectionHandler?: BackendApiWebHandler;
+  readonly tenantWorkspaceHandler?: BackendApiWebHandler;
+  readonly vendorHealthAggregatorHandler?: BackendApiWebHandler;
   readonly adminTenantBrandingHandler?: BackendApiWebHandler;
   readonly adminTenantManagementHandler?: BackendApiWebHandler;
   readonly adminGovernanceHandler: BackendApiWebHandler;
@@ -149,9 +259,77 @@ export const createBackendApiApp = (options: BackendApiAppOptions): H3 => {
     options.adminNotificationCenterHandler ??
     (() =>
       createNotFoundResponse("Admin notification center route not found."));
+  const adminOrganizationHandler =
+    options.adminOrganizationHandler ??
+    (() => createNotFoundResponse("Admin organization route not found."));
+  const adminSavedViewsHandler =
+    options.adminSavedViewsHandler ??
+    (() => createNotFoundResponse("Admin saved views route not found."));
+  const adminWorkspacesHandler =
+    options.adminWorkspacesHandler ??
+    (() => createNotFoundResponse("Admin workspaces route not found."));
   const emailDeliveryHandler =
     options.emailDeliveryHandler ??
     (() => createNotFoundResponse("Email delivery route not found."));
+  const manualBreakGlassHandler =
+    options.manualBreakGlassHandler ??
+    (() => createNotFoundResponse("Manual break-glass route not found."));
+  const operationsHomeHandler =
+    options.operationsHomeHandler ??
+    (() => createNotFoundResponse("Operations Home route not found."));
+  const operatorWebhookDeliveryHandler =
+    options.operatorWebhookDeliveryHandler ??
+    (() =>
+      createNotFoundResponse("Operator webhook delivery route not found."));
+  const openMeterUsageQueryHandler =
+    options.openMeterUsageQueryHandler ??
+    (() => createNotFoundResponse("OpenMeter usage query route not found."));
+  const keycloakUserReadHandler =
+    options.keycloakUserReadHandler ??
+    (() => createNotFoundResponse("Keycloak user read route not found."));
+  const polarCustomerReadHandler =
+    options.polarCustomerReadHandler ??
+    (() => createNotFoundResponse("Polar customer read route not found."));
+  const openMeterMeterReadHandler =
+    options.openMeterMeterReadHandler ??
+    (() => createNotFoundResponse("OpenMeter meter read route not found."));
+  const novuDeliveriesReadHandler =
+    options.novuDeliveriesReadHandler ??
+    (() => createNotFoundResponse("Novu deliveries read route not found."));
+  const postalMailLogReadHandler =
+    options.postalMailLogReadHandler ??
+    (() => createNotFoundResponse("Postal mail log read route not found."));
+  const glitchTipIssuesReadHandler =
+    options.glitchTipIssuesReadHandler ??
+    (() => createNotFoundResponse("GlitchTip issues read route not found."));
+  const openPanelEventsReadHandler =
+    options.openPanelEventsReadHandler ??
+    (() => createNotFoundResponse("OpenPanel events read route not found."));
+  const universalSearchHandler =
+    options.universalSearchHandler ??
+    (() => createNotFoundResponse("Universal-search route not found."));
+  const capabilitySnapshotV2Handler =
+    options.capabilitySnapshotV2Handler ??
+    (() => createNotFoundResponse("Capability snapshot v2 route not found."));
+  const runAsBannerStateHandler =
+    options.runAsBannerStateHandler ??
+    (() => createNotFoundResponse("Run-as banner state route not found."));
+  const workflowRunsAdminHandler =
+    options.workflowRunsAdminHandler ??
+    (() => createNotFoundResponse("Workflow-runs admin route not found."));
+  const notificationCenterAdminHandler =
+    options.notificationCenterAdminHandler ??
+    (() =>
+      createNotFoundResponse("Notification-center admin route not found."));
+  const polarRevenueProjectionHandler =
+    options.polarRevenueProjectionHandler ??
+    (() => createNotFoundResponse("Polar revenue projection route not found."));
+  const tenantWorkspaceHandler =
+    options.tenantWorkspaceHandler ??
+    (() => createNotFoundResponse("Tenant workspace route not found."));
+  const vendorHealthAggregatorHandler =
+    options.vendorHealthAggregatorHandler ??
+    (() => createNotFoundResponse("Vendor-health aggregator route not found."));
   const adminTenantBrandingHandler =
     options.adminTenantBrandingHandler ??
     (() => createNotFoundResponse("Admin tenant branding route not found."));
@@ -233,8 +411,118 @@ export const createBackendApiApp = (options: BackendApiAppOptions): H3 => {
   );
   registerFullPathWebHandler(
     app,
+    adminOrganizationApiBasePath,
+    wrapHandler(adminOrganizationHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    adminSavedViewsApiBasePath,
+    wrapHandler(adminSavedViewsHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    adminWorkspacesApiBasePath,
+    wrapHandler(adminWorkspacesHandler),
+  );
+  registerFullPathWebHandler(
+    app,
     emailDeliveryApiBasePath,
     wrapHandler(emailDeliveryHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    manualBreakGlassApiBasePath,
+    wrapHandler(manualBreakGlassHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    operationsHomeApiBasePath,
+    wrapHandler(operationsHomeHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    operatorWebhookDeliveryApiBasePath,
+    wrapHandler(operatorWebhookDeliveryHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    polarRevenueProjectionApiBasePath,
+    wrapHandler(polarRevenueProjectionHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    openMeterUsageQueryApiBasePath,
+    wrapHandler(openMeterUsageQueryHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    keycloakUserReadApiBasePath,
+    wrapHandler(keycloakUserReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    polarCustomerReadApiBasePath,
+    wrapHandler(polarCustomerReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    openMeterMeterReadApiBasePath,
+    wrapHandler(openMeterMeterReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    novuDeliveriesReadApiBasePath,
+    wrapHandler(novuDeliveriesReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    postalMailLogReadApiBasePath,
+    wrapHandler(postalMailLogReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    glitchTipIssuesReadApiBasePath,
+    wrapHandler(glitchTipIssuesReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    openPanelEventsReadApiBasePath,
+    wrapHandler(openPanelEventsReadHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    universalSearchApiBasePath,
+    wrapHandler(universalSearchHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    capabilitySnapshotV2ApiBasePath,
+    wrapHandler(capabilitySnapshotV2Handler),
+  );
+  registerFullPathWebHandler(
+    app,
+    runAsBannerStateApiBasePath,
+    wrapHandler(runAsBannerStateHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    workflowRunsAdminApiBasePath,
+    wrapHandler(workflowRunsAdminHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    notificationCenterAdminApiBasePath,
+    wrapHandler(notificationCenterAdminHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    tenantWorkspaceApiBasePath,
+    wrapHandler(tenantWorkspaceHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    vendorHealthAggregatorApiBasePath,
+    wrapHandler(vendorHealthAggregatorHandler),
   );
   registerFullPathWebHandler(
     app,
@@ -341,8 +629,74 @@ export const createBackendApiRequestHandler = (environment: unknown) => {
     adminNotificationCenterHandler: fromEffectResponseHandler((request) =>
       handleAdminNotificationCenterHttpRequest(environment, request),
     ),
+    adminOrganizationHandler: fromEffectResponseHandler((request) =>
+      handleAdminOrganizationHttpRequest(environment, request),
+    ),
+    adminSavedViewsHandler: fromEffectResponseHandler((request) =>
+      handleAdminSavedViewsHttpRequest(environment, request),
+    ),
+    adminWorkspacesHandler: fromEffectResponseHandler((request) =>
+      handleAdminWorkspacesHttpRequest(environment, request),
+    ),
     emailDeliveryHandler: fromEffectResponseHandler((request) =>
       handleEmailDeliveryHttpRequest(environment, request),
+    ),
+    manualBreakGlassHandler: fromEffectResponseHandler((request) =>
+      handleManualBreakGlassHttpRequest(environment, request),
+    ),
+    operationsHomeHandler: fromEffectResponseHandler((request) =>
+      handleOperationsHomeHttpRequest(environment, request),
+    ),
+    operatorWebhookDeliveryHandler: fromEffectResponseHandler((request) =>
+      handleOperatorWebhookDeliveryHttpRequest(environment, request),
+    ),
+    polarRevenueProjectionHandler: fromEffectResponseHandler((request) =>
+      handlePolarRevenueProjectionHttpRequest(environment, request),
+    ),
+    openMeterUsageQueryHandler: fromEffectResponseHandler((request) =>
+      handleOpenMeterUsageQueryHttpRequest(environment, request),
+    ),
+    keycloakUserReadHandler: fromEffectResponseHandler((request) =>
+      handleKeycloakUserReadHttpRequest(environment, request),
+    ),
+    polarCustomerReadHandler: fromEffectResponseHandler((request) =>
+      handlePolarCustomerReadHttpRequest(environment, request),
+    ),
+    openMeterMeterReadHandler: fromEffectResponseHandler((request) =>
+      handleOpenMeterMeterReadHttpRequest(environment, request),
+    ),
+    novuDeliveriesReadHandler: fromEffectResponseHandler((request) =>
+      handleNovuDeliveriesReadHttpRequest(environment, request),
+    ),
+    postalMailLogReadHandler: fromEffectResponseHandler((request) =>
+      handlePostalMailLogReadHttpRequest(environment, request),
+    ),
+    glitchTipIssuesReadHandler: fromEffectResponseHandler((request) =>
+      handleGlitchTipIssuesReadHttpRequest(environment, request),
+    ),
+    openPanelEventsReadHandler: fromEffectResponseHandler((request) =>
+      handleOpenPanelEventsReadHttpRequest(environment, request),
+    ),
+    universalSearchHandler: fromEffectResponseHandler((request) =>
+      handleUniversalSearchHttpRequest(environment, request),
+    ),
+    capabilitySnapshotV2Handler: fromEffectResponseHandler((request) =>
+      handleCapabilitySnapshotV2HttpRequest(environment, request),
+    ),
+    runAsBannerStateHandler: fromEffectResponseHandler((request) =>
+      handleRunAsBannerStateHttpRequest(environment, request),
+    ),
+    workflowRunsAdminHandler: fromEffectResponseHandler((request) =>
+      handleWorkflowRunsAdminHttpRequest(environment, request),
+    ),
+    notificationCenterAdminHandler: fromEffectResponseHandler((request) =>
+      handleNotificationCenterAdminHttpRequest(environment, request),
+    ),
+    tenantWorkspaceHandler: fromEffectResponseHandler((request) =>
+      handleTenantWorkspaceHttpRequest(environment, request),
+    ),
+    vendorHealthAggregatorHandler: fromEffectResponseHandler((request) =>
+      handleVendorHealthAggregatorHttpRequest(environment, request),
     ),
     adminBillingHandler: fromEffectResponseHandler((request) =>
       handleAdminBillingHttpRequest(environment, request),

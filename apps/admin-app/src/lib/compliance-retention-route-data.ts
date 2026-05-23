@@ -4,6 +4,8 @@ import {
   listRetentionPoliciesFromSessionId,
   listRetentionLegalHoldsFromSessionId,
 } from "@comvestec/platform";
+import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
+import { buildAdminTenantTarget } from "./admin-tenant-target";
 
 type RetentionPolicy = Awaited<
   Effect.Effect.Success<ReturnType<typeof listRetentionPoliciesFromSessionId>>
@@ -30,31 +32,52 @@ export const loadAdminComplianceRetentionRouteDataFromRequest = (
   scope: string,
   scopeId: string,
 ): Effect.Effect<AdminComplianceRetentionRouteData, never, never> =>
-  extractRequiredSubscriberJourneySessionId(request).pipe(
-    Effect.flatMap((sessionId) =>
-      Effect.all({
-        policies: listRetentionPoliciesFromSessionId(environment, {
-          sessionId,
-          scope: scope as "organization",
-          scopeId,
-        }),
-        holds: listRetentionLegalHoldsFromSessionId(environment, {
-          sessionId,
-          scope: scope as "organization",
-          scopeId,
-        }),
-      }).pipe(
-        Effect.map(
-          ({ policies, holds }): AdminComplianceRetentionRouteData => ({
-            kind: "ready",
-            policies,
-            holds,
-          }),
-        ),
-      ),
+  Effect.sync(() => buildAdminTenantTarget({ scope, scopeId })).pipe(
+    Effect.flatMap((target) =>
+      target === undefined
+        ? Effect.succeed({ kind: "no-scope" } as const)
+        : extractRequiredSubscriberJourneySessionId(request).pipe(
+            Effect.flatMap((sessionId) =>
+              retryTransientAdminSessionReadiness(() =>
+                Effect.all({
+                  policies: listRetentionPoliciesFromSessionId(environment, {
+                    sessionId,
+                    scope: target.scope,
+                    scopeId: target.scopeId,
+                  }),
+                  holds: listRetentionLegalHoldsFromSessionId(environment, {
+                    sessionId,
+                    scope: target.scope,
+                    scopeId: target.scopeId,
+                  }),
+                }).pipe(
+                  Effect.map(
+                    ({
+                      policies,
+                      holds,
+                    }): AdminComplianceRetentionRouteData => ({
+                      kind: "ready",
+                      policies,
+                      holds,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ),
     ),
     Effect.catchTag("SubscriberJourneySessionIdMissingError", () =>
       Effect.succeed({ kind: "shell" } as const),
+    ),
+    Effect.catchTag("IdentitySessionRequestContextNotFoundError", () =>
+      Effect.succeed({ kind: "stale-session" } as const),
+    ),
+    Effect.catchTag("RetentionLegalHoldAccessDeniedError", () =>
+      Effect.succeed({
+        kind: "denied",
+        reason:
+          "The current operator session cannot inspect compliance retention controls for this tenant target.",
+      } as const),
     ),
     Effect.catchAll(() => Effect.succeed({ kind: "stale-session" } as const)),
   );

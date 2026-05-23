@@ -9,6 +9,7 @@ import {
   listBillingRepairGapsFromSessionId,
   type AdminOperationsHomeSummary,
 } from "@comvestec/platform";
+import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 export type AdminTenantRepairRouteLoaderInput = {
   readonly inspectionReason?: string;
@@ -69,51 +70,53 @@ export const loadAdminTenantRepairRouteDataFromRequest = (
 
   return extractRequiredSubscriberJourneySessionId(request).pipe(
     Effect.flatMap((sessionId) =>
-      resolvedGetAdminOperationsHomeSummary(environment, {
-        sessionId,
-      }).pipe(
-        Effect.flatMap((summary) => {
-          const operationsHomeCapability =
-            summary.capabilities.capabilities.find(
-              (capability) =>
-                capability.capability ===
-                adminOperatorCapability.operationsHome,
-            );
-          const repairOperationsCapability =
-            summary.capabilities.capabilities.find(
-              (capability) =>
-                capability.capability ===
-                adminOperatorCapability.repairOperations,
-            );
+      retryTransientAdminSessionReadiness(() =>
+        resolvedGetAdminOperationsHomeSummary(environment, {
+          sessionId,
+        }).pipe(
+          Effect.flatMap((summary) => {
+            const operationsHomeCapability =
+              summary.capabilities.capabilities.find(
+                (capability) =>
+                  capability.capability ===
+                  adminOperatorCapability.operationsHome,
+              );
+            const repairOperationsCapability =
+              summary.capabilities.capabilities.find(
+                (capability) =>
+                  capability.capability ===
+                  adminOperatorCapability.repairOperations,
+              );
 
-          if (operationsHomeCapability?.allowed !== true) {
-            return Effect.succeed({
-              kind: "denied",
-              reason:
-                operationsHomeCapability?.reason ??
-                "The current operator session cannot open admin operations workflows.",
-            } as const);
-          }
+            if (operationsHomeCapability?.allowed !== true) {
+              return Effect.succeed({
+                kind: "denied",
+                reason:
+                  operationsHomeCapability?.reason ??
+                  "The current operator session cannot open admin operations workflows.",
+              } as const);
+            }
 
-          return (
-            repairOperationsCapability?.allowed === true
-              ? resolvedListBillingRepairGaps(environment, {
-                  sessionId,
-                  ...(input.inspectionReason === undefined
-                    ? {}
-                    : { inspectionReason: input.inspectionReason }),
-                }).pipe(Effect.map(({ jobs }) => jobs))
-              : Effect.succeed([] as const)
-          ).pipe(
-            Effect.map(
-              (jobs): AdminTenantRepairRouteData => ({
-                kind: "ready",
-                summary,
-                jobs,
-              }),
-            ),
-          );
-        }),
+            return (
+              repairOperationsCapability?.allowed === true
+                ? resolvedListBillingRepairGaps(environment, {
+                    sessionId,
+                    ...(input.inspectionReason === undefined
+                      ? {}
+                      : { inspectionReason: input.inspectionReason }),
+                  }).pipe(Effect.map(({ jobs }) => jobs))
+                : Effect.succeed([] as const)
+            ).pipe(
+              Effect.map(
+                (jobs): AdminTenantRepairRouteData => ({
+                  kind: "ready",
+                  summary,
+                  jobs,
+                }),
+              ),
+            );
+          }),
+        ),
       ),
     ),
     Effect.catchTag("SubscriberJourneySessionIdMissingError", () =>

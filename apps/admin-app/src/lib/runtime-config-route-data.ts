@@ -5,6 +5,7 @@ import {
   listAdminRuntimeConfigOverridesFromSessionId,
   listAdminRuntimeConfigProposalsFromSessionId,
 } from "@comvestec/platform";
+import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 type RuntimeConfigOverride = Awaited<
   Effect.Effect.Success<
@@ -53,51 +54,66 @@ export const loadAdminRuntimeConfigRouteDataFromRequest = (
 ): Effect.Effect<AdminRuntimeConfigRouteData, never, never> =>
   extractRequiredSubscriberJourneySessionId(request).pipe(
     Effect.flatMap((sessionId) =>
-      Effect.all({
-        overrides: listAdminRuntimeConfigOverridesFromSessionId(environment, {
-          sessionId,
-          moduleId: platformModuleId.runtimeConfig,
-        }),
-        proposals: listAdminRuntimeConfigProposalsFromSessionId(environment, {
-          sessionId,
-          moduleId: platformModuleId.runtimeConfig,
-        }),
-      }).pipe(
-        Effect.map(
-          ({ overrides, proposals }): AdminRuntimeConfigRouteData => ({
-            kind: "ready",
-            overrides: overrides.map((override) => {
-              const { value, ...rest } = override;
-
-              return {
-                ...rest,
-                value: stringifyRuntimeConfigValue(value),
-              };
-            }),
-            proposals: proposals.map((proposal) => {
-              const { value, runtimeValue, codeValue, ...rest } = proposal;
-
-              return {
-                ...rest,
-                value: stringifyRuntimeConfigValue(value),
-                ...(runtimeValue === undefined
-                  ? {}
-                  : {
-                      runtimeValue: stringifyRuntimeConfigValue(runtimeValue),
-                    }),
-                ...(codeValue === undefined
-                  ? {}
-                  : {
-                      codeValue: stringifyRuntimeConfigValue(codeValue),
-                    }),
-              };
-            }),
+      retryTransientAdminSessionReadiness(() =>
+        Effect.all({
+          overrides: listAdminRuntimeConfigOverridesFromSessionId(environment, {
+            sessionId,
+            moduleId: platformModuleId.runtimeConfig,
           }),
+          proposals: listAdminRuntimeConfigProposalsFromSessionId(environment, {
+            sessionId,
+            moduleId: platformModuleId.runtimeConfig,
+          }),
+        }).pipe(
+          Effect.map(
+            ({ overrides, proposals }): AdminRuntimeConfigRouteData => ({
+              kind: "ready",
+              overrides: overrides.map((override) => {
+                const { value, ...rest } = override;
+
+                return {
+                  ...rest,
+                  value: stringifyRuntimeConfigValue(value),
+                };
+              }),
+              proposals: proposals.map((proposal) => {
+                const { value, runtimeValue, codeValue, ...rest } = proposal;
+
+                return {
+                  ...rest,
+                  value: stringifyRuntimeConfigValue(value),
+                  ...(runtimeValue === undefined
+                    ? {}
+                    : {
+                        runtimeValue: stringifyRuntimeConfigValue(runtimeValue),
+                      }),
+                  ...(codeValue === undefined
+                    ? {}
+                    : {
+                        codeValue: stringifyRuntimeConfigValue(codeValue),
+                      }),
+                };
+              }),
+            }),
+          ),
         ),
       ),
     ),
     Effect.catchTag("SubscriberJourneySessionIdMissingError", () =>
       Effect.succeed({ kind: "shell" } as const),
+    ),
+    Effect.catchTag("AdminGovernanceReadAccessDeniedError", () =>
+      Effect.succeed({
+        kind: "denied",
+        reason:
+          "The current operator session cannot inspect governed runtime configuration.",
+      } as const),
+    ),
+    Effect.catchTag("AdminGovernanceRequestContextNotFoundError", () =>
+      Effect.succeed({ kind: "stale-session" } as const),
+    ),
+    Effect.catchTag("AdminGovernanceRequestContextMalformedError", () =>
+      Effect.succeed({ kind: "stale-session" } as const),
     ),
     Effect.catchAll(() => Effect.succeed({ kind: "stale-session" } as const)),
   );

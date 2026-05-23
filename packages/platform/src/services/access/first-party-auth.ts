@@ -1,6 +1,7 @@
 import { Effect, ParseResult, Schema } from "effect";
 import {
   AbsoluteRedirectUriSchema,
+  FirstPartyAppPostAuthRedirectPathSchema,
   IsoTimestampSchema,
   PlatformModuleIdSchema,
   TenantContextSchema,
@@ -10,19 +11,31 @@ const ProductAppAuthCallbackEnvironmentSchema = Schema.Struct({
   PRODUCT_APP_BASE_URL: AbsoluteRedirectUriSchema,
 });
 
+const AdminAppAuthCallbackEnvironmentSchema = Schema.Struct({
+  ADMIN_APP_BASE_URL: AbsoluteRedirectUriSchema,
+});
+
 const ProductAppAuthStateEnvironmentSchema = Schema.Struct({
   PRODUCT_APP_BASE_URL: AbsoluteRedirectUriSchema,
   KEYCLOAK_CLIENT_SECRET: Schema.NonEmptyString,
 });
 
-export const ProductAppPostAuthRedirectPathSchema = Schema.NonEmptyString.pipe(
-  Schema.pattern(/^\/(?!\/).*/),
-);
+const AdminAppAuthStateEnvironmentSchema = Schema.Struct({
+  ADMIN_APP_BASE_URL: AbsoluteRedirectUriSchema,
+  KEYCLOAK_CLIENT_SECRET: Schema.NonEmptyString,
+});
+
+export { FirstPartyAppPostAuthRedirectPathSchema } from "@comvestec/contracts";
+
+export const ProductAppPostAuthRedirectPathSchema =
+  FirstPartyAppPostAuthRedirectPathSchema;
 
 export const ProductAppAuthCallbackStatePayloadSchema = Schema.Struct({
   correlationId: Schema.NonEmptyString,
   redirectUri: AbsoluteRedirectUriSchema,
-  postAuthRedirectPath: Schema.optional(ProductAppPostAuthRedirectPathSchema),
+  postAuthRedirectPath: Schema.optional(
+    FirstPartyAppPostAuthRedirectPathSchema,
+  ),
   tenant: TenantContextSchema,
   enabledModules: Schema.Array(PlatformModuleIdSchema),
   expiresAt: IsoTimestampSchema,
@@ -66,8 +79,16 @@ const decodeProductAppAuthCallbackEnvironment = Schema.decodeUnknown(
   ProductAppAuthCallbackEnvironmentSchema,
 );
 
+const decodeAdminAppAuthCallbackEnvironment = Schema.decodeUnknown(
+  AdminAppAuthCallbackEnvironmentSchema,
+);
+
 const decodeProductAppAuthStateEnvironment = Schema.decodeUnknown(
   ProductAppAuthStateEnvironmentSchema,
+);
+
+const decodeAdminAppAuthStateEnvironment = Schema.decodeUnknown(
+  AdminAppAuthStateEnvironmentSchema,
 );
 
 // Import a secret string as an HMAC-SHA-256 key via the global Web Crypto API.
@@ -199,6 +220,21 @@ const resolveProductAppAuthCallbackEnvironmentFromUnknown = (
     ),
   );
 
+const resolveAdminAppAuthCallbackEnvironmentFromUnknown = (
+  environment: unknown,
+) =>
+  decodeAdminAppAuthCallbackEnvironment(environment).pipe(
+    Effect.flatMap((decodedEnvironment) =>
+      resolveApprovedProductAppAuthCallbackRedirectUri(
+        decodedEnvironment.ADMIN_APP_BASE_URL,
+      ).pipe(
+        Effect.map((approvedRedirectUri) => ({
+          approvedRedirectUri,
+        })),
+      ),
+    ),
+  );
+
 const resolveProductAppAuthStateEnvironmentFromUnknown = (
   environment: unknown,
 ) =>
@@ -206,6 +242,20 @@ const resolveProductAppAuthStateEnvironmentFromUnknown = (
     Effect.flatMap((decodedEnvironment) =>
       resolveApprovedProductAppAuthCallbackRedirectUri(
         decodedEnvironment.PRODUCT_APP_BASE_URL,
+      ).pipe(
+        Effect.map((approvedRedirectUri) => ({
+          approvedRedirectUri,
+          keycloakClientSecret: decodedEnvironment.KEYCLOAK_CLIENT_SECRET,
+        })),
+      ),
+    ),
+  );
+
+const resolveAdminAppAuthStateEnvironmentFromUnknown = (environment: unknown) =>
+  decodeAdminAppAuthStateEnvironment(environment).pipe(
+    Effect.flatMap((decodedEnvironment) =>
+      resolveApprovedProductAppAuthCallbackRedirectUri(
+        decodedEnvironment.ADMIN_APP_BASE_URL,
       ).pipe(
         Effect.map((approvedRedirectUri) => ({
           approvedRedirectUri,
@@ -237,6 +287,60 @@ export const validateProductAppAuthCallbackRedirectUriFromEnvironment = (
     ),
   );
 
+export const resolveAdminAppAuthCallbackRedirectUriFromEnvironment = (
+  environment: unknown,
+) =>
+  resolveAdminAppAuthCallbackEnvironmentFromUnknown(environment).pipe(
+    Effect.map(
+      (resolvedEnvironment) => resolvedEnvironment.approvedRedirectUri,
+    ),
+  );
+
+export const validateAdminAppAuthCallbackRedirectUriFromEnvironment = (
+  environment: unknown,
+  redirectUri: string,
+) =>
+  resolveAdminAppAuthCallbackEnvironmentFromUnknown(environment).pipe(
+    Effect.flatMap((resolvedEnvironment) =>
+      validateApprovedProductAppAuthCallbackRedirectUri(
+        resolvedEnvironment.approvedRedirectUri,
+        redirectUri,
+      ),
+    ),
+  );
+
+const createAuthCallbackStateFromResolvedEnvironment = (
+  resolvedEnvironment: {
+    readonly approvedRedirectUri: string;
+    readonly keycloakClientSecret: string;
+  },
+  payload: ProductAppAuthCallbackStatePayload,
+): Effect.Effect<
+  string,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  Schema.decodeUnknown(ProductAppAuthCallbackStatePayloadSchema)(payload).pipe(
+    Effect.flatMap((decodedPayload) =>
+      validateApprovedProductAppAuthCallbackRedirectUri(
+        resolvedEnvironment.approvedRedirectUri,
+        decodedPayload.redirectUri,
+      ).pipe(
+        Effect.flatMap(() => {
+          const encodedPayload = Buffer.from(
+            JSON.stringify(decodedPayload),
+            "utf8",
+          ).toString("base64url");
+          return signStatePayload(
+            resolvedEnvironment.keycloakClientSecret,
+            encodedPayload,
+          ).pipe(Effect.map((sig) => `${encodedPayload}.${sig}`));
+        }),
+      ),
+    ),
+  );
+
 export const createProductAppAuthCallbackStateFromEnvironment = (
   environment: unknown,
   payload: ProductAppAuthCallbackStatePayload,
@@ -248,25 +352,63 @@ export const createProductAppAuthCallbackStateFromEnvironment = (
 > =>
   resolveProductAppAuthStateEnvironmentFromUnknown(environment).pipe(
     Effect.flatMap((resolvedEnvironment) =>
-      Schema.decodeUnknown(ProductAppAuthCallbackStatePayloadSchema)(
+      createAuthCallbackStateFromResolvedEnvironment(
+        resolvedEnvironment,
         payload,
+      ),
+    ),
+  );
+
+export const createAdminAppAuthCallbackStateFromEnvironment = (
+  environment: unknown,
+  payload: ProductAppAuthCallbackStatePayload,
+): Effect.Effect<
+  string,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  resolveAdminAppAuthStateEnvironmentFromUnknown(environment).pipe(
+    Effect.flatMap((resolvedEnvironment) =>
+      createAuthCallbackStateFromResolvedEnvironment(
+        resolvedEnvironment,
+        payload,
+      ),
+    ),
+  );
+
+const decodeAuthCallbackStatePayloadFromResolvedEnvironment = (
+  resolvedEnvironment: {
+    readonly approvedRedirectUri: string;
+    readonly keycloakClientSecret: string;
+  },
+  stateToken: string,
+): Effect.Effect<
+  ProductAppAuthCallbackStatePayload,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  decodeStateToken(stateToken).pipe(
+    Effect.flatMap(({ encodedPayload, signature }) =>
+      verifyStatePayloadSignature(
+        resolvedEnvironment.keycloakClientSecret,
+        encodedPayload,
+        signature,
       ).pipe(
-        Effect.flatMap((decodedPayload) =>
-          validateApprovedProductAppAuthCallbackRedirectUri(
-            resolvedEnvironment.approvedRedirectUri,
-            decodedPayload.redirectUri,
-          ).pipe(
-            Effect.flatMap(() => {
-              const encodedPayload = Buffer.from(
-                JSON.stringify(decodedPayload),
-                "utf8",
-              ).toString("base64url");
-              return signStatePayload(
-                resolvedEnvironment.keycloakClientSecret,
-                encodedPayload,
-              ).pipe(Effect.map((sig) => `${encodedPayload}.${sig}`));
-            }),
-          ),
+        Effect.flatMap((isValid) =>
+          isValid
+            ? decodeStatePayload(encodedPayload).pipe(
+                Effect.flatMap((decodedPayload) =>
+                  validateApprovedProductAppAuthCallbackRedirectUri(
+                    resolvedEnvironment.approvedRedirectUri,
+                    decodedPayload.redirectUri,
+                  ).pipe(Effect.as(decodedPayload)),
+                ),
+              )
+            : Effect.fail(
+                invalidStateError("State token signature is invalid."),
+              ),
         ),
       ),
     ),
@@ -312,6 +454,46 @@ export const decodeProductAppAuthCallbackStateFromEnvironment = (
     ),
   );
 
+export const decodeAdminAppAuthCallbackStateFromEnvironment = (
+  environment: unknown,
+  stateToken: string,
+  now: Date = new Date(),
+): Effect.Effect<
+  ProductAppAuthCallbackStatePayload,
+  ProductAppAuthCallbackStateError
+> =>
+  decodeAdminAppAuthCallbackStatePayloadFromEnvironment(
+    environment,
+    stateToken,
+  ).pipe(
+    Effect.flatMap(
+      (
+        decodedPayload,
+      ): Effect.Effect<
+        ProductAppAuthCallbackStatePayload,
+        | ProductAppAuthCallbackStateExpiredError
+        | ProductAppAuthCallbackStateInvalidError
+      > => {
+        const expiresAt = Date.parse(decodedPayload.expiresAt);
+
+        if (!Number.isFinite(expiresAt)) {
+          return Effect.fail(
+            invalidStateError("State token expiry is invalid."),
+          );
+        }
+
+        if (expiresAt <= now.getTime()) {
+          return Effect.fail({
+            _tag: "ProductAppAuthCallbackStateExpiredError",
+            expiresAt: decodedPayload.expiresAt,
+          } satisfies ProductAppAuthCallbackStateExpiredError);
+        }
+
+        return Effect.succeed(decodedPayload);
+      },
+    ),
+  );
+
 export const decodeProductAppAuthCallbackStatePayloadFromEnvironment = (
   environment: unknown,
   stateToken: string,
@@ -323,29 +505,27 @@ export const decodeProductAppAuthCallbackStatePayloadFromEnvironment = (
 > =>
   resolveProductAppAuthStateEnvironmentFromUnknown(environment).pipe(
     Effect.flatMap((resolvedEnvironment) =>
-      decodeStateToken(stateToken).pipe(
-        Effect.flatMap(({ encodedPayload, signature }) =>
-          verifyStatePayloadSignature(
-            resolvedEnvironment.keycloakClientSecret,
-            encodedPayload,
-            signature,
-          ).pipe(
-            Effect.flatMap((isValid) =>
-              isValid
-                ? decodeStatePayload(encodedPayload).pipe(
-                    Effect.flatMap((decodedPayload) =>
-                      validateApprovedProductAppAuthCallbackRedirectUri(
-                        resolvedEnvironment.approvedRedirectUri,
-                        decodedPayload.redirectUri,
-                      ).pipe(Effect.as(decodedPayload)),
-                    ),
-                  )
-                : Effect.fail(
-                    invalidStateError("State token signature is invalid."),
-                  ),
-            ),
-          ),
-        ),
+      decodeAuthCallbackStatePayloadFromResolvedEnvironment(
+        resolvedEnvironment,
+        stateToken,
+      ),
+    ),
+  );
+
+export const decodeAdminAppAuthCallbackStatePayloadFromEnvironment = (
+  environment: unknown,
+  stateToken: string,
+): Effect.Effect<
+  ProductAppAuthCallbackStatePayload,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  resolveAdminAppAuthStateEnvironmentFromUnknown(environment).pipe(
+    Effect.flatMap((resolvedEnvironment) =>
+      decodeAuthCallbackStatePayloadFromResolvedEnvironment(
+        resolvedEnvironment,
+        stateToken,
       ),
     ),
   );

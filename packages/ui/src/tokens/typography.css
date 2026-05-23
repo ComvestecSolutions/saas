@@ -1,0 +1,49 @@
+/**
+ * Typography tokens — IBM Plex Sans Condensed + IBM Plex Sans +
+ * JetBrains Mono.
+ *
+ * Sizes (binding): 11 / 13 / 14 / 16 / 20 / 24 px.
+ * Weights (binding): 400 / 500 / 600.
+ * Min body 13px, min monospace metadata 11px (admin-app plan §12).
+ */
+
+@import "@fontsource/ibm-plex-sans-condensed/400.css";
+@import "@fontsource/ibm-plex-sans-condensed/500.css";
+@import "@fontsource/ibm-plex-sans-condensed/600.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource-variable/jetbrains-mono/index.css";
+
+@layer tokens {
+  :root {
+    --font-display:
+      "IBM Plex Sans Condensed", "Arial Narrow", ui-sans-serif, sans-serif;
+    --font-sans:
+      "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      sans-serif;
+    --font-condensed:
+      "IBM Plex Sans Condensed", "Arial Narrow", ui-sans-serif, sans-serif;
+    --font-mono:
+      "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --font-size-11: 0.6875rem; /* 11px */
+    --font-size-13: 0.8125rem; /* 13px */
+    --font-size-14: 0.875rem; /* 14px */
+    --font-size-16: 1rem; /* 16px */
+    --font-size-20: 1.25rem; /* 20px */
+    --font-size-24: 1.5rem; /* 24px */
+
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+
+    --line-height-tight: 1.08;
+    --line-height-default: 1.42;
+    --line-height-relaxed: 1.58;
+
+    --tracking-dense: -0.03em;
+    --tracking-normal: -0.01em;
+    --tracking-wide: 0.12em;
+  }
+}

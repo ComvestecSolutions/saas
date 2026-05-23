@@ -1,8 +1,12 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
 /**
- * Merge class names, filtering out falsy values.
- * A lightweight alternative to `clsx` / `classnames` for use within
- * packages/ui without adding a runtime dependency.
+ * Conditional className composition + Tailwind conflict resolution.
+ *
+ * Supersedes the legacy `cn(...strings)` signature: the new ClassValue
+ * union (string | number | boolean | null | undefined | array | record)
+ * is a superset, so existing call-sites remain valid.
  */
-export const cn = (
-  ...classes: ReadonlyArray<string | undefined | null | false>
-): string => classes.filter(Boolean).join(" ");
+export const cn = (...inputs: ReadonlyArray<ClassValue>): string =>
+  twMerge(clsx(inputs));

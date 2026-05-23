@@ -81,6 +81,7 @@ const createIdentitySessionModuleDouble = (
 ): IdentitySessionModuleService => ({
   startAuthentication: () => unexpectedWorkflowJobsEffect(),
   completeAuthentication: () => unexpectedWorkflowJobsEffect(),
+  completePlatformOperatorAuthentication: () => unexpectedWorkflowJobsEffect(),
   invalidateSession: () => unexpectedWorkflowJobsEffect(),
   resolveRequestContext: () => Effect.succeed(requestContext),
 });

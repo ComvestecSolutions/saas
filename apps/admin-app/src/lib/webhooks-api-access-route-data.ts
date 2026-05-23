@@ -4,6 +4,8 @@ import {
   listWebhookSubscriptionsFromSessionId,
   listWebhookApiKeysFromSessionId,
 } from "@comvestec/platform";
+import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
+import { buildAdminTenantTarget } from "./admin-tenant-target";
 
 type WebhookSubscription = Awaited<
   Effect.Effect.Success<
@@ -32,31 +34,55 @@ export const loadAdminWebhooksApiAccessRouteDataFromRequest = (
   scope: string,
   scopeId: string,
 ): Effect.Effect<AdminWebhooksApiAccessRouteData, never, never> =>
-  extractRequiredSubscriberJourneySessionId(request).pipe(
-    Effect.flatMap((sessionId) =>
-      Effect.all({
-        subscriptions: listWebhookSubscriptionsFromSessionId(environment, {
-          sessionId,
-          scope: scope as "organization",
-          scopeId,
-        }),
-        apiKeys: listWebhookApiKeysFromSessionId(environment, {
-          sessionId,
-          scope: scope as "organization",
-          scopeId,
-        }),
-      }).pipe(
-        Effect.map(
-          ({ subscriptions, apiKeys }): AdminWebhooksApiAccessRouteData => ({
-            kind: "ready",
-            subscriptions,
-            apiKeys,
-          }),
-        ),
-      ),
+  Effect.sync(() => buildAdminTenantTarget({ scope, scopeId })).pipe(
+    Effect.flatMap((target) =>
+      target === undefined
+        ? Effect.succeed({ kind: "no-scope" } as const)
+        : extractRequiredSubscriberJourneySessionId(request).pipe(
+            Effect.flatMap((sessionId) =>
+              retryTransientAdminSessionReadiness(() =>
+                Effect.all({
+                  subscriptions: listWebhookSubscriptionsFromSessionId(
+                    environment,
+                    {
+                      sessionId,
+                      scope: target.scope,
+                      scopeId: target.scopeId,
+                    },
+                  ),
+                  apiKeys: listWebhookApiKeysFromSessionId(environment, {
+                    sessionId,
+                    scope: target.scope,
+                    scopeId: target.scopeId,
+                  }),
+                }).pipe(
+                  Effect.map(
+                    ({
+                      subscriptions,
+                      apiKeys,
+                    }): AdminWebhooksApiAccessRouteData => ({
+                      kind: "ready",
+                      subscriptions,
+                      apiKeys,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ),
     ),
     Effect.catchTag("SubscriberJourneySessionIdMissingError", () =>
       Effect.succeed({ kind: "shell" } as const),
+    ),
+    Effect.catchTag("IdentitySessionRequestContextNotFoundError", () =>
+      Effect.succeed({ kind: "stale-session" } as const),
+    ),
+    Effect.catchTag("WebhooksApiAccessAccessDeniedError", () =>
+      Effect.succeed({
+        kind: "denied",
+        reason:
+          "The current operator session cannot inspect webhook subscriptions or API keys for this tenant target.",
+      } as const),
     ),
     Effect.catchAll(() => Effect.succeed({ kind: "stale-session" } as const)),
   );

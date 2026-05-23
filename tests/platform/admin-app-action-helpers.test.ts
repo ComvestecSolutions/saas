@@ -1,13 +1,17 @@
 import { Effect } from "effect";
 import {
   deleteAdminAuthorizationTupleFromSessionId,
+  getAdminOperatorDirectorySnapshotFromSessionId,
+  getAdminOperatorProfileFromSessionId,
   listAdminRuntimeConfigOverridesFromSessionId,
   listAdminAuthorizationTuplesFromSessionId,
   listRetentionPoliciesFromSessionId,
+  provisionAdminOperatorFromSessionId,
   listSupportCasesFromSessionId,
   listWebhookSubscriptionsFromSessionId,
 } from "@comvestec/platform";
 import {
+  actorType,
   adminQuerySortDirection,
   authorizationAuditAction,
   authorizationNamespace,
@@ -195,5 +199,127 @@ describe("admin app action helpers", () => {
     ).resolves.toBe(expected);
 
     expect(deleteAdminAuthorizationTuple).toHaveBeenCalledWith(request);
+  });
+
+  it("delegates operator profile reads through the app-safe helper seam", async () => {
+    const request: Parameters<typeof getAdminOperatorProfileFromSessionId>[1] =
+      {
+        sessionId: "sess_admin_operator_profile",
+      };
+    const expected = {
+      identity: {
+        actorId: "usr_platform_operator",
+        username: "operator@comvestec.com",
+        email: "operator@comvestec.com",
+        displayName: "Comvestec Platform Operator",
+        actorType: actorType.platformOperator,
+        enabled: true,
+      },
+      sessionId: request.sessionId,
+      capabilities: [],
+    } as const;
+    const getAdminOperatorProfile: NonNullable<
+      Parameters<typeof getAdminOperatorProfileFromSessionId>[2]
+    > = vi.fn(() => Effect.succeed(expected));
+
+    await expect(
+      Effect.runPromise(
+        getAdminOperatorProfileFromSessionId(
+          {},
+          request,
+          getAdminOperatorProfile,
+        ),
+      ),
+    ).resolves.toBe(expected);
+
+    expect(getAdminOperatorProfile).toHaveBeenCalledWith(request);
+  });
+
+  it("delegates operator directory reads through the app-safe helper seam", async () => {
+    const request: Parameters<
+      typeof getAdminOperatorDirectorySnapshotFromSessionId
+    >[1] = {
+      sessionId: "sess_admin_operator_directory",
+    };
+    const expected = {
+      currentOperator: {
+        identity: {
+          actorId: "usr_platform_operator",
+          username: "operator@comvestec.com",
+          email: "operator@comvestec.com",
+          displayName: "Comvestec Platform Operator",
+          actorType: actorType.platformOperator,
+          enabled: true,
+        },
+        sessionId: request.sessionId,
+        capabilities: [],
+      },
+      operators: [
+        {
+          actorId: "usr_platform_operator",
+          username: "operator@comvestec.com",
+          email: "operator@comvestec.com",
+          displayName: "Comvestec Platform Operator",
+          actorType: actorType.platformOperator,
+          enabled: true,
+        },
+      ],
+    } as const;
+    const getAdminOperatorDirectorySnapshot: NonNullable<
+      Parameters<typeof getAdminOperatorDirectorySnapshotFromSessionId>[2]
+    > = vi.fn(() => Effect.succeed(expected));
+
+    await expect(
+      Effect.runPromise(
+        getAdminOperatorDirectorySnapshotFromSessionId(
+          {},
+          request,
+          getAdminOperatorDirectorySnapshot,
+        ),
+      ),
+    ).resolves.toBe(expected);
+
+    expect(getAdminOperatorDirectorySnapshot).toHaveBeenCalledWith(request);
+  });
+
+  it("delegates operator provisioning through the app-safe helper seam", async () => {
+    const request: Parameters<typeof provisionAdminOperatorFromSessionId>[1] = {
+      sessionId: "sess_admin_operator_provision",
+      displayName: "Comvestec Audit Operator",
+      email: "audit.operator@comvestec.com",
+      username: "audit.operator",
+      actorType: actorType.supportOperator,
+      reason: "Add audit oversight coverage.",
+    };
+    const expected = {
+      operator: {
+        actorId: "usr_audit_operator",
+        username: request.username ?? request.email,
+        email: request.email,
+        displayName: request.displayName,
+        actorType: request.actorType,
+        enabled: true,
+      },
+      updatedExisting: false,
+      credentialHandoff: {
+        signInUrl: "https://admin.example.com/auth/sign-in",
+        temporaryPassword: "Adm_temp_fixture!aA1",
+      },
+    } as const;
+    const provisionAdminOperator: NonNullable<
+      Parameters<typeof provisionAdminOperatorFromSessionId>[2]
+    > = vi.fn(() => Effect.succeed(expected));
+
+    await expect(
+      Effect.runPromise(
+        provisionAdminOperatorFromSessionId(
+          {},
+          request,
+          provisionAdminOperator,
+        ),
+      ),
+    ).resolves.toBe(expected);
+
+    expect(provisionAdminOperator).toHaveBeenCalledWith(request);
   });
 });

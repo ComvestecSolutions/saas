@@ -1,6 +1,7 @@
+import { Link } from "@tanstack/react-router";
+import { platformScope } from "@comvestec/contracts";
 import { Schema } from "effect";
 import { createAdminAppFileRoute } from "../file-route";
-import { loadAdminBrandingLoaderData } from "../lib/operational-loaders";
 import {
   EmptyState,
   LoadingState,
@@ -8,6 +9,30 @@ import {
   StatusChip,
   resolveStatusVariant,
 } from "@comvestec/ui";
+import { AdminSessionRequiredState } from "../components/admin-session-required-state";
+import { AdminTenantTargetForm } from "../components/admin-tenant-target-form";
+import {
+  buildAdminTenantTargetSearch,
+  buildAdminTenantWorkspacePath,
+} from "../lib/admin-tenant-target";
+import { ScreenHeader, ExternalIcon } from "../components/ui";
+
+const BrandingIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path
+      d="M2 12l4-4 3 3 2-2 3 4H2z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
+    <circle
+      cx="11.5"
+      cy="4.5"
+      r="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    />
+  </svg>
+);
 
 const BrandingSearchSchema = Schema.Struct({
   scopeId: Schema.optional(Schema.NonEmptyString),
@@ -20,7 +45,11 @@ export const Route = createAdminAppFileRoute("/branding")({
     scopeId: search.scopeId,
     scope: search.scope,
   }),
-  loader: ({ deps }) => loadAdminBrandingLoaderData(deps.scope, deps.scopeId),
+  loader: ({ deps }) =>
+    import("../lib/operational-loaders").then(
+      ({ loadAdminBrandingLoaderData }) =>
+        loadAdminBrandingLoaderData(deps.scope, deps.scopeId),
+    ),
   component: Branding,
   pendingComponent: () => <LoadingState title="Loading tenant branding…" />,
 });
@@ -32,17 +61,18 @@ function Branding() {
 
   if (data.kind === "shell") {
     return (
-      <PermissionDeniedState
+      <AdminSessionRequiredState
         title="Operator session required"
-        description="Sign in with a platform-operator session to view tenant branding."
+        description="Sign in with a platform-operator or support-operator session to view tenant branding."
       />
     );
   }
   if (data.kind === "stale-session") {
     return (
-      <PermissionDeniedState
+      <AdminSessionRequiredState
         title="Session refresh required"
         description="Re-authenticate to view tenant branding."
+        stale
       />
     );
   }
@@ -54,111 +84,57 @@ function Branding() {
 
   return (
     <div className="ops-screen">
-      <div className="ops-screen-header">
-        <h1 className="ops-screen-title">Branding</h1>
-        <p className="ops-screen-subtitle">
-          Support-safe branding view — enter a scope ID to inspect
-        </p>
-      </div>
+      <ScreenHeader
+        icon={<BrandingIcon />}
+        title="Branding & Domains"
+        breadcrumbs={[{ label: "Operations" }, { label: "Branding" }]}
+        subtitle="Search-first branding and domain operations for a selected tenant target."
+      />
 
       <div className="ops-card">
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            flexWrap: "wrap",
-            alignItems: "flex-end",
-          }}
-        >
-          <label
-            className="ops-field"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-              minWidth: "200px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "var(--ops-text-muted)",
-              }}
-            >
-              Scope
-            </span>
-            <select
-              className="ops-field-input"
-              value={search.scope ?? "organization"}
-              onChange={(e) =>
-                navigate({
-                  search: { ...search, scope: e.target.value },
-                })
-              }
-            >
-              {["organization", "enterprise", "individual"].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label
-            className="ops-field"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-              flex: "1 1 240px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "var(--ops-text-muted)",
-              }}
-            >
-              Scope ID
-            </span>
-            <input
-              className="ops-field-input"
-              type="text"
-              placeholder="Enter scope ID…"
-              defaultValue={search.scopeId ?? ""}
-              onBlur={(e) => {
-                const value = e.target.value.trim();
-                if (value !== (search.scopeId ?? "")) {
-                  navigate({
-                    search: { ...search, scopeId: value || undefined },
-                  });
-                }
-              }}
-            />
-          </label>
+        <div className="ops-card-head">
+          <p className="ops-card-head__title">Choose tenant target</p>
         </div>
+        <AdminTenantTargetForm
+          initialScope={search.scope}
+          initialScopeId={search.scopeId}
+          allowedScopes={[platformScope.organization, platformScope.enterprise]}
+          submitLabel="Load branding view"
+          submitVariant="secondary"
+          onSubmit={(target) =>
+            navigate({ search: buildAdminTenantTargetSearch(target) })
+          }
+        />
       </div>
 
       {data.kind === "no-scope" ? (
         <EmptyState
-          title="Enter a scope ID"
-          description="Provide a scope and scope ID above to load the tenant's branding view."
+          title="Choose a tenant target"
+          description="Pick a named tenant target above, or open the exact internal lookup only when you truly need it."
         />
       ) : (
         <div className="ops-card">
-          <p className="ops-card-title">Branding details</p>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-              gap: "16px",
-            }}
-          >
+          <div className="ops-card-head">
+            <p className="ops-card-head__title">
+              {data.branding.companyName}
+              <span className="ops-card-head__count">
+                {data.branding.effectiveScope}
+              </span>
+            </p>
+            <div className="ops-card-head__actions">
+              <Link
+                className="ops-btn ops-btn--xs"
+                to={buildAdminTenantWorkspacePath({
+                  scope: data.branding.scope,
+                  scopeId: data.branding.scopeId,
+                })}
+              >
+                <ExternalIcon size={11} /> Open workspace
+              </Link>
+            </div>
+          </div>
+
+          <div className="ops-meta-grid">
             {[
               {
                 label: "Company name",
@@ -179,22 +155,11 @@ function Branding() {
               },
             ].map(({ label, value, mono }) => (
               <div key={label}>
-                <p
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    color: "var(--ops-text-muted)",
-                    margin: "0 0 4px",
-                  }}
-                >
-                  {label}
-                </p>
+                <p className="ops-meta-label">{label}</p>
                 <p
                   style={{
                     fontFamily: mono ? "var(--ops-font-mono)" : "inherit",
-                    fontSize: "0.875rem",
+                    fontSize: "0.86rem",
                     color: "var(--ops-text)",
                     margin: 0,
                   }}
@@ -203,24 +168,13 @@ function Branding() {
                 </p>
               </div>
             ))}
-          </div>
-          <div style={{ marginTop: "16px" }}>
-            <p
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "var(--ops-text-muted)",
-                margin: "0 0 4px",
-              }}
-            >
-              Custom domain status
-            </p>
-            <StatusChip
-              status={data.branding.customDomainStatus}
-              variant={resolveStatusVariant(data.branding.customDomainStatus)}
-            />
+            <div>
+              <p className="ops-meta-label">Custom domain</p>
+              <StatusChip
+                status={data.branding.customDomainStatus}
+                variant={resolveStatusVariant(data.branding.customDomainStatus)}
+              />
+            </div>
           </div>
         </div>
       )}

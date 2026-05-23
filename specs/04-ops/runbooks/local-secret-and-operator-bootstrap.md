@@ -17,6 +17,23 @@ Use this runbook to bootstrap machine-local secrets, provision human operator ac
 3. Provision named human operator logins where the current service supports them.
 4. Store the resulting active credential bundle outside tracked files, with Vault as the local source of truth.
 
+## Canonical Vault Artifacts
+
+Keep the local Vault bootstrap and recovery files in these operator-local paths:
+
+1. `~/.vault-init.json` — full `vault operator init` output
+2. `~/.vault-unseal-key` — local unseal key share
+3. `~/.vault-token` — break-glass root/bootstrap token
+4. `~/.vault-local-runtime-token` — scoped non-root token for routine repo-owned
+   reads and writes to `platform/local-ops/runtime-env`
+
+For one-off bootstrap or recovery commands, repo-owned tooling also accepts
+`VAULT_BOOTSTRAP_TOKEN` or `VAULT_BOOTSTRAP_TOKEN_FILE` as explicit overrides
+instead of reading `~/.vault-token`.
+
+Do not treat temp files, copied shell output, or clipboard snippets as the
+canonical recovery record.
+
 ## Pre-Start Secret Bootstrap
 
 1. Optionally create ignored `.env.local` with non-secret host overrides such as alternate ports or base URLs.
@@ -35,6 +52,8 @@ Use this runbook to bootstrap machine-local secrets, provision human operator ac
    ```
 
    If a legacy repo-root `.env` still exists, this command now treats it as one-time migration input, copies placeholder-backed concrete secret values into Vault, and scrubs those secret lines from `.env` after a successful Vault write.
+   The same command also refreshes `~/.vault-local-runtime-token` so day-to-day
+   repo-owned tooling does not need the root token.
 
 6. Confirm the bootstrap command wrote the placeholder-backed local-only values into Vault at `platform/local-ops/runtime-env` for items such as:
    - PostgreSQL passwords and derived DSNs
@@ -110,6 +129,44 @@ service-specific follow-up even though the backend readiness and adapter
 boundaries now probe them through their real transport surfaces. OpenMeter is
 still transport-ready rather than a backend-owned module capability.
 
+For admin-app operator identities specifically, use the repo-owned Keycloak
+provisioning command when you need a daily-use platform-operator login for the
+governed admin-app sign-in handoff:
+
+```bash
+bun run ops:keycloak:provision-admin-operator:local -- --name "Operator Name" --email operator@example.com
+```
+
+The command provisions or updates the Keycloak user, stamps the
+`platform-operator` actor-type claim, resets the password to either the
+supplied `--password` or a generated one, verifies the resulting token shape,
+seeds the shared local Ory Keto tuple baseline for the `actor-type:platform-operator`
+subject over the currently shipped admin-app module surfaces, seeds the initial
+`admin-owner` membership when the admin organization is still empty (or refreshes
+that same bootstrap owner if the membership already matches the Keycloak
+subject/email), and prints the sign-in URL plus execution-time credentials
+without writing them to tracked files. Once the initial owner exists, add later
+operators through the admin-app membership flow instead of rerunning this
+bootstrap path for a different owner.
+
+### Admin-organization invitation runtime
+
+The admin-organization platform service (`admin-organization-http.ts`) requires
+two additional operator-environment values that ship in `.env.example`:
+
+- `ADMIN_ORGANIZATION_INVITATION_TTL_MINUTES` mirrors the manifest config key
+  `adminOrganizationConfigKey.invitationTtlMinutes`. The value is decoded at
+  the service boundary as a positive integer and there is no in-service
+  fallback. Pick a window that matches the operator policy for invitation
+  rotation (the bundled default is `4320` minutes / 72h).
+- `NOVU_WORKFLOW_ID_ADMIN_ORGANIZATION_INVITATION` is the typed Novu workflow
+  identifier consumed by the `AdminOrganizationNotificationGateway` when the
+  service issues an invitation. The literal must match
+  `novuWorkflowId.adminOrganizationInvitation` (`admin-organization.invitation`).
+  Wire the workflow body and subject in the Novu console; the platform service
+  only emits the `AdminInvitationNotificationPayloadSchema` envelope and lets
+  Novu render the recipient-facing copy.
+
 For the current direct host smoke surfaces, use these URLs after the stack is
 up:
 
@@ -123,8 +180,16 @@ up:
 ## Vault Hand-Off
 
 1. Treat Vault as the local operator hand-off store and runtime secret source of truth after it is initialized and unsealed.
-2. Keep break-glass artifacts such as the Vault root token and unseal keys outside tracked files.
-3. Prefer a read-only Vault token for day-to-day credential lookup over reusing the root token.
+2. Keep break-glass artifacts such as `~/.vault-token` and `~/.vault-unseal-key`
+   outside tracked files.
+3. Prefer `~/.vault-local-runtime-token` for day-to-day repo-owned tooling over
+   reusing the root token.
+4. If Vault is reinitialized and local tooling starts failing with `403
+Forbidden`, rerun `bun run ops:secrets:bootstrap` so the scoped token is
+   recreated from `~/.vault-token` instead of hunting for old temp-file copies.
+   When you need an explicit one-off override for that recovery step, use
+   `VAULT_BOOTSTRAP_TOKEN` or `VAULT_BOOTSTRAP_TOKEN_FILE`. Routine runtime
+   reads now fail closed instead of silently falling back to the root token.
 
 ## Validation
 

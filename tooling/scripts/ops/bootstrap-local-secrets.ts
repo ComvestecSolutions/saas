@@ -4,6 +4,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import {
   buildPostgresUrl,
   collectConcreteEnvFileSecretEntries,
+  ensureLocalRuntimeVaultToken,
   legacyEnvFilePath,
   localRuntimeVaultPath,
   parseEnvFileContents,
@@ -580,6 +581,7 @@ export const buildBootstrapState = (input: {
 const main = async () => {
   const resolution = await resolveLocalRuntimeEnvironment({
     allowMissingVault: true,
+    vaultTokenMode: "bootstrap",
   });
   const legacyEnvFileContents = existsSync(legacyEnvFilePath)
     ? await readFile(legacyEnvFilePath, "utf8")
@@ -622,10 +624,28 @@ const main = async () => {
 
   await writeVaultKvRecord({
     data: vaultData,
+    tokenMode: "bootstrap",
     ...(state.VAULT_ADDR !== undefined
       ? { vaultAddress: state.VAULT_ADDR }
       : {}),
   });
+
+  try {
+    const scopedVaultToken = await ensureLocalRuntimeVaultToken({
+      ...(state.VAULT_ADDR !== undefined
+        ? { vaultAddress: state.VAULT_ADDR }
+        : {}),
+    });
+    console.log(
+      `Refreshed the scoped non-root Vault token at ${scopedVaultToken.tokenFilePath}.`,
+    );
+  } catch (error) {
+    const details =
+      error instanceof Error ? ` ${error.message}` : " Unknown error.";
+    console.warn(
+      `Skipped refreshing the scoped non-root Vault token. Keep ~/.vault-token available for break-glass recovery and rerun \`bun run ops:secrets:bootstrap\` after Vault reinitialization.${details}`,
+    );
+  }
 
   console.log(
     `Stored ${Object.keys(vaultData).length} normalized local secret and access values in Vault at ${localRuntimeVaultPath}.`,

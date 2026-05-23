@@ -105,6 +105,7 @@ const createIdentitySessionModuleDouble = (
 ): IdentitySessionModuleService => ({
   startAuthentication: () => unexpectedSearchEffect(),
   completeAuthentication: () => unexpectedSearchEffect(),
+  completePlatformOperatorAuthentication: () => unexpectedSearchEffect(),
   invalidateSession: () => unexpectedSearchEffect(),
   resolveRequestContext: () => Effect.succeed(requestContext),
 });

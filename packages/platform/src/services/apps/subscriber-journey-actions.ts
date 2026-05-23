@@ -1,8 +1,11 @@
 import { Effect, ParseResult, Schema } from "effect";
+import { resolveDefaultTenantOnboardingEnabledModules } from "@comvestec/config";
 import {
   AbsoluteRedirectUriSchema,
+  actorType,
   type BillingCheckoutSessionInput,
   platformScope,
+  RequestContextSchema,
 } from "@comvestec/contracts";
 import {
   IdentitySessionCompletionInput,
@@ -18,14 +21,20 @@ import type {
   SubscriberJourneyBootstrapInput,
 } from "../domains/subscriber-journey";
 import {
+  createAdminAppAuthCallbackStateFromEnvironment,
   ProductAppPostAuthRedirectPathSchema,
+  decodeAdminAppAuthCallbackStateFromEnvironment,
+  decodeAdminAppAuthCallbackStatePayloadFromEnvironment,
   createProductAppAuthCallbackStateFromEnvironment,
   decodeProductAppAuthCallbackStateFromEnvironment,
   decodeProductAppAuthCallbackStatePayloadFromEnvironment,
+  type ProductAppAuthCallbackStatePayload,
   type ProductAppAuthCallbackRedirectNotAllowedError,
   type ProductAppAuthCallbackStateExpiredError,
   type ProductAppAuthCallbackStateInvalidError,
+  resolveAdminAppAuthCallbackRedirectUriFromEnvironment,
   resolveProductAppAuthCallbackRedirectUriFromEnvironment,
+  validateAdminAppAuthCallbackRedirectUriFromEnvironment,
   validateProductAppAuthCallbackRedirectUriFromEnvironment,
 } from "../access/first-party-auth";
 import {
@@ -61,6 +70,16 @@ const ProductAuthCallbackCompletionInputSchema = Schema.Struct({
 
 type ProductAuthCallbackCompletionInput = Schema.Schema.Type<
   typeof ProductAuthCallbackCompletionInputSchema
+>;
+
+const AdminAppAuthStartInputSchema = Schema.Struct({
+  correlationId: Schema.optional(Schema.NonEmptyString),
+  host: Schema.NonEmptyString,
+  postAuthRedirectPath: Schema.optional(ProductAppPostAuthRedirectPathSchema),
+});
+
+type AdminAppAuthStartInput = Schema.Schema.Type<
+  typeof AdminAppAuthStartInputSchema
 >;
 
 export type SubscriberJourneyRuntimeLoadError = {
@@ -198,9 +217,40 @@ export const resolveProductAuthCallbackCorrelationIdFromEnvironment = (
   );
 };
 
-export const buildSubscriberAuthenticationCompletionInputFromEnvironment = (
+export const resolveAdminAuthCallbackCorrelationIdFromEnvironment = (
+  environment: unknown,
+  state: string | undefined,
+) => {
+  if (state === undefined) {
+    return Promise.resolve(undefined);
+  }
+
+  return Effect.runPromise(
+    decodeAdminAppAuthCallbackStatePayloadFromEnvironment(
+      environment,
+      state,
+    ).pipe(
+      Effect.match({
+        onFailure: () => undefined,
+        onSuccess: (statePayload) => statePayload.correlationId,
+      }),
+    ),
+  );
+};
+
+const buildAuthenticationCompletionInputFromEnvironment = (
   environment: unknown,
   input: ProductAuthCallbackCompletionInput,
+  decodeStateFromEnvironment: (
+    currentEnvironment: unknown,
+    stateToken: string,
+  ) => Effect.Effect<
+    ProductAppAuthCallbackStatePayload,
+    | ProductAppAuthCallbackRedirectNotAllowedError
+    | ProductAppAuthCallbackStateExpiredError
+    | ProductAppAuthCallbackStateInvalidError
+    | ParseResult.ParseError
+  >,
 ): Effect.Effect<
   {
     readonly completionInput: IdentitySessionCompletionInput;
@@ -213,10 +263,7 @@ export const buildSubscriberAuthenticationCompletionInputFromEnvironment = (
 > =>
   Schema.decodeUnknown(ProductAuthCallbackCompletionInputSchema)(input).pipe(
     Effect.flatMap((decodedInput) =>
-      decodeProductAppAuthCallbackStateFromEnvironment(
-        environment,
-        decodedInput.state,
-      ).pipe(
+      decodeStateFromEnvironment(environment, decodedInput.state).pipe(
         Effect.flatMap((statePayload) =>
           statePayload.redirectUri === decodedInput.callbackRequestUri
             ? Effect.succeed({
@@ -245,6 +292,114 @@ export const buildSubscriberAuthenticationCompletionInputFromEnvironment = (
         ),
       ),
     ),
+  );
+
+export const buildSubscriberAuthenticationCompletionInputFromEnvironment = (
+  environment: unknown,
+  input: ProductAuthCallbackCompletionInput,
+): Effect.Effect<
+  {
+    readonly completionInput: IdentitySessionCompletionInput;
+    readonly postAuthRedirectPath?: string;
+  },
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateExpiredError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  buildAuthenticationCompletionInputFromEnvironment(
+    environment,
+    input,
+    decodeProductAppAuthCallbackStateFromEnvironment,
+  );
+
+export const buildAdminAuthenticationCompletionInputFromEnvironment = (
+  environment: unknown,
+  input: ProductAuthCallbackCompletionInput,
+): Effect.Effect<
+  {
+    readonly completionInput: IdentitySessionCompletionInput;
+    readonly postAuthRedirectPath?: string;
+  },
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateExpiredError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  buildAuthenticationCompletionInputFromEnvironment(
+    environment,
+    input,
+    decodeAdminAppAuthCallbackStateFromEnvironment,
+  );
+
+const buildAdminAuthStartCorrelationId = () =>
+  `admin-auth-start:${crypto.randomUUID()}`;
+
+const buildAdminAuthStartRequestContext = (input: {
+  readonly host: string;
+  readonly correlationId: string;
+}) =>
+  Schema.decodeUnknown(RequestContextSchema)({
+    actorType: actorType.anonymous,
+    correlationId: input.correlationId,
+    host: input.host,
+    tenant: {
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    },
+  });
+
+export const buildAdminAppAuthStartInputFromEnvironment = (
+  environment: unknown,
+  input: AdminAppAuthStartInput,
+): Effect.Effect<
+  IdentitySessionStartInput,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+> =>
+  Schema.decodeUnknown(AdminAppAuthStartInputSchema)(input).pipe(
+    Effect.flatMap((decodedInput) => {
+      const correlationId =
+        decodedInput.correlationId ?? buildAdminAuthStartCorrelationId();
+      const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+      const enabledModules = resolveDefaultTenantOnboardingEnabledModules();
+
+      return Effect.all({
+        requestContext: buildAdminAuthStartRequestContext({
+          host: decodedInput.host,
+          correlationId,
+        }),
+        redirectUri:
+          resolveAdminAppAuthCallbackRedirectUriFromEnvironment(environment),
+      }).pipe(
+        Effect.flatMap(({ requestContext, redirectUri }) =>
+          createAdminAppAuthCallbackStateFromEnvironment(environment, {
+            correlationId,
+            redirectUri,
+            ...(decodedInput.postAuthRedirectPath !== undefined
+              ? {
+                  postAuthRedirectPath: decodedInput.postAuthRedirectPath,
+                }
+              : {}),
+            tenant: {
+              scope: platformScope.platform,
+              scopeId: platformScope.platform,
+            },
+            enabledModules: [...enabledModules],
+            expiresAt,
+          }).pipe(
+            Effect.map((state) => ({
+              requestContext,
+              redirectUri,
+              state,
+              displayNameHint: "Comvestec Operations",
+              themeHint: "#3b82f6",
+            })),
+          ),
+        ),
+      );
+    }),
   );
 
 const loadSubscriberJourneyRuntime = () =>
@@ -364,6 +519,44 @@ export const startPublicWebAuthenticationFromEnvironment = (
     ),
   );
 
+export const startAdminAppAuthenticationFromEnvironment = (
+  environment: unknown,
+  input: AdminAppAuthStartInput,
+  startAuthentication: (
+    input: IdentitySessionStartInput,
+  ) => Effect.Effect<
+    IdentitySessionStartResult,
+    | ParseResult.ParseError
+    | ProductAppAuthCallbackRedirectNotAllowedError
+    | SubscriberJourneyRuntimeLoadError
+  > = (currentInput) =>
+    validateAdminAppAuthCallbackRedirectUriFromEnvironment(
+      environment,
+      currentInput.redirectUri,
+    ).pipe(
+      Effect.flatMap(() =>
+        loadSubscriberJourneyRuntime().pipe(
+          Effect.flatMap(({ runSubscriberJourneyFromEnvironment }) =>
+            mapUnleashInitializationToRuntimeLoad(
+              runSubscriberJourneyFromEnvironment(environment, (service) =>
+                service.startAuthentication(currentInput),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+): Effect.Effect<
+  IdentitySessionStartResult,
+  | ParseResult.ParseError
+  | ProductAppAuthCallbackRedirectNotAllowedError
+  | ProductAppAuthCallbackStateInvalidError
+  | SubscriberJourneyRuntimeLoadError
+> =>
+  buildAdminAppAuthStartInputFromEnvironment(environment, input).pipe(
+    Effect.flatMap((authStartInput) => startAuthentication(authStartInput)),
+  );
+
 export const completeSubscriberAuthenticationFromEnvironment = (
   environment: unknown,
   input: IdentitySessionCompletionInput,
@@ -373,6 +566,20 @@ export const completeSubscriberAuthenticationFromEnvironment = (
       mapUnleashInitializationToRuntimeLoad(
         runSubscriberJourneyFromEnvironment(environment, (service) =>
           service.completeAuthentication(input),
+        ),
+      ),
+    ),
+  );
+
+export const completeAdminAppAuthenticationFromEnvironment = (
+  environment: unknown,
+  input: IdentitySessionCompletionInput,
+) =>
+  loadSubscriberJourneyRuntime().pipe(
+    Effect.flatMap(({ runSubscriberJourneyFromEnvironment }) =>
+      mapUnleashInitializationToRuntimeLoad(
+        runSubscriberJourneyFromEnvironment(environment, (service) =>
+          service.completePlatformOperatorAuthentication(input),
         ),
       ),
     ),

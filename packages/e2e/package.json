@@ -7,6 +7,11 @@
     "check": "tsc --noEmit -p tsconfig.json",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:visual": "playwright test --config visual/playwright.visual.config.ts",
+    "test:a11y": "playwright test --config a11y/playwright.a11y.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.3"
   }
 }

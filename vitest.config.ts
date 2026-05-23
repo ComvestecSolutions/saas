@@ -88,6 +88,7 @@ export default defineConfig({
         },
       },
       "apps/*/vite.config.ts",
+      "packages/ui/vite.config.ts",
     ],
   },
 });

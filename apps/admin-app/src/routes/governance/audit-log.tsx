@@ -1,8 +1,21 @@
+import { useMemo } from "react";
 import { createAdminAppFileRoute } from "../../file-route";
-import { loadAdminAuditLogLoaderData } from "../../lib/governance-loaders";
 import { EmptyState, LoadingState, PermissionDeniedState } from "@comvestec/ui";
 import { platformModuleId, type PlatformModuleId } from "@comvestec/contracts";
 import { Schema } from "effect";
+import { AdminSessionRequiredState } from "../../components/admin-session-required-state";
+import {
+  ScreenHeader,
+  KpiCard,
+  FilterBar,
+  FilterSelect,
+  Pagination,
+  SortableTableHeader,
+  useTableState,
+  applyTableState,
+  ShieldIcon,
+  resolveTableAriaSort,
+} from "../../components/ui";
 
 const platformModuleIds = Object.values(platformModuleId) as PlatformModuleId[];
 
@@ -14,11 +27,14 @@ export const Route = createAdminAppFileRoute("/governance/audit-log")({
   validateSearch: (raw) => Schema.validateSync(AuditLogSearchSchema)(raw),
   loaderDeps: ({ search }) => ({ module: search.module }),
   loader: ({ deps }) =>
-    loadAdminAuditLogLoaderData(
-      deps.module != null &&
-        platformModuleIds.includes(deps.module as PlatformModuleId)
-        ? (deps.module as PlatformModuleId)
-        : undefined,
+    import("../../lib/governance-loaders").then(
+      ({ loadAdminAuditLogLoaderData }) =>
+        loadAdminAuditLogLoaderData(
+          deps.module != null &&
+            platformModuleIds.includes(deps.module as PlatformModuleId)
+            ? (deps.module as PlatformModuleId)
+            : undefined,
+        ),
     ),
   component: AuditLog,
   pendingComponent: () => <LoadingState title="Loading audit log…" />,
@@ -28,20 +44,50 @@ function AuditLog() {
   const data = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const tableState = useTableState<"timestamp" | "module" | "action" | "actor">(
+    {
+      initialPageSize: 25,
+      initialSortKey: "timestamp",
+      initialSortDir: "desc",
+    },
+  );
+
+  const events = data.kind === "ready" ? data.events : [];
+  const { visible, total } = applyTableState(events, tableState, {
+    searchOn: (e) =>
+      `${e.action} ${e.target ?? ""} ${e.actorId} ${e.reason ?? ""}`,
+    sortOn: {
+      timestamp: (e) => e.timestamp,
+      module: (e) => e.moduleId,
+      action: (e) => e.action,
+      actor: (e) => e.actorId,
+    },
+  });
+
+  const moduleCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of events) m.set(e.moduleId, (m.get(e.moduleId) ?? 0) + 1);
+    return m;
+  }, [events]);
+  const distinctActors = useMemo(
+    () => new Set(events.map((e) => e.actorId)).size,
+    [events],
+  );
 
   if (data.kind === "shell") {
     return (
-      <PermissionDeniedState
+      <AdminSessionRequiredState
         title="Operator session required"
-        description="Sign in with a platform-operator session to access the audit log."
+        description="Sign in with a platform-operator or support-operator session to access the audit log."
       />
     );
   }
   if (data.kind === "stale-session") {
     return (
-      <PermissionDeniedState
+      <AdminSessionRequiredState
         title="Session refresh required"
         description="Re-authenticate to access the audit log."
+        stale
       />
     );
   }
@@ -51,63 +97,63 @@ function AuditLog() {
     );
   }
 
-  const { events } = data;
   const selectedModule = search.module ?? platformModuleId.auditLog;
 
   return (
     <div className="ops-screen">
-      <div className="ops-screen-header">
-        <h1 className="ops-screen-title">Audit Log</h1>
-        <p className="ops-screen-subtitle">
-          {events.length} events for{" "}
-          <span style={{ fontFamily: "var(--ops-font-mono)" }}>
-            {selectedModule}
-          </span>
-        </p>
+      <ScreenHeader
+        icon={<ShieldIcon />}
+        title="Audit Log"
+        breadcrumbs={[{ label: "Governance" }, { label: "Audit Log" }]}
+        subtitle={
+          <>
+            Immutable platform audit trail. Currently scoped to{" "}
+            <span className="mono">{selectedModule}</span>.
+          </>
+        }
+      />
+
+      <div className="ops-bento">
+        <KpiCard label="Events" value={events.length} />
+        <KpiCard label="Modules" value={moduleCounts.size} tone="accent" />
+        <KpiCard label="Distinct actors" value={distinctActors} tone="accent" />
+        <KpiCard
+          label="Most active module"
+          value={
+            <span className="mono" style={{ fontSize: "0.95rem" }}>
+              {[...moduleCounts.entries()].sort(
+                (a, b) => b[1] - a[1],
+              )[0]?.[0] ?? "—"}
+            </span>
+          }
+        />
       </div>
 
       <div className="ops-card">
-        <label
-          className="ops-field"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            maxWidth: "320px",
-          }}
-        >
-          <span
-            style={{
-              fontSize: "0.75rem",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--ops-text-muted)",
-            }}
-          >
-            Module
-          </span>
-          <select
-            className="ops-field-input"
-            value={selectedModule}
-            onChange={(e) =>
-              navigate({
-                search: { module: e.target.value as PlatformModuleId },
-              })
-            }
-          >
-            {platformModuleIds.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+        <div className="ops-card-head">
+          <p className="ops-card-head__title">
+            Events
+            <span className="ops-card-head__count">{total}</span>
+          </p>
+        </div>
 
-      <div className="ops-card">
-        <p className="ops-card-title">Events ({events.length})</p>
-        {events.length === 0 ? (
+        <FilterBar
+          searchValue={tableState.search}
+          onSearchChange={tableState.setSearch}
+          searchPlaceholder="Search action, target, actor, reason…"
+          trailing={
+            <FilterSelect
+              label="Module"
+              value={selectedModule}
+              onChange={(v) =>
+                navigate({ search: { module: v as PlatformModuleId } })
+              }
+              options={platformModuleIds.map((m) => ({ value: m, label: m }))}
+            />
+          }
+        />
+
+        {visible.length === 0 ? (
           <EmptyState
             title="No events"
             description={`No audit events found for module "${selectedModule}".`}
@@ -117,21 +163,36 @@ function AuditLog() {
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Timestamp</th>
-                  <th>Module</th>
-                  <th>Action</th>
-                  <th>Actor</th>
+                  {(
+                    [
+                      ["timestamp", "Timestamp"],
+                      ["module", "Module"],
+                      ["action", "Action"],
+                      ["actor", "Actor"],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <SortableTableHeader
+                      key={k}
+                      ariaSort={resolveTableAriaSort(tableState, k)}
+                      onToggle={() => tableState.toggleSort(k)}
+                    >
+                      {label}
+                    </SortableTableHeader>
+                  ))}
                   <th>Target</th>
                   <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
-                {events.map((event) => (
+                {visible.map((event) => (
                   <tr key={event.eventId}>
                     <td className="mono">
                       {event.timestamp.slice(0, 19).replace("T", " ")}
                     </td>
-                    <td className="mono">{event.moduleId}</td>
+                    <td className="mono">
+                      <span className="ops-dot ops-dot--active" />
+                      {event.moduleId}
+                    </td>
                     <td className="mono">{event.action}</td>
                     <td className="mono ops-redacted">{event.actorId}</td>
                     <td className="mono ops-redacted">{event.target}</td>
@@ -144,6 +205,14 @@ function AuditLog() {
             </table>
           </div>
         )}
+
+        <Pagination
+          page={tableState.page}
+          pageSize={tableState.pageSize}
+          total={total}
+          onPageChange={tableState.setPage}
+          onPageSizeChange={tableState.setPageSize}
+        />
       </div>
     </div>
   );

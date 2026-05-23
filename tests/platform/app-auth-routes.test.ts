@@ -5,12 +5,19 @@ import {
   platformScope,
 } from "@comvestec/contracts";
 import {
+  createAdminAppAuthCallbackStateFromEnvironment,
   createProductAppAuthCallbackStateFromEnvironment,
   decodeProductAppAuthCallbackStateFromEnvironment,
   getPublicWebSnapshotForRequestContext,
   platformRequestCorrelationIdHeaderName,
   subscriberJourneySessionCookieName,
 } from "@comvestec/platform";
+import { handleAdminAuthCallbackRequest } from "../../apps/admin-app/src/auth/callback-route";
+import { handleAdminAuthStartRequest } from "../../apps/admin-app/src/auth/start-route";
+import {
+  handleAdminLogoutRequest,
+  handleAdminStaleSessionRecoveryRequest,
+} from "../../apps/admin-app/src/auth/session-transport-route";
 import { handlePublicWebAuthStartRequest } from "../../apps/public-web/src/auth/start-route";
 import { handleProductAuthCallbackRequest } from "../../apps/product-app/src/auth/callback-route";
 import {
@@ -20,6 +27,7 @@ import {
 
 const authRouteEnvironment = {
   PRODUCT_APP_BASE_URL: "http://localhost:3002",
+  ADMIN_APP_BASE_URL: "http://localhost:3004",
   KEYCLOAK_CLIENT_SECRET: "route-state-secret",
 };
 
@@ -63,6 +71,18 @@ const preparePublicAuthStartForRouteTests: NonNullable<
       snapshot,
     };
   });
+
+const buildAdminOperatorRequestContextForRouteTests = (
+  currentActorType: (typeof actorType)[keyof typeof actorType],
+) => ({
+  actorType: currentActorType,
+  correlationId: "corr_admin_request_context",
+  host: "localhost:3004",
+  tenant: {
+    scope: platformScope.platform,
+    scopeId: platformScope.platform,
+  },
+});
 
 describe("app auth routes", () => {
   it("builds a validated product callback uri before redirecting to the identity provider", async () => {
@@ -689,6 +709,576 @@ describe("app auth routes", () => {
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure`,
+    );
+  });
+
+  it("builds a validated admin callback uri before redirecting to the identity provider", async () => {
+    let capturedInput:
+      | Parameters<
+          NonNullable<Parameters<typeof handleAdminAuthStartRequest>[2]>
+        >[0]
+      | undefined;
+    const response = await handleAdminAuthStartRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3004/auth/start?returnTo=%2Fgovernance%2Fruntime-config",
+      ),
+      (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          redirect: {
+            url: "https://identity.example.com/realms/comvestec/protocol/openid-connect/auth",
+          },
+        });
+      },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "https://identity.example.com/realms/comvestec/protocol/openid-connect/auth",
+    );
+
+    if (capturedInput === undefined) {
+      throw new Error("Expected admin auth-start input to be captured.");
+    }
+
+    expect(capturedInput.host).toBe("localhost:3004");
+    expect(capturedInput.postAuthRedirectPath).toBe(
+      "/governance/runtime-config",
+    );
+  });
+
+  it("recovers to governed sign-in when admin auth-start hits a backend dependency failure", async () => {
+    const response = await handleAdminAuthStartRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3004/auth/start?returnTo=%2Fgovernance%2Fruntime-config",
+      ),
+      () =>
+        Effect.fail({
+          _tag: "KeycloakAdapterRequestError",
+          operation: "startAdminAppAuthentication",
+          cause: new Error("keycloak unavailable"),
+        } as const),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
+    );
+  });
+
+  it("drops invalid admin auth-start returnTo values and restarts at governed sign-in", async () => {
+    let startAuthenticationCalled = false;
+
+    const response = await handleAdminAuthStartRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3004/auth/start?returnTo=https%3A%2F%2Fevil.example.com",
+      ),
+      () => {
+        startAuthenticationCalled = true;
+
+        return Effect.succeed({
+          redirect: {
+            url: "https://identity.example.com/realms/comvestec/protocol/openid-connect/auth",
+          },
+        });
+      },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?reason=restart-sign-in",
+    );
+    expect(startAuthenticationCalled).toBe(false);
+  });
+
+  it("completes the admin callback, writes the session cookie, and redirects to the signed return path", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_callback",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/governance/access-control",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    let capturedInput:
+      | Parameters<
+          NonNullable<Parameters<typeof handleAdminAuthCallbackRequest>[2]>
+        >[0]
+      | undefined;
+    let capturedGrantInput:
+      | Parameters<
+          NonNullable<Parameters<typeof handleAdminAuthCallbackRequest>[3]>
+        >[0]
+      | undefined;
+    let capturedResolveInput:
+      | Parameters<
+          NonNullable<Parameters<typeof handleAdminAuthCallbackRequest>[4]>
+        >[0]
+      | undefined;
+    let capturedShellReadinessInput:
+      | Parameters<
+          NonNullable<Parameters<typeof handleAdminAuthCallbackRequest>[5]>
+        >[0]
+      | undefined;
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin&state=${encodeURIComponent(state)}`,
+      ),
+      (input) => {
+        capturedInput = input;
+
+        return Effect.succeed({
+          session: {
+            sessionId: "sess_admin_callback",
+          },
+        });
+      },
+      (input) => {
+        capturedGrantInput = input;
+        return Effect.succeed(undefined);
+      },
+      (input) => {
+        capturedResolveInput = input;
+        return Effect.succeed(
+          buildAdminOperatorRequestContextForRouteTests(
+            actorType.platformOperator,
+          ),
+        );
+      },
+      (input) => {
+        capturedShellReadinessInput = input;
+        return Effect.succeed(undefined);
+      },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/governance/access-control",
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      `${subscriberJourneySessionCookieName}=sess_admin_callback; Path=/; HttpOnly; SameSite=Lax`,
+    );
+    expect(capturedInput).toEqual({
+      session: {
+        authorizationCode: "code_admin",
+        redirectUri: "http://localhost:3004/auth/callback",
+      },
+      correlationId: "corr_admin_callback",
+      host: "localhost:3004",
+      tenant: {
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+      },
+      enabledModules: [platformModuleId.identitySession],
+    });
+    expect(capturedResolveInput).toEqual({
+      sessionId: "sess_admin_callback",
+    });
+    expect(capturedShellReadinessInput).toEqual({
+      sessionId: "sess_admin_callback",
+    });
+    expect(capturedGrantInput).toMatchObject({
+      sessionId: "sess_admin_callback",
+      reason:
+        "Activate audited privileged access for the authenticated admin operator session.",
+    });
+
+    if (capturedGrantInput === undefined) {
+      throw new Error("Expected admin break-glass input to be captured.");
+    }
+
+    expect(new Date(capturedGrantInput.expiresAt).getTime()).toBeGreaterThan(
+      Date.now(),
+    );
+  });
+
+  it("recovers to governed sign-in when the admin callback state is expired", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_callback_expired",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/governance/access-control",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    );
+
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin_expired&state=${encodeURIComponent(state)}`,
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get(platformRequestCorrelationIdHeaderName)).toBe(
+      "corr_admin_callback_expired",
+    );
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Faccess-control&reason=callback-expired",
+    );
+  });
+
+  it("recovers to governed sign-in when the admin callback state is invalid", async () => {
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3004/auth/callback?code=code_admin_invalid&state=not-a-valid-state",
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?reason=restart-sign-in",
+    );
+  });
+
+  it("skips break-glass bootstrap after a support-operator admin callback", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_support_callback",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/profile",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const grantBreakGlassAccess = vi.fn(() => Effect.succeed(undefined));
+
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin_support&state=${encodeURIComponent(state)}`,
+      ),
+      () =>
+        Effect.succeed({
+          session: {
+            sessionId: "sess_admin_support_callback",
+          },
+        }),
+      grantBreakGlassAccess,
+      () =>
+        Effect.succeed(
+          buildAdminOperatorRequestContextForRouteTests(
+            actorType.supportOperator,
+          ),
+        ),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/profile",
+    );
+    expect(grantBreakGlassAccess).not.toHaveBeenCalled();
+  });
+
+  it("recovers to governed sign-in when admin callback bootstrap cannot establish operator access", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_callback_access_denied",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/profile",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin_access_denied&state=${encodeURIComponent(state)}`,
+      ),
+      () =>
+        Effect.succeed({
+          session: {
+            sessionId: "sess_admin_callback_access_denied",
+          },
+        }),
+      () =>
+        Effect.fail({
+          _tag: "SupportOperationsReadAccessDeniedError",
+          actorType: actorType.platformOperator,
+          permission: "support-operations.read",
+        } as const),
+      () =>
+        Effect.succeed(
+          buildAdminOperatorRequestContextForRouteTests(
+            actorType.platformOperator,
+          ),
+        ),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?returnTo=%2Fprofile&reason=access-denied",
+    );
+  });
+
+  it("falls back to a shorter admin break-glass window when the initial duration is rejected", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_callback_retry",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/tenants/org_demo",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const grantInputs: Parameters<
+      NonNullable<Parameters<typeof handleAdminAuthCallbackRequest>[3]>
+    >[0][] = [];
+
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin_retry&state=${encodeURIComponent(state)}`,
+      ),
+      () =>
+        Effect.succeed({
+          session: {
+            sessionId: "sess_admin_callback_retry",
+          },
+        }),
+      (input) => {
+        grantInputs.push(input);
+
+        return grantInputs.length === 1
+          ? Effect.fail({
+              _tag: "InvalidBreakGlassExpiryError",
+              expiresAt: input.expiresAt,
+            } as const)
+          : Effect.succeed(undefined);
+      },
+      () =>
+        Effect.succeed(
+          buildAdminOperatorRequestContextForRouteTests(
+            actorType.platformOperator,
+          ),
+        ),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(grantInputs).toHaveLength(2);
+    expect(new Date(grantInputs[1]!.expiresAt).getTime()).toBeLessThan(
+      new Date(grantInputs[0]!.expiresAt).getTime(),
+    );
+  });
+
+  it("retries transient admin-shell readiness misses before redirecting after callback", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_shell_readiness",
+        redirectUri: "http://localhost:3004/auth/callback",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    let attempts = 0;
+
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin_shell_readiness&state=${encodeURIComponent(state)}`,
+      ),
+      () =>
+        Effect.succeed({
+          session: {
+            sessionId: "sess_admin_shell_readiness",
+          },
+        }),
+      () => Effect.succeed(undefined),
+      () =>
+        Effect.succeed(
+          buildAdminOperatorRequestContextForRouteTests(
+            actorType.supportOperator,
+          ),
+        ),
+      () => {
+        attempts += 1;
+
+        return attempts < 3
+          ? Effect.fail({
+              _tag: "AdminGovernanceRequestContextNotFoundError",
+              sessionId: "sess_admin_shell_readiness",
+            } as const)
+          : Effect.succeed(undefined);
+      },
+    );
+
+    expect(response.status).toBe(302);
+    expect(attempts).toBe(3);
+  });
+
+  it("recovers to governed sign-in when the freshly completed session cannot be re-read for break-glass bootstrap", async () => {
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(authRouteEnvironment, {
+        correlationId: "corr_admin_callback_session_read",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/governance/runtime-config",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const response = await handleAdminAuthCallbackRequest(
+      authRouteEnvironment,
+      new Request(
+        `http://localhost:3004/auth/callback?code=code_admin_session_read&state=${encodeURIComponent(state)}`,
+      ),
+      () =>
+        Effect.succeed({
+          session: {
+            sessionId: "sess_admin_callback_session_read",
+          },
+        }),
+      () => Effect.succeed(undefined),
+      () =>
+        Effect.fail({
+          _tag: "IdentitySessionRequestContextNotFoundError",
+          sessionId: "sess_admin_callback_session_read",
+        } as const),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get(platformRequestCorrelationIdHeaderName)).toBe(
+      "corr_admin_callback_session_read",
+    );
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
+    );
+  });
+
+  it("clears the admin session transport and redirects to governed sign-in on logout", async () => {
+    const response = await handleAdminLogoutRequest(
+      authRouteEnvironment,
+      new Request("http://localhost:3004/auth/logout", {
+        headers: {
+          cookie: `${subscriberJourneySessionCookieName}=sess_admin_logout`,
+          [platformRequestCorrelationIdHeaderName]: "corr_admin_logout",
+        },
+      }),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?reason=signed-out",
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+    );
+  });
+
+  it("preserves returnTo when logout clears the admin session transport", async () => {
+    const response = await handleAdminLogoutRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3004/auth/logout?returnTo=%2Fgovernance%2Fruntime-config",
+        {
+          headers: {
+            cookie: `${subscriberJourneySessionCookieName}=sess_admin_logout`,
+            [platformRequestCorrelationIdHeaderName]:
+              "corr_admin_logout_return_to",
+          },
+        },
+      ),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=signed-out",
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+    );
+  });
+
+  it("clears the admin session transport and redirects to governed sign-in during stale-session recovery", async () => {
+    const response = await handleAdminStaleSessionRecoveryRequest(
+      authRouteEnvironment,
+      new Request("http://localhost:3004/auth/stale-session", {
+        headers: {
+          cookie: `${subscriberJourneySessionCookieName}=sess_admin_stale`,
+          [platformRequestCorrelationIdHeaderName]: "corr_admin_stale",
+        },
+      }),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?reason=stale-session",
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+    );
+  });
+
+  it("preserves returnTo during stale-session recovery", async () => {
+    const response = await handleAdminStaleSessionRecoveryRequest(
+      authRouteEnvironment,
+      new Request(
+        "http://localhost:3004/auth/stale-session?returnTo=%2Fgovernance%2Fruntime-config",
+        {
+          headers: {
+            cookie: `${subscriberJourneySessionCookieName}=sess_admin_stale`,
+            [platformRequestCorrelationIdHeaderName]:
+              "corr_admin_stale_return_to",
+          },
+        },
+      ),
+      () => Effect.succeed(undefined),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=stale-session",
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
     );
   });
 });

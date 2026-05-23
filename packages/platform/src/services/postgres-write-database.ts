@@ -1,6 +1,8 @@
 import type { PgTable } from "drizzle-orm/pg-core";
 import {
   type PostgresDatabase,
+  type PostgresDeleteBuilder,
+  type PostgresDeleteCapability,
   type PostgresInsertBuilder,
   type PostgresSelectBuilder,
   type PostgresTransaction,
@@ -10,7 +12,7 @@ import type { PostgresRuntimeDatabase } from "../adapters";
 
 export const buildWriteDatabase = (
   database: PostgresRuntimeDatabase,
-): PostgresDatabase => {
+): PostgresDatabase & PostgresDeleteCapability => {
   const buildInsert = <TTable extends PgTable>(
     insertable: Pick<PostgresRuntimeDatabase, "insert">,
     table: TTable,
@@ -68,10 +70,29 @@ export const buildWriteDatabase = (
     }),
   });
 
+  const buildDelete = <TTable extends PgTable>(
+    deletable: Pick<PostgresRuntimeDatabase, "delete">,
+    table: TTable,
+  ): PostgresDeleteBuilder => ({
+    where: (condition) => {
+      const deleteBuilder = deletable
+        .delete(table)
+        .where(
+          condition as Parameters<
+            ReturnType<PostgresRuntimeDatabase["delete"]>["where"]
+          >[0],
+        );
+      return {
+        execute: () => deleteBuilder.execute(),
+      };
+    },
+  });
+
   return {
     insert: (table) => buildInsert(database, table),
     select: () => buildSelect(database),
     update: (table) => buildUpdate(database, table),
+    delete: (table) => buildDelete(database, table),
     transaction: (callback) =>
       database.transaction(async (transaction) =>
         callback({

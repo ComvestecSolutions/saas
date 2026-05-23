@@ -157,9 +157,31 @@ const buildRequestWithCorrelationId = (input: {
 
   headers.set(input.correlationHeaderName, input.correlationId);
 
-  return new Request(input.request, {
+  const init: RequestInit & { duplex?: "half" } = {
+    method: input.request.method,
     headers,
-  });
+    cache: input.request.cache,
+    credentials: input.request.credentials,
+    integrity: input.request.integrity,
+    keepalive: input.request.keepalive,
+    mode: input.request.mode,
+    redirect: input.request.redirect,
+    referrer: input.request.referrer,
+    referrerPolicy: input.request.referrerPolicy,
+    signal: input.request.signal,
+  };
+
+  if (
+    input.request.method !== "GET" &&
+    input.request.method !== "HEAD" &&
+    input.request.body !== null &&
+    !input.request.bodyUsed
+  ) {
+    init.body = input.request.body;
+    init.duplex = "half";
+  }
+
+  return new Request(input.request.url, init);
 };
 
 const buildResponseWithCorrelationId = (input: {

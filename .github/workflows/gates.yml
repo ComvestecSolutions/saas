@@ -1,0 +1,95 @@
+name: gates
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  format-typecheck-test:
+    name: format + typecheck + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: format:check
+        run: bun run format:check
+      - name: typecheck
+        run: bun run typecheck
+      - name: test
+        run: bun run test
+
+  e2e:
+    name: e2e (operator journey)
+    runs-on: ubuntu-latest
+    needs: format-typecheck-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: install playwright browsers
+        run: bun run --cwd packages/e2e -- bunx playwright install --with-deps chromium
+      - name: test:e2e
+        env:
+          ADMIN_E2E_BASE_URL: ${{ secrets.ADMIN_E2E_BASE_URL }}
+          ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME: ${{ secrets.ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME }}
+          ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE: ${{ secrets.ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE }}
+          ADMIN_E2E_TENANT_ID: ${{ secrets.ADMIN_E2E_TENANT_ID }}
+          ADMIN_E2E_INVITE_EMAIL: ${{ secrets.ADMIN_E2E_INVITE_EMAIL }}
+          ADMIN_E2E_TOKEN_LABEL: ${{ secrets.ADMIN_E2E_TOKEN_LABEL }}
+        run: bun run test:e2e
+
+  visual:
+    name: visual regression
+    runs-on: ubuntu-latest
+    needs: format-typecheck-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: install playwright browsers
+        run: bun run --cwd packages/e2e -- bunx playwright install --with-deps chromium
+      - name: test:visual
+        env:
+          ADMIN_E2E_BASE_URL: ${{ secrets.ADMIN_E2E_BASE_URL }}
+          ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME: ${{ secrets.ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME }}
+          ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE: ${{ secrets.ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE }}
+          ADMIN_E2E_TENANT_ID: ${{ secrets.ADMIN_E2E_TENANT_ID }}
+          ADMIN_E2E_INVITE_EMAIL: ${{ secrets.ADMIN_E2E_INVITE_EMAIL }}
+          ADMIN_E2E_TOKEN_LABEL: ${{ secrets.ADMIN_E2E_TOKEN_LABEL }}
+        run: bun run test:visual
+
+  a11y:
+    name: axe a11y audit
+    runs-on: ubuntu-latest
+    needs: format-typecheck-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: install playwright browsers
+        run: bun run --cwd packages/e2e -- bunx playwright install --with-deps chromium
+      - name: test:a11y
+        env:
+          ADMIN_E2E_BASE_URL: ${{ secrets.ADMIN_E2E_BASE_URL }}
+          ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME: ${{ secrets.ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME }}
+          ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE: ${{ secrets.ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE }}
+          ADMIN_E2E_TENANT_ID: ${{ secrets.ADMIN_E2E_TENANT_ID }}
+          ADMIN_E2E_INVITE_EMAIL: ${{ secrets.ADMIN_E2E_INVITE_EMAIL }}
+          ADMIN_E2E_TOKEN_LABEL: ${{ secrets.ADMIN_E2E_TOKEN_LABEL }}
+        run: bun run test:a11y

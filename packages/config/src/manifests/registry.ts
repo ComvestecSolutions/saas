@@ -5,9 +5,16 @@ import {
   PlatformModuleManifestListSchema,
 } from "../module-types";
 import {
+  adminOperatorTestTokensManifest,
+  adminOrganizationManifest,
+  adminSavedViewsManifest,
+  adminWorkspacesManifest,
   authorizationManifest,
+  capabilitySnapshotV2Manifest,
   fieldSecurityManifest,
   identitySessionManifest,
+  manualBreakGlassManifest,
+  runAsBannerStateManifest,
 } from "./access";
 import {
   auditLogManifest,
@@ -18,13 +25,29 @@ import {
 } from "./governance";
 import {
   billingAndMeteringManifest,
+  glitchTipIssuesReadManifest,
+  keycloakUserReadManifest,
+  novuDeliveriesReadManifest,
   observabilityManifest,
+  openMeterMeterReadManifest,
+  openMeterUsageQueryManifest,
+  openPanelEventsReadManifest,
+  operationsHomeManifest,
+  polarCustomerReadManifest,
+  polarRevenueProjectionManifest,
+  postalMailLogReadManifest,
+  universalSearchManifest,
+  vendorHealthAggregatorManifest,
+  workflowRunsAdminManifest,
+  notificationCenterAdminManifest,
   tenantBrandingManifest,
   tenantManagementManifest,
+  tenantWorkspaceManifest,
 } from "./domains";
 import {
   emailDeliveryManifest,
   notificationCenterManifest,
+  operatorWebhookDeliveryManifest,
   webhooksApiAccessManifest,
 } from "./communication";
 import {
@@ -54,6 +77,29 @@ const platformModuleManifestSeed = [
   importExportManifest,
   retentionLegalHoldManifest,
   supportOperationsManifest,
+  adminOrganizationManifest,
+  adminSavedViewsManifest,
+  adminWorkspacesManifest,
+  operationsHomeManifest,
+  tenantWorkspaceManifest,
+  manualBreakGlassManifest,
+  operatorWebhookDeliveryManifest,
+  polarRevenueProjectionManifest,
+  openMeterUsageQueryManifest,
+  vendorHealthAggregatorManifest,
+  keycloakUserReadManifest,
+  polarCustomerReadManifest,
+  openMeterMeterReadManifest,
+  novuDeliveriesReadManifest,
+  postalMailLogReadManifest,
+  glitchTipIssuesReadManifest,
+  openPanelEventsReadManifest,
+  universalSearchManifest,
+  capabilitySnapshotV2Manifest,
+  runAsBannerStateManifest,
+  workflowRunsAdminManifest,
+  notificationCenterAdminManifest,
+  adminOperatorTestTokensManifest,
 ] satisfies readonly PlatformModuleManifest[];
 
 export const validatePlatformModuleManifestDeclarations = <

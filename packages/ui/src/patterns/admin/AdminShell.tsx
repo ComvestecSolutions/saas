@@ -15,6 +15,7 @@ type AdminShellProps = {
     readonly value: string;
     readonly mono?: boolean;
   }>;
+  readonly headerActions?: ReactNode;
   readonly renderLink?: SideNavProps["renderLink"];
   readonly children: ReactNode;
 };
@@ -23,6 +24,7 @@ function AdminShellInner({
   navGroups,
   currentPath,
   contextChips,
+  headerActions,
   renderLink,
   children,
 }: AdminShellProps) {
@@ -49,7 +51,7 @@ function AdminShellInner({
     <div
       style={{
         display: "flex",
-        height: "100vh",
+        height: "100dvh",
         overflow: "hidden",
         background: "var(--ops-bg)",
         color: "var(--ops-text)",
@@ -80,7 +82,7 @@ function AdminShellInner({
             display: "flex",
             alignItems: "center",
             gap: "8px",
-            padding: "0 16px",
+            padding: device.isMobile ? "0 12px" : "0 14px",
             height: "var(--ops-header-height)",
             background: "var(--ops-surface-1)",
             borderBottom: "1px solid var(--ops-border)",
@@ -121,7 +123,9 @@ function AdminShellInner({
               alignItems: "center",
               gap: "6px",
               flex: 1,
-              overflow: "hidden",
+              overflowX: "auto",
+              overflowY: "hidden",
+              scrollbarWidth: "none",
             }}
           >
             {contextChips.map((chip) => (
@@ -137,7 +141,12 @@ function AdminShellInner({
                   background: "var(--ops-surface-2)",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
-                  maxWidth: "200px",
+                  maxWidth: device.isMobile
+                    ? "150px"
+                    : device.isTablet
+                      ? "180px"
+                      : "220px",
+                  flexShrink: 0,
                 }}
               >
                 <span
@@ -167,6 +176,18 @@ function AdminShellInner({
               </span>
             ))}
           </div>
+          {headerActions !== undefined && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexShrink: 0,
+              }}
+            >
+              {headerActions}
+            </div>
+          )}
         </header>
 
         {/* Scrollable page content */}
@@ -174,7 +195,11 @@ function AdminShellInner({
           style={{
             flex: 1,
             overflow: "auto",
-            padding: "20px 24px 32px",
+            padding: device.isMobile
+              ? "14px 12px 24px"
+              : device.isTablet
+                ? "18px 18px 28px"
+                : "20px 20px 32px",
           }}
         >
           {children}
@@ -200,7 +225,7 @@ function AdminShellInner({
               position: "fixed",
               inset: "0 auto 0 0",
               zIndex: 50,
-              width: "min(320px, 85vw)",
+              width: "min(320px, 90vw)",
               maxWidth: "100%",
               boxShadow: "0 18px 60px rgba(2, 6, 23, 0.5)",
             }}

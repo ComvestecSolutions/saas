@@ -1,13 +1,12 @@
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   adminOperatorCapability,
   workflowJobStatus,
   type BillingRepairGap,
 } from "@comvestec/contracts";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { createAdminAppFileRoute } from "../file-route";
-import { loadAdminTenantRepairLoaderData } from "../lib/tenant-repair-route-loader";
 import {
   cancelAdminTenantRepairGap,
   replayAdminTenantRepairGap,
@@ -18,19 +17,35 @@ import {
   LoadingState,
   StatusChip,
   resolveStatusVariant,
+  Button,
 } from "@comvestec/ui";
-import { Button } from "@comvestec/ui";
+import { AdminSessionRequiredState } from "../components/admin-session-required-state";
+import {
+  buildAdminTenantTarget,
+  buildAdminTenantWorkspacePath,
+} from "../lib/admin-tenant-target";
+import {
+  ScreenHeader,
+  KpiCard,
+  FilterBar,
+  SegmentedTabs,
+  Pagination,
+  SortableTableHeader,
+  useTableState,
+  applyTableState,
+  AlertIcon,
+  ExternalIcon,
+  RefreshIcon,
+  resolveTableAriaSort,
+} from "../components/ui";
 
-type RepairSearch = {
-  readonly inspectionReason?: string;
-};
+type RepairSearch = { readonly inspectionReason?: string };
 
 const parseRepairSearch = (search: Record<string, unknown>): RepairSearch => {
   const inspectionReason =
     typeof search.inspectionReason === "string"
       ? search.inspectionReason.trim()
       : undefined;
-
   return inspectionReason === undefined || inspectionReason.length === 0
     ? {}
     : { inspectionReason };
@@ -56,14 +71,25 @@ export const Route = createAdminAppFileRoute("/repair-operations")({
   validateSearch: parseRepairSearch,
   loaderDeps: ({ search: { inspectionReason } }) => ({ inspectionReason }),
   loader: ({ deps }) =>
-    loadAdminTenantRepairLoaderData(
-      deps.inspectionReason === undefined
-        ? {}
-        : { inspectionReason: deps.inspectionReason },
+    import("../lib/tenant-repair-route-loader").then(
+      ({ loadAdminTenantRepairLoaderData }) =>
+        loadAdminTenantRepairLoaderData(
+          deps.inspectionReason === undefined
+            ? {}
+            : { inspectionReason: deps.inspectionReason },
+        ),
     ),
   component: RepairOperations,
   pendingComponent: () => <LoadingState title="Loading repair operations…" />,
 });
+
+type StatusFilter =
+  | "all"
+  | "blocked"
+  | "scheduled"
+  | "running"
+  | "completed"
+  | "canceled";
 
 function RepairOperations() {
   const data = Route.useLoaderData();
@@ -73,44 +99,72 @@ function RepairOperations() {
   const replayGap = useServerFn(replayAdminTenantRepairGap);
   const cancelGap = useServerFn(cancelAdminTenantRepairGap);
   const [reasonInput, setReasonInput] = useState(search.inspectionReason ?? "");
-  const [workflowToken, setWorkflowToken] = useState("");
   const [actionStatus, setActionStatus] = useState<{
     kind: "success" | "error";
     message: string;
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const tableState = useTableState<
+    "tenant" | "scope" | "status" | "attempts" | "scheduled"
+  >({
+    initialPageSize: 25,
+    initialSortKey: "scheduled",
+    initialSortDir: "desc",
+  });
+
+  const jobs = data.kind === "ready" ? data.jobs : [];
+
+  const filtered = useMemo(
+    () =>
+      statusFilter === "all"
+        ? jobs
+        : jobs.filter((j) => j.status === statusFilter),
+    [jobs, statusFilter],
+  );
+
+  const { visible, total } = applyTableState(filtered, tableState, {
+    searchOn: (row) => `${row.tenantScopeId} ${row.tenantScope} ${row.jobId}`,
+    sortOn: {
+      tenant: (r) => r.tenantScopeId,
+      scope: (r) => r.tenantScope,
+      status: (r) => r.status,
+      attempts: (r) => r.attempts,
+      scheduled: (r) => r.scheduledAt,
+    },
+  });
 
   if (data.kind === "shell") {
     return (
-      <PermissionDeniedState
+      <AdminSessionRequiredState
         title="Operator session required"
         description="Sign in with a platform-operator session to access repair operations."
       />
     );
   }
-
   if (data.kind === "stale-session") {
     return (
-      <PermissionDeniedState
+      <AdminSessionRequiredState
         title="Session refresh required"
         description="Re-authenticate before accessing repair operations."
+        stale
       />
     );
   }
-
   if (data.kind === "denied") {
     return (
       <PermissionDeniedState title="Access denied" description={data.reason} />
     );
   }
 
-  const { jobs, summary } = data;
+  const { summary } = data;
   const repairCapability = summary.capabilities.capabilities.find(
     (c) => c.capability === adminOperatorCapability.repairOperations,
   );
   const canRepair = repairCapability?.allowed === true;
   const blocked = countByStatus(jobs, workflowJobStatus.blocked);
   const scheduled = countByStatus(jobs, workflowJobStatus.scheduled);
+  const running = countByStatus(jobs, workflowJobStatus.running);
 
   const applyReason = () => {
     const trimmed = reasonInput.trim();
@@ -123,27 +177,15 @@ function RepairOperations() {
   };
 
   const runAction = (action: "replay" | "cancel", jobId: string) => {
-    const token = workflowToken.trim();
-    if (token.length === 0) {
-      setActionStatus({
-        kind: "error",
-        message:
-          "A Keycloak bearer token from the same platform-operator session is required.",
-      });
-      return;
-    }
-
     startTransition(() => {
       void (async () => {
         try {
           const sharedInput = {
             jobId,
-            workflowToken: token,
             ...(search.inspectionReason === undefined
               ? {}
               : { inspectionReason: search.inspectionReason }),
           };
-
           if (action === "replay") {
             const result = await replayGap({ data: sharedInput });
             setActionStatus({
@@ -157,7 +199,6 @@ function RepairOperations() {
               message: `Cancelled repair gap for ${result.job.tenantScopeId}.`,
             });
           }
-
           await router.invalidate({ sync: true });
         } catch (error) {
           setActionStatus({ kind: "error", message: formatActionError(error) });
@@ -168,43 +209,56 @@ function RepairOperations() {
 
   return (
     <div className="ops-screen">
-      <div className="ops-screen-header">
-        <h1 className="ops-screen-title">Repair Operations</h1>
-        <p className="ops-screen-subtitle">
-          Tenant provisioning and onboarding repair workflow state. Replay or
-          cancel blocked repair gaps after operator review.
-        </p>
+      <ScreenHeader
+        icon={<AlertIcon />}
+        title="Repair Operations"
+        breadcrumbs={[{ label: "Operations" }, { label: "Repair Operations" }]}
+        subtitle="Tenant provisioning and onboarding repair workflow state. Replay or cancel blocked repair gaps after operator review."
+        actions={
+          <button
+            type="button"
+            className="ops-btn"
+            onClick={() => router.invalidate({ sync: true })}
+            disabled={isPending}
+          >
+            <RefreshIcon size={12} /> Refresh
+          </button>
+        }
+      />
+
+      <div className="ops-bento">
+        <KpiCard label="Total gaps" value={jobs.length} tone="neutral" />
+        <KpiCard
+          label="Blocked"
+          value={blocked}
+          tone={blocked > 0 ? "alert" : "good"}
+          icon={blocked > 0 ? <AlertIcon /> : undefined}
+        />
+        <KpiCard
+          label="Running"
+          value={running}
+          tone={running > 0 ? "accent" : "neutral"}
+        />
+        <KpiCard
+          label="Scheduled"
+          value={scheduled}
+          tone={scheduled > 0 ? "warn" : "neutral"}
+        />
       </div>
 
-      {/* Summary posture */}
-      <div className="ops-posture-grid" style={{ marginBottom: "4px" }}>
-        <div className="ops-posture-card">
-          <p className="ops-posture-label">Total gaps</p>
-          <p className="ops-posture-value">{jobs.length}</p>
-        </div>
-        <div className={`ops-posture-card${blocked > 0 ? " accent" : ""}`}>
-          <p className="ops-posture-label">Blocked</p>
-          <p className="ops-posture-value">{blocked}</p>
-        </div>
-        <div className="ops-posture-card">
-          <p className="ops-posture-label">Scheduled</p>
-          <p className="ops-posture-value">{scheduled}</p>
-        </div>
-      </div>
-
-      {/* Workflow controls */}
       {canRepair && (
         <div className="ops-card">
-          <p className="ops-card-title">Workflow execution controls</p>
+          <div className="ops-card-head">
+            <p className="ops-card-head__title">Workflow execution controls</p>
+          </div>
 
-          {/* Inspection reason */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr auto",
-              gap: "8px",
+              gap: 8,
               alignItems: "end",
-              marginBottom: "12px",
+              marginBottom: 8,
             }}
           >
             <div className="ops-field">
@@ -234,47 +288,20 @@ function RepairOperations() {
           </div>
 
           {search.inspectionReason !== undefined && (
-            <p
-              style={{
-                fontSize: "0.78rem",
-                color: "var(--ops-status-active)",
-                marginBottom: "12px",
-              }}
-            >
+            <div className="ops-feedback success" style={{ marginBottom: 8 }}>
               ✓ Failure details visible · Reason: {search.inspectionReason}
-            </p>
+            </div>
           )}
 
-          {/* Bearer token */}
-          <div className="ops-field" style={{ maxWidth: "480px" }}>
-            <label className="ops-field-label" htmlFor="workflow-token">
-              Workflow bearer token
-            </label>
-            <input
-              id="workflow-token"
-              className="ops-field-input"
-              type="password"
-              value={workflowToken}
-              onChange={(e) => setWorkflowToken(e.target.value)}
-              placeholder="Keycloak bearer token for this platform-operator session"
-              autoComplete="off"
-            />
+          <div className="ops-feedback" style={{ marginTop: 0 }}>
+            Repair actions automatically inherit the signed-in operator identity
+            for workflow execution and audit.
           </div>
-          <p
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--ops-text-muted)",
-              marginTop: "6px",
-            }}
-          >
-            Replay and cancel preserve the same operator identity across the
-            admin session, audit trail, and Convex workflow execution.
-          </p>
 
           {actionStatus !== null && (
             <div
               className={`ops-feedback ${actionStatus.kind}`}
-              style={{ marginTop: "10px" }}
+              style={{ marginTop: 8 }}
             >
               {actionStatus.message}
             </div>
@@ -283,45 +310,91 @@ function RepairOperations() {
       )}
 
       {!canRepair && (
-        <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: "var(--ops-radius)",
-            border: "1px solid var(--ops-border)",
-            background: "var(--ops-surface-2)",
-            fontSize: "0.85rem",
-            color: "var(--ops-text-muted)",
-          }}
-        >
+        <div className="ops-feedback">
           {repairCapability?.reason ??
             "Repair workflow controls require a platform-operator session."}
         </div>
       )}
 
-      {/* Repair gap list */}
       <div className="ops-card">
-        <p className="ops-card-title">Unresolved repair gaps</p>
-        {jobs.length === 0 ? (
+        <div className="ops-card-head">
+          <p className="ops-card-head__title">
+            Repair gaps
+            <span className="ops-card-head__count">{total}</span>
+          </p>
+        </div>
+
+        <FilterBar
+          searchValue={tableState.search}
+          onSearchChange={tableState.setSearch}
+          searchPlaceholder="Search by tenant id, scope, or job id…"
+          trailing={
+            <SegmentedTabs<StatusFilter>
+              ariaLabel="Status filter"
+              value={statusFilter}
+              onChange={(v) => {
+                setStatusFilter(v);
+                tableState.setPage(1);
+              }}
+              items={[
+                { value: "all", label: "All" },
+                { value: "blocked", label: "Blocked" },
+                { value: "scheduled", label: "Scheduled" },
+                { value: "running", label: "Running" },
+                { value: "completed", label: "Done" },
+                { value: "canceled", label: "Canceled" },
+              ]}
+            />
+          }
+        />
+
+        {visible.length === 0 ? (
           <EmptyState
-            title="No unresolved repair gaps"
-            description="All tenant provisioning and onboarding workflows are current."
+            title="No repair gaps match"
+            description="Try clearing filters or adjusting the search query."
           />
         ) : (
           <div className="ops-table-wrapper">
             <table className="ops-table">
               <thead>
                 <tr>
-                  <th>Tenant</th>
-                  <th>Scope</th>
-                  <th>Status</th>
-                  <th>Attempts</th>
-                  <th>Scheduled</th>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "tenant")}
+                    onToggle={() => tableState.toggleSort("tenant")}
+                  >
+                    Tenant
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "scope")}
+                    onToggle={() => tableState.toggleSort("scope")}
+                  >
+                    Scope
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "status")}
+                    onToggle={() => tableState.toggleSort("status")}
+                  >
+                    Status
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "attempts")}
+                    onToggle={() => tableState.toggleSort("attempts")}
+                    align="right"
+                  >
+                    Attempts
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "scheduled")}
+                    onToggle={() => tableState.toggleSort("scheduled")}
+                  >
+                    Scheduled
+                  </SortableTableHeader>
                   {search.inspectionReason !== undefined && <th>Last error</th>}
-                  {canRepair && <th>Actions</th>}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {visible.map((job) => (
                   <tr key={job.jobId}>
                     <td className="text-strong mono">{job.tenantScopeId}</td>
                     <td>{job.tenantScope}</td>
@@ -331,7 +404,7 @@ function RepairOperations() {
                         variant={resolveStatusVariant(job.status)}
                       />
                     </td>
-                    <td>{job.attempts}</td>
+                    <td className="num">{job.attempts}</td>
                     <td className="mono">
                       {job.scheduledAt.slice(0, 16).replace("T", " ")}
                     </td>
@@ -352,34 +425,60 @@ function RepairOperations() {
                         )}
                       </td>
                     )}
-                    {canRepair && (
-                      <td>
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            disabled={isPending}
-                            onClick={() => runAction("replay", job.jobId)}
-                          >
-                            Replay
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            disabled={isPending}
-                            onClick={() => runAction("cancel", job.jobId)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </td>
-                    )}
+                    <td>
+                      <div className="ops-inline-actions">
+                        {(() => {
+                          const t = buildAdminTenantTarget({
+                            scope: job.tenantScope,
+                            scopeId: job.tenantScopeId,
+                          });
+                          return t === undefined ? (
+                            <span className="ops-text-muted">—</span>
+                          ) : (
+                            <Link
+                              className="ops-btn ops-btn--xs"
+                              to={buildAdminTenantWorkspacePath(t)}
+                            >
+                              <ExternalIcon size={11} /> Open
+                            </Link>
+                          );
+                        })()}
+                        {canRepair && (
+                          <>
+                            <button
+                              type="button"
+                              className="ops-btn ops-btn--primary ops-btn--xs"
+                              disabled={isPending}
+                              onClick={() => runAction("replay", job.jobId)}
+                            >
+                              Replay
+                            </button>
+                            <button
+                              type="button"
+                              className="ops-btn ops-btn--danger ops-btn--xs"
+                              disabled={isPending}
+                              onClick={() => runAction("cancel", job.jobId)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        <Pagination
+          page={tableState.page}
+          pageSize={tableState.pageSize}
+          total={total}
+          onPageChange={tableState.setPage}
+          onPageSizeChange={tableState.setPageSize}
+        />
       </div>
     </div>
   );

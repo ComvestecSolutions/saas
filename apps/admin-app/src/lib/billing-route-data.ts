@@ -3,6 +3,7 @@ import {
   extractRequiredSubscriberJourneySessionId,
   listBillingRepairGapsFromSessionId,
 } from "@comvestec/platform";
+import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 type BillingRepairGap = Awaited<
   Effect.Effect.Success<ReturnType<typeof listBillingRepairGapsFromSessionId>>
@@ -20,12 +21,14 @@ export const loadAdminBillingRouteDataFromRequest = (
 ): Effect.Effect<AdminBillingRouteData, never, never> =>
   extractRequiredSubscriberJourneySessionId(request).pipe(
     Effect.flatMap((sessionId) =>
-      listBillingRepairGapsFromSessionId(environment, { sessionId }).pipe(
-        Effect.map(
-          (result): AdminBillingRouteData => ({
-            kind: "ready",
-            gaps: result.jobs,
-          }),
+      retryTransientAdminSessionReadiness(() =>
+        listBillingRepairGapsFromSessionId(environment, { sessionId }).pipe(
+          Effect.map(
+            (result): AdminBillingRouteData => ({
+              kind: "ready",
+              gaps: result.jobs,
+            }),
+          ),
         ),
       ),
     ),

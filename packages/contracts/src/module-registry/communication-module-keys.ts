@@ -39,3 +39,20 @@ export const webhooksApiAccessFeatureFlag = defineModuleFeatureFlags(
   platformModuleId.webhooksApiAccess,
   {},
 );
+
+export const operatorWebhookDeliveryConfigKey = defineModuleConfigKeys(
+  platformModuleId.operatorWebhookDelivery,
+  {
+    maxAttempts: "delivery.maxAttempts",
+    backoffBaseSeconds: "delivery.backoffBaseSeconds",
+    replayGuardWindowMinutes: "delivery.replayGuardWindowMinutes",
+    signatureFreshnessSeconds: "delivery.signatureFreshnessSeconds",
+    responseBodySnippetMaxBytes: "delivery.responseBodySnippetMaxBytes",
+    cacheMaxSize: "cache.maxSize",
+  },
+);
+
+export const operatorWebhookDeliveryFeatureFlag = defineModuleFeatureFlags(
+  platformModuleId.operatorWebhookDelivery,
+  {},
+);

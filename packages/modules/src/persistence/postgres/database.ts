@@ -37,6 +37,14 @@ export type PostgresUpdateBuilder<TTable extends PgTable = PgTable> = {
   ) => PostgresUpdateCommand<TTable>;
 };
 
+export type PostgresDeleteCommand = {
+  readonly execute: () => Promise<unknown>;
+};
+
+export type PostgresDeleteBuilder = {
+  readonly where: (condition: unknown) => PostgresDeleteCommand;
+};
+
 export type PostgresSelectCommand<TTable extends PgTable = PgTable> = {
   readonly where: (
     condition: unknown,
@@ -56,6 +64,21 @@ export type PostgresTransaction = {
   readonly update: <TTable extends PgTable>(
     table: TTable,
   ) => PostgresUpdateBuilder<TTable>;
+};
+
+/**
+ * Capability mixin for repositories that need hard-deletes. Kept as
+ * a separate intersection rather than folded into
+ * {@link PostgresDatabase} so existing in-memory test harnesses
+ * (which manually satisfy the database surface) do not have to grow
+ * a delete builder they never use. Real production callers always
+ * receive both surfaces through `buildWriteDatabase` in
+ * `@comvestec/platform`.
+ */
+export type PostgresDeleteCapability = {
+  readonly delete: <TTable extends PgTable>(
+    table: TTable,
+  ) => PostgresDeleteBuilder;
 };
 
 export type PostgresDatabase = PostgresTransaction & {

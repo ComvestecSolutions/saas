@@ -26,6 +26,8 @@ import {
   runtimeConfigSyncArtifactStatus,
 } from "@comvestec/modules";
 import {
+  buildAdminAppAuthStartInputFromEnvironment,
+  createAdminAppAuthCallbackStateFromEnvironment,
   buildProductBootstrapFromEnvironment,
   buildProductBootstrapFromSessionId,
   buildClearedSubscriberJourneySessionCookieHeader,
@@ -35,6 +37,7 @@ import {
   createProductAppAuthCallbackStateFromEnvironment,
   createProductBillingCheckoutHandoffTokenFromEnvironment,
   createSubscriberCheckoutSessionFromRequest,
+  decodeAdminAppAuthCallbackStateFromEnvironment,
   decodeProductBillingCheckoutHandoffTokenFromEnvironment,
   decodeProductAppAuthCallbackStateFromEnvironment,
   extractAuthenticatedWorkflowExecutionContext,
@@ -65,8 +68,10 @@ import {
   resolveSubscriberJourneyRuntimeOptionsFromEnvironment,
   runManualBillingReconciliationFromWorkflowExecutionContext,
   resolvePublicWebBillingReturnUrlsFromEnvironment,
+  validateAdminAppAuthCallbackRedirectUriFromEnvironment,
   validateProductAppAuthCallbackRedirectUriFromEnvironment,
   validatePublicWebBillingReturnUrlFromEnvironment,
+  startAdminAppAuthenticationFromEnvironment,
 } from "@comvestec/platform";
 
 const createSignedProductAuthStateToken = async (input: {
@@ -1480,6 +1485,32 @@ console.log(JSON.stringify({ exitTag: exit._tag }));`,
     });
   });
 
+  it("allows only the approved admin auth callback redirect uri", async () => {
+    await expect(
+      Effect.runPromise(
+        validateAdminAppAuthCallbackRedirectUriFromEnvironment(
+          { ADMIN_APP_BASE_URL: "http://localhost:3004" },
+          "http://localhost:3004/auth/callback",
+        ),
+      ),
+    ).resolves.toBe("http://localhost:3004/auth/callback");
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          validateAdminAppAuthCallbackRedirectUriFromEnvironment(
+            { ADMIN_APP_BASE_URL: "http://localhost:3004" },
+            "https://evil.example.com/auth/callback",
+          ),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: "ProductAppAuthCallbackRedirectNotAllowedError",
+      redirectUri: "https://evil.example.com/auth/callback",
+      expectedRedirectUri: "http://localhost:3004/auth/callback",
+    });
+  });
+
   it("fails product auth callback redirect validation for invalid environment input", async () => {
     const error = await Effect.runPromise(
       Effect.flip(
@@ -1561,6 +1592,84 @@ console.log(JSON.stringify({ exitTag: exit._tag }));`,
         platformModuleId.billingAndMetering,
       ],
     });
+  });
+
+  it("round-trips signed admin auth callback state", async () => {
+    const environment = {
+      ADMIN_APP_BASE_URL: "http://localhost:3004",
+      KEYCLOAK_CLIENT_SECRET: "state-secret",
+    };
+    const state = await Effect.runPromise(
+      createAdminAppAuthCallbackStateFromEnvironment(environment, {
+        correlationId: "corr_admin_signed_state",
+        redirectUri: "http://localhost:3004/auth/callback",
+        postAuthRedirectPath: "/governance/runtime-config",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        decodeAdminAppAuthCallbackStateFromEnvironment(environment, state),
+      ),
+    ).resolves.toMatchObject({
+      correlationId: "corr_admin_signed_state",
+      redirectUri: "http://localhost:3004/auth/callback",
+      postAuthRedirectPath: "/governance/runtime-config",
+      tenant: {
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+      },
+      enabledModules: [platformModuleId.identitySession],
+    });
+  });
+
+  it("builds admin auth start input with the validated callback and signed state", async () => {
+    const environment = {
+      ADMIN_APP_BASE_URL: "http://localhost:3004",
+      KEYCLOAK_CLIENT_SECRET: "state-secret",
+    };
+
+    const authStartInput = await Effect.runPromise(
+      buildAdminAppAuthStartInputFromEnvironment(environment, {
+        host: "localhost:3004",
+        correlationId: "corr_admin_start",
+        postAuthRedirectPath: "/governance/runtime-config",
+      }),
+    );
+    const { state } = authStartInput;
+
+    if (state === undefined) {
+      throw new Error("Expected admin auth-start state to be defined.");
+    }
+
+    const callbackUrl = new URL(authStartInput.redirectUri);
+    const decodedState = await Effect.runPromise(
+      decodeAdminAppAuthCallbackStateFromEnvironment(environment, state),
+    );
+
+    expect(authStartInput.requestContext.host).toBe("localhost:3004");
+    expect(authStartInput.requestContext.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    });
+    expect(authStartInput.displayNameHint).toBe("Comvestec Operations");
+    expect(authStartInput.themeHint).toBe("#3b82f6");
+    expect(callbackUrl.origin).toBe("http://localhost:3004");
+    expect(callbackUrl.pathname).toBe("/auth/callback");
+    expect(decodedState.correlationId).toBe("corr_admin_start");
+    expect(decodedState.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
+    });
+    expect(decodedState.postAuthRedirectPath).toBe(
+      "/governance/runtime-config",
+    );
   });
 
   it("rejects a state token with a tampered HMAC signature", async () => {
@@ -1750,6 +1859,66 @@ console.log(JSON.stringify({ exitTag: exit._tag }));`,
     ).resolves.toMatchObject({
       _tag: "ProductAppAuthCallbackStateInvalidError",
       reason: "State token payload is invalid.",
+    });
+  });
+
+  it("starts admin auth against the admin callback allowlist instead of the product callback allowlist", async () => {
+    const environment = {
+      ADMIN_APP_BASE_URL: "http://localhost:3004",
+      PRODUCT_APP_BASE_URL: "http://localhost:3002",
+      KEYCLOAK_CLIENT_SECRET: "state-secret",
+    };
+    let capturedInput:
+      | Parameters<
+          NonNullable<
+            Parameters<typeof startAdminAppAuthenticationFromEnvironment>[2]
+          >
+        >[0]
+      | undefined;
+
+    await expect(
+      Effect.runPromise(
+        startAdminAppAuthenticationFromEnvironment(
+          environment,
+          {
+            host: "localhost:3004",
+            postAuthRedirectPath: "/governance/runtime-config",
+          },
+          (input) => {
+            capturedInput = input;
+
+            return Effect.succeed({
+              correlationId: input.requestContext.correlationId,
+              redirect: {
+                url: "https://identity.example.com/auth",
+                realm: "comvestec",
+                redirectUri: input.redirectUri,
+                displayNameHint: input.displayNameHint,
+                themeHint: input.themeHint,
+                ...(input.state === undefined ? {} : { state: input.state }),
+              },
+            });
+          },
+        ),
+      ),
+    ).resolves.toEqual({
+      correlationId: expect.any(String),
+      redirect: {
+        url: "https://identity.example.com/auth",
+        realm: "comvestec",
+        redirectUri: "http://localhost:3004/auth/callback",
+        displayNameHint: "Comvestec Operations",
+        themeHint: "#3b82f6",
+        state: expect.any(String),
+      },
+    });
+
+    expect(capturedInput?.redirectUri).toBe(
+      "http://localhost:3004/auth/callback",
+    );
+    expect(capturedInput?.requestContext.tenant).toEqual({
+      scope: platformScope.platform,
+      scopeId: platformScope.platform,
     });
   });
 

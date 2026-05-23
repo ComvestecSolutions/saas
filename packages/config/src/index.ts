@@ -7,6 +7,8 @@ export {
   auditLogFeatureFlag,
   authorizationConfigKey,
   authorizationFeatureFlag,
+  adminOrganizationConfigKey,
+  adminOrganizationFeatureFlag,
   billingAndMeteringConfigKey,
   billingAndMeteringFeatureFlag,
   emailDeliveryConfigKey,
@@ -73,9 +75,32 @@ export {
   identitySessionFields,
 } from "./manifests/access/identity-session";
 export {
+  authorizationFieldClassifications,
+  authorizationFields,
+} from "./manifests/access/authorization";
+export {
+  adminOrganizationFieldClassifications,
+  adminOrganizationFields,
+  adminOrganizationManifest,
+} from "./manifests/access/admin-organization";
+export {
+  adminSavedViewsFieldClassifications,
+  adminSavedViewsFields,
+  adminSavedViewsManifest,
+} from "./manifests/access/admin-saved-views";
+export {
+  adminWorkspacesFieldClassifications,
+  adminWorkspacesFields,
+  adminWorkspacesManifest,
+} from "./manifests/access/admin-workspaces";
+export {
   runtimeConfigFieldClassifications,
   runtimeConfigFields,
 } from "./manifests/governance/runtime-config";
+export {
+  auditLogFieldClassifications,
+  auditLogFields,
+} from "./manifests/governance/audit-log";
 export {
   featureFlagsFieldClassifications,
   featureFlagsFields,

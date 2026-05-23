@@ -1191,6 +1191,7 @@ describe("modules governance", () => {
     expect(breakGlassGrant.grantedRequestContext.breakGlass?.approvedBy).toBe(
       "usr_platform_admin_1",
     );
+    expect(breakGlassGrant.grantedRequestContext.reason).toBeUndefined();
     expect(breakGlassGrant.auditEvent.action).toBe(
       supportOperationsAuditAction.breakGlassStarted,
     );

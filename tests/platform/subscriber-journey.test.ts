@@ -2115,6 +2115,138 @@ describe("platform subscriber journey", () => {
     );
   });
 
+  it("completes admin auth without tenant provisioning, onboarding, or owner tuple writes", async () => {
+    const { database, oryKeto, subscriberJourney, valkey } =
+      await createSubscriberJourneyHarness();
+
+    const authCompletion = await Effect.runPromise(
+      subscriberJourney.completePlatformOperatorAuthentication({
+        session: {
+          authenticated: true,
+          sessionId: "sess_admin_operator",
+          actorId: "usr_platform_operator_1",
+          realm: "comvestec",
+          actorType: actorType.platformOperator,
+          tenantHint: platformScope.platform,
+        },
+        correlationId: "corr_admin_operator",
+        host: "admin.example.com",
+        tenant: {
+          scope: platformScope.platform,
+          scopeId: platformScope.platform,
+        },
+        enabledModules: [platformModuleId.identitySession],
+      }),
+    );
+
+    const ownerTuple = await Effect.runPromise(
+      oryKeto.check({
+        namespace: authorizationNamespace.tenant,
+        object: platformScope.platform,
+        relation: authorizationRelation.owner,
+        subject: "usr_platform_operator_1",
+      }),
+    );
+    const sessionEntry = await Effect.runPromise(
+      valkey.readSession({ sessionId: "sess_admin_operator" }),
+    );
+
+    expect(authCompletion.requestContext).toEqual({
+      actorType: actorType.platformOperator,
+      actorId: "usr_platform_operator_1",
+      sessionId: "sess_admin_operator",
+      correlationId: "corr_admin_operator",
+      host: "admin.example.com",
+      tenant: {
+        scope: platformScope.platform,
+        scopeId: platformScope.platform,
+      },
+    });
+    expect(authCompletion.lifecycleEvent.eventType).toBe(
+      identitySessionLifecycleEventType.authCallbackCompleted,
+    );
+    expect(database.provisioningReceipts.size).toBe(0);
+    expect(database.onboardingRuns.size).toBe(0);
+    expect(database.onboardingSteps.size).toBe(0);
+    expect(ownerTuple.allowed).toBe(false);
+    expect(sessionEntry?.requestContext).toEqual(authCompletion.requestContext);
+    expect([...database.identitySessionEvents.values()]).toEqual([
+      expect.objectContaining({
+        sessionId: "sess_admin_operator",
+        actorId: "usr_platform_operator_1",
+        tenantScope: platformScope.platform,
+        tenantScopeId: platformScope.platform,
+        eventType: identitySessionLifecycleEventType.authCallbackCompleted,
+        metadata: expect.objectContaining({
+          correlationId: "corr_admin_operator",
+          realm: "comvestec",
+          tenantHint: platformScope.platform,
+        }),
+      }),
+    ]);
+  });
+
+  it.each([
+    {
+      label: "is missing",
+      actorTypeValue: undefined,
+      sessionId: "sess_admin_missing_claim",
+    },
+    {
+      label: "is not platform-operator",
+      actorTypeValue: actorType.organizationMember,
+      sessionId: "sess_admin_wrong_claim",
+    },
+  ])(
+    "rejects admin auth completion when the validated Keycloak actor claim $label",
+    async ({ actorTypeValue, sessionId }) => {
+      const { database, subscriberJourney, valkey } =
+        await createSubscriberJourneyHarness();
+
+      const failure = await Effect.runPromise(
+        Effect.flip(
+          subscriberJourney.completePlatformOperatorAuthentication({
+            session: {
+              authenticated: true,
+              sessionId,
+              actorId: "usr_platform_auth_invalid",
+              realm: "comvestec",
+              ...(actorTypeValue !== undefined
+                ? { actorType: actorTypeValue }
+                : {}),
+              tenantHint: platformScope.platform,
+            },
+            correlationId: "corr_admin_invalid_actor",
+            host: "admin.example.com",
+            tenant: {
+              scope: platformScope.platform,
+              scopeId: platformScope.platform,
+            },
+            enabledModules: [platformModuleId.identitySession],
+          }),
+        ),
+      );
+      const sessionEntry = await Effect.runPromise(
+        valkey.readSession({ sessionId }),
+      );
+
+      expect(failure).toMatchObject({
+        _tag: "PlatformOperatorAuthenticationActorTypeNotAllowedError",
+        actorId: "usr_platform_auth_invalid",
+        expectedActorTypes: [
+          actorType.platformOperator,
+          actorType.supportOperator,
+        ],
+        ...(actorTypeValue !== undefined ? { actorType: actorTypeValue } : {}),
+      });
+      expect(database.provisioningReceipts.size).toBe(0);
+      expect(database.onboardingRuns.size).toBe(0);
+      expect(database.onboardingSteps.size).toBe(0);
+      expect(database.identitySessionEvents.size).toBe(0);
+      expect(sessionEntry).toBeUndefined();
+    },
+  );
+
   it("prepares standalone individual auth-start tenants when requested", async () => {
     const { subscriberJourney } = await createSubscriberJourneyHarness();
 

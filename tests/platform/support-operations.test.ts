@@ -1776,6 +1776,7 @@ describe("support-operations platform service", () => {
       reason: "Resolve emergency tenant outage",
       expiresAt,
     });
+    expect(grant.grantedRequestContext.reason).toBeUndefined();
     expect(insertedAuditEvents).toEqual([grant.auditEvent]);
     expect(insertedAuditEvents[0]).toMatchObject({
       moduleId: platformModuleId.supportOperations,
@@ -1783,6 +1784,38 @@ describe("support-operations platform service", () => {
       target: platformScope.platform,
       actorId: supportOperatorRequestContext.actorId,
     });
+  });
+
+  it("writes the granted break-glass context back onto the active operator session", async () => {
+    const { service, valkey } = await createSupportOperationsHarness();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: supportOperatorRequestContext.sessionId,
+        requestContext: supportOperatorRequestContext,
+      }),
+    );
+
+    const grant = await Effect.runPromise(
+      service.grantBreakGlassAccess({
+        sessionId: supportOperatorRequestContext.sessionId,
+        reason: "Resolve emergency tenant outage",
+        expiresAt,
+      }),
+    );
+
+    const session = await Effect.runPromise(
+      valkey.readSession({
+        sessionId: supportOperatorRequestContext.sessionId,
+      }),
+    );
+
+    expect(session).toEqual({
+      sessionId: supportOperatorRequestContext.sessionId,
+      requestContext: grant.grantedRequestContext,
+    });
+    expect(session?.requestContext.reason).toBeUndefined();
   });
 
   it("lists pending break-glass incidents after a durable grant", async () => {

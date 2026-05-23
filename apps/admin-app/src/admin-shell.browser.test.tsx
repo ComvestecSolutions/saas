@@ -1,7 +1,21 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { AdminShell } from "@comvestec/ui";
+import { adminRoutePath } from "@comvestec/contracts";
+import { buildAdminShellRedirectPath } from "./lib/admin-shell-loader";
+import {
+  AdminAuthRedirectState,
+  buildAdminAuthRedirectInlineScript,
+  resolveAdminShellCurrentLocation,
+} from "./routes/__root";
+
+type AdminBrowserHarnessGlobals = typeof globalThis & {
+  __ADMIN_BROWSER_HARNESS__?: boolean;
+};
+
+const adminBrowserHarnessGlobals = globalThis as AdminBrowserHarnessGlobals;
 
 const baseNavGroups = [
   {
@@ -38,6 +52,26 @@ const setWindowWidth = (width: number) => {
     writable: true,
     value: width,
   });
+};
+
+const parseRouteLocation = (path: string) => {
+  const url = new URL(path, "https://admin.local");
+
+  return {
+    pathname: url.pathname,
+    searchStr: url.search,
+  };
+};
+
+const restoreAdminBrowserHarnessFlag = (
+  previousHarnessFlag: boolean | undefined,
+): void => {
+  if (previousHarnessFlag === undefined) {
+    delete adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    return;
+  }
+
+  adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__ = previousHarnessFlag;
 };
 
 describe("admin shell browser surface", () => {
@@ -160,5 +194,118 @@ describe("admin shell browser surface", () => {
         '[role="dialog"][aria-label="Navigation drawer"]',
       ),
     ).toBeNull();
+  });
+
+  it("renders the sign-in redirect state for missing root sessions", async () => {
+    const previousHarnessFlag =
+      adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__ = true;
+
+    try {
+      const redirectPath = buildAdminShellRedirectPath(
+        parseRouteLocation(adminRoutePath.operationsHome),
+        { kind: "shell" },
+      );
+
+      await act(async () => {
+        root.render(<AdminAuthRedirectState redirectPath={redirectPath} />);
+      });
+
+      expect(container.textContent).toContain("Redirecting to sign in…");
+      expect(container.textContent).toContain(
+        "Secure access is required before the admin workspace can load.",
+      );
+      expect(
+        container.querySelector<HTMLElement>(".ops-auth-redirect-state")
+          ?.dataset.redirectPath,
+      ).toBe(redirectPath);
+      expect(container.textContent).toContain(
+        "If nothing happens automatically, continue to sign in.",
+      );
+      expect(
+        container
+          .querySelector<HTMLAnchorElement>(".ops-auth-redirect-fallback a")
+          ?.getAttribute("href"),
+      ).toBe(redirectPath);
+    } finally {
+      restoreAdminBrowserHarnessFlag(previousHarnessFlag);
+    }
+  });
+
+  it("renders the stale-session recovery redirect state for root routes with search params", async () => {
+    const previousHarnessFlag =
+      adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__ = true;
+
+    try {
+      const redirectPath = buildAdminShellRedirectPath(
+        parseRouteLocation(
+          `${adminRoutePath.branding}?scope=organization&scopeId=org_demo`,
+        ),
+        { kind: "stale-session" },
+      );
+
+      await act(async () => {
+        root.render(<AdminAuthRedirectState redirectPath={redirectPath} />);
+      });
+
+      expect(container.textContent).toContain("Redirecting to sign in…");
+      expect(container.textContent).toContain(
+        "Secure access is required before the admin workspace can load.",
+      );
+      expect(
+        container.querySelector<HTMLElement>(".ops-auth-redirect-state")
+          ?.dataset.redirectPath,
+      ).toBe(redirectPath);
+      expect(
+        container
+          .querySelector<HTMLAnchorElement>(".ops-auth-redirect-fallback a")
+          ?.getAttribute("href"),
+      ).toBe(redirectPath);
+    } finally {
+      restoreAdminBrowserHarnessFlag(previousHarnessFlag);
+    }
+  });
+
+  it("renders an HTML-first redirect fallback for non-hydrated root requests", () => {
+    const previousHarnessFlag =
+      adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    delete adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+
+    try {
+      const redirectPath = buildAdminShellRedirectPath(
+        parseRouteLocation(adminRoutePath.operationsHome),
+        { kind: "shell" },
+      );
+      const markup = renderToStaticMarkup(
+        <AdminAuthRedirectState redirectPath={redirectPath} />,
+      );
+
+      expect(markup).toContain('data-auth-redirect-script="true"');
+      expect(markup).toContain(
+        buildAdminAuthRedirectInlineScript(redirectPath),
+      );
+      expect(markup).toContain(`href="${redirectPath}"`);
+    } finally {
+      restoreAdminBrowserHarnessFlag(previousHarnessFlag);
+    }
+  });
+
+  it("prefers the browser auth URL when hydration starts from a stale router location", () => {
+    expect(
+      resolveAdminShellCurrentLocation(
+        {
+          pathname: adminRoutePath.operationsHome,
+          searchStr: "",
+        },
+        {
+          pathname: "/auth/sign-in",
+          search: "?returnTo=%2F",
+        },
+      ),
+    ).toEqual({
+      pathname: "/auth/sign-in",
+      searchStr: "?returnTo=%2F",
+    });
   });
 });

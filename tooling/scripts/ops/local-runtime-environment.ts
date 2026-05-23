@@ -15,6 +15,20 @@ export const envExampleFilePath = resolve(
 export const envLocalFilePath = resolve(workspaceRootDirectory, ".env.local");
 export const legacyEnvFilePath = resolve(workspaceRootDirectory, ".env");
 export const localRuntimeVaultPath = "platform/local-ops/runtime-env";
+export const defaultVaultInitFilePath = join(homedir(), ".vault-init.json");
+export const defaultVaultRootTokenFilePath = join(homedir(), ".vault-token");
+export const defaultVaultUnsealKeyFilePath = join(
+  homedir(),
+  ".vault-unseal-key",
+);
+export const defaultVaultLocalRuntimeTokenFilePath = join(
+  homedir(),
+  ".vault-local-runtime-token",
+);
+export const localRuntimeVaultPolicyName = "comvestec-local-runtime";
+export const defaultVaultLocalRuntimeTokenSource =
+  "~/.vault-local-runtime-token";
+export const defaultVaultRootTokenSource = "~/.vault-token";
 
 export const localPlaceholderPrefix = "set-in-local-env__";
 export const generatedDuringBootstrapPrefix = "generate-after-";
@@ -388,14 +402,81 @@ const buildVaultApiUrl = (vaultAddress: string, vaultPath: string) => {
   return `${normalizedAddress}/v1/${mount}/data/${secretPath}`;
 };
 
-const resolveVaultTokenFilePath = () => {
-  const explicitTokenFilePath = process.env.VAULT_TOKEN_FILE?.trim();
+const buildVaultPolicyApiUrl = (vaultAddress: string, policyName: string) =>
+  `${vaultAddress.replace(/\/$/u, "")}/v1/sys/policies/acl/${encodeURIComponent(policyName)}`;
+
+const buildVaultTokenCreateApiUrl = (vaultAddress: string) =>
+  `${vaultAddress.replace(/\/$/u, "")}/v1/auth/token/create`;
+
+const defaultVaultTokenFileCandidates = [
+  defaultVaultLocalRuntimeTokenFilePath,
+] as const;
+
+const toDisplayVaultTokenSource = (tokenFilePath: string) =>
+  tokenFilePath === defaultVaultLocalRuntimeTokenFilePath
+    ? defaultVaultLocalRuntimeTokenSource
+    : tokenFilePath === defaultVaultRootTokenFilePath
+      ? defaultVaultRootTokenSource
+      : tokenFilePath;
+
+export const selectPreferredVaultTokenFilePath = (input: {
+  readonly explicitTokenFilePath?: string | undefined;
+  readonly existingTokenFilePaths: readonly string[];
+}) => {
+  const explicitTokenFilePath = input.explicitTokenFilePath?.trim();
 
   if (explicitTokenFilePath !== undefined && explicitTokenFilePath.length > 0) {
     return explicitTokenFilePath;
   }
 
-  return join(homedir(), ".vault-token");
+  return (
+    input.existingTokenFilePaths.find(
+      (tokenFilePath) => tokenFilePath !== defaultVaultRootTokenFilePath,
+    ) ?? defaultVaultLocalRuntimeTokenFilePath
+  );
+};
+
+const resolveVaultTokenFilePath = async () => {
+  const explicitTokenFilePath = process.env.VAULT_TOKEN_FILE?.trim();
+  const existingTokenFilePaths: string[] = [];
+
+  for (const candidate of defaultVaultTokenFileCandidates) {
+    if (await fileExists(candidate)) {
+      existingTokenFilePaths.push(candidate);
+    }
+  }
+
+  return selectPreferredVaultTokenFilePath({
+    explicitTokenFilePath,
+    existingTokenFilePaths,
+  });
+};
+
+const resolveVaultBootstrapTokenFilePath = () => {
+  const explicitTokenFilePath = process.env.VAULT_BOOTSTRAP_TOKEN_FILE?.trim();
+
+  if (explicitTokenFilePath !== undefined && explicitTokenFilePath.length > 0) {
+    return explicitTokenFilePath;
+  }
+
+  return defaultVaultRootTokenFilePath;
+};
+
+const readVaultTokenFromFile = async (
+  tokenFilePath: string,
+): Promise<VaultTokenResolution> => {
+  if (!(await fileExists(tokenFilePath))) {
+    return {};
+  }
+
+  const token = (await readFile(tokenFilePath, "utf8")).trim();
+
+  return token.length === 0
+    ? {}
+    : {
+        token,
+        source: toDisplayVaultTokenSource(tokenFilePath),
+      };
 };
 
 const resolveVaultToken = async (): Promise<VaultTokenResolution> => {
@@ -408,23 +489,69 @@ const resolveVaultToken = async (): Promise<VaultTokenResolution> => {
     };
   }
 
-  const tokenFilePath = resolveVaultTokenFilePath();
+  return readVaultTokenFromFile(await resolveVaultTokenFilePath());
+};
 
-  if (!(await fileExists(tokenFilePath))) {
-    return {};
+const resolveVaultBootstrapToken = async (): Promise<VaultTokenResolution> => {
+  const explicitToken = process.env.VAULT_BOOTSTRAP_TOKEN?.trim();
+
+  if (explicitToken !== undefined && explicitToken.length > 0) {
+    return {
+      token: explicitToken,
+      source: "VAULT_BOOTSTRAP_TOKEN",
+    };
   }
 
-  const token = (await readFile(tokenFilePath, "utf8")).trim();
+  return readVaultTokenFromFile(resolveVaultBootstrapTokenFilePath());
+};
 
-  return token.length === 0
-    ? {}
-    : {
-        token,
-        source:
-          tokenFilePath === join(homedir(), ".vault-token")
-            ? "~/.vault-token"
-            : tokenFilePath,
-      };
+type VaultRequestInput = {
+  readonly vaultAddress: string;
+  readonly vaultPath: string;
+  readonly token: string;
+  readonly tokenSource?: string | undefined;
+  readonly init?: Omit<RequestInit, "headers"> & {
+    readonly headers?: Readonly<Record<string, string>>;
+  };
+};
+
+const executeVaultRequest = async (input: VaultRequestInput) => {
+  return {
+    response: await fetch(
+      buildVaultApiUrl(input.vaultAddress, input.vaultPath),
+      {
+        ...input.init,
+        headers: {
+          ...(input.init?.headers ?? {}),
+          "X-Vault-Token": input.token,
+        },
+      },
+    ),
+    tokenSource: input.tokenSource,
+  } as const;
+};
+
+const vaultTokenRequiredMessage =
+  "Vault token is required. Set VAULT_TOKEN, set VAULT_TOKEN_FILE, or refresh the scoped local-runtime token in ~/.vault-local-runtime-token with `bun run ops:secrets:bootstrap`. For one-off bootstrap recovery, use VAULT_BOOTSTRAP_TOKEN / VAULT_BOOTSTRAP_TOKEN_FILE.";
+
+const vaultBootstrapTokenRequiredMessage =
+  "Vault bootstrap token is required. Set VAULT_BOOTSTRAP_TOKEN, set VAULT_BOOTSTRAP_TOKEN_FILE, or place the break-glass root token in ~/.vault-token.";
+
+const buildScopedVaultTokenRefreshMessage = () =>
+  "The scoped local-runtime token in ~/.vault-local-runtime-token may be stale. Re-run `bun run ops:secrets:bootstrap` to refresh it from ~/.vault-token, or set VAULT_BOOTSTRAP_TOKEN / VAULT_BOOTSTRAP_TOKEN_FILE for an explicit bootstrap token.";
+
+export const buildVaultRequestFailureMessage = (input: {
+  readonly operation: "read" | "write";
+  readonly vaultPath: string;
+  readonly response: Response;
+  readonly tokenSource?: string;
+}) => {
+  const baseMessage = `Vault ${input.operation} failed for ${input.vaultPath}: ${input.response.status} ${input.response.statusText}`;
+
+  return input.response.status === 403 &&
+    input.tokenSource === defaultVaultLocalRuntimeTokenSource
+    ? `${baseMessage}. ${buildScopedVaultTokenRefreshMessage()}`
+    : baseMessage;
 };
 
 export const readVaultKvRecord = async (input?: {
@@ -432,11 +559,15 @@ export const readVaultKvRecord = async (input?: {
   readonly vaultPath?: string;
   readonly allowMissingToken?: boolean;
   readonly allowMissingSecret?: boolean;
+  readonly tokenMode?: "routine" | "bootstrap";
 }) => {
   const vaultAddress =
     input?.vaultAddress?.trim() || process.env.VAULT_ADDR?.trim() || "";
   const vaultPath = input?.vaultPath ?? localRuntimeVaultPath;
-  const { token, source } = await resolveVaultToken();
+  const { token, source } =
+    input?.tokenMode === "bootstrap"
+      ? await resolveVaultBootstrapToken()
+      : await resolveVaultToken();
 
   if (token === undefined || token.length === 0) {
     if (input?.allowMissingToken === true) {
@@ -447,7 +578,9 @@ export const readVaultKvRecord = async (input?: {
     }
 
     throw new Error(
-      "Vault token is required. Set VAULT_TOKEN or place a token in ~/.vault-token.",
+      input?.tokenMode === "bootstrap"
+        ? vaultBootstrapTokenRequiredMessage
+        : vaultTokenRequiredMessage,
     );
   }
 
@@ -457,23 +590,44 @@ export const readVaultKvRecord = async (input?: {
     );
   }
 
-  const response = await fetch(buildVaultApiUrl(vaultAddress, vaultPath), {
-    headers: {
-      "X-Vault-Token": token,
-    },
-  });
+  let response: Response;
+  let tokenSource = source;
+  try {
+    const request = await executeVaultRequest({
+      vaultAddress,
+      vaultPath,
+      token,
+      tokenSource: source,
+    });
+    response = request.response;
+    tokenSource = request.tokenSource;
+  } catch (vaultFetchError) {
+    if (input?.allowMissingSecret === true) {
+      return {
+        data: {},
+        ...(tokenSource !== undefined ? { tokenSource } : {}),
+        wasFound: false,
+      } satisfies VaultRecordResult;
+    }
+    throw vaultFetchError;
+  }
 
   if (response.status === 404 && input?.allowMissingSecret === true) {
     return {
       data: {},
-      ...(source !== undefined ? { tokenSource: source } : {}),
+      ...(tokenSource !== undefined ? { tokenSource } : {}),
       wasFound: false,
     } satisfies VaultRecordResult;
   }
 
   if (!response.ok) {
     throw new Error(
-      `Vault read failed for ${vaultPath}: ${response.status} ${response.statusText}`,
+      buildVaultRequestFailureMessage({
+        operation: "read",
+        vaultPath,
+        response,
+        ...(tokenSource !== undefined ? { tokenSource } : {}),
+      }),
     );
   }
 
@@ -491,24 +645,30 @@ export const readVaultKvRecord = async (input?: {
         typeof value === "string" ? [[key, value]] : [],
       ),
     ),
-    ...(source !== undefined ? { tokenSource: source } : {}),
+    ...(tokenSource !== undefined ? { tokenSource } : {}),
     wasFound: true,
   } satisfies VaultRecordResult;
 };
 
 export const writeVaultKvRecord = async (input: {
   readonly data: Readonly<Record<string, string>>;
+  readonly tokenMode?: "routine" | "bootstrap";
   readonly vaultAddress?: string;
   readonly vaultPath?: string;
 }) => {
   const vaultAddress =
     input.vaultAddress?.trim() || process.env.VAULT_ADDR?.trim() || "";
   const vaultPath = input.vaultPath ?? localRuntimeVaultPath;
-  const { token } = await resolveVaultToken();
+  const { token, source } =
+    input.tokenMode === "bootstrap"
+      ? await resolveVaultBootstrapToken()
+      : await resolveVaultToken();
 
   if (token === undefined || token.length === 0) {
     throw new Error(
-      "Vault token is required. Set VAULT_TOKEN or place a token in ~/.vault-token.",
+      input.tokenMode === "bootstrap"
+        ? vaultBootstrapTokenRequiredMessage
+        : vaultTokenRequiredMessage,
     );
   }
 
@@ -518,22 +678,136 @@ export const writeVaultKvRecord = async (input: {
     );
   }
 
-  const response = await fetch(buildVaultApiUrl(vaultAddress, vaultPath), {
+  const { response } = await executeVaultRequest({
+    vaultAddress,
+    vaultPath,
+    token,
+    tokenSource: source,
+    init: {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        data: input.data,
+      }),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      buildVaultRequestFailureMessage({
+        operation: "write",
+        vaultPath,
+        response,
+        ...(source !== undefined ? { tokenSource: source } : {}),
+      }),
+    );
+  }
+};
+
+export const buildLocalRuntimeVaultPolicy = (
+  vaultPath = localRuntimeVaultPath,
+) => {
+  const { mount, secretPath } = resolveVaultKvV2Path(vaultPath);
+
+  return [
+    `path "${mount}/data/${secretPath}" {`,
+    '  capabilities = ["create", "read", "update"]',
+    "}",
+    "",
+    `path "${mount}/metadata/${secretPath}" {`,
+    '  capabilities = ["read"]',
+    "}",
+  ].join("\n");
+};
+
+export const ensureLocalRuntimeVaultToken = async (input?: {
+  readonly vaultAddress?: string;
+  readonly vaultPath?: string;
+  readonly policyName?: string;
+  readonly tokenFilePath?: string;
+}) => {
+  const vaultAddress =
+    input?.vaultAddress?.trim() || process.env.VAULT_ADDR?.trim() || "";
+  const vaultPath = input?.vaultPath ?? localRuntimeVaultPath;
+  const policyName = input?.policyName ?? localRuntimeVaultPolicyName;
+  const tokenFilePath =
+    input?.tokenFilePath ?? defaultVaultLocalRuntimeTokenFilePath;
+  const { token } = await resolveVaultBootstrapToken();
+
+  if (token === undefined || token.length === 0) {
+    throw new Error(vaultBootstrapTokenRequiredMessage);
+  }
+
+  if (vaultAddress.length === 0) {
+    throw new Error(
+      "VAULT_ADDR is required to create the scoped local runtime Vault token.",
+    );
+  }
+
+  const policyResponse = await fetch(
+    buildVaultPolicyApiUrl(vaultAddress, policyName),
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vault-Token": token,
+      },
+      body: JSON.stringify({
+        policy: buildLocalRuntimeVaultPolicy(vaultPath),
+      }),
+    },
+  );
+
+  if (!policyResponse.ok) {
+    throw new Error(
+      `Vault policy upsert failed for ${policyName}: ${policyResponse.status} ${policyResponse.statusText}`,
+    );
+  }
+
+  const tokenResponse = await fetch(buildVaultTokenCreateApiUrl(vaultAddress), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Vault-Token": token,
     },
     body: JSON.stringify({
-      data: input.data,
+      display_name: localRuntimeVaultPolicyName,
+      renewable: true,
+      policies: [policyName],
+      meta: {
+        purpose: "local-runtime-env",
+        vaultPath,
+      },
     }),
   });
 
-  if (!response.ok) {
+  if (!tokenResponse.ok) {
     throw new Error(
-      `Vault write failed for ${vaultPath}: ${response.status} ${response.statusText}`,
+      `Vault scoped token creation failed for ${policyName}: ${tokenResponse.status} ${tokenResponse.statusText}`,
     );
   }
+
+  const payload = (await tokenResponse.json()) as {
+    readonly auth?: {
+      readonly client_token?: unknown;
+    };
+  };
+  const clientToken = payload.auth?.client_token;
+
+  if (typeof clientToken !== "string" || clientToken.trim().length === 0) {
+    throw new Error(
+      `Vault scoped token creation for ${policyName} did not return a client token.`,
+    );
+  }
+
+  await writeFile(tokenFilePath, `${clientToken.trim()}\n`);
+
+  return {
+    tokenFilePath,
+    policyName,
+  } as const;
 };
 
 export const buildEnvFileContents = (
@@ -549,6 +823,7 @@ export const resolveLocalRuntimeEnvironment = async (input?: {
   readonly includeLegacyDotEnv?: boolean;
   readonly requireManagedKeys?: boolean;
   readonly shellValues?: Readonly<Record<string, string | undefined>>;
+  readonly vaultTokenMode?: "routine" | "bootstrap";
 }) => {
   const baseValues = await readEnvFile(envExampleFilePath);
   const explicitEnvFilePath =
@@ -589,6 +864,9 @@ export const resolveLocalRuntimeEnvironment = async (input?: {
     vaultAddress,
     allowMissingToken: input?.allowMissingVault === true,
     allowMissingSecret: input?.allowMissingVault === true,
+    ...(input?.vaultTokenMode !== undefined
+      ? { tokenMode: input.vaultTokenMode }
+      : {}),
   });
 
   const normalizedValues = syncHostPostgresUrlWithEffectivePort(

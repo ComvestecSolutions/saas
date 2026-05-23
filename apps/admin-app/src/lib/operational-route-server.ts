@@ -11,9 +11,28 @@ import {
 } from "./tanstack-start-server-runtime";
 
 type ScopeSelectionInput = {
-  readonly scope: string;
+  readonly scope?: string | undefined;
+  readonly scopeId?: string | undefined;
+};
+
+type NormalizedScopeSelectionInput = {
+  readonly scope: string | undefined;
   readonly scopeId: string;
 };
+
+export const normalizeScopeSelectionInput = (
+  input: ScopeSelectionInput | undefined,
+): NormalizedScopeSelectionInput => ({
+  scope: input?.scope,
+  scopeId: input?.scopeId ?? "",
+});
+
+export const hasCompleteScopeSelection = (
+  input: NormalizedScopeSelectionInput,
+): input is { readonly scope: string; readonly scopeId: string } =>
+  typeof input.scope === "string" &&
+  input.scope.length > 0 &&
+  input.scopeId.length > 0;
 
 const loadAdminSupportOperationsData = async (
   request: Request,
@@ -106,19 +125,16 @@ export const createGetAdminBrandingData = (
   operationalServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationalServerFn)])
-    .inputValidator(
-      (input: ScopeSelectionInput | undefined) =>
-        input ?? { scope: "organization", scopeId: "" },
-    )
+    .inputValidator(normalizeScopeSelectionInput)
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: ScopeSelectionInput;
+        readonly data: NormalizedScopeSelectionInput;
       }) =>
-        data.scopeId
+        hasCompleteScopeSelection(data)
           ? loadAdminBrandingData(
               context.request,
               environment,
@@ -146,19 +162,16 @@ export const createGetAdminComplianceRetentionData = (
   operationalServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationalServerFn)])
-    .inputValidator(
-      (input: ScopeSelectionInput | undefined) =>
-        input ?? { scope: "organization", scopeId: "" },
-    )
+    .inputValidator(normalizeScopeSelectionInput)
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: ScopeSelectionInput;
+        readonly data: NormalizedScopeSelectionInput;
       }) =>
-        data.scopeId
+        hasCompleteScopeSelection(data)
           ? loadAdminComplianceRetentionData(
               context.request,
               environment,
@@ -175,19 +188,16 @@ export const createGetAdminWebhooksApiAccessData = (
   operationalServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationalServerFn)])
-    .inputValidator(
-      (input: ScopeSelectionInput | undefined) =>
-        input ?? { scope: "organization", scopeId: "" },
-    )
+    .inputValidator(normalizeScopeSelectionInput)
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: ScopeSelectionInput;
+        readonly data: NormalizedScopeSelectionInput;
       }) =>
-        data.scopeId
+        hasCompleteScopeSelection(data)
           ? loadAdminWebhooksApiAccessData(
               context.request,
               environment,
@@ -205,19 +215,16 @@ export const getAdminSupportOperationsData = createServerFn({ method: "GET" })
 
 export const getAdminBrandingData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(
-    (input: ScopeSelectionInput | undefined) =>
-      input ?? { scope: "organization", scopeId: "" },
-  )
+  .inputValidator(normalizeScopeSelectionInput)
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: ScopeSelectionInput;
+      readonly data: NormalizedScopeSelectionInput;
     }) =>
-      data.scopeId
+      hasCompleteScopeSelection(data)
         ? loadAdminBrandingData(
             context.request,
             process.env,
@@ -237,19 +244,16 @@ export const getAdminComplianceRetentionData = createServerFn({
   method: "GET",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(
-    (input: ScopeSelectionInput | undefined) =>
-      input ?? { scope: "organization", scopeId: "" },
-  )
+  .inputValidator(normalizeScopeSelectionInput)
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: ScopeSelectionInput;
+      readonly data: NormalizedScopeSelectionInput;
     }) =>
-      data.scopeId
+      hasCompleteScopeSelection(data)
         ? loadAdminComplianceRetentionData(
             context.request,
             process.env,
@@ -263,19 +267,16 @@ export const getAdminWebhooksApiAccessData = createServerFn({
   method: "GET",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(
-    (input: ScopeSelectionInput | undefined) =>
-      input ?? { scope: "organization", scopeId: "" },
-  )
+  .inputValidator(normalizeScopeSelectionInput)
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: ScopeSelectionInput;
+      readonly data: NormalizedScopeSelectionInput;
     }) =>
-      data.scopeId
+      hasCompleteScopeSelection(data)
         ? loadAdminWebhooksApiAccessData(
             context.request,
             process.env,

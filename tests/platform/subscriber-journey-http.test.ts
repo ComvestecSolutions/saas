@@ -79,6 +79,9 @@ const defaultStartAuthentication: SubscriberJourneyService["startAuthentication"
 const defaultCompleteAuthentication: SubscriberJourneyService["completeAuthentication"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
+const defaultCompletePlatformOperatorAuthentication: SubscriberJourneyService["completePlatformOperatorAuthentication"] =
+  () => unexpectedSubscriberJourneyServiceEffect();
+
 const defaultInvalidateSession: SubscriberJourneyService["invalidateSession"] =
   () => unexpectedSubscriberJourneyServiceEffect();
 
@@ -113,6 +116,9 @@ const createSubscriberJourneyServiceDouble = (
     overrides.startAuthentication ?? defaultStartAuthentication,
   completeAuthentication:
     overrides.completeAuthentication ?? defaultCompleteAuthentication,
+  completePlatformOperatorAuthentication:
+    overrides.completePlatformOperatorAuthentication ??
+    defaultCompletePlatformOperatorAuthentication,
   invalidateSession: overrides.invalidateSession ?? defaultInvalidateSession,
   createCheckoutSession:
     overrides.createCheckoutSession ?? defaultCreateCheckoutSession,

@@ -61,7 +61,9 @@ export type DeviceProviderProps = {
 };
 
 export function DeviceProvider({ children }: DeviceProviderProps) {
-  const [state, setState] = useState<DeviceState>(() => buildDeviceState(1280));
+  const [state, setState] = useState<DeviceState>(() =>
+    buildDeviceState(typeof window === "undefined" ? 1280 : window.innerWidth),
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;

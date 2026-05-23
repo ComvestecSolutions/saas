@@ -11,6 +11,7 @@
     "@tanstack/react-router": "^1.169.2",
     "@tanstack/react-router-devtools": "^1.166.13",
     "@tanstack/react-start": "^1.167.65",
+    "@tanstack/react-table": "^8.21.3",
     "effect": "^3.21.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
@@ -23,6 +24,7 @@
     "build": "vite build",
     "check": "bun run typecheck",
     "dev": "vite dev --port 3004",
+    "dev:local": "bun run --cwd ../.. apps:admin:dev:local",
     "lint": "echo admin-app lint pending",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

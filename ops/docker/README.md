@@ -36,6 +36,12 @@ The checked-in `.env.example` mirrors the current runtime expectations and uses 
 
 Tracked files must not ship reusable local secrets, guessable bootstrap passwords, or working API tokens. The repository keeps placeholders only; the local operator stores the active secret bundle in Vault and may keep optional non-secret host overrides in ignored `.env.local`. Concrete values for placeholder-backed keys belong in Vault or one-off shell env only and are not part of the supported `.env.local` workflow.
 
+For local Vault recovery, keep the canonical artifacts outside the repo at
+`~/.vault-init.json`, `~/.vault-unseal-key`, `~/.vault-token`, and
+`~/.vault-local-runtime-token`. Repo-owned local tooling prefers the scoped
+non-root `~/.vault-local-runtime-token` file for routine reads and writes to
+`platform/local-ops/runtime-env`; `~/.vault-token` stays break-glass.
+
 ## First Run
 
 1. Optionally create ignored `.env.local` with non-secret host overrides such as alternate ports or base URLs.
@@ -43,11 +49,17 @@ Tracked files must not ship reusable local secrets, guessable bootstrap password
 3. Initialize, unseal, and enable the `platform/` KV mount by following [Kong And Vault Bootstrap Runbook](../../specs/04-ops/runbooks/kong-vault-bootstrap.md).
 4. Run `bun run ops:secrets:bootstrap` so generated machine-local secrets such as PostgreSQL passwords, the Unleash backend API token, GlitchTip/OpenPanel/Postal/Unleash operator passwords, Novu runtime secrets, Postal bootstrap secrets, Meilisearch keys, and the local OpenMeter adapter key land in Vault at `platform/local-ops/runtime-env` instead of a persistent repo-root `.env` file.
    If a legacy `.env` still exists, the bootstrap command now treats it as one-time migration input and scrubs placeholder-backed concrete secret values from the file after writing them to Vault.
+   The same bootstrap command also refreshes `~/.vault-local-runtime-token` for scoped local tooling access.
 5. Start the current full local platform footprint with `bun run ops:docker:compose -- up -d`.
 6. Run `bun run ops:runtime:bootstrap` after the messaging services are healthy so the repo-owned GlitchTip, Novu, OpenPanel, Postal, and Unleash human operator logins are provisioned or reconciled, the repo-owned Postal and Novu operator/API credentials are provisioned, the repo-owned Unleash backend token is reconciled when needed, the repo-owned Postal sender domain that matches `PLATFORM_EMAIL_SENDER_FROM_EMAIL` is verified, the repo-owned Novu workflows used by the current backend billing-notification path are seeded, the repo-owned OpenPanel backend client plus GlitchTip project DSN are provisioned or reused, and the resulting values are written back to Vault. Keep the raw GlitchTip project DSN form with its public key when possible, because backend document responses now derive a report-only browser security `report-uri` header from that DSN automatically; store-endpoint-only values still support uncaught-error capture but cannot advertise the browser security-report endpoint. Continue to use the remaining service-specific bootstrap flows for values such as the Convex admin key and any stricter OpenMeter auth token you later enable. OpenMeter remains transport-ready in the local stack, but it is not yet a backend-owned module capability. Until those generated values are stored in Vault, backend readiness intentionally stays degraded instead of reporting a fake green state.
 7. After the Convex admin key is present in Vault, run `bun run convex:env:sync:local` whenever the deployment-managed worker values change so the active Convex deployment gets the current Postgres, Keycloak, Polar, Valkey, and Keto settings.
 8. Use `bun run ops:docker:compose -- <docker compose args>` for service-specific `up`, `restart`, `logs`, or `ps` commands when you are intentionally troubleshooting a subset of the platform.
 9. Run `bun run backend:subscriber-journey:bootstrap:local` once PostgreSQL, Convex, and Keycloak are healthy so the shared schema is applied and the local Keycloak smoke user is ready for backend-owned subscriber-journey validation.
+
+If Vault is reinitialized and repo-owned tooling starts failing with `403
+Forbidden`, treat `~/.vault-local-runtime-token` as stale and rerun
+`bun run ops:secrets:bootstrap` so the scoped token is recreated from the
+break-glass `~/.vault-token`.
 
 `bun run ops:runtime:bootstrap` now also reconciles the repo-owned Unleash backend token when an existing local stack drifts from the current Vault-backed value.
 

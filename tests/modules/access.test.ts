@@ -57,6 +57,11 @@ import {
   createValkeyTestClient,
 } from "../platform-adapter-doubles";
 
+const {
+  reason: _supportRequestContextReason,
+  ...supportRequestContextWithoutReason
+} = supportRequestContext;
+
 const createIdentitySessionTestDatabase = () => {
   type PersistedTable = Parameters<PostgresDatabase["insert"]>[0];
   type PersistedValues = Parameters<
@@ -572,7 +577,7 @@ describe("modules access", () => {
     const decision = await Effect.runPromise(
       authorization.check({
         requestContext: {
-          ...supportRequestContext,
+          ...supportRequestContextWithoutReason,
           correlationId: "corr_break_glass_delegated_failure",
           breakGlass: {
             approvedBy: "usr_admin_1",
@@ -620,7 +625,7 @@ describe("modules access", () => {
     const explanation = await Effect.runPromise(
       authorization.explain({
         requestContext: {
-          ...supportRequestContext,
+          ...supportRequestContextWithoutReason,
           correlationId: "corr_break_glass_explain",
           breakGlass: {
             approvedBy: "usr_admin_1",
@@ -655,7 +660,7 @@ describe("modules access", () => {
       );
 
       const activeRequestContext = {
-        ...supportRequestContext,
+        ...supportRequestContextWithoutReason,
         correlationId: "corr_break_glass_cache_expiry",
         breakGlass: {
           approvedBy: "usr_admin_1",
@@ -1027,7 +1032,6 @@ describe("modules access", () => {
           actorId: "usr_support_1",
           sessionId: "sess_1",
           correlationId: "corr_expired",
-          reason: "Expired break-glass test",
           tenant: {
             scope: platformScope.organization,
             scopeId: "org_1",
@@ -1060,9 +1064,8 @@ describe("modules access", () => {
     );
 
     const activeBreakGlassContext = {
-      ...supportRequestContext,
+      ...supportRequestContextWithoutReason,
       correlationId: "corr_cache_a",
-      reason: "Cache eviction regression",
       breakGlass: {
         approvedBy: "usr_admin_1",
         reason: "Cache eviction regression",

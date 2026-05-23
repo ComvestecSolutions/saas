@@ -1,15 +1,17 @@
-import type { AdminTenantRepairRouteData } from "./tenant-repair-route-data";
+import type { AdminOperationsHomeRouteData } from "./operations-home-route-data";
 
 /**
- * Loader for the Operations Home route (`/`).
+ * Loader for the Operations Home route (`/`). Consumes the v2
+ * snapshot via the trusted request-context resolver so the
+ * loader stays free of Valkey, Request, or Response shaping.
  *
- * Reuses the existing tenant-repair route data shape: the summary is shown as
- * posture cards and the `jobs` field is ignored at this route level (repair
- * workflow lives at `/repair-operations`).
+ * The route component receives the discriminated-union route
+ * data (`shell | stale-session | denied | error | ready`) and
+ * surfaces `partialFailures` directly on the `ready` variant.
  */
 export const loadAdminOperationsHomeLoaderData = async (
-  loadRouteData: () => Promise<AdminTenantRepairRouteData> = () =>
-    import("./tenant-repair-route-server").then(
-      ({ getAdminTenantRepairData }) => getAdminTenantRepairData(),
+  loadRouteData: () => Promise<AdminOperationsHomeRouteData> = () =>
+    import("./operations-home-route-server").then(
+      ({ getAdminOperationsHomeData }) => getAdminOperationsHomeData(),
     ),
-): Promise<AdminTenantRepairRouteData> => loadRouteData();
+): Promise<AdminOperationsHomeRouteData> => loadRouteData();

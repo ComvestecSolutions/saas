@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,10 +8,17 @@ import {
   selectLegacyEnvSecretEntriesToMigrate,
 } from "../../tooling/scripts/ops/bootstrap-local-secrets";
 import {
+  buildLocalRuntimeVaultPolicy,
+  buildVaultRequestFailureMessage,
   collectConcreteEnvFileSecretEntries,
+  defaultVaultLocalRuntimeTokenFilePath,
+  defaultVaultLocalRuntimeTokenSource,
+  defaultVaultRootTokenFilePath,
+  ensureLocalRuntimeVaultToken,
   isPlaceholderValue,
   mergeResolvedLocalRuntimeEnvironmentValues,
   resolveLocalRuntimeEnvironment,
+  selectPreferredVaultTokenFilePath,
   scrubConcreteSecretValuesFromEnvFileContents,
 } from "../../tooling/scripts/ops/local-runtime-environment";
 
@@ -153,6 +160,471 @@ describe("local runtime environment resolution", () => {
     }
   });
 
+  it("prefers the scoped local-runtime token file ahead of the root token file by default", () => {
+    expect(
+      selectPreferredVaultTokenFilePath({
+        existingTokenFilePaths: [
+          defaultVaultLocalRuntimeTokenFilePath,
+          defaultVaultRootTokenFilePath,
+        ],
+      }),
+    ).toBe(defaultVaultLocalRuntimeTokenFilePath);
+    expect(
+      selectPreferredVaultTokenFilePath({
+        explicitTokenFilePath: "C:\\vault\\explicit-token.txt",
+        existingTokenFilePaths: [
+          defaultVaultLocalRuntimeTokenFilePath,
+          defaultVaultRootTokenFilePath,
+        ],
+      }),
+    ).toBe("C:\\vault\\explicit-token.txt");
+    expect(
+      selectPreferredVaultTokenFilePath({
+        existingTokenFilePaths: [defaultVaultRootTokenFilePath],
+      }),
+    ).toBe(defaultVaultLocalRuntimeTokenFilePath);
+  });
+
+  it("builds the scoped local-runtime Vault policy with single-path read/write access", () => {
+    expect(buildLocalRuntimeVaultPolicy()).toBe(
+      [
+        'path "platform/data/local-ops/runtime-env" {',
+        '  capabilities = ["create", "read", "update"]',
+        "}",
+        "",
+        'path "platform/metadata/local-ops/runtime-env" {',
+        '  capabilities = ["read"]',
+        "}",
+      ].join("\n"),
+    );
+  });
+
+  it("creates or refreshes the scoped local-runtime Vault token when a bootstrap token is available", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-token-bootstrap-"),
+    );
+    const tokenFilePath = join(tempDirectoryPath, "vault-local-runtime-token");
+    const originalBootstrapToken = process.env.VAULT_BOOTSTRAP_TOKEN;
+    const originalFetch = global.fetch;
+
+    try {
+      process.env.VAULT_BOOTSTRAP_TOKEN = "bootstrap-root-token";
+
+      const fetchSpy = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              auth: {
+                client_token: "scoped-local-runtime-token",
+              },
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+              },
+            },
+          ),
+        );
+
+      global.fetch = fetchSpy as typeof fetch;
+
+      const result = await ensureLocalRuntimeVaultToken({
+        vaultAddress: "http://configured-vault:8200",
+        tokenFilePath,
+      });
+
+      expect(result.tokenFilePath).toBe(tokenFilePath);
+      expect(readFileSync(tokenFilePath, "utf8").trim()).toBe(
+        "scoped-local-runtime-token",
+      );
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        1,
+        "http://configured-vault:8200/v1/sys/policies/acl/comvestec-local-runtime",
+        expect.objectContaining({
+          method: "PUT",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "X-Vault-Token": "bootstrap-root-token",
+          }),
+          body: JSON.stringify({
+            policy: buildLocalRuntimeVaultPolicy(),
+          }),
+        }),
+      );
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        "http://configured-vault:8200/v1/auth/token/create",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "X-Vault-Token": "bootstrap-root-token",
+          }),
+          body: JSON.stringify({
+            display_name: "comvestec-local-runtime",
+            renewable: true,
+            policies: ["comvestec-local-runtime"],
+            meta: {
+              purpose: "local-runtime-env",
+              vaultPath: "platform/local-ops/runtime-env",
+            },
+          }),
+        }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+
+      if (originalBootstrapToken === undefined) {
+        delete process.env.VAULT_BOOTSTRAP_TOKEN;
+      } else {
+        process.env.VAULT_BOOTSTRAP_TOKEN = originalBootstrapToken;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("uses the bootstrap token path for first-run Vault writes", async () => {
+    const tempHomeDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-bootstrap-home-"),
+    );
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+    const originalBootstrapToken = process.env.VAULT_BOOTSTRAP_TOKEN;
+    const originalBootstrapTokenFile = process.env.VAULT_BOOTSTRAP_TOKEN_FILE;
+    const originalFetch = global.fetch;
+
+    try {
+      process.env.HOME = tempHomeDirectoryPath;
+      process.env.USERPROFILE = tempHomeDirectoryPath;
+      delete process.env.VAULT_TOKEN;
+      delete process.env.VAULT_TOKEN_FILE;
+      delete process.env.VAULT_BOOTSTRAP_TOKEN;
+      delete process.env.VAULT_BOOTSTRAP_TOKEN_FILE;
+      writeFileSync(
+        join(tempHomeDirectoryPath, ".vault-token"),
+        "break-glass-root-token\n",
+      );
+
+      const fetchSpy = vi.fn(async () => new Response(null, { status: 204 }));
+
+      global.fetch = fetchSpy as typeof fetch;
+      vi.resetModules();
+
+      const { writeVaultKvRecord: writeVaultKvRecordWithTempHome } =
+        await import("../../tooling/scripts/ops/local-runtime-environment");
+
+      await writeVaultKvRecordWithTempHome({
+        data: {
+          POLAR_ACCESS_TOKEN: "polar-token-from-bootstrap",
+        },
+        tokenMode: "bootstrap",
+        vaultAddress: "http://configured-vault:8200",
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "http://configured-vault:8200/v1/platform/data/local-ops/runtime-env",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "X-Vault-Token": "break-glass-root-token",
+          }),
+          body: JSON.stringify({
+            data: {
+              POLAR_ACCESS_TOKEN: "polar-token-from-bootstrap",
+            },
+          }),
+        }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+
+      if (originalUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = originalUserProfile;
+      }
+
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      if (originalBootstrapToken === undefined) {
+        delete process.env.VAULT_BOOTSTRAP_TOKEN;
+      } else {
+        process.env.VAULT_BOOTSTRAP_TOKEN = originalBootstrapToken;
+      }
+
+      if (originalBootstrapTokenFile === undefined) {
+        delete process.env.VAULT_BOOTSTRAP_TOKEN_FILE;
+      } else {
+        process.env.VAULT_BOOTSTRAP_TOKEN_FILE = originalBootstrapTokenFile;
+      }
+
+      vi.resetModules();
+      rmSync(tempHomeDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("reads existing Vault data through the bootstrap token path for bootstrap reruns", async () => {
+    const tempHomeDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-bootstrap-read-home-"),
+    );
+    const envFilePath = join(tempHomeDirectoryPath, "runtime.env");
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+    const originalBootstrapToken = process.env.VAULT_BOOTSTRAP_TOKEN;
+    const originalBootstrapTokenFile = process.env.VAULT_BOOTSTRAP_TOKEN_FILE;
+    const originalFetch = global.fetch;
+
+    try {
+      process.env.HOME = tempHomeDirectoryPath;
+      process.env.USERPROFILE = tempHomeDirectoryPath;
+      delete process.env.VAULT_TOKEN;
+      delete process.env.VAULT_TOKEN_FILE;
+      delete process.env.VAULT_BOOTSTRAP_TOKEN;
+      delete process.env.VAULT_BOOTSTRAP_TOKEN_FILE;
+      writeFileSync(envFilePath, "VAULT_ADDR=http://configured-vault:8200\n");
+      writeFileSync(
+        join(tempHomeDirectoryPath, ".vault-token"),
+        "break-glass-root-token\n",
+      );
+
+      const fetchSpy = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                data: {
+                  OPENPANEL_CLIENT_SECRET: "preserved-runtime-generated-secret",
+                  POLAR_ACCESS_TOKEN: "preserved-polar-token",
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+              },
+            },
+          ),
+      );
+
+      global.fetch = fetchSpy as typeof fetch;
+      vi.resetModules();
+
+      const {
+        resolveLocalRuntimeEnvironment:
+          resolveLocalRuntimeEnvironmentWithBootstrapToken,
+      } = await import("../../tooling/scripts/ops/local-runtime-environment");
+
+      const resolution = await resolveLocalRuntimeEnvironmentWithBootstrapToken(
+        {
+          allowMissingVault: true,
+          envFile: envFilePath,
+          vaultTokenMode: "bootstrap",
+        },
+      );
+
+      expect(resolution.vaultData).toEqual(
+        expect.objectContaining({
+          OPENPANEL_CLIENT_SECRET: "preserved-runtime-generated-secret",
+          POLAR_ACCESS_TOKEN: "preserved-polar-token",
+        }),
+      );
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "http://configured-vault:8200/v1/platform/data/local-ops/runtime-env",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "X-Vault-Token": "break-glass-root-token",
+          }),
+        }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+
+      if (originalUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = originalUserProfile;
+      }
+
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      if (originalBootstrapToken === undefined) {
+        delete process.env.VAULT_BOOTSTRAP_TOKEN;
+      } else {
+        process.env.VAULT_BOOTSTRAP_TOKEN = originalBootstrapToken;
+      }
+
+      if (originalBootstrapTokenFile === undefined) {
+        delete process.env.VAULT_BOOTSTRAP_TOKEN_FILE;
+      } else {
+        process.env.VAULT_BOOTSTRAP_TOKEN_FILE = originalBootstrapTokenFile;
+      }
+
+      vi.resetModules();
+      rmSync(tempHomeDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("surfaces stale scoped-token guidance without instructing runtime reads to reuse the root token", () => {
+    expect(
+      buildVaultRequestFailureMessage({
+        operation: "read",
+        vaultPath: "platform/local-ops/runtime-env",
+        response: new Response(null, {
+          status: 403,
+          statusText: "Forbidden",
+        }),
+        tokenSource: defaultVaultLocalRuntimeTokenSource,
+      }),
+    ).toContain("bun run ops:secrets:bootstrap");
+    expect(
+      buildVaultRequestFailureMessage({
+        operation: "read",
+        vaultPath: "platform/local-ops/runtime-env",
+        response: new Response(null, {
+          status: 403,
+          statusText: "Forbidden",
+        }),
+        tokenSource: defaultVaultLocalRuntimeTokenSource,
+      }),
+    ).toContain("VAULT_BOOTSTRAP_TOKEN / VAULT_BOOTSTRAP_TOKEN_FILE");
+    expect(
+      buildVaultRequestFailureMessage({
+        operation: "read",
+        vaultPath: "platform/local-ops/runtime-env",
+        response: new Response(null, {
+          status: 403,
+          statusText: "Forbidden",
+        }),
+        tokenSource: defaultVaultLocalRuntimeTokenSource,
+      }),
+    ).not.toContain("silently");
+  });
+
+  it("fails closed when only the break-glass root token file exists", async () => {
+    const tempHomeDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-temp-home-"),
+    );
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+    const originalFetch = global.fetch;
+
+    try {
+      process.env.HOME = tempHomeDirectoryPath;
+      process.env.USERPROFILE = tempHomeDirectoryPath;
+      delete process.env.VAULT_TOKEN;
+      delete process.env.VAULT_TOKEN_FILE;
+      writeFileSync(
+        join(tempHomeDirectoryPath, ".vault-token"),
+        "break-glass-root-token\n",
+      );
+
+      const fetchSpy = vi.fn();
+
+      global.fetch = fetchSpy as typeof fetch;
+      vi.resetModules();
+
+      const { readVaultKvRecord } =
+        await import("../../tooling/scripts/ops/local-runtime-environment");
+
+      await expect(
+        readVaultKvRecord({
+          vaultAddress: "http://configured-vault:8200",
+        }),
+      ).rejects.toThrow(/bun run ops:secrets:bootstrap/u);
+      await expect(
+        readVaultKvRecord({
+          vaultAddress: "http://configured-vault:8200",
+        }),
+      ).rejects.toThrow(/VAULT_BOOTSTRAP_TOKEN \/ VAULT_BOOTSTRAP_TOKEN_FILE/u);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+
+      if (originalUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = originalUserProfile;
+      }
+
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      vi.resetModules();
+      rmSync(tempHomeDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
   it("rejects concrete secret values in env files", async () => {
     const tempDirectoryPath = mkdtempSync(
       join(tmpdir(), "comvestec-local-runtime-secret-env-"),
@@ -245,6 +717,23 @@ describe("local runtime environment resolution", () => {
     expect(mergedVaultData).toEqual({
       OPENPANEL_RESEND_API_KEY: "legacy-resend-key",
       POLAR_ACCESS_TOKEN: "vault-token",
+    });
+  });
+
+  it("preserves existing runtime-generated Vault keys during bootstrap merges", () => {
+    const mergedVaultData = mergeLegacyEnvSecretEntriesIntoVaultData({
+      existingVaultData: {
+        OPENPANEL_CLIENT_SECRET: "preserved-runtime-generated-secret",
+      },
+      legacySecretEntries: {},
+      normalizedBootstrapValues: {
+        POLAR_ACCESS_TOKEN: "bootstrap-polar-token",
+      },
+    });
+
+    expect(mergedVaultData).toEqual({
+      OPENPANEL_CLIENT_SECRET: "preserved-runtime-generated-secret",
+      POLAR_ACCESS_TOKEN: "bootstrap-polar-token",
     });
   });
 

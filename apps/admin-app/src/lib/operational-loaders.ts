@@ -16,7 +16,7 @@ export const loadAdminBrandingLoaderData = async (
 ): Promise<AdminBrandingRouteData> =>
   import("./operational-route-server").then(({ getAdminBrandingData }) =>
     getAdminBrandingData({
-      data: { scope: scope ?? "organization", scopeId: scopeId ?? "" },
+      data: { scope, scopeId: scopeId ?? "" },
     }),
   );
 
@@ -33,7 +33,7 @@ export const loadAdminComplianceRetentionLoaderData = async (
   import("./operational-route-server").then(
     ({ getAdminComplianceRetentionData }) =>
       getAdminComplianceRetentionData({
-        data: { scope: scope ?? "organization", scopeId: scopeId ?? "" },
+        data: { scope, scopeId: scopeId ?? "" },
       }),
   );
 
@@ -44,6 +44,6 @@ export const loadAdminWebhooksApiAccessLoaderData = async (
   import("./operational-route-server").then(
     ({ getAdminWebhooksApiAccessData }) =>
       getAdminWebhooksApiAccessData({
-        data: { scope: scope ?? "organization", scopeId: scopeId ?? "" },
+        data: { scope, scopeId: scopeId ?? "" },
       }),
   );

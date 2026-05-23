@@ -1,0 +1,96 @@
+/**
+ * Token barrel — import order matters.
+ *
+ * The Radix-friendly layer ordering keeps token defaults below Radix
+ * portal styling and any Tailwind utility output. Consumers import
+ * this stylesheet exactly once at the app root:
+ *
+ *   import "@comvestec/ui/styles";
+ */
+
+@layer tokens, base, components, utilities;
+
+@import "./colors.css";
+@import "./domains.css";
+@import "./typography.css";
+
+@layer base {
+  html,
+  body {
+    background: var(--canvas-950);
+    color: var(--fg-default);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-14);
+    line-height: var(--line-height-default);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100%;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  html {
+    background:
+      radial-gradient(
+        1200px 700px at 10% -10%,
+        color-mix(in oklab, #2b4f74 18%, transparent),
+        transparent 58%
+      ),
+      radial-gradient(
+        900px 540px at 100% 0%,
+        color-mix(in oklab, #0f7c7a 12%, transparent),
+        transparent 56%
+      ),
+      linear-gradient(180deg, var(--canvas-925), var(--canvas-975));
+    background-attachment: fixed;
+  }
+
+  body {
+    margin: 0;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, white 1.5%, transparent),
+        transparent 14%
+      ),
+      var(--signal-grid),
+      linear-gradient(180deg, var(--canvas-925), var(--canvas-975));
+    background-size: auto, var(--signal-grid-size), auto;
+    background-attachment: fixed, fixed, fixed;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, #6cc8ff 28%, transparent);
+    color: var(--fg-elevated);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--slate-500) 42%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--slate-300) 34%, transparent);
+    background-clip: padding-box;
+  }
+}

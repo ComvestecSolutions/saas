@@ -20,6 +20,7 @@
     "build": "vite build",
     "check": "bun run typecheck",
     "dev": "vite dev --port 3000",
+    "dev:local": "bun run --cwd ../.. apps:public-web:dev:local",
     "lint": "echo public-web lint pending",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

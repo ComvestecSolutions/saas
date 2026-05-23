@@ -106,8 +106,11 @@ The accepted specs describe the intended platform. Current delivery maturity for
 bun install
 bun run hooks:install
 bun run format:check
+bun run format:check:all # optional full sweep when you intentionally want every file rechecked
 bun run typecheck
+bun run typecheck:all # optional full sweep when you intentionally want every typecheck suite rerun
 bun run test
+bun run test:all # optional full sweep when you intentionally want every backend and browser suite
 docker compose -f ops/docker/compose.yml up -d vault
 # Initialize and unseal Vault, then enable the platform KV mount per the ops runbook.
 bun run ops:secrets:bootstrap
@@ -120,11 +123,23 @@ bun run db:migrate:local
 bun run backend:subscriber-journey:bootstrap:local
 ```
 
+Keep the local Vault recovery artifacts outside the repository at
+`~/.vault-init.json`, `~/.vault-unseal-key`, `~/.vault-token`, and
+`~/.vault-local-runtime-token`. Repo-owned local tooling now prefers the scoped
+non-root `~/.vault-local-runtime-token` file for routine reads and writes to
+`platform/local-ops/runtime-env`; `~/.vault-token` stays break-glass for Vault
+init, recovery, and refreshing the scoped token after a reinitialization. When
+you need an explicit one-off bootstrap override instead of `~/.vault-token`,
+repo-owned bootstrap helpers also accept `VAULT_BOOTSTRAP_TOKEN` or
+`VAULT_BOOTSTRAP_TOKEN_FILE` for the current command only.
+
 Use Bun for all repo-owned commands, hooks, automation, CI workflow examples, and documentation snippets. Prefer Bun-native process launching such as `Bun.spawn(...)` when Bun exposes an equivalent, and treat Bun's Node-compat modules as compatibility shims rather than a reason to switch the runtime to Node. The current runtime exception is Convex action files that must keep `"use node"`, because Convex only supports its default runtime or Node.js for those functions.
 
 The root `bun run typecheck` and `bun run check` paths now validate coverage for every first-party TypeScript surface under `apps/`, `packages/`, `convex/`, `tooling/`, `tests/`, and `drizzle.config.ts` by comparing those files against the real file lists produced by the owning tsconfig entrypoints. Explicitly excluded surfaces stay outside that audit: non-owned trees such as `vendor/` and `node_modules/`, repo infrastructure paths such as `.git/` and `.turbo/`, root output folders `build/`, `coverage/`, and `dist/`, plus workspace app and package output folders such as `apps/*/build`, `apps/*/dist`, `packages/*/build`, and `packages/*/dist`.
 
-Before starting the local stack, keep tracked defaults in `.env.example`, optional non-secret host overrides in ignored `.env.local`, and store generated or captured local secrets in Vault. Concrete values for placeholder-backed keys should live in Vault or a one-off shell command, not in `.env.local` or other ad hoc env files. If a legacy repo-root `.env` still exists, rerun `bun run ops:secrets:bootstrap` after Vault is available: it now treats `.env` as one-time migration input, copies placeholder-backed concrete secret values into Vault, and scrubs them from the file after a successful Vault write. The example env file still documents the three provenance categories that match the current runtime pattern: generated locally before first start, generated during bootstrap, and external-provider supplied. For the self-hosted Convex path, generate the local Convex admin key, write it back to Vault as `CONVEX_SELF_HOSTED_ADMIN_KEY`, and run `bun run convex:env:sync:local` after any deployment-managed worker env change because Convex deployment env is separate from the Compose container env. Convex actions receive the deployment URL and site URL from Convex system environment variables, not from the synced worker env file.
+The root `bun run format:check`, `bun run typecheck`, and `bun run test` paths are selective and cache-aware for local reruns. `format:check` validates only changed files unless explicit formatting-rule inputs require a full sweep, `typecheck` runs only the affected typecheck suites, and `test` scopes backend and browser execution to the files touched in your working tree. Each command skips any affected slice whose last successful fingerprint still matches. When the `pre-push` hook invokes those commands, it scopes file and suite selection to the outbound ref set and bypasses the local cache, while still executing from the current checkout. Use `bun run format:check:all`, `bun run typecheck:all`, or `bun run test:all` when you intentionally need the full sweep. In particular, run `bun run format:check:all` after changing Prettier configuration or formatter dependency wiring in `package.json` or lockfiles.
+
+Before starting the local stack, keep tracked defaults in `.env.example`, optional non-secret host overrides in ignored `.env.local`, and store generated or captured local secrets in Vault. Concrete values for placeholder-backed keys should live in Vault or a one-off shell command, not in `.env.local` or other ad hoc env files. If a legacy repo-root `.env` still exists, rerun `bun run ops:secrets:bootstrap` after Vault is available: it now treats `.env` as one-time migration input, copies placeholder-backed concrete secret values into Vault, scrubs them from the file after a successful Vault write, and refreshes the scoped non-root `~/.vault-local-runtime-token` file used by repo-owned local tooling. If that scoped token ever starts returning `403 Forbidden`, the runtime path now fails closed instead of silently falling back to the root token; rerun `bun run ops:secrets:bootstrap` or provide `VAULT_BOOTSTRAP_TOKEN` / `VAULT_BOOTSTRAP_TOKEN_FILE` explicitly for the one-off refresh. The example env file still documents the three provenance categories that match the current runtime pattern: generated locally before first start, generated during bootstrap, and external-provider supplied. For the self-hosted Convex path, generate the local Convex admin key, write it back to Vault as `CONVEX_SELF_HOSTED_ADMIN_KEY`, and run `bun run convex:env:sync:local` after any deployment-managed worker env change because Convex deployment env is separate from the Compose container env. Convex actions receive the deployment URL and site URL from Convex system environment variables, not from the synced worker env file.
 
 Use [ops/docker/README.md](ops/docker/README.md) as the operator index for first-run commands, concern-owned service groups, and the runbooks that explain bootstrap-generated values such as the Convex admin key and other service credentials. `bun run ops:runtime:bootstrap` now owns the local GlitchTip DSN, the OpenPanel backend client credentials, the Postal sender-domain reconciliation path, and the repo-owned Novu workflow seeding path alongside the existing Novu, Postal, and Unleash runtime reconciliation flow. OpenMeter remains transport-ready in the local stack, but it is not yet a backend-owned module capability.
 

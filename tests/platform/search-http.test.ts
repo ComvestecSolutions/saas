@@ -57,6 +57,7 @@ const operatorRequestContext: RequestContext = {
 const createIdentitySessionModuleDouble = (): IdentitySessionModuleService => ({
   startAuthentication: () => unexpectedSearchHttpEffect(),
   completeAuthentication: () => unexpectedSearchHttpEffect(),
+  completePlatformOperatorAuthentication: () => unexpectedSearchHttpEffect(),
   invalidateSession: () => unexpectedSearchHttpEffect(),
   resolveRequestContext: () => Effect.succeed(operatorRequestContext),
 });

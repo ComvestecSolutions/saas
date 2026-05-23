@@ -1,8 +1,18 @@
-import { Effect, Schema } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import type {
   cancelBillingRepairGapFromSessionId,
   replayBillingRepairGapFromWorkflowExecutionContext,
+} from "@comvestec/platform";
+import {
+  makeKeycloakAdapter,
+  resolveTrustedRequestContextFromSessionId,
+  type KeycloakAdapterError,
+  type KeycloakImpersonationActorMismatchError,
+  type KeycloakImpersonationCleanupUnavailableError,
+  type KeycloakImpersonationCompensationError,
+  type KeycloakImpersonationIdTokenMissingError,
+  type ResolveTrustedRequestContextError,
 } from "@comvestec/platform";
 import type {
   loadAdminTenantRepairRouteDataFromRequest,
@@ -24,7 +34,6 @@ type LoadAdminTenantRepairRouteData =
 
 const TenantRepairWorkflowActionInputSchema = Schema.Struct({
   jobId: Schema.NonEmptyString,
-  workflowToken: Schema.NonEmptyString,
   inspectionReason: Schema.optional(Schema.NonEmptyString),
 });
 
@@ -60,6 +69,81 @@ type CancelTenantRepairGap = (
   },
 ) => ReturnType<typeof cancelBillingRepairGapFromSessionId>;
 
+type TenantRepairWorkflowExecutionEnvironment = Schema.Schema.Type<
+  typeof TenantRepairWorkflowExecutionEnvironmentSchema
+>;
+
+type ResolveTenantRepairWorkflowExecutionContext = (
+  environment: unknown,
+  input: {
+    readonly sessionId: string;
+  },
+) => Effect.Effect<
+  {
+    readonly convexAuthToken: string;
+  },
+  ResolveTenantRepairWorkflowExecutionContextError
+>;
+
+type TenantRepairWorkflowExecutionActorIdMissingError = {
+  readonly _tag: "TenantRepairWorkflowExecutionActorIdMissingError";
+  readonly reason: string;
+};
+
+type ResolveTenantRepairWorkflowExecutionContextError =
+  | ParseResult.ParseError
+  | ResolveTrustedRequestContextError
+  | KeycloakAdapterError
+  | KeycloakImpersonationIdTokenMissingError
+  | KeycloakImpersonationActorMismatchError
+  | KeycloakImpersonationCleanupUnavailableError
+  | KeycloakImpersonationCompensationError
+  | TenantRepairWorkflowExecutionActorIdMissingError;
+
+const TenantRepairWorkflowExecutionEnvironmentSchema = Schema.Struct({
+  KEYCLOAK_BASE_URL: Schema.NonEmptyString,
+  KEYCLOAK_REALM: Schema.NonEmptyString,
+  KEYCLOAK_CLIENT_ID: Schema.NonEmptyString,
+  KEYCLOAK_CLIENT_SECRET: Schema.NonEmptyString,
+});
+
+const decodeTenantRepairWorkflowExecutionEnvironment = Schema.decodeUnknown(
+  TenantRepairWorkflowExecutionEnvironmentSchema,
+);
+
+const resolveTenantRepairWorkflowExecutionContextFromSessionId: ResolveTenantRepairWorkflowExecutionContext =
+  (environment, input) =>
+    Effect.gen(function* () {
+      const requestContext = yield* resolveTrustedRequestContextFromSessionId(
+        environment,
+        input.sessionId,
+      );
+
+      if (requestContext.actorId === undefined) {
+        return yield* Effect.fail({
+          _tag: "TenantRepairWorkflowExecutionActorIdMissingError",
+          reason:
+            "Authenticated repair workflow execution requires the current operator session to have a stable actor id.",
+        } satisfies TenantRepairWorkflowExecutionActorIdMissingError);
+      }
+
+      const resolvedEnvironment: TenantRepairWorkflowExecutionEnvironment =
+        yield* decodeTenantRepairWorkflowExecutionEnvironment(environment);
+      const keycloak = yield* makeKeycloakAdapter({
+        baseUrl: resolvedEnvironment.KEYCLOAK_BASE_URL,
+        realm: resolvedEnvironment.KEYCLOAK_REALM,
+        clientId: resolvedEnvironment.KEYCLOAK_CLIENT_ID,
+        clientSecret: resolvedEnvironment.KEYCLOAK_CLIENT_SECRET,
+      });
+      const impersonationSession = yield* keycloak.issueImpersonationSession({
+        impersonatedActorId: requestContext.actorId,
+      });
+
+      return {
+        convexAuthToken: impersonationSession.idToken,
+      };
+    });
+
 const loadAdminTenantRepairData = async (
   request: Request,
   environment: unknown,
@@ -88,7 +172,9 @@ const normalizeTenantRepairRouteLoaderInput = (
 
 const runTenantRepairWorkflowAction = async <Result>(input: {
   readonly request: Request;
+  readonly environment: unknown;
   readonly data: unknown;
+  readonly resolveWorkflowExecutionContext: ResolveTenantRepairWorkflowExecutionContext;
   readonly execute: (requestInput: {
     readonly sessionId: string;
     readonly convexAuthToken: string;
@@ -104,10 +190,15 @@ const runTenantRepairWorkflowAction = async <Result>(input: {
   const sessionId = await Effect.runPromise(
     extractRequiredSubscriberJourneySessionId(input.request),
   );
+  const workflowExecutionContext = await Effect.runPromise(
+    input.resolveWorkflowExecutionContext(input.environment, {
+      sessionId,
+    }),
+  );
 
   return input.execute({
     sessionId,
-    convexAuthToken: requestData.workflowToken,
+    convexAuthToken: workflowExecutionContext.convexAuthToken,
     jobId: requestData.jobId,
     ...(requestData.inspectionReason === undefined
       ? {}
@@ -151,6 +242,7 @@ export const createReplayAdminTenantRepairGap = (
   replayTenantRepairGap: ReplayTenantRepairGap | undefined = undefined,
   environment: unknown = process.env,
   tenantRepairServerFn: TanstackStartServerRuntime = tanstackStartServerRuntime,
+  resolveWorkflowExecutionContext: ResolveTenantRepairWorkflowExecutionContext = resolveTenantRepairWorkflowExecutionContextFromSessionId,
 ) =>
   tenantRepairServerFn
     .createServerFn({ method: "POST" })
@@ -166,7 +258,9 @@ export const createReplayAdminTenantRepairGap = (
       }) =>
         runTenantRepairWorkflowAction({
           request: context.request,
+          environment,
           data,
+          resolveWorkflowExecutionContext,
           execute: async (requestInput) => {
             if (replayTenantRepairGap !== undefined) {
               return Effect.runPromise(
@@ -191,6 +285,7 @@ export const createCancelAdminTenantRepairGap = (
   cancelTenantRepairGap: CancelTenantRepairGap | undefined = undefined,
   environment: unknown = process.env,
   tenantRepairServerFn: TanstackStartServerRuntime = tanstackStartServerRuntime,
+  resolveWorkflowExecutionContext: ResolveTenantRepairWorkflowExecutionContext = resolveTenantRepairWorkflowExecutionContextFromSessionId,
 ) =>
   tenantRepairServerFn
     .createServerFn({ method: "POST" })
@@ -206,7 +301,9 @@ export const createCancelAdminTenantRepairGap = (
       }) =>
         runTenantRepairWorkflowAction({
           request: context.request,
+          environment,
           data,
+          resolveWorkflowExecutionContext,
           execute: async (requestInput) => {
             if (cancelTenantRepairGap !== undefined) {
               return Effect.runPromise(
@@ -252,7 +349,10 @@ export const replayAdminTenantRepairGap = createServerFn({ method: "POST" })
     }) =>
       runTenantRepairWorkflowAction({
         request: context.request,
+        environment: process.env,
         data,
+        resolveWorkflowExecutionContext:
+          resolveTenantRepairWorkflowExecutionContextFromSessionId,
         execute: async (requestInput) => {
           const { replayBillingRepairGapFromWorkflowExecutionContext } =
             await import("@comvestec/platform");
@@ -280,7 +380,10 @@ export const cancelAdminTenantRepairGap = createServerFn({ method: "POST" })
     }) =>
       runTenantRepairWorkflowAction({
         request: context.request,
+        environment: process.env,
         data,
+        resolveWorkflowExecutionContext:
+          resolveTenantRepairWorkflowExecutionContextFromSessionId,
         execute: async (requestInput) => {
           const { cancelBillingRepairGapFromSessionId } =
             await import("@comvestec/platform");

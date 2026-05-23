@@ -1,6 +1,9 @@
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 import {
   AbsoluteRedirectUriSchema,
+  adminManagedOperatorRoles,
+  AdminManagedOperatorRole,
+  AdminOperatorIdentity,
   ActorTypeSchema,
   identityClaimKey,
 } from "@comvestec/contracts";
@@ -14,6 +17,8 @@ const KeycloakAdapterRuntimeOptionsSchema = Schema.Struct({
   realm: Schema.NonEmptyString,
   clientId: Schema.NonEmptyString,
   clientSecret: Schema.NonEmptyString,
+  adminUsername: Schema.optional(Schema.NonEmptyString),
+  adminPassword: Schema.optional(Schema.NonEmptyString),
 });
 
 type KeycloakAdapterRuntimeOptions = Schema.Schema.Type<
@@ -85,6 +90,18 @@ const KeycloakSessionRevocationInputSchema = Schema.Struct({
 export type KeycloakSessionRevocationInput = Schema.Schema.Type<
   typeof KeycloakSessionRevocationInputSchema
 >;
+
+type KeycloakAdminOperatorLookupInput = {
+  readonly actorId: string;
+};
+
+type KeycloakAdminOperatorProvisionInput = {
+  readonly displayName: string;
+  readonly email: string;
+  readonly username: string;
+  readonly actorType: AdminManagedOperatorRole;
+  readonly temporaryPassword: string;
+};
 
 export const KeycloakSessionSchema = Schema.Struct({
   authenticated: Schema.Literal(true),
@@ -231,16 +248,46 @@ type KeycloakJsonWebKeySet = Schema.Schema.Type<
   typeof KeycloakJsonWebKeySetSchema
 >;
 
+const KeycloakAdminUserRepresentationSchema = Schema.Struct({
+  id: Schema.NonEmptyString,
+  username: Schema.NonEmptyString,
+  email: Schema.optional(Schema.NonEmptyString),
+  firstName: Schema.optional(Schema.NonEmptyString),
+  lastName: Schema.optional(Schema.NonEmptyString),
+  enabled: Schema.optional(Schema.Boolean),
+  attributes: Schema.optional(
+    Schema.Record({
+      key: Schema.NonEmptyString,
+      value: Schema.Array(Schema.NonEmptyString),
+    }),
+  ),
+});
+
+type KeycloakAdminUserRepresentation = Schema.Schema.Type<
+  typeof KeycloakAdminUserRepresentationSchema
+>;
+
+const KeycloakAdminUserRepresentationListSchema = Schema.Array(
+  KeycloakAdminUserRepresentationSchema,
+);
+
 export type KeycloakAdapterRequestError = {
   readonly _tag: "KeycloakAdapterRequestError";
   readonly operation:
     | "healthcheck"
     | "clientCredentialsGrant"
+    | "adminPasswordGrant"
     | "tokenExchange"
     | "tokenIntrospection"
     | "tokenVerification"
     | "passwordGrant"
-    | "sessionRevocation";
+    | "sessionRevocation"
+    | "lookupAdminUsers"
+    | "readAdminUser"
+    | "listAdminUsers"
+    | "createAdminUser"
+    | "updateAdminUser"
+    | "resetAdminUserPassword";
   readonly cause: unknown;
   readonly status?: number;
   readonly body?: string;
@@ -296,6 +343,12 @@ export type KeycloakSessionIdentifierMissingError = {
   readonly _tag: "KeycloakSessionIdentifierMissingError";
   readonly realm: KeycloakSession["realm"];
   readonly actorId: KeycloakSession["actorId"];
+};
+
+export type KeycloakAdminCredentialsUnavailableError = {
+  readonly _tag: "KeycloakAdminCredentialsUnavailableError";
+  readonly realm: string;
+  readonly missingKeys: ReadonlyArray<"adminUsername" | "adminPassword">;
 };
 
 export type KeycloakAdapterError =
@@ -378,6 +431,14 @@ const decodeIdentityTokenClaims = Schema.decodeUnknown(
 
 const decodeJsonWebKeySet = Schema.decodeUnknown(KeycloakJsonWebKeySetSchema);
 
+const decodeKeycloakAdminUserRepresentation = Schema.decodeUnknown(
+  KeycloakAdminUserRepresentationSchema,
+);
+
+const decodeKeycloakAdminUserRepresentationList = Schema.decodeUnknown(
+  KeycloakAdminUserRepresentationListSchema,
+);
+
 const stripRealmPrefix = (
   issuer: string | undefined,
   fallbackRealm: string,
@@ -395,6 +456,69 @@ const readOptionalTokenExchangeSessionState = (responseText: string) => {
   const match = /"session_state"\s*:\s*"([^"]+)"/u.exec(responseText);
 
   return match?.[1] !== undefined && match[1].length > 0 ? match[1] : undefined;
+};
+
+const splitDisplayName = (displayName: string) => {
+  const segments = displayName
+    .trim()
+    .split(/\s+/u)
+    .filter((segment) => segment.length > 0);
+  const firstName = segments[0] ?? displayName;
+  const lastName =
+    segments.length > 1 ? segments.slice(1).join(" ") : undefined;
+
+  return {
+    firstName,
+    ...(lastName !== undefined ? { lastName } : {}),
+  } as const;
+};
+
+const joinDisplayName = (
+  firstName: string | undefined,
+  lastName: string | undefined,
+  fallback: string,
+) => {
+  const displayName = [firstName, lastName]
+    .filter((segment): segment is string => segment !== undefined)
+    .join(" ")
+    .trim();
+
+  return displayName.length > 0 ? displayName : fallback;
+};
+
+const readAdminOperatorActorType = (
+  user: KeycloakAdminUserRepresentation,
+): AdminManagedOperatorRole | undefined => {
+  const actorTypeValues = user.attributes?.[identityClaimKey.actorType];
+  const actorTypeValue =
+    actorTypeValues?.find((candidate): candidate is AdminManagedOperatorRole =>
+      adminManagedOperatorRoles.includes(candidate as AdminManagedOperatorRole),
+    ) ?? undefined;
+
+  return actorTypeValue;
+};
+
+const mapKeycloakUserToAdminOperator = (
+  user: KeycloakAdminUserRepresentation,
+): AdminOperatorIdentity | undefined => {
+  const actorType = readAdminOperatorActorType(user);
+
+  if (actorType === undefined) {
+    return undefined;
+  }
+
+  return {
+    actorId: user.id,
+    username: user.username,
+    email: user.email ?? user.username,
+    displayName: joinDisplayName(
+      user.firstName,
+      user.lastName,
+      user.email ?? user.username,
+    ),
+    actorType,
+    enabled: user.enabled ?? true,
+  } satisfies AdminOperatorIdentity;
 };
 
 const fetchKeycloakResponseText = (options: {
@@ -526,6 +650,25 @@ export type KeycloakAdapterService = {
   ) => Effect.Effect<
     void,
     ParseResult.ParseError | KeycloakAdapterRequestError
+  >;
+  readonly readAdminOperator: (
+    input: KeycloakAdminOperatorLookupInput,
+  ) => Effect.Effect<
+    AdminOperatorIdentity,
+    KeycloakAdapterRequestError | KeycloakAdminCredentialsUnavailableError
+  >;
+  readonly listAdminOperators: () => Effect.Effect<
+    ReadonlyArray<AdminOperatorIdentity>,
+    KeycloakAdapterRequestError | KeycloakAdminCredentialsUnavailableError
+  >;
+  readonly provisionAdminOperator: (
+    input: KeycloakAdminOperatorProvisionInput,
+  ) => Effect.Effect<
+    {
+      readonly operator: AdminOperatorIdentity;
+      readonly updatedExisting: boolean;
+    },
+    KeycloakAdapterRequestError | KeycloakAdminCredentialsUnavailableError
   >;
 };
 
@@ -1082,6 +1225,357 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
           ),
         );
 
+      const issueAdminAccessToken = (): Effect.Effect<
+        string,
+        KeycloakAdapterRequestError | KeycloakAdminCredentialsUnavailableError
+      > => {
+        const adminUsername = options.adminUsername;
+        const adminPassword = options.adminPassword;
+
+        if (adminUsername === undefined || adminPassword === undefined) {
+          return Effect.fail({
+            _tag: "KeycloakAdminCredentialsUnavailableError",
+            realm: options.realm,
+            missingKeys: [
+              ...(adminUsername === undefined ? ["adminUsername"] : []),
+              ...(adminPassword === undefined ? ["adminPassword"] : []),
+            ] as ReadonlyArray<"adminUsername" | "adminPassword">,
+          } satisfies KeycloakAdminCredentialsUnavailableError);
+        }
+
+        return createKeycloakRequest({
+          operation: "adminPasswordGrant",
+          url: `${options.baseUrl}/realms/master/protocol/openid-connect/token`,
+          init: {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              client_id: "admin-cli",
+              grant_type: "password",
+              username: adminUsername,
+              password: adminPassword,
+            }).toString(),
+          },
+          decode: decodeTokenExchangeResponse,
+          fetchImplementation,
+        }).pipe(Effect.map((response) => response.access_token));
+      };
+
+      const createAdminHeaders = (accessToken: string) =>
+        ({
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        }) as const;
+
+      const buildAdminUsersUrl = (searchParams?: Record<string, string>) => {
+        const url = new URL(`${adminRealmUrl}/users`);
+
+        for (const [key, value] of Object.entries(searchParams ?? {})) {
+          url.searchParams.set(key, value);
+        }
+
+        return url.toString();
+      };
+
+      const readAdminUserById = (input: {
+        readonly accessToken: string;
+        readonly actorId: string;
+      }) =>
+        createKeycloakRequest({
+          operation: "readAdminUser",
+          url: `${adminRealmUrl}/users/${input.actorId}`,
+          init: {
+            headers: createAdminHeaders(input.accessToken),
+          },
+          decode: decodeKeycloakAdminUserRepresentation,
+          fetchImplementation,
+        });
+
+      const lookupAdminUsersByUsername = (input: {
+        readonly accessToken: string;
+        readonly username: string;
+      }) =>
+        createKeycloakRequest({
+          operation: "lookupAdminUsers",
+          url: buildAdminUsersUrl({
+            exact: "true",
+            username: input.username,
+          }),
+          init: {
+            headers: createAdminHeaders(input.accessToken),
+          },
+          decode: decodeKeycloakAdminUserRepresentationList,
+          fetchImplementation,
+        });
+
+      const listAdminUsersPage = (input: {
+        readonly accessToken: string;
+        readonly first: number;
+        readonly max: number;
+      }) =>
+        createKeycloakRequest({
+          operation: "listAdminUsers",
+          url: buildAdminUsersUrl({
+            briefRepresentation: "false",
+            first: String(input.first),
+            max: String(input.max),
+          }),
+          init: {
+            headers: createAdminHeaders(input.accessToken),
+          },
+          decode: decodeKeycloakAdminUserRepresentationList,
+          fetchImplementation,
+        });
+
+      const listAllAdminUsers = (
+        accessToken: string,
+        first = 0,
+        max = 100,
+      ): Effect.Effect<
+        ReadonlyArray<KeycloakAdminUserRepresentation>,
+        KeycloakAdapterRequestError
+      > =>
+        listAdminUsersPage({
+          accessToken,
+          first,
+          max,
+        }).pipe(
+          Effect.flatMap((page) =>
+            page.length < max
+              ? Effect.succeed(page)
+              : listAllAdminUsers(accessToken, first + max, max).pipe(
+                  Effect.map((rest) => [...page, ...rest]),
+                ),
+          ),
+        );
+
+      const createAdminUser = (input: {
+        readonly accessToken: string;
+        readonly username: string;
+        readonly email: string;
+        readonly displayName: string;
+      }) => {
+        const { firstName, lastName } = splitDisplayName(input.displayName);
+
+        return fetchKeycloakResponseText({
+          operation: "createAdminUser",
+          url: buildAdminUsersUrl(),
+          init: {
+            method: "POST",
+            headers: {
+              ...createAdminHeaders(input.accessToken),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username: input.username,
+              email: input.email,
+              firstName,
+              ...(lastName !== undefined ? { lastName } : {}),
+              enabled: true,
+              emailVerified: true,
+            }),
+          },
+          fetchImplementation,
+        }).pipe(Effect.asVoid);
+      };
+
+      const updateAdminUser = (input: {
+        readonly accessToken: string;
+        readonly actorId: string;
+        readonly username: string;
+        readonly email: string;
+        readonly displayName: string;
+        readonly actorType: AdminManagedOperatorRole;
+      }) => {
+        const { firstName, lastName } = splitDisplayName(input.displayName);
+
+        return fetchKeycloakResponseText({
+          operation: "updateAdminUser",
+          url: `${adminRealmUrl}/users/${input.actorId}`,
+          init: {
+            method: "PUT",
+            headers: {
+              ...createAdminHeaders(input.accessToken),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: input.actorId,
+              username: input.username,
+              email: input.email,
+              firstName,
+              ...(lastName !== undefined ? { lastName } : {}),
+              attributes: {
+                [identityClaimKey.actorType]: [input.actorType],
+              },
+              enabled: true,
+              emailVerified: true,
+            }),
+          },
+          fetchImplementation,
+        }).pipe(Effect.asVoid);
+      };
+
+      const resetAdminUserPassword = (input: {
+        readonly accessToken: string;
+        readonly actorId: string;
+        readonly temporaryPassword: string;
+      }) =>
+        fetchKeycloakResponseText({
+          operation: "resetAdminUserPassword",
+          url: `${adminRealmUrl}/users/${input.actorId}/reset-password`,
+          init: {
+            method: "PUT",
+            headers: {
+              ...createAdminHeaders(input.accessToken),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              temporary: true,
+              type: "password",
+              value: input.temporaryPassword,
+            }),
+          },
+          fetchImplementation,
+        }).pipe(Effect.asVoid);
+
+      const convertUserToAdminOperator = (
+        operation:
+          | "readAdminUser"
+          | "lookupAdminUsers"
+          | "listAdminUsers"
+          | "createAdminUser"
+          | "updateAdminUser",
+        user: KeycloakAdminUserRepresentation | undefined,
+      ) => {
+        if (user === undefined) {
+          return Effect.fail(
+            buildKeycloakRequestError(operation, {
+              cause: new Error(
+                "Requested Keycloak admin operator was not found.",
+              ),
+            }),
+          );
+        }
+
+        const mappedOperator = mapKeycloakUserToAdminOperator(user);
+
+        return mappedOperator !== undefined
+          ? Effect.succeed(mappedOperator)
+          : Effect.fail(
+              buildKeycloakRequestError(operation, {
+                cause: new Error(
+                  "Requested Keycloak user does not carry a supported admin operator actor type.",
+                ),
+              }),
+            );
+      };
+
+      const readAdminOperator = (input: KeycloakAdminOperatorLookupInput) =>
+        issueAdminAccessToken().pipe(
+          Effect.flatMap((accessToken) =>
+            readAdminUserById({
+              accessToken,
+              actorId: input.actorId,
+            }),
+          ),
+          Effect.flatMap((user) =>
+            convertUserToAdminOperator("readAdminUser", user),
+          ),
+        );
+
+      const listAdminOperators = () =>
+        issueAdminAccessToken().pipe(
+          Effect.flatMap((accessToken) => listAllAdminUsers(accessToken)),
+          Effect.map((users) =>
+            users
+              .map((user) => mapKeycloakUserToAdminOperator(user))
+              .filter(
+                (operator): operator is AdminOperatorIdentity =>
+                  operator !== undefined,
+              )
+              .sort((left, right) =>
+                left.displayName.localeCompare(right.displayName, "en", {
+                  sensitivity: "base",
+                }),
+              ),
+          ),
+        );
+
+      const provisionAdminOperator = (
+        input: KeycloakAdminOperatorProvisionInput,
+      ) =>
+        issueAdminAccessToken().pipe(
+          Effect.flatMap((accessToken) =>
+            lookupAdminUsersByUsername({
+              accessToken,
+              username: input.username,
+            }).pipe(
+              Effect.flatMap((matchingUsers) => {
+                const existingUser = matchingUsers[0];
+
+                return Effect.gen(function* () {
+                  if (existingUser === undefined) {
+                    yield* createAdminUser({
+                      accessToken,
+                      username: input.username,
+                      email: input.email,
+                      displayName: input.displayName,
+                    });
+                  }
+
+                  const ensuredUsers = yield* lookupAdminUsersByUsername({
+                    accessToken,
+                    username: input.username,
+                  });
+                  const ensuredUser = ensuredUsers[0];
+                  const updatedExisting = existingUser !== undefined;
+
+                  if (ensuredUser === undefined) {
+                    return yield* Effect.fail(
+                      buildKeycloakRequestError("createAdminUser", {
+                        cause: new Error(
+                          "Failed to create or locate the requested admin operator in Keycloak.",
+                        ),
+                      }),
+                    );
+                  }
+
+                  yield* updateAdminUser({
+                    accessToken,
+                    actorId: ensuredUser.id,
+                    username: input.username,
+                    email: input.email,
+                    displayName: input.displayName,
+                    actorType: input.actorType,
+                  });
+                  yield* resetAdminUserPassword({
+                    accessToken,
+                    actorId: ensuredUser.id,
+                    temporaryPassword: input.temporaryPassword,
+                  });
+
+                  const refreshedUser = yield* readAdminUserById({
+                    accessToken,
+                    actorId: ensuredUser.id,
+                  });
+                  const operator = yield* convertUserToAdminOperator(
+                    updatedExisting ? "updateAdminUser" : "createAdminUser",
+                    refreshedUser,
+                  );
+
+                  return {
+                    operator,
+                    updatedExisting,
+                  } as const;
+                });
+              }),
+            ),
+          ),
+        );
+
       return {
         serviceName: platformAdapterServiceName.keycloak,
         issuerUrl,
@@ -1171,6 +1665,9 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
         issueIdTokenWithPasswordGrant,
         issueImpersonationSession,
         revokeSession,
+        readAdminOperator,
+        listAdminOperators,
+        provisionAdminOperator,
       };
     }),
   );

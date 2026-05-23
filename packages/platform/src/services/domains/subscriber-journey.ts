@@ -99,6 +99,7 @@ import {
   type IdentitySessionInvalidationInput,
   type IdentitySessionInvalidationResult,
   type IdentitySessionModuleError,
+  type IdentitySessionPlatformOperatorCompletionResult,
   type IdentitySessionPostgresRepositoryError,
   type IdentitySessionRequestContextLookup,
   identitySessionRunIdPrefix,
@@ -881,6 +882,12 @@ export type SubscriberJourneyService = {
     input: IdentitySessionCompletionInput,
   ) => Effect.Effect<
     IdentitySessionCompletionResult,
+    IdentitySessionModuleError
+  >;
+  readonly completePlatformOperatorAuthentication: (
+    input: IdentitySessionCompletionInput,
+  ) => Effect.Effect<
+    IdentitySessionPlatformOperatorCompletionResult,
     IdentitySessionModuleError
   >;
   readonly invalidateSession: (
@@ -2049,6 +2056,8 @@ export const makeSubscriberJourneyService = (
       resolveRequestContext: identitySession.resolveRequestContext,
       startAuthentication: identitySession.startAuthentication,
       completeAuthentication: identitySession.completeAuthentication,
+      completePlatformOperatorAuthentication:
+        identitySession.completePlatformOperatorAuthentication,
       invalidateSession: identitySession.invalidateSession,
       createCheckoutSession: (input: BillingCheckoutSessionInput) =>
         Effect.gen(function* () {

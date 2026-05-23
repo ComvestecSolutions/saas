@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import {
+  actorType,
   AdminGovernanceActionPolicyMetadataListSchema,
   adminGovernanceActionPolicyId,
   adminGovernanceActionPolicySeverity,
@@ -13,7 +14,10 @@ import {
 } from "@comvestec/contracts";
 import { subscriberJourneySessionCookieName } from "@comvestec/platform";
 import { loadAdminAccessControlRouteDataFromRequest } from "../../apps/admin-app/src/lib/access-control-route-data";
-import { createDeleteAdminAccessControlTuple } from "../../apps/admin-app/src/lib/access-control-route-server";
+import {
+  createDeleteAdminAccessControlTuple,
+  createProvisionAdminAccessControlOperator,
+} from "../../apps/admin-app/src/lib/access-control-route-server";
 import { createTanstackStartTestServerRuntime } from "../tanstack-start-test-runtime";
 
 const projectionProfiles = [
@@ -63,6 +67,39 @@ const actionPolicies = Schema.validateSync(
     ],
   },
 ]);
+
+const operatorDirectory = {
+  currentOperator: {
+    identity: {
+      actorId: "usr_platform_operator",
+      username: "operator@comvestec.com",
+      email: "operator@comvestec.com",
+      displayName: "Comvestec Platform Operator",
+      actorType: actorType.platformOperator,
+      enabled: true,
+    },
+    sessionId: "sess_admin_access_control",
+    capabilities: [],
+  },
+  operators: [
+    {
+      actorId: "usr_platform_operator",
+      username: "operator@comvestec.com",
+      email: "operator@comvestec.com",
+      displayName: "Comvestec Platform Operator",
+      actorType: actorType.platformOperator,
+      enabled: true,
+    },
+    {
+      actorId: "usr_support_operator",
+      username: "support@comvestec.com",
+      email: "support@comvestec.com",
+      displayName: "Comvestec Support Operator",
+      actorType: actorType.supportOperator,
+      enabled: true,
+    },
+  ],
+} as const;
 
 describe("admin access-control route data", () => {
   it("falls back to shell state when the trusted operator session is missing", async () => {
@@ -143,12 +180,14 @@ describe("admin access-control route data", () => {
             return Effect.succeed(tupleResult);
           },
           () => Effect.succeed(actionPolicies),
+          () => Effect.succeed(operatorDirectory),
         ),
       ),
     ).resolves.toEqual({
       kind: "ready",
       profiles: projectionProfiles,
       actionPolicies,
+      operatorDirectory,
       tupleQuery: tupleResult,
     });
 
@@ -255,6 +294,88 @@ describe("admin access-control route server boundary", () => {
         subject: "usr_member_2",
       },
       reason: "Reviewed access revocation",
+    });
+  });
+
+  it("extracts the trusted session and forwards operator provisioning input through the app-safe helper", async () => {
+    const environment = { ADMIN_APP_ENV: "test" };
+    const serverRuntime = createTanstackStartTestServerRuntime(
+      "http://localhost:3001/",
+    );
+    let capturedEnvironment: unknown;
+    let capturedInput:
+      | {
+          readonly sessionId: string;
+          readonly displayName: string;
+          readonly email: string;
+          readonly username?: string;
+          readonly actorType:
+            | typeof actorType.platformOperator
+            | typeof actorType.supportOperator;
+          readonly reason: string;
+        }
+      | undefined;
+
+    const provisionAdminAccessControlOperator =
+      createProvisionAdminAccessControlOperator(
+        (currentEnvironment, input) => {
+          capturedEnvironment = currentEnvironment;
+          capturedInput = input;
+
+          return Effect.succeed({
+            operator: {
+              actorId: "usr_audit_operator",
+              username: input.username ?? input.email,
+              email: input.email,
+              displayName: input.displayName,
+              actorType: input.actorType,
+              enabled: true,
+            },
+            updatedExisting: false as const,
+            credentialHandoff: {
+              signInUrl: "https://admin.example.com/auth/sign-in",
+              temporaryPassword: "Adm_temp_fixture!aA1",
+            },
+          });
+        },
+        environment,
+        serverRuntime,
+      );
+
+    await expect(
+      provisionAdminAccessControlOperator.__executeServer({
+        method: "POST",
+        data: {
+          displayName: "Comvestec Audit Operator",
+          email: "audit.operator@comvestec.com",
+          username: "audit.operator",
+          actorType: actorType.supportOperator,
+          reason: "Add audit oversight coverage.",
+        },
+        headers: {
+          cookie: `${subscriberJourneySessionCookieName}=sess_admin_operator_provision`,
+        },
+      }),
+    ).resolves.toMatchObject({
+      updatedExisting: false,
+      operator: {
+        displayName: "Comvestec Audit Operator",
+        email: "audit.operator@comvestec.com",
+        actorType: actorType.supportOperator,
+      },
+      credentialHandoff: {
+        signInUrl: "https://admin.example.com/auth/sign-in",
+      },
+    });
+
+    expect(capturedEnvironment).toBe(environment);
+    expect(capturedInput).toEqual({
+      sessionId: "sess_admin_operator_provision",
+      displayName: "Comvestec Audit Operator",
+      email: "audit.operator@comvestec.com",
+      username: "audit.operator",
+      actorType: actorType.supportOperator,
+      reason: "Add audit oversight coverage.",
     });
   });
 });

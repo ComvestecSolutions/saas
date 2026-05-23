@@ -68,6 +68,11 @@ export type IdentitySessionCompletionInput = Schema.Schema.Type<
   typeof IdentitySessionCompletionInputSchema
 >;
 
+const PlatformOperatorTenantContextSchema = Schema.Struct({
+  scope: Schema.Literal(platformScope.platform),
+  scopeId: Schema.Literal(platformScope.platform),
+});
+
 export const IdentitySessionInvalidationReasonSchema = Schema.Literal(
   "logout",
   "stale-session",
@@ -109,6 +114,18 @@ export type IdentitySessionCompletionResult = Schema.Schema.Type<
   typeof IdentitySessionCompletionResultSchema
 >;
 
+export const IdentitySessionPlatformOperatorCompletionResultSchema =
+  Schema.Struct({
+    requestContext: RequestContextSchema,
+    session: KeycloakSessionSchema,
+    lifecycleEvent: IdentitySessionLifecycleEventSchema,
+  });
+
+export type IdentitySessionPlatformOperatorCompletionResult =
+  Schema.Schema.Type<
+    typeof IdentitySessionPlatformOperatorCompletionResultSchema
+  >;
+
 export const IdentitySessionInvalidationResultSchema = Schema.Struct({
   sessionId: Schema.NonEmptyString,
   correlationId: Schema.NonEmptyString,
@@ -122,6 +139,16 @@ export type IdentitySessionInvalidationResult = Schema.Schema.Type<
   typeof IdentitySessionInvalidationResultSchema
 >;
 
+export type PlatformOperatorAuthenticationActorTypeNotAllowedError = {
+  readonly _tag: "PlatformOperatorAuthenticationActorTypeNotAllowedError";
+  readonly actorId: string;
+  readonly expectedActorTypes: readonly [
+    typeof actorType.platformOperator,
+    typeof actorType.supportOperator,
+  ];
+  readonly actorType?: string;
+};
+
 export type IdentitySessionModuleError =
   | ParseResult.ParseError
   | IdentitySessionPostgresRepositoryError
@@ -133,6 +160,7 @@ export type IdentitySessionModuleError =
   | OryKetoAdapterRequestError
   | ValkeyAdapterOperationError
   | TenantOwnerProvisioningActorMissingError
+  | PlatformOperatorAuthenticationActorTypeNotAllowedError
   | IdentitySessionRequestContextNotFoundError;
 
 const IdentitySessionRequestContextLookupSchema = Schema.Struct({
@@ -203,6 +231,9 @@ const decodeIdentitySessionCompletionResult = Schema.decodeUnknown(
   IdentitySessionCompletionResultSchema,
 );
 
+const decodeIdentitySessionPlatformOperatorCompletionResult =
+  Schema.decodeUnknown(IdentitySessionPlatformOperatorCompletionResultSchema);
+
 const decodeIdentitySessionInvalidationResult = Schema.decodeUnknown(
   IdentitySessionInvalidationResultSchema,
 );
@@ -210,6 +241,13 @@ const decodeIdentitySessionInvalidationResult = Schema.decodeUnknown(
 const decodeRequestContext = Schema.decodeUnknown(RequestContextSchema);
 
 const decodeActorId = Schema.decodeUnknown(Schema.NonEmptyString);
+
+const adminOperatorActorTypes = [
+  actorType.platformOperator,
+  actorType.supportOperator,
+] as const;
+
+type AdminOperatorActorType = (typeof adminOperatorActorTypes)[number];
 
 const resolveAuthenticatedActorType = (tenant: TenantContext) => {
   switch (tenant.scope) {
@@ -245,6 +283,23 @@ const resolveInvalidationEventType = (
     ? identitySessionLifecycleEventType.logoutCompleted
     : identitySessionLifecycleEventType.staleSessionInvalidated;
 
+const requirePlatformOperatorSessionActorType = (
+  session: Schema.Schema.Type<typeof KeycloakSessionSchema>,
+): Effect.Effect<
+  AdminOperatorActorType,
+  PlatformOperatorAuthenticationActorTypeNotAllowedError
+> =>
+  adminOperatorActorTypes.includes(session.actorType as AdminOperatorActorType)
+    ? Effect.succeed(session.actorType as AdminOperatorActorType)
+    : Effect.fail({
+        _tag: "PlatformOperatorAuthenticationActorTypeNotAllowedError",
+        actorId: session.actorId,
+        expectedActorTypes: adminOperatorActorTypes,
+        ...(session.actorType !== undefined
+          ? { actorType: session.actorType }
+          : {}),
+      } satisfies PlatformOperatorAuthenticationActorTypeNotAllowedError);
+
 export type IdentitySessionModuleService = {
   readonly startAuthentication: (
     input: IdentitySessionStartInput,
@@ -253,6 +308,12 @@ export type IdentitySessionModuleService = {
     input: IdentitySessionCompletionInput,
   ) => Effect.Effect<
     IdentitySessionCompletionResult,
+    IdentitySessionModuleError
+  >;
+  readonly completePlatformOperatorAuthentication: (
+    input: IdentitySessionCompletionInput,
+  ) => Effect.Effect<
+    IdentitySessionPlatformOperatorCompletionResult,
     IdentitySessionModuleError
   >;
   readonly invalidateSession: (
@@ -290,6 +351,99 @@ export const makeIdentitySessionModule = () =>
     const tenantOnboardingRepository =
       yield* TenantOnboardingPostgresRepository;
 
+    const validateCompletionInput = (input: IdentitySessionCompletionInput) =>
+      Schema.decodeUnknown(IdentitySessionCompletionInputSchema)(input).pipe(
+        Effect.flatMap((request) =>
+          keycloak.validateSession(request.session).pipe(
+            Effect.map((session) => ({
+              request,
+              session,
+            })),
+          ),
+        ),
+      );
+
+    const resolveCompletionContext = (input: IdentitySessionCompletionInput) =>
+      validateCompletionInput(input).pipe(
+        Effect.flatMap(({ request, session }) =>
+          decodeRequestContext({
+            actorType: resolveAuthenticatedActorType(request.tenant),
+            actorId: session.actorId,
+            sessionId: session.sessionId,
+            correlationId: request.correlationId,
+            ...(request.host !== undefined ? { host: request.host } : {}),
+            tenant: request.tenant,
+          }).pipe(
+            Effect.map((requestContext) => ({
+              request,
+              session,
+              requestContext,
+            })),
+          ),
+        ),
+      );
+
+    const resolvePlatformOperatorCompletionContext = (
+      input: IdentitySessionCompletionInput,
+    ) =>
+      validateCompletionInput(input).pipe(
+        Effect.flatMap(({ request, session }) =>
+          Schema.decodeUnknown(PlatformOperatorTenantContextSchema)(
+            request.tenant,
+          ).pipe(
+            Effect.flatMap(() =>
+              requirePlatformOperatorSessionActorType(session),
+            ),
+            Effect.flatMap((validatedActorType) =>
+              decodeRequestContext({
+                actorType: validatedActorType,
+                actorId: session.actorId,
+                sessionId: session.sessionId,
+                correlationId: request.correlationId,
+                ...(request.host !== undefined ? { host: request.host } : {}),
+                tenant: request.tenant,
+              }).pipe(
+                Effect.map((requestContext) => ({
+                  request,
+                  session,
+                  requestContext,
+                })),
+              ),
+            ),
+          ),
+        ),
+      );
+
+    const persistAuthCallbackCompletedLifecycleEvent = (input: {
+      readonly request: Schema.Schema.Type<
+        typeof IdentitySessionCompletionInputSchema
+      >;
+      readonly session: Schema.Schema.Type<typeof KeycloakSessionSchema>;
+      readonly provisioningId?: string;
+    }) =>
+      identitySessionRepository.persistLifecycleEvent({
+        eventId: [
+          keycloak.serviceName,
+          input.session.sessionId,
+          input.request.correlationId,
+          identitySessionLifecycleEventType.authCallbackCompleted,
+        ].join(":"),
+        sessionId: input.session.sessionId,
+        actorId: input.session.actorId,
+        tenantScope: input.request.tenant.scope,
+        tenantScopeId: input.request.tenant.scopeId,
+        eventType: identitySessionLifecycleEventType.authCallbackCompleted,
+        provider: keycloak.serviceName,
+        metadata: {
+          correlationId: input.request.correlationId,
+          realm: input.session.realm,
+          tenantHint: input.session.tenantHint ?? input.request.tenant.scopeId,
+          ...(input.provisioningId !== undefined
+            ? { provisioningId: input.provisioningId }
+            : {}),
+        },
+      });
+
     return {
       startAuthentication: (input: IdentitySessionStartInput) =>
         Schema.decodeUnknown(IdentitySessionStartInputSchema)(input).pipe(
@@ -318,18 +472,9 @@ export const makeIdentitySessionModule = () =>
           ),
         ),
       completeAuthentication: (input: IdentitySessionCompletionInput) =>
-        Schema.decodeUnknown(IdentitySessionCompletionInputSchema)(input).pipe(
-          Effect.flatMap((request) =>
+        resolveCompletionContext(input).pipe(
+          Effect.flatMap(({ request, session, requestContext }) =>
             Effect.gen(function* () {
-              const session = yield* keycloak.validateSession(request.session);
-              const requestContext = yield* decodeRequestContext({
-                actorType: resolveAuthenticatedActorType(request.tenant),
-                actorId: session.actorId,
-                sessionId: session.sessionId,
-                correlationId: request.correlationId,
-                ...(request.host !== undefined ? { host: request.host } : {}),
-                tenant: request.tenant,
-              });
               const pendingProvisioning =
                 yield* tenantManagement.provisionTenantOwner({
                   requestContext,
@@ -343,26 +488,10 @@ export const makeIdentitySessionModule = () =>
                 pendingProvisioning,
               );
               const lifecycleEvent =
-                yield* identitySessionRepository.persistLifecycleEvent({
-                  eventId: [
-                    keycloak.serviceName,
-                    session.sessionId,
-                    request.correlationId,
-                    identitySessionLifecycleEventType.authCallbackCompleted,
-                  ].join(":"),
-                  sessionId: session.sessionId,
-                  actorId: session.actorId,
-                  tenantScope: request.tenant.scope,
-                  tenantScopeId: request.tenant.scopeId,
-                  eventType:
-                    identitySessionLifecycleEventType.authCallbackCompleted,
-                  provider: keycloak.serviceName,
-                  metadata: {
-                    correlationId: request.correlationId,
-                    realm: session.realm,
-                    tenantHint: session.tenantHint ?? request.tenant.scopeId,
-                    provisioningId: pendingProvisioning.provisioningId,
-                  },
+                yield* persistAuthCallbackCompletedLifecycleEvent({
+                  request,
+                  session,
+                  provisioningId: pendingProvisioning.provisioningId,
                 });
               const onboarding =
                 yield* tenantOnboardingRepository.persistOnboardingRun({
@@ -420,6 +549,33 @@ export const makeIdentitySessionModule = () =>
                 lifecycleEvent,
                 onboarding,
               });
+            }),
+          ),
+        ),
+      completePlatformOperatorAuthentication: (
+        input: IdentitySessionCompletionInput,
+      ) =>
+        resolvePlatformOperatorCompletionContext(input).pipe(
+          Effect.flatMap(({ request, session, requestContext }) =>
+            Effect.gen(function* () {
+              const lifecycleEvent =
+                yield* persistAuthCallbackCompletedLifecycleEvent({
+                  request,
+                  session,
+                });
+
+              yield* valkey.writeSession({
+                sessionId: session.sessionId,
+                requestContext,
+              });
+
+              return yield* decodeIdentitySessionPlatformOperatorCompletionResult(
+                {
+                  requestContext,
+                  session,
+                  lifecycleEvent,
+                },
+              );
             }),
           ),
         ),

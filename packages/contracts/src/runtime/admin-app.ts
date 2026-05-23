@@ -1,13 +1,16 @@
 import { Schema } from "effect";
+import { AdminOperatorIdentitySchema } from "../access/admin-operators";
 import { ActorTypeSchema } from "../access/actor-types";
 import { ProjectionProfileSchema } from "../data/projection-profiles";
 
 const AdminRoutePathConstantSchema = Schema.Struct({
   operationsHome: Schema.Literal("/"),
+  profile: Schema.Literal("/profile"),
   repairOperations: Schema.Literal("/repair-operations"),
-  tenantWorkspace: Schema.Literal("/tenants/$tenantId"),
-  runtimeConfig: Schema.Literal("/governance/runtime-config"),
-  featureFlags: Schema.Literal("/governance/feature-flags"),
+  tenantWorkspaceDiscovery: Schema.Literal("/r/tenants"),
+  tenantWorkspace: Schema.Literal("/r/tenant/$tenantId"),
+  runtimeConfig: Schema.Literal("/r/config"),
+  featureFlags: Schema.Literal("/r/flag"),
   accessControl: Schema.Literal("/governance/access-control"),
   auditLog: Schema.Literal("/governance/audit-log"),
   supportOperations: Schema.Literal("/support-operations"),
@@ -20,10 +23,12 @@ const AdminRoutePathConstantSchema = Schema.Struct({
 export const adminRoutePath = Schema.validateSync(AdminRoutePathConstantSchema)(
   {
     operationsHome: "/",
+    profile: "/profile",
     repairOperations: "/repair-operations",
-    tenantWorkspace: "/tenants/$tenantId",
-    runtimeConfig: "/governance/runtime-config",
-    featureFlags: "/governance/feature-flags",
+    tenantWorkspaceDiscovery: "/r/tenants",
+    tenantWorkspace: "/r/tenant/$tenantId",
+    runtimeConfig: "/r/config",
+    featureFlags: "/r/flag",
     accessControl: "/governance/access-control",
     auditLog: "/governance/audit-log",
     supportOperations: "/support-operations",
@@ -36,7 +41,9 @@ export const adminRoutePath = Schema.validateSync(AdminRoutePathConstantSchema)(
 
 export const adminRoutePaths = [
   adminRoutePath.operationsHome,
+  adminRoutePath.profile,
   adminRoutePath.repairOperations,
+  adminRoutePath.tenantWorkspaceDiscovery,
   adminRoutePath.tenantWorkspace,
   adminRoutePath.runtimeConfig,
   adminRoutePath.featureFlags,
@@ -277,4 +284,23 @@ export const AdminOperatorCapabilitySnapshotSchema = Schema.Struct({
 
 export type AdminOperatorCapabilitySnapshot = Schema.Schema.Type<
   typeof AdminOperatorCapabilitySnapshotSchema
+>;
+
+export const AdminOperatorProfileSchema = Schema.Struct({
+  identity: AdminOperatorIdentitySchema,
+  sessionId: Schema.NonEmptyString,
+  capabilities: Schema.Array(AdminOperatorCapabilityEntrySchema),
+});
+
+export type AdminOperatorProfile = Schema.Schema.Type<
+  typeof AdminOperatorProfileSchema
+>;
+
+export const AdminOperatorDirectorySnapshotSchema = Schema.Struct({
+  currentOperator: AdminOperatorProfileSchema,
+  operators: Schema.Array(AdminOperatorIdentitySchema),
+});
+
+export type AdminOperatorDirectorySnapshot = Schema.Schema.Type<
+  typeof AdminOperatorDirectorySnapshotSchema
 >;

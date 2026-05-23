@@ -2,612 +2,585 @@
 
 Status: accepted
 
-Last updated: 2026-05-14
-
-## Outcome
-
-Build the admin app as a real operator workspace over the existing shared backend services, not as a mock dashboard. The implemented app must:
-
-1. Match the accepted design direction and design system closely enough to preserve the intended look and feel.
-2. Remove mock-only noise, terminal-like terminology, filler controls, and provider placeholders that do not match the actual platform.
-3. Reuse one shared UI foundation that works for admin-app, product-app, and public-web without forcing all three apps into the same visual shell.
-4. Stay backend-first: every visible mutation, reveal, approval, export, and escalation path must map to a real backend capability or stay out of the UI.
-5. Be fully responsive across desktop, tablet, and mobile through deliberate recomposition rather than desktop shrinkage.
-
-## Proposed decisions pending approval
-
-| Area                    | Decision                                                                      | Why                                                                                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Primary UI library      | **Radix UI primitives**                                                       | Headless, accessible, SSR-safe, React 19-safe, and flexible enough to match the accepted design without importing a generic enterprise look.      |
-| Styling foundation      | **Tailwind CSS 4** + repo-owned CSS variables and component tokens            | Fastest path to ship the dense control-tower aesthetic while keeping a shared token system reusable across all apps.                              |
-| Dense data tables       | **TanStack Table 8**                                                          | Best fit for admin-heavy filtering, row expansion, responsive column collapsing, and reusable table logic.                                        |
-| Shared UI package       | Create **`packages/ui`**                                                      | Keeps primitives, tokens, and patterns shared across admin-app, product-app, and public-web instead of duplicating app-local component libraries. |
-| App product name        | **Comvestec Operations**                                                      | Keeps the “operations control tower” feel without terminal/CLI wording.                                                                           |
-| Repair screen name      | **Repair Operations**                                                         | Replaces “repair console” with calmer, more product-like language.                                                                                |
-| Break-glass screen name | **Support Operations & Break-Glass Access**                                   | Keeps the canonical governance term while removing the mockup's terminal-like tone.                                                               |
-| Default admin theme     | **Dark operations theme** from the accepted design system                     | Best match for the accepted design direction and dense operator workflows.                                                                        |
-| Badge shape             | **4px rounded chips only**                                                    | Matches the design-system rule; pill badges do not ship.                                                                                          |
-| Route state model       | **URL/search-param-driven filters, tabs, drawer state, and selected records** | Preserves deep linking, back/forward behavior, and operator reproducibility.                                                                      |
-
-## UI library choice
-
-### Selected foundation
-
-Use **Radix UI primitives** as the shared UI library.
-
-### Why this is the best fit
-
-1. **Design fidelity without lock-in**  
-   The accepted admin designs are specific, dense, and serious. Radix gives the accessibility and interaction layer without forcing a branded look that would fight the design system.
-
-2. **Works across all three first-party apps**  
-   Admin-app needs dense operational surfaces, product-app needs transactional app flows, and public-web needs lighter marketing or onboarding surfaces. Radix supports all three because it is a primitive layer rather than a pre-opinionated theme.
-
-3. **Best match for the existing TanStack Start stack**  
-   The repository already uses React 19 + TanStack Start. Radix fits SSR and modern React well and does not push the repo toward client-only patterns.
-
-4. **Safer for long-term reuse**  
-   We can build repo-owned wrappers once in `packages/ui` and keep behavior, tokens, and accessibility consistent everywhere.
-
-5. **Pairs cleanly with the other planned choices**  
-   Tailwind CSS 4 handles the visual system, and TanStack Table handles the table layer. Radix fills the primitive interaction layer that those tools do not cover.
-
-### Explicit non-choice
-
-The primary foundation will **not** be MUI, Ant Design, Chakra UI, or Mantine. Those libraries are useful, but for this repository they are the wrong default because they would either:
-
-1. push the UI toward a generic dashboard look,
-2. make it harder to preserve the accepted design language,
-3. create too much visual coupling between admin-app and the lighter product/public surfaces, or
-4. encourage shipping prebuilt components that do not map cleanly to the platform’s governance patterns.
-
-### Implementation note
-
-We should **not** use Radix Themes as the visual system. The correct pattern is:
-
-1. Radix primitives for behavior and accessibility,
-2. repo-owned wrappers in `packages/ui`,
-3. Tailwind/CSS-variable tokens for visuals,
-4. app-specific theme layers on top of the shared foundation.
-
-## Current stack currency check
-
-The table below covers the current admin-app-facing stack. No framework pivot is needed before implementation starts, but a repo-wide verification on 2026-05-12 confirmed that the broader stack still has pending Bun, shared-runtime, and service-image upgrades in addition to the app-facing gaps below.
-
-| Package                           | Current in repo | Current stable checked on 2026-05-12 | Plan                                        |
-| --------------------------------- | --------------- | ------------------------------------ | ------------------------------------------- |
-| Bun                               | `1.3.13`        | `1.3.13`                             | Current.                                    |
-| React                             | `19.2.6`        | `19.2.6`                             | Current.                                    |
-| React DOM                         | `19.2.6`        | `19.2.6`                             | Current.                                    |
-| `@tanstack/react-start`           | `1.167.65`      | `1.167.65`                           | Current.                                    |
-| `@tanstack/react-router`          | `1.169.2`       | `1.169.2`                            | Current.                                    |
-| `@tanstack/react-router-devtools` | `1.166.13`      | `1.166.13`                           | Current if devtools remain enabled locally. |
-| Vite                              | `8.0.12`        | `8.0.12`                             | Current.                                    |
-| `@vitejs/plugin-react`            | `6.0.1`         | `6.0.1`                              | Already current.                            |
-| TypeScript                        | `6.0.3`         | `6.0.3`                              | Current.                                    |
-| Vitest                            | `4.1.6`         | `4.1.6`                              | Current.                                    |
-| `@vitest/browser-playwright`      | `4.1.6`         | `4.1.6`                              | Current.                                    |
-| `@vitest/coverage-v8`             | `4.1.6`         | `4.1.6`                              | Current.                                    |
-| Playwright                        | `1.60.0`        | `1.60.0`                             | Current.                                    |
-| Tailwind CSS                      | not installed   | `4.3.0`                              | Add.                                        |
-| Radix primitives                  | not installed   | current stable `1.1.x` primitives    | Add only the primitives we use.             |
-| `@tanstack/react-table`           | not installed   | `8.21.3`                             | Add.                                        |
-
-### Stack conclusion
-
-The dependency-refresh gate is now closed for the app-facing stack and the broader repo-owned upgrade set recorded in `specs/01-platform/architecture/013-technology-stack.md`. Freeze these versions for the first admin-app delivery slice and only widen them through explicit follow-up refresh work.
-
-### Full-stack currency rule
-
-The 2026-05-13 refresh re-verified the broader technology catalog in `specs/01-platform/architecture/013-technology-stack.md` and moved the repo-owned pins and images that participate in local development, validation, or admin-app delivery onto the latest stable version within their selected product line, or the latest version inside the intentionally selected H3 and OpenMeter pre-release channels. Phase 0 no longer has an outstanding dependency-refresh blocker.
-
-## Design normalization decisions
-
-The mockups are directionally strong, but they contain naming, provider, and interaction inconsistencies. The implementation will use the following normalized rules.
-
-### 1. Naming and language
-
-| Mock language               | Implementation language                                      |
-| --------------------------- | ------------------------------------------------------------ |
-| `GOV_CORE_VX`               | `Comvestec Operations`                                       |
-| `CONTROL_PLANE`             | `Comvestec Operations` or `Operations` in shell labels       |
-| `Tenant Repair Console`     | `Repair Operations`                                          |
-| `Support Ops / Break Glass` | `Support Operations & Break-Glass Access`                    |
-| `Audit`                     | `Audit Log`                                                  |
-| `Home`                      | `Operations Home`                                            |
-| `ACTOR / ENV / CID`         | `Operator / Environment / Correlation ID`                    |
-| `View Console`              | `Open`, `Inspect`, or `View details` depending on the action |
-| `Terminal` nav item         | **Remove**                                                   |
-
-### 2. Provider and domain vocabulary
-
-Mock provider names must be replaced with the actual platform stack:
-
-| Mock vocabulary                                    | Implementation vocabulary                                                                           |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Auth0                                              | Keycloak                                                                                            |
-| Stripe                                             | Polar                                                                                               |
-| Consul                                             | `Declared default`, `Runtime override`, `Effective value`, or `Environment` depending on the source |
-| generic “admin_01” or “Acme Corp” placeholder data | sanitized seeded platform fixtures that match the real platform vocabulary                          |
-
-### 3. Visual rules that become canonical
-
-1. Keep the accepted **dark, industrial control-tower aesthetic**.
-2. Keep **Inter** for UI copy and **JetBrains Mono** for ids, keys, scopes, and machine-facing values because that is already the accepted design-system choice.
-3. Use a **4px spacing grid** and **4px radius** as the baseline shape language.
-4. Use **36px dense table rows** as the standard operational table density.
-5. Use **one redaction pattern only**: 45-degree diagonal slate stripe, 4px on / 4px off, subdued opacity.
-6. Use **tonal layering and borders**, not glow-heavy or playful decoration.
-7. Do **not** ship pill badges, giant soft shadows, decorative blur orbs, or generic avatar photography.
-
-### 4. Canonical status semantics
-
-The design system mentions semantic intent, but the mockups drift. The implementation will use one status map across the entire admin app:
-
-| Semantic meaning                                | Color family | Examples                                   |
-| ----------------------------------------------- | ------------ | ------------------------------------------ |
-| Neutral / applied / complete                    | Slate        | `Applied`, `Resolved`, `Current`           |
-| Active / healthy                                | Emerald      | `Active`, `Healthy`                        |
-| Pending / scheduled / verifying                 | Amber        | `Pending review`, `Scheduled`, `Verifying` |
-| Drift / mismatch / deprecated-but-still-present | Violet       | `Drifted`, `Needs sync`, `Deprecated`      |
-| Error / blocked / expired / denied              | Crimson      | `Blocked`, `Error`, `Expired`, `Denied`    |
-
-### 5. Mock-only UI that will not ship
-
-These elements are explicitly excluded unless a real backend-backed route appears in scope:
-
-1. `Terminal` navigation item.
-2. Generic `Quick Repair` action.
-3. Generic `Export Report` button on the home screen.
-4. Decorative settings / notifications / profile chrome with no implemented surface behind it.
-5. Placeholder avatar photography.
-6. Any `href="#"` navigation stub.
-7. Any action whose outcome cannot be described in backend terms, audited, and tested.
-
-## Shell decisions
-
-### Global shell
-
-The admin app will use one persistent routed shell:
-
-1. Left navigation rail.
-2. Fixed top context header.
-3. Scrollable content area.
-4. Screen-level filter/action bar.
-5. Optional detail drawer or stacked detail pane depending on viewport size.
-
-### Sidebar behavior
-
-1. Desktop defaults to the full sidebar with labels.
-2. Tablet or other tight-width shells collapse the sidebar to an icons-only rail when space is constrained.
-3. The collapsed rail still exposes labels and critical context through hover/focus disclosure.
-4. Mobile removes the persistent rail entirely and uses a hamburger-triggered navigation drawer.
-5. Sidebar mode is owned by the shared shell, not reimplemented per screen.
-
-### Context header
-
-The top bar must consistently show:
-
-1. current operator identity,
-2. current environment,
-3. correlation id when the route is request-bound,
-4. current tenant context when a tenant-specific screen is active.
-
-Use bordered context chips rather than free-floating inline text. This is the one pattern across every screen.
-
-### Navigation model
-
-Initial admin navigation:
-
-1. Operations Home
-2. Repair Operations
-3. Tenant Workspace
-4. Runtime Config
-5. Feature Flags
-6. Permissions & Projection Profiles
-7. Audit Log
-8. Support Operations
-9. Branding & Domains
-10. Billing & Entitlements
-11. Compliance & Retention
-12. Webhooks & API Access
-
-The following do **not** go into first navigation:
-
-1. Terminal
-2. Diagnostics, unless a real operator-ready diagnostics route is implemented
-3. Saved views as a platform feature, until a real preference persistence surface exists
-
-## Screen-by-screen implementation plan
-
-Many screens below map to validated backend surfaces, but the admin app still needs targeted app-layer aggregation, capability, and projection work in addition to shell composition, first-party route wiring, and responsive UI.
-
-| Screen                                  | Final route                         | Backend readiness                                                     | Keep from the design                                                                                | Adjust or remove                                                                                              |
-| --------------------------------------- | ----------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Operations Home                         | `/`                                 | **validated backend inputs + new app aggregation**                    | posture cards, active queues, recent audit activity, deep links into workflows                      | no vanity analytics, no fake export button, no quick-repair shortcut                                          |
-| Repair Operations                       | `/repair-operations`                | **validated** via admin billing + workflow-jobs surfaces              | list/detail workspace, replay/cancel, inspection reason gating, workflow state chips                | rename from console; no raw sensitive failure detail before reveal flow                                       |
-| Tenant Workspace                        | `/tenants/$tenantId`                | **validated backend slices + new app aggregation**                    | tenant overview, memberships, invitations, billing posture, branding, recent audit                  | remove `Suspend` and `Terminate` until those flows exist in the backend                                       |
-| Runtime Config                          | `/governance/runtime-config`        | **validated** via admin-governance                                    | dense table, diff view, proposal review, effective value visibility                                 | replace mock `Consul`/generic sources with actual runtime-source vocabulary                                   |
-| Feature Flags                           | `/governance/feature-flags`         | **validated** via admin-governance                                    | lifecycle metadata, dependency visibility, rollout state, billable cues                             | no generic toggle-only UI; every change path uses real governance flows                                       |
-| Permissions & Projection Profiles       | `/governance/access-control`        | **validated authorization base + targeted operator review expansion** | derive the screen from the same list/detail governance patterns as runtime config and feature flags | requires tuple review/revocation and projection-profile admin surfaces before shipment                        |
-| Audit Log                               | `/governance/audit-log`             | **validated**                                                         | filters, immutable event inspection, export entry point                                             | no noisy decorative timeline-only view when table/filtering is the real workflow                              |
-| Support Operations & Break-Glass Access | `/support-operations`               | **validated core slice + targeted contract expansion**                | support cases, tenant health, break-glass review, impersonation visibility                          | keep support-safe vs elevated zones explicit; reviewer/expiry detail may require backend projection expansion |
-| Branding & Domains                      | `/branding`                         | **validated**                                                         | managed assets, sender identity metadata, custom domains, preview, lifecycle states                 | use real Keycloak/Polar/tenant branding vocabulary; no decorative preview-only controls                       |
-| Billing & Entitlements                  | `/billing`                          | **validated**                                                         | plan, usage, repair gaps, invoice history, reconciliation posture                                   | no unsafe finance shortcuts; every action must align with existing admin-billing services                     |
-| Compliance & Retention                  | `/compliance-retention`             | **validated**                                                         | retention policy controls, legal holds, evidence posture, guard visibility                          | no destructive affordance without explicit guarded review flow                                                |
-| Webhooks & API Access                   | `/integrations/webhooks-api-access` | **validated core foundation**                                         | API key lifecycle, subscription status, current foundation delivery state                           | full operator-facing delivery-log inspection stays deferred until backend scope expands                       |
-
-### Additional screen-level decisions
-
-1. **Operations Home**  
-   This becomes the root route. It is not a metrics dashboard. It is an operator posture screen that aggregates validated domain surfaces and links to the real workflows.
-
-2. **Repair Operations**  
-   The current `/` tenant-repair scaffold moves here. It remains the first implemented deep workflow because it already exists and anchors the admin direction.
-
-3. **Tenant Workspace**  
-   This is a composition screen, not a new domain. It should reuse validated tenant management, billing, branding, audit, and support-safe projections instead of creating an app-local read model disconnected from the shared services.
-
-4. **Notification center and email delivery**  
-   These backend slices are validated, but they are **not** part of the current visual scope. They can appear later as:
-   - operations-home activity cards,
-   - secondary communication screens,
-   - or operator drill-down routes after the first admin shell lands.
-
-5. **Permissions & Projection Profiles**  
-   This capability is required by the admin-app spec even though it is not part of the current mock screen set. It should reuse the same control-tower language and governance patterns as Runtime Config and Feature Flags, and it must not ship until the operator review/revocation and projection-profile backend surfaces are explicit.
-
-## Backend prerequisites and concept gaps
-
-The admin app is not waiting on a broad backend rewrite, but several concepts must stay explicit so the frontend does not outrun the platform contracts.
-
-| Concept                                                | Why the admin app needs it                                                                                                                 | Current state                                                                                                                              | What must happen before or while UI lands                                                                                                   | Required validation and docs                                                                                               |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Operations Home summary contract                       | The root route needs posture counts, queues, alerts, and recent activity without stitching raw domain payloads in the client.              | Landed as an app-safe aggregate helper over validated services and is already wired into the current root route.                           | Use the landed summary surface as the dedicated Operations Home route contract instead of rebuilding the composition in UI components.      | `tests/platform`, admin browser coverage for the home route, and Playwright coverage once stable.                          |
-| Tenant Workspace aggregate projection                  | The tenant cockpit needs one tenant-scoped view across tenant management, billing, branding, audit, and support-safe data.                 | Landed as a tenant-scoped aggregate helper over validated services.                                                                        | Build the tenant route on the landed projection/helper rather than composing many unrelated payloads in the route component.                | `tests/platform`, backend-e2e where transport changes, and admin browser coverage for the tenant route.                    |
-| Operator capability snapshot                           | Navigation, screen entry, and action visibility must follow real permissions and entitlements rather than hardcoded UI checks.             | Landed as a backend-backed capability snapshot/helper keyed to the trusted session and shared route vocabulary.                            | Reuse the landed capability snapshot in navigation and route guards so the app stays aligned with real backend authorization.               | `tests/platform` for authorization mapping plus browser coverage for hidden/denied states.                                 |
-| Access-control and projection-profile operator surface | The admin app is expected to manage permissions and projection profiles, which needs more than read-only authorization checks.             | Landed for exact-scope tuple review/revocation plus declared projection-profile listing.                                                   | Build the management screens on the landed operator surfaces and only widen the backend when a route needs new, justified scope.            | Access/domain tests, `tests/platform`, backend-e2e if transport changes, plus browser coverage when the route lands.       |
-| Governed reason catalogs and action policy metadata    | Reveal dialogs, approval drawers, rejection flows, and high-risk actions need governed reason options and policy hints.                    | Landed as shared admin contracts plus backend-owned action-policy metadata.                                                                | UI flows should consume the returned metadata directly instead of inventing local dropdowns or risk hints.                                  | Contract/service tests, backend-e2e where flows cross transport boundaries, and browser coverage once the route uses them. |
-| Server-driven list query envelopes                     | Dense screens need typed filters, sort, pagination, export, and row-detail lookup without oversharing data or relying on client filtering. | Landed for the current admin control-plane slice and should expand per screen instead of via generic client filtering.                     | Reuse the landed typed query envelopes and extend them screen-by-screen as each dense route is added.                                       | `tests/platform`, backend-e2e for list/export transport, and browser URL-state/filter tests.                               |
-| Support-safe break-glass detail projection             | The final support screen needs richer incident detail than the current core slice exposes.                                                 | Landed for support-safe approval and expiry context (`approvedBy`, `reason`, `expiresAt`); reviewer metadata is still not durably modeled. | Use the landed detail projection for the richer pane and add separate persisted reviewer metadata only if a future backend slice models it. | Support-operations service tests, backend-e2e, and doc/tracker updates.                                                    |
-| Operator-facing webhook delivery inspection            | The mock designs imply richer delivery visibility than the current validated foundation guarantees.                                        | Not part of the current validated operator foundation.                                                                                     | Keep the screen on API key/subscription lifecycle first; only add richer delivery inspection after a dedicated backend requirement lands.   | Webhooks API access service tests, backend-e2e if the transport expands, and doc/tracker updates.                          |
-| Optional step-up auth policy                           | Secret reveals or high-risk actions may require re-auth or MFA depending on security policy.                                               | Still not a current backend requirement; the new action-policy metadata explicitly keeps `stepUpRequired` false.                           | Only add if security requires it, but when added the challenge state and audit trail must be backend-owned.                                 | Access/security tests first, then browser and Playwright coverage once the UI depends on it.                               |
-
-### Concepts intentionally deferred until backend support exists
-
-These ideas stay out of the first admin implementation unless a backend slice is accepted and landed first:
-
-1. Batch replay or batch cancellation from Repair Operations.
-2. Manual break-glass release or revoke controls.
-3. Tenant suspend or terminate actions.
-4. Cross-device saved-view persistence.
-5. A global command palette or diagnostics route.
-6. Dedicated Notification Center or Email Delivery first-party screens beyond Operations Home signals.
-
-### Rule for adding backend concepts during planning
-
-If a concept is promoted from “needed” to “must implement now”, the work order is:
-
-1. add or update the governing spec or manifest first,
-2. land the backend contracts, services, and tests,
-3. update the implementation plan, tracker, and any related contracts docs,
-4. update `.env.example`, operator docs/runbooks, and any required ADRs when runtime or architecture/security boundaries change,
-5. only then wire the admin route to the new concept.
-
-## Required non-mock interaction patterns
-
-These flows are not fully designed in the mockups, but they must exist in implementation.
-
-### Redaction reveal
-
-Every regulated-sensitive or secret-bearing surface must use one reveal pattern:
-
-1. operator chooses reveal,
-2. operator supplies reason,
-3. optional explanatory comment is captured when the backend contract requires it,
-4. backend decides whether the field can be revealed,
-5. reveal is audit-logged,
-6. revealed content never bypasses field-security rules.
-
-### High-risk action guard
-
-Every destructive or high-risk action uses one confirmation pattern:
-
-1. summary of the target,
-2. explicit reason capture,
-3. required comment where policy requires it,
-4. approval submission if the action is review-gated,
-5. direct execution only when the backend surface already supports it safely.
-
-### Approval state machine
-
-Use this baseline state model wherever approval-backed governance applies:
-
-`Draft -> Pending review -> Approved -> Applied`
-
-Alternative exits:
-
-1. `Draft -> Cancelled`
-2. `Pending review -> Rejected`
-3. `Pending review -> Superseded`
-4. `Approved -> Failed to apply` when execution fails after approval
-
-### Break-glass access state machine
-
-Represent elevated support access as separate backend-grounded models:
-
-1. **Impersonation or active elevated-session lifecycle**
-   - `Active -> Revocation pending -> Revoked`
-   - `Expired` is shown when the session ages out instead of being revoked.
-2. **Durable break-glass incident review state**
-   - `Pending review -> Reviewed`
-
-The current support-safe projection does not yet expose every reviewer or expiry field needed for the full target screen, so those fields are an explicit backend aggregation/contract-expansion prerequisite for the final break-glass detail experience. Manual release should stay out of the baseline UI flow until the backend contract supports it explicitly.
-
-### Session and access states
-
-The app must have first-class UI for:
-
-1. missing session,
-2. stale session,
-3. permission denied,
-4. tenant not found,
-5. empty result,
-6. backend error,
-7. successful mutation with authoritative refresh.
-
-## Component inventory for `packages/ui`
-
-The shared UI package should be created from day one with clear folders rather than a flat pile of components.
-
-### Proposed package shape
-
-1. `packages/ui/src/tokens/`
-2. `packages/ui/src/primitives/`
-3. `packages/ui/src/patterns/`
-4. `packages/ui/src/patterns/admin/`
-5. `packages/ui/src/runtime/`
-6. `packages/ui/src/utils/`
-
-### Shared primitives
-
-1. `Button`
-2. `Input`
-3. `Select`
-4. `Checkbox`
-5. `RadioGroup`
-6. `Textarea`
-7. `Dialog`
-8. `Popover`
-9. `Tooltip`
-10. `Tabs`
-11. `DropdownMenu`
-12. `Sheet`
-13. `ScrollArea`
-14. `Separator`
-15. `Toast`
-16. `Badge`
-
-### Shared patterns
-
-1. `AppShell`
-2. `SideNav`
-3. `ContextHeader`
-4. `ScreenHeader`
-5. `StickyFilterBar`
-6. `DenseDataTable`
-7. `ListDetailWorkspace`
-8. `DetailDrawer`
-9. `StatusChip`
-10. `AuditTimeline`
-11. `DiffViewer`
-12. `RedactedField`
-13. `InspectionReasonDialog`
-14. `HighRiskActionDialog`
-15. `EmptyState`
-16. `ErrorState`
-17. `PermissionDeniedState`
-18. `LoadingState`
-19. `ResponsiveSidebar`
-20. `MobileNavDrawer`
-
-### Cross-app sharing rule
-
-`packages/ui` should expose:
-
-1. generic primitives usable everywhere,
-2. shared design tokens usable everywhere,
-3. admin-specific patterns that remain clearly admin-owned.
-
-Product-app and public-web should reuse the foundation without inheriting the admin shell.
-
-## App architecture rules
-
-### Route ownership
-
-Each screen route stays thin and uses TanStack Start loaders/server functions as the framework edge only.
-
-### Data access
-
-All admin routes call root-safe first-party helpers in `packages/platform/src/services/apps/` and those helpers delegate to the existing validated shared services. The app must **not** call internal backend-owned HTTP handlers just because a similar HTTP route exists.
-
-### State rules
-
-1. Route data is owned by route loaders and server functions.
-2. Filter state, selected records, active tabs, and drawer state live in the URL.
-3. Avoid a broad client-side store for cross-screen data.
-4. Use optimistic UI only when the backend already returns authoritative final state safely.
-
-### Global device model
-
-1. Add one shared device-classification runtime in `packages/ui/src/runtime/`.
-2. Expose a global provider and hooks such as `DeviceProvider`, `useDeviceType`, and `useResponsiveShell`.
-3. Route and shell behavior branching uses this shared model instead of screen-local width listeners.
-4. CSS media queries and container queries still handle pure presentation, but device-aware behavioral choices come from the shared runtime.
-5. The shared model must cover at least `mobile`, `tablet`, `desktop`, plus shell modes for `sidebar-expanded`, `sidebar-collapsed`, and `nav-drawer`.
-
-### New app helper work expected
-
-The following app-layer helpers are now partly landed and define the expected app-safe boundary:
-
-1. operations-home aggregation helper
-2. tenant-workspace aggregation helper
-3. first-party governance route helpers for runtime config, feature flags, and audit
-4. first-party access-control and projection-profile route helpers once the backend operator surface is explicit
-5. first-party support, branding, billing, retention, and webhooks admin helpers where an app-safe entrypoint does not already exist
-6. current-operator capability snapshot helper
-7. governed action-policy and reason-catalog helper surfaces where the existing backend slices do not already return them
-8. shared device-model and responsive-shell runtime wiring in `packages/ui`
-
-## Responsive plan
-
-The desktop mockups are the source of truth for content, not for layout behavior. Tablet and mobile must be designed intentionally.
-
-### Desktop
-
-1. Full side rail.
-2. List/detail and triple-pane layouts where appropriate.
-3. Full filter bar and dense tabular views.
-
-### Tablet
-
-1. Sidebar collapses to an icons-only rail when space is tight.
-2. Tables keep their highest-value columns visible.
-3. Detail panels may stack below the list instead of pushing right.
-4. Filter bars may collapse secondary filters into sheets or popovers.
-5. Sidebar labels and additional context appear through hover/focus disclosure instead of a full rail by default.
-
-### Mobile
-
-1. Navigation becomes a hamburger-triggered drawer.
-2. Split views become one-column flows with full-screen sheets for detail.
-3. Dense tables become card lists with labeled key/value rows.
-4. Row actions move into explicit action menus or card footers.
-5. Context chips remain visible or one tap away at all times.
-6. Horizontal-scroll-only tables are not acceptable.
-
-## Accessibility and interaction rules
-
-1. Keyboard access for all dialogs, drawers, menus, tabs, and tables.
-2. Visible focus states everywhere.
-3. Minimum 44px touch targets on mobile.
-4. WCAG AA contrast for all semantic states.
-5. Reduced-motion-safe transitions.
-6. ARIA live announcements for destructive or high-signal status updates.
-7. Reveal flows and approval flows must be screen-reader complete, not icon-only.
-
-## Implementation phases
-
-### Phase 0 — dependency refresh and UI foundation
-
-1. Freeze the refreshed admin-app-facing packages above and the broader repo-owned baseline in `013-technology-stack.md` as the starting point for the first admin delivery slice.
-2. Add Tailwind CSS 4, Radix primitives, and TanStack Table.
-3. Create `packages/ui` with tokens, primitives, admin patterns, and the shared device runtime.
-4. Replace the current plain-CSS-only direction in admin-app with the shared UI foundation.
-
-### Phase 1 — admin shell and route restructuring
-
-1. Introduce the persistent admin shell.
-2. Move the current tenant-repair route from `/` to `/repair-operations`.
-3. Make `/` the new Operations Home.
-4. Normalize navigation, naming, context chips, and sidebar collapse behavior.
-5. Wire the global device model so the shell can switch between full rail, collapsed icon rail, and mobile drawer without duplicating breakpoint logic.
-6. Add missing stale-session, missing-session, denied, and empty-state shells using the new patterns.
-
-### Phase 2 — governance screens
-
-1. Runtime Config
-2. Feature Flags
-3. Permissions & Projection Profiles
-4. Audit Log
-
-This phase should land early because Runtime Config, Feature Flags, and Audit Log are already validated backend-backed governance surfaces that define the platform's credibility. Permissions & Projection Profiles belongs in the same governance wave, but it stays gated on the targeted operator-surface expansion called out earlier in this plan.
-
-### Phase 3 — domain operator screens
-
-1. Tenant Workspace
-2. Branding & Domains
-3. Billing & Entitlements
-
-These are composition-heavy screens built on already-validated domain services.
-
-### Phase 4 — compliance and support screens
-
-1. Support Operations & Break-Glass Access
-2. Compliance & Retention
-3. Webhooks & API Access
-
-These flows are real and largely backend-ready, but their UI needs stronger safety treatments and explicit role boundaries. Support Operations also has a targeted backend projection gap for the final break-glass detail experience, so that screen is implemented against the validated core slice first and expanded once the richer support-safe projection lands.
-
-### Phase 5 — responsive hardening and end-to-end validation
-
-1. Tablet and mobile recomposition pass across every screen.
-2. Browser-level interaction coverage for admin-app patterns.
-3. Playwright e2e journeys for the first stable workflows.
-4. Final accessibility, focus, and interaction hardening.
-
-## Test strategy
-
-The repository already has the right validation layers; the missing work is turning the admin-app and Playwright scaffolds into real coverage.
-
-| Layer                                      | Where                                      | Purpose                                                                                                                          |
-| ------------------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Shared service and first-party route tests | `tests/platform/**/*.test.ts`              | Validate loaders, server functions, request-context resolution, projection behavior, and mutation safety.                        |
-| Browser/component tests                    | `apps/admin-app/src/**/*.browser.test.tsx` | Validate shell rendering, responsive composition, filter bars, drawers, dialogs, redaction reveal flow, and denied/empty states. |
-| Backend end-to-end tests                   | `tests/platform/backend-e2e/**/*.test.ts`  | Keep trusted-session, authorization, and backend mutation flows honest as the app starts consuming them.                         |
-| Playwright e2e tests                       | `packages/e2e/tests/**/*.spec.ts`          | Validate actual admin-user journeys through the first-party app shell in a real browser.                                         |
-
-If a new backend prerequisite is added before or during admin-app delivery, it must land with backend tests and updated docs first, then gain browser and Playwright coverage once the route depends on it.
-
-### Must-have admin browser coverage
-
-1. shell navigation and active-route state,
-2. operations-home posture rendering,
-3. repair-operations reveal gating and mutation affordances,
-4. runtime-config list/detail workflow,
-5. feature-flag lifecycle rendering,
-6. permissions/projection-profile route rendering once the backend operator surface lands,
-7. audit-log filter state in URL,
-8. mobile nav drawer and mobile list-detail conversion,
-9. permission-denied and stale-session states.
-
-### Must-have Playwright journeys
-
-Replace the skipped `packages/e2e/tests/foundation-smoke.spec.ts` scaffold with real admin journeys:
-
-1. stale or missing session handling,
-2. repair-operations inspection reason + replay/cancel flow,
-3. runtime-config proposal review flow,
-4. audit-log query + export flow,
-5. legal-hold place/release flow,
-6. API key rotate/revoke flow,
-7. tenant-branding asset/domain flow once the first route is stable.
-
-### Required completion gate
-
-Each implementation slice should use narrow validation while in progress, but no slice is complete until the repo-wide validation gate passes:
-
-1. `bun run format:check`
-2. `bun run typecheck`
-3. `bun run test`
-
-## Explicit guardrails
-
-1. No UI-only authorization.
-2. No internal HTTP hops from first-party app routes to backend-owned handlers.
-3. No placeholder buttons.
-4. No provider placeholders that contradict the actual stack.
-5. No separate one-off UI system inside admin-app after `packages/ui` exists.
-6. No broad client-state store introduced just to coordinate tables, filters, and drawers.
-7. No shipping of settings, notifications, or diagnostics shells until they have real backed functionality.
-
-## Approval gate
-
-Approval is requested for the following implementation choices:
-
-1. **Radix UI primitives** as the shared UI library,
-2. **Tailwind CSS 4** as the styling layer,
-3. **TanStack Table 8** for dense operational tables,
-4. **`packages/ui`** as the shared internal design-system package,
-5. **Comvestec Operations** as the non-terminal admin app name,
-6. **Repair Operations** and **Support Operations & Break-Glass Access** as the normalized route names.
+Last updated: 2026-05-19
+
+This plan supersedes the previous admin implementation plan. It
+covers the full redesign on the **Operator Desk** shell with the new
+`admin-organization` membership module. Treat this file as the
+delivery contract; the per-screen design intent lives here, the
+shell decision lives in ADR-022, and the admin-org module decision
+lives in ADR-023.
+
+This update reaffirms the redesign as a **full product reset**. The
+accepted shell and admin-organization decisions still stand, but the
+current implementation is still a hybrid of legacy page-per-route
+surfaces and partial Desk surfaces, so every existing admin-app screen
+— including sign-in, universal state screens, and transitional legacy
+routes — remains redesign scope until the final cutover lands.
+
+The owner has approved the Operator Desk concept and locked the
+following choices (the previously open §16 questions):
+
+1. **Admin organization** is a separate `admin-organization` module
+   (not reused inside `tenant-management`).
+2. **Polar refunds** are deep-link only from the admin app; no
+   refund mutation surface ships in v1.
+3. **Workspaces** are per-user first; cross-org sharing is a
+   follow-up after the v1 implementation lands.
+4. **Dark theme only** for v1. Light theme is a follow-up.
+5. The Operator Desk concept is approved.
+6. The **Signal Deck** design direction is approved: matte data planes,
+   restrained liquid-glass command surfaces, dense operator-first
+   information design, and no stock admin-template shell patterns.
+
+## 0. Current-state failures this plan corrects
+
+The existing admin app still has several unacceptable operator
+experience failures that this plan explicitly corrects:
+
+1. The shell is split between a legacy `AdminShell` and a partial
+   Operator Desk takeover, forcing two mental models into one product.
+2. Some workflows still require manual machine-facing inputs such as a
+   bearer token from the current Keycloak session or free-text scope
+   identifiers.
+3. `/desk` and `/r/$` still expose placeholder states instead of real
+   operator-grade mission-control surfaces.
+4. Several mutation-heavy admin surfaces remain thin shells with
+   limited confirmation and post-action guidance instead of complete
+   operator workflows.
+5. The current home/dashboard experience does not yet function as the
+   live SaaS-foundation control tower this app is meant to be.
+6. The visual system still carries older control-tower styling that is
+   too generic for the final product and is not yet consistently
+   applied across the route tree.
+
+## 1. Outcome
+
+Rebuild the admin app from a blank UI canvas on top of the existing
+backend (extended where called out in §9). After this plan:
+
+1. Operators never paste tokens or ids.
+2. The shell is the Operator Desk (ADR-022) at every breakpoint.
+3. Every backend capability already shipped has a real, governed
+   first-party admin surface, plus the 16 new backend additions in
+   §9 land and have first-party surfaces too.
+4. Tables, log explorers, diffs, reveal flows, and approval drawers
+   use the shared `packages/ui` v2 patterns — never one-off shapes.
+5. Tests cover everything per §10 (`tests/platform`, browser tests
+   in `apps/admin-app/src/**/*.browser.test.tsx`, backend-e2e,
+   Playwright e2e, visual regression, axe a11y).
+6. `bun run format:check`, `bun run typecheck`, `bun run test`,
+   `bun run test:e2e`, `bun run test:visual`, and `bun run test:a11y`
+   all stay green.
+7. Every existing screen, including sign-in and every universal state,
+   is visually and structurally redesigned; no legacy admin surface
+   survives as a visual exception after cutover.
+8. The app homepage becomes a true mission-control surface with useful
+   posture, revenue, risk, queue, and vendor intelligence rather than
+   a vanity dashboard or nav recap.
+
+## 2. Design language / stack
+
+- **Tailwind CSS 4** as styling layer.
+- **Radix UI primitives** as headless behavioural layer.
+- **TanStack Table 8** for dense tables.
+- **`packages/ui`** shared internal design system (tokens →
+  primitives → patterns → admin patterns → runtime helpers).
+- **TanStack Start + TanStack Router** unchanged.
+- **Effect + Effect Schema** for all first-party app helpers
+  (route loaders / server functions).
+- **Signal Deck** visual direction: matte data planes for dense
+  operational content, restrained liquid-glass command surfaces for
+  the shell and transient overlays, and no template dashboard tropes.
+- **Typography**: `IBM Plex Sans Condensed` for command headers and
+  dense labels, `IBM Plex Sans` for body copy, `JetBrains Mono` for
+  identifiers, metrics, timings, and audit metadata.
+- **No third-depth nesting** (matte canvas + glass — two layers
+  only).
+
+## 3. Operator Desk shell
+
+See ADR-022 for the full decision. Summary:
+
+- **Pulse Ribbon** (top, 32px) — live colour-coded segments per
+  domain (slate / amber / violet / crimson); hover peek; click
+  pins to workbench.
+- **Left Edge Rail** (56px) — vertical dock of pinned resources
+  (tenants, runs, incidents, drafts, flags, configs); not a nav
+  menu.
+- **Center Workbench** — 1–4 resource panes; split / stack /
+  peek / pin; layout URL-encoded
+  (`/desk?panes=tenant:abc|audit?actor=abc&t=24h|config:identity/session.idleMinutes`).
+- **Right Context Spine** (320px, collapses to 56px) — actor,
+  environment, tenant, correlation, capability, audit echo,
+  vendor card.
+- **Bottom Command Strip** (48px, liquid glass) — omnibar (scoped
+  prefixes `t/ f/ c/ u/ inv/ d/ kc/ ev/`), workspace tabs,
+  alerts pulse, run-as banner.
+
+## 4. Information architecture: resource views
+
+Old model: routes → pages. New model: URL describes a workbench
+layout of resource views.
+
+| Type                   | Resource path                         | Pane behaviour                                                             |
+| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------- |
+| `tenant`               | `/r/tenant/<id>`                      | Tabbed: Overview · Members · Billing · Branding · Audit · Repair · Support |
+| `tenant-list`          | `/r/tenants`                          | Dense data table v2 with facets / saved views                              |
+| `runtime-config`       | `/r/config/<moduleId>/<key>[?scope=]` | Diff / proposal / approval drawer / history                                |
+| `feature-flag`         | `/r/flag/<key>[?scope=]`              | Lifecycle / rollout / dependencies / audit                                 |
+| `audit-event`          | `/r/audit/<eventId>`                  | Event detail with correlation graph                                        |
+| `audit-query`          | `/r/audit?…filters`                   | Stream-style log explorer + facets + live tail                             |
+| `support-incident`     | `/r/incident/<id>`                    | Break-glass review, reviewer, expiry, timeline                             |
+| `webhook-subscription` | `/r/webhook/<id>`                     | Subscription + recent deliveries + replay                                  |
+| `webhook-delivery`     | `/r/delivery/<id>`                    | Headers/body, retry, signature inspector, audit echo                       |
+| `api-key`              | `/r/api-key/<id>`                     | Rotate/revoke, scopes, usage; reveal flow                                  |
+| `billing-account`      | `/r/billing/<tenantId>`               | Plan, entitlements, usage, invoices, reconciliation                        |
+| `invoice`              | `/r/invoice/<id>`                     | Lines, payment state, deep-link to Polar                                   |
+| `meter`                | `/r/meter/<id>`                       | OpenMeter usage chart, anomalies                                           |
+| `legal-hold`           | `/r/legal-hold/<id>`                  | Hold placement / release / evidence                                        |
+| `retention-policy`     | `/r/retention/<dataType>`             | Policy, guards, purges scheduled                                           |
+| `domain`               | `/r/domain/<hostname>`                | Custom-domain lifecycle, DNS, verification                                 |
+| `branding-asset`       | `/r/branding/<tenantId>`              | Logo / theme / sender, preview                                             |
+| `keycloak-user`        | `/r/kc-user/<id>`                     | Roles, sessions, MFA, deep-link to Keycloak                                |
+| `kc-realm-role`        | `/r/kc-role/<id>`                     | Membership, audit                                                          |
+| `operator`             | `/r/operator/<id>`                    | Staffing profile, capabilities, recent actions                             |
+| `admin-membership`     | `/r/admin-member/<id>`                | Internal admin-org membership                                              |
+| `notification`         | `/r/notify/<id>`                      | Novu delivery state                                                        |
+| `vendor-health`        | `/r/vendor/<service>`                 | One service's health, latency, version, deep-link                          |
+| `workflow-run`         | `/r/run/<id>`                         | Workflow-jobs run with replay/cancel                                       |
+
+Top-level routes:
+
+```
+/                 -> /desk (or /sign-in)
+/sign-in          governed OIDC handoff (new canonical entry; visual redesign)
+/auth/sign-in     compatibility alias during cutover; same visual surface
+/auth/*           OIDC callback / start / logout (kept; behaviour unchanged)
+/desk             shell + workbench
+/r/*              resource view loaders
+/admin/*          internal admin-org settings (members, workspaces, tokens, profile, audit)
+```
+
+## 5. Auto-context system
+
+- Bearer tokens are server-resolved by `identity-session`. The UI
+  **never** shows or asks for one.
+- Every id input is a `Picker` powered by the omnibar search
+  service; the id is hidden, copyable from a hover affordance.
+- Active correlation id is generated by shared middleware (already
+  in repo) and shown in the right Context Spine.
+- Run-as banner appears whenever a session-bound break-glass grant
+  is active; release is one click + reason capture (requires the
+  manual break-glass release endpoint — §9 item 5).
+
+## 6. Admin organization (ADR-023 summary)
+
+`admin-organization` module owns:
+
+- `admin_members` (admin user ↔ role mapping)
+- `admin_member_invitations` (Novu-emailed governed invites)
+- `admin_audit_log` (admin-org-scoped subset alongside the central
+  audit log)
+- Capability join: `admin-org role → platform actor capabilities`.
+
+Bootstrap owner is created by the existing operator-bootstrap
+script. Subsequent members are invited from `/admin/members` by
+any `admin-owner` or `admin-admin`. All membership changes are
+audited.
+
+## 7. Cross-cutting UI patterns (the `packages/ui` v2 inventory)
+
+### Tokens
+
+`packages/ui/src/tokens/` — colour, spacing (`2, 4, 6, 8, 10`),
+typography (`IBM Plex Sans Condensed` / `IBM Plex Sans` /
+`JetBrains Mono`), shape (`4 / 8 / 10` radius),
+motion (`60 / 120 / 180 ms`), liquid-glass variables
+(`--glass-bg`, `--glass-blur`, `--glass-border`,
+`--glass-highlight`, `--glass-shadow`, `--glass-tint-domain`).
+
+### Primitives (Radix-backed)
+
+`Button`, `Input`, `Select`, `Checkbox`, `RadioGroup`, `Textarea`,
+`Dialog`, `Popover`, `Tooltip`, `Tabs`, `DropdownMenu`, `Sheet`,
+`ScrollArea`, `Separator`, `Toast`, `Badge` (4px chips only).
+
+### Desk shell patterns
+
+`AppDesk`, `PulseRibbon`, `EdgeRail`, `Workbench`, `Pane`,
+`ContextSpine`, `CommandStrip`, `Omnibar`, `WorkspaceTabs`,
+`AlertsPulse`, `RunAsBanner`, `ResponsiveDesk` (device-runtime
+backed; tablet + mobile recompositions).
+
+### Data & governance patterns
+
+`DenseDataTable` (TanStack Table 8 with faceted filters, saved
+views, column manager, density modes, bulk action bar, peek and
+open-as-pane, keyboard map, export), `LogStream` (live tail,
+facets, correlation graph), `DiffApprovalDrawer` (4-way diff +
+governed reason + lifecycle timeline), `RevealField` (45° stripe
+redaction + reason dialog + audit echo), `HighRiskActionGuard`,
+`Picker` (omnibar-backed id picker), `VendorCard`, `KpiTileV2`,
+`StatusChip`, `StateScreen` (empty / loading / denied / stale /
+404 / 5xx — one component all routes share).
+
+### Runtime helpers
+
+`packages/ui/src/runtime/` — `DeviceProvider`, `useDeviceType`,
+`useResponsiveDesk`, `useOmnibar`, `useWorkbenchUrlState`,
+`useCapability` (capability-snapshot v2 hook).
+
+## 8. Screen-by-screen plan
+
+> Each screen is a workbench layout / resource view. URL state
+> drives every layout choice for deep linking.
+
+### 8.1 Sign-in (`/sign-in`, `/auth/sign-in`)
+
+Full-screen entry into the Signal Deck language. One primary CTA
+"Continue with identity provider". No local credential UI. The surface
+must feel premium and operator-grade without becoming decorative. Use
+the same spacing, typography, and shell vocabulary cues as the rest of
+the redesign. Auth behavior stays unchanged, but the current sign-in
+screen does **not** survive visually.
+
+### 8.2 Operations Home (`/desk`)
+
+Default workbench on sign-in:
+
+- **Pane 1 (60%)** — Posture board: 12 KPI tiles driving the
+  pulse ribbon (drifted configs, pending proposals, failing
+  webhook deliveries, open break-glass incidents, billing
+  reconciliation gaps, retention purges scheduled, audit spikes
+  24h, stale workflow runs, errored vendor healthchecks,
+  expiring custom domains, pending invitations, unmapped admin
+  members); 24h live posture chart for the worst-current
+  domain.
+- **Pane 2 (40%)** — Operator queue: My approvals · Recent
+  activity · Alerts · Pinned. Each item opens as its own pane.
+
+Backend: §9 item 3 (Ops Home aggregate v2).
+
+### 8.3 Tenant list (`/r/tenants`)
+
+DenseDataTable v2. Columns: name, slug, env, plan, status
+chips, members, MRR, last activity, branding state, custom
+domain, open incidents. Saved views: "All", "Prod", "Trial",
+"Past due", "Drifted", "Open incidents". Bulk actions gated by
+capability.
+
+### 8.4 Tenant workspace (`/r/tenant/<id>`)
+
+Tabs in one pane: **Overview · Members & Invitations · Billing ·
+Branding · Audit · Repair · Support · Danger Zone**. Danger
+Zone surfaces are greyed with a backend-gap tooltip until
+suspend/terminate land. Backend: §9 item 4.
+
+### 8.5 Runtime Config (`/r/config[...]`)
+
+List + 4-way diff detail + DiffApprovalDrawer. Edit form rendered
+from schema type. Source / status / scope filters. Last-N change
+history inline.
+
+### 8.6 Feature Flags (`/r/flag[...]`)
+
+List with lifecycle / dependencies / billable cue. Detail with
+rollout state, dependency mini-graph, approval drawer. Backend:
+§9 item — dependency-graph projection over Unleash.
+
+### 8.7 Access Control (`/r/access`)
+
+Tabs: **Operators (admin-org members + roles), Tuples (Ory Keto
+inspector), Projection profiles, Scopes & permissions**.
+
+### 8.8 Audit Log (`/r/audit`)
+
+LogStream pattern with facets, time presets, live tail,
+correlation graph (paired pane), per-event JSON inspector with
+reveal flow, saved queries, audited exports.
+
+### 8.9 Support Operations (`/r/support`, `/r/incident/<id>`)
+
+Cases list, active break-glass grants, expiring soon. Incident
+detail: timeline, approval state, reviewer, expiry, audit echo,
+release-grant cta. Backend: §9 items 5 + 14.
+
+### 8.10 Branding & Domains (`/r/branding[...]`, `/r/domain/<host>`)
+
+Assets, theme tokens, sender identity, side-by-side preview
+(default vs tenant via real public-web iframe). Domain lifecycle
+chips, DNS records with copy, verify cta, activate behind
+high-risk guard.
+
+### 8.11 Billing & Entitlements (`/r/billing[...]`, `/r/invoice/<id>`, `/r/meter/<id>`)
+
+Per-tenant + global revenue posture (MRR/ARR 6/12 months),
+failed payments, reconciliation gaps, Polar webhook failures.
+Invoice deep-links to Polar (no in-app refund per owner
+decision). Meters show OpenMeter usage and anomalies. Backend:
+§9 items 7 + 8.
+
+### 8.12 Compliance & Retention (`/r/retention[...]`, `/r/legal-hold/<id>`)
+
+Retention policies per data type with guards visible, scheduled
+purges with countdown and pause/resume, legal hold place/release
+with evidence capture.
+
+### 8.13 Webhooks & API Access (`/r/webhook[...]`, `/r/api-key/<id>`)
+
+Tabs: inbound · outbound · API keys. Delivery log explorer with
+retry/replay, signature inspector, payload viewer with reveal.
+API keys: rotate/revoke + secret reveal. Backend: §9 item 6.
+
+### 8.14 Workflow Runs (`/r/runs`, `/r/run/<id>`)
+
+List and detail with steps, payload, audit, replay, cancel.
+Backend: §9 item 15.
+
+### 8.15 Vendor Health (`/r/vendors`, `/r/vendor/<service>`)
+
+Grid of all integrated services with status dot, version,
+latency, last incident, deep-link. Per-vendor detail with
+history and runbook. Backend: §9 items 9 + 10.
+
+### 8.16 Notification Center (`/r/notify[...]`)
+
+Outbound Novu deliveries, in-app inbox, filters, resend cta.
+Backend: §9 item 16.
+
+### 8.17 Search (`/r/search?q=`)
+
+Global search results page (omnibar "see all" surface). Backend:
+§9 item 11.
+
+### 8.18 Admin org settings (`/admin/*`)
+
+`/admin/members`, `/admin/workspaces`, `/admin/tokens` (owner
+only), `/admin/profile`, `/admin/audit`. Backend: §9 items 1 + 2
+for `/admin/members`, `/admin/workspaces`, `/admin/profile`,
+`/admin/audit`; §9 item 17 (new — `admin-operator-test-tokens`
+module, owner-only, governed by
+[ADR-024](../../03-adr/identity/ADR-024-admin-operator-test-tokens.md)
+
+- [module spec](../../02-modules/access/admin-operator-test-tokens/spec.md))
+  for `/admin/tokens`.
+
+### 8.19 Universal states
+
+`StateScreen` covers empty / loading / denied / stale-session /
+404 / 5xx with consistent recovery actions and correlation id.
+
+## 9. Backend additions (in delivery order inside Phase 1)
+
+1. **`admin-organization` module** (ADR-023): contracts, manifest,
+   service, app helpers, HTTP adapter, persistence (Drizzle),
+   invitations via Novu, reason catalog entries, tests.
+2. **`admin-saved-views` + `admin-workspaces`** persistence and
+   helpers.
+3. **Operations Home aggregate v2**: 12 posture counters +
+   per-domain sparkline series.
+4. **Tenant workspace aggregate v2**: adds billing meters, current
+   break-glass grant summary, repair-gap summary.
+5. **Manual break-glass grant + release endpoints** with reviewer
+   metadata persistence.
+6. **Operator-facing webhook delivery envelope**: list, detail,
+   replay, retry, signature inspector.
+7. **Polar revenue projection** (read-only, admin-only).
+8. **OpenMeter usage query** (admin-only).
+9. **Vendor-health aggregator** unified across every adapter
+   healthcheck schema.
+10. **Per-vendor read helpers** (Keycloak users/roles/sessions,
+    Polar customers/invoices, OpenMeter meters/usage, Novu
+    deliveries, Postal mail log, GlitchTip issues, OpenPanel
+    events, Meilisearch index stats, Convex function/run state,
+    Valkey cache stats, Ory Keto tuple inspector).
+11. **Universal omnibar search service** (Meilisearch-backed
+    federated index respecting field security).
+12. **Reason catalog expansions** covering every new high-risk
+    action.
+13. **Capability snapshot v2** (admin-org role + derived
+    navigation map).
+14. **Run-as / acting-as banner state surface** from
+    support-operations.
+15. **Workflow-runs admin envelope**.
+16. **Notification-center admin envelope**.
+17. **`admin-operator-test-tokens` module** (ADR-024 +
+    [module spec](../../02-modules/access/admin-operator-test-tokens/spec.md)):
+    contracts, manifest, drizzle persistence (PostgreSQL-backed
+    durable `admin_operator_test_tokens` + ring-bounded
+    `admin_operator_test_token_usage_events`), module helpers,
+    `AdminOperatorTestTokensService` under
+    `packages/platform/src/services/access/` with a
+    service-level `admin-owner` hard floor and
+    `breakGlassAllowed = false`, hash-only secret-at-rest
+    (`tokenPrefix` non-secret correlator + HMAC-SHA-256
+    `tokenHash`), env-bound signing key
+    (`ADMIN_OPERATOR_TEST_TOKENS_SIGNING_KEY`,
+    `Schema.NonEmptyString`, no fallback synthesis), reason
+    catalog (`admin-operator-test-tokens.issue` requires
+    `reasonAttachmentText`, `admin-operator-test-tokens.revoke`
+    does not), audit-action constants (`issued`, `revoked`,
+    `listed`, `usedSuccess`, `usedFailure`), root-safe app
+    helpers (`listAdminOperatorTestTokensFromEnvironment`,
+    `issueAdminOperatorTestTokenFromSessionId`,
+    `revokeAdminOperatorTestTokenFromSessionId`), `/admin/tokens`
+    route with `RevealField` + `HighRiskActionGuard` +
+    plaintext-once dialog, `.env.example` entry, signing-key
+    rotation runbook, tracker entry.
+
+Every item lands behind shared contracts, service, root-safe app
+helper, HTTP adapter, manifest, tests, tracker update.
+
+## 10. Test strategy
+
+Layers (existing 4 + 2 new):
+
+1. `tests/platform/**/*.test.ts` — shared services, first-party
+   route helpers, request-context, projections, mutations.
+2. `apps/admin-app/src/**/*.browser.test.tsx` — shell, panes,
+   patterns, reveal flow, denied/empty/error states.
+3. `tests/platform/backend-e2e/**/*.test.ts` — trusted-session,
+   authorization, backend mutation flows.
+4. `packages/e2e/tests/**/*.spec.ts` — Playwright operator
+   journeys.
+5. **NEW**: `packages/e2e/visual/**` — Playwright per-route
+   screenshots at desktop / tablet / mobile.
+6. **NEW**: `packages/e2e/a11y/**` — axe a11y audit per primary
+   route; serious violations fail CI.
+
+Validation gate stays:
+`bun run format:check`, `bun run typecheck`, `bun run test`,
+plus new `bun run test:e2e`, `bun run test:visual`,
+`bun run test:a11y`.
+
+Per-component tests live in `packages/ui` and cover every state.
+
+## 11. Implementation phases
+
+### Phase 0 — Governance reset, foundation & tear-down
+
+1. Refresh the admin-app spec, implementation plan, and implementation
+   tracker so the usefulness bar, zero-manual-token rule, responsive
+   recomposition model, screen coverage, and Signal Deck design
+   direction are explicit before implementation proceeds.
+2. Add Tailwind 4, Radix primitives, TanStack Table 8 to the
+   workspace (admin-app + packages/ui).
+3. Build `packages/ui` v2: tokens, primitives, desk shell
+   patterns, data/governance patterns, runtime helpers.
+4. Delete every current `apps/admin-app/src/routes/**` page and
+   `apps/admin-app/src/components/**` component except for the OIDC
+   behavior edges and route-helper seams that still carry valid
+   non-visual behavior. Keep `auth/start.ts`, `auth/callback.ts`,
+   `auth/logout.ts`, `auth/stale-session.ts`, `lib/*` route data
+   helpers, and `testing/*` fixtures; redesign `auth/sign-in.tsx`,
+   `auth/sign-in-screen.tsx`, and all shared visual states.
+5. Regenerate `routeTree.gen.ts` through TanStack codegen.
+
+### Phase 1 — Backend gap closure (no UI yet)
+
+Land §9 items 1–6 first (admin-org, saved views/workspaces,
+ops-home v2, tenant-workspace v2, break-glass grant/release,
+webhook delivery envelope), then items 7–16. Tests, manifests,
+contracts, services, helpers, HTTP adapters, tracker entries
+per item.
+
+### Phase 2 — Desk core + Ops Home + Tenant + Audit + Omnibar v1
+
+Wire the desk shell to real data. Ship `/desk`, `/r/tenant`,
+`/r/tenants`, `/r/audit`. Omnibar v1 (federated search across
+tenants, users, configs, flags).
+
+### Phase 3 — Governance & access
+
+`/r/config`, `/r/flag`, `/r/access`. DiffApprovalDrawer fully
+wired. Admin-org role mapping consumed in capability snapshot
+v2.
+
+### Phase 4 — Domain operator screens
+
+`/r/billing`, `/r/branding`, `/r/domain`, `/r/invoice`,
+`/r/meter`. Land Polar revenue + OpenMeter usage helpers.
+
+### Phase 5 — Support, compliance, integrations
+
+`/r/support`, `/r/incident`, `/r/retention`, `/r/legal-hold`,
+`/r/webhook`, `/r/delivery`, `/r/api-key`.
+
+### Phase 6 — Vendor surfaces & workflow
+
+`/r/vendors`, `/r/vendor`, `/r/notify`, `/r/runs`, `/r/run`,
+`/r/kc-user`, `/r/kc-role`.
+
+### Phase 7 — Admin org settings
+
+`/admin/members`, `/admin/workspaces`, `/admin/tokens`,
+`/admin/profile`, `/admin/audit`.
+
+### Phase 8 — Responsive hardening + e2e + visual + a11y
+
+Tablet + mobile recomposition pass for every pane and pattern.
+Replace skipped Playwright smoke with real journeys. Visual
+regression and axe a11y CI gates on.
+
+## 12. Spacing & density rules (binding)
+
+- Allowed spacing units: `2, 4, 6, 8, 10` px.
+- Sum of paddings/margins between adjacent surfaces ≤ 10px.
+  When 10 is needed, place on one side only.
+- Pane outer padding ≤ 10px; inner content uses its own 4–8px
+  rhythm.
+- Standard table row 32px (compact 28, comfortable 36).
+- Min input height 32px, button 32px (touch targets 44px on
+  mobile only).
+- Min font: body 13px, monospace metadata 11px, mobile action
+  labels 14px.
+
+## 13. Liquid glass tokens (excerpt)
+
+```css
+--glass-bg: color-mix(in oklab, var(--canvas-900) 60%, transparent);
+--glass-blur: 28px;
+--glass-border: 1px solid color-mix(in oklab, white 6%, transparent);
+--glass-highlight: inset 0 1px 0 color-mix(in oklab, white 5%, transparent);
+--glass-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.6);
+--glass-tint-domain: var(--domain-tint, transparent); /* 8% alpha */
+```
+
+Domain tints (subtle): identity violet, governance indigo,
+tenants teal, billing emerald, branding rose, retention amber,
+support crimson, observability sky.
+
+## 14. Explicit guardrails
+
+1. No sidebar + topbar shells.
+2. No UI-only authorization.
+3. No internal HTTP hops from first-party app routes to
+   backend-owned handlers.
+4. No placeholder buttons.
+5. No provider placeholders that contradict the actual stack.
+6. No separate one-off UI system inside admin-app after
+   `packages/ui` v2 exists.
+7. No broad client-state store introduced just to coordinate
+   tables, filters, and drawers.
+8. No settings, notifications, or diagnostics shells without
+   real backed functionality.
+9. No manual bearer-token or id text inputs visible to
+   operators (Picker / omnibar only; one paste-by-id fallback
+   disclosure).
+10. No pill badges, decorative glow orbs, or nested
+    card-in-card depth.
+11. No padding/margin pairs totalling more than 10px between
+    adjacent surfaces.
+12. No horizontal-scroll-only tables on any breakpoint.
+13. No current admin-app screen or component is grandfathered into the
+    redesign. If the surface remains in the final product, it must be
+    rebuilt into the shared Signal Deck language.
+
+## 15. Cross-reference
+
+- Shell decision: `specs/03-adr/architecture/ADR-022-admin-operator-desk-shell.md`
+- Admin-organization module: `specs/03-adr/identity/ADR-023-admin-organization-membership.md`
+- Tracker entry: `specs/00-governance/implementation-tracker.md`
+  (admin-app row, plus a new row for the `admin-organization`
+  module).

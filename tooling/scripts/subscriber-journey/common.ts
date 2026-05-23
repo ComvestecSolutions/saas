@@ -1,5 +1,7 @@
 import { Effect, ParseResult, Schema } from "effect";
-import { type RequestContext } from "@comvestec/contracts";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { identityClaimKey, type RequestContext } from "@comvestec/contracts";
 import { makeValkeyAdapter } from "@comvestec/platform";
 
 export const subscriberJourneySmokeDefaults = {
@@ -104,12 +106,17 @@ type BunWithWhich = typeof Bun & {
   readonly which?: (executable: string) => string | null | undefined;
 };
 
-const bunExecutableFromPath = (Bun as BunWithWhich).which?.("bun");
+const bunRuntime = (
+  globalThis as typeof globalThis & {
+    readonly Bun?: BunWithWhich;
+  }
+).Bun;
 
-export const workspaceRootDirectory = Bun.resolveSync(
-  "../../../package.json",
-  import.meta.dir,
-).replace(/[/\\]package\.json$/, "");
+const bunExecutableFromPath = bunRuntime?.which?.("bun");
+
+export const workspaceRootDirectory = dirname(
+  fileURLToPath(new URL("../../../package.json", import.meta.url)),
+);
 
 export const bunExecutablePath =
   process.execPath.length > 0
@@ -119,6 +126,208 @@ export const bunExecutablePath =
 export const decodeKeycloakTokenResponse = Schema.decodeUnknown(
   KeycloakTokenResponseSchema,
 );
+
+const buildToolingScriptConfigurationError = (
+  key: string,
+  message: string,
+): ToolingScriptConfigurationError => ({
+  _tag: "ToolingScriptConfigurationError",
+  key,
+  message,
+});
+
+export const createKeycloakAdminHeaders = (accessToken: string) => ({
+  Accept: "application/json",
+  Authorization: `Bearer ${accessToken}`,
+});
+
+export const buildExactMatchUrl = (
+  baseUrl: string,
+  pathname: string,
+  key: string,
+  value: string,
+) => {
+  const url = new URL(pathname, baseUrl);
+  url.searchParams.set(key, value);
+  url.searchParams.set("exact", "true");
+  return url.toString();
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const ensureRecord = (input: {
+  readonly value: unknown;
+  readonly key: string;
+  readonly message: string;
+}) =>
+  isRecord(input.value)
+    ? Effect.succeed(input.value)
+    : Effect.fail(
+        buildToolingScriptConfigurationError(input.key, input.message),
+      );
+
+const readStringArray = (record: Record<string, unknown>, key: string) => {
+  const value = record[key];
+
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+};
+
+export const keycloakActorTypeProtocolMapperName = "comvestec-actor-type";
+
+const buildKeycloakActorTypeProtocolMapper = () => ({
+  name: keycloakActorTypeProtocolMapperName,
+  protocol: "openid-connect",
+  protocolMapper: "oidc-usermodel-attribute-mapper",
+  config: {
+    "access.token.claim": "true",
+    "id.token.claim": "true",
+    "userinfo.token.claim": "true",
+    "claim.name": identityClaimKey.actorType,
+    "jsonType.label": "String",
+    "user.attribute": identityClaimKey.actorType,
+  },
+});
+
+const buildKeycloakActorTypeProfileAttribute = () => ({
+  name: identityClaimKey.actorType,
+  displayName: "Comvestec actor type",
+  permissions: {
+    view: ["admin"],
+    edit: ["admin"],
+  },
+  multivalued: false,
+});
+
+export const ensureKeycloakActorTypeClaimConfiguration = (input: {
+  readonly baseUrl: string;
+  readonly realm: string;
+  readonly clientId: string;
+  readonly headers: Readonly<Record<string, string>>;
+}) =>
+  Effect.gen(function* () {
+    const userProfileUrl = new URL(
+      `/admin/realms/${input.realm}/users/profile`,
+      input.baseUrl,
+    ).toString();
+    const rawUserProfileConfiguration = yield* requestUnknownJson({
+      operation: "keycloak.readUserProfile",
+      url: userProfileUrl,
+      init: {
+        headers: input.headers,
+      },
+    });
+    const userProfileConfiguration = yield* ensureRecord({
+      value: rawUserProfileConfiguration,
+      key: "KEYCLOAK_REALM",
+      message:
+        "Keycloak returned an unexpected user-profile configuration payload.",
+    });
+    const existingUserProfileAttributes = Array.isArray(
+      userProfileConfiguration.attributes,
+    )
+      ? userProfileConfiguration.attributes.filter(isRecord)
+      : [];
+    const mergedUserProfileAttributes = [
+      ...existingUserProfileAttributes.filter(
+        (attribute) => attribute.name !== identityClaimKey.actorType,
+      ),
+      buildKeycloakActorTypeProfileAttribute(),
+    ];
+
+    yield* requestEmpty({
+      operation: "keycloak.updateUserProfile",
+      url: userProfileUrl,
+      init: {
+        method: "PUT",
+        headers: {
+          ...input.headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...userProfileConfiguration,
+          attributes: mergedUserProfileAttributes,
+        }),
+      },
+    });
+
+    const protocolMappersUrl = new URL(
+      `/admin/realms/${input.realm}/clients/${input.clientId}/protocol-mappers/models`,
+      input.baseUrl,
+    ).toString();
+    const rawProtocolMappers = yield* requestUnknownJson({
+      operation: "keycloak.listClientProtocolMappers",
+      url: protocolMappersUrl,
+      init: {
+        headers: input.headers,
+      },
+    });
+
+    if (!Array.isArray(rawProtocolMappers)) {
+      return yield* Effect.fail(
+        buildToolingScriptConfigurationError(
+          "KEYCLOAK_CLIENT_ID",
+          "Keycloak returned an unexpected protocol-mapper payload.",
+        ),
+      );
+    }
+
+    const existingActorTypeMapper = rawProtocolMappers
+      .filter(isRecord)
+      .find((mapper) => mapper.name === keycloakActorTypeProtocolMapperName);
+    const actorTypeMapper = buildKeycloakActorTypeProtocolMapper();
+
+    if (existingActorTypeMapper === undefined) {
+      yield* requestEmpty({
+        operation: "keycloak.createActorTypeProtocolMapper",
+        url: protocolMappersUrl,
+        init: {
+          method: "POST",
+          headers: {
+            ...input.headers,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(actorTypeMapper),
+        },
+      });
+      return;
+    }
+
+    const existingActorTypeMapperId = existingActorTypeMapper.id;
+
+    if (
+      typeof existingActorTypeMapperId !== "string" ||
+      existingActorTypeMapperId.length === 0
+    ) {
+      return yield* Effect.fail(
+        buildToolingScriptConfigurationError(
+          "KEYCLOAK_CLIENT_ID",
+          "Keycloak returned an actor-type protocol mapper without an id.",
+        ),
+      );
+    }
+
+    yield* requestEmpty({
+      operation: "keycloak.updateActorTypeProtocolMapper",
+      url: new URL(
+        `/admin/realms/${input.realm}/clients/${input.clientId}/protocol-mappers/models/${existingActorTypeMapperId}`,
+        input.baseUrl,
+      ).toString(),
+      init: {
+        method: "PUT",
+        headers: {
+          ...input.headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...actorTypeMapper,
+          id: existingActorTypeMapperId,
+        }),
+      },
+    });
+  });
 
 export const requestJson = <A>(options: {
   readonly operation: string;

@@ -155,6 +155,27 @@
       "when": 1778119717325,
       "tag": "0021_odd_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1778987531028,
+      "tag": "0022_fluffy_nicolaos",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779008445750,
+      "tag": "0023_grey_zuras",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779296371052,
+      "tag": "0024_dapper_gideon",
+      "breakpoints": true
     }
   ]
 }

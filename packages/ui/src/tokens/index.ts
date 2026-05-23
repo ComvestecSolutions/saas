@@ -1,11 +1,31 @@
 /**
- * Design tokens for the Comvestec Operations design system.
+ * Design tokens for the Comvestec Operator Desk (v2).
  *
- * These constants mirror the CSS custom properties defined in the consuming
- * app's stylesheet. Components reference these via `var(--ops-*)` in inline
- * styles so the package stays self-contained without a CSS build step.
+ * The CSS-driven tokens live in `./*.css` (imported via
+ * `@comvestec/ui/styles`); the TypeScript exports below are the typed
+ * surface that primitives and patterns import directly.
+ *
+ * Legacy `opsTokens` is preserved for the still-shipped legacy admin
+ * patterns (`patterns/admin/*`) until slice 1b tears them down.
  */
 
+export { spacingScale, spacingMap, assertSpacing } from "./spacing";
+export type { SpacingUnit } from "./spacing";
+
+export { radii } from "./shape";
+export type { RadiusToken, RadiusValue } from "./shape";
+
+export { durations, easings } from "./motion";
+export type { DurationToken, DurationValue, EasingToken } from "./motion";
+
+export { operatorDeskTailwindPreset } from "./tailwind.preset";
+export type { OperatorDeskTailwindPreset } from "./tailwind.preset";
+
+/**
+ * Legacy Ops tokens kept temporarily for `patterns/admin/*`.
+ * Slice 1b removes this export when the legacy admin shell is torn
+ * down per the implementation-tracker `Next gap`.
+ */
 export const opsTokens = {
   bg: "var(--ops-bg)",
   surface1: "var(--ops-surface-1)",

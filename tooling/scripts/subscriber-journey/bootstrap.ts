@@ -1,6 +1,9 @@
 import { Effect, Schema } from "effect";
 import { actorType, identityClaimKey } from "@comvestec/contracts";
 import {
+  buildExactMatchUrl,
+  createKeycloakAdminHeaders,
+  ensureKeycloakActorTypeClaimConfiguration,
   hostFromUrlString,
   issueKeycloakPasswordGrant,
   isPlaceholderValue,
@@ -134,23 +137,6 @@ const resolveConvexServiceActorFixture = (
   lastName: subscriberJourneyConvexServiceActorDefaults.lastName,
 });
 
-const createKeycloakAdminHeaders = (accessToken: string) => ({
-  Accept: "application/json",
-  Authorization: `Bearer ${accessToken}`,
-});
-
-const buildExactMatchUrl = (
-  baseUrl: string,
-  pathname: string,
-  key: string,
-  value: string,
-) => {
-  const url = new URL(pathname, baseUrl);
-  url.searchParams.set(key, value);
-  url.searchParams.set("exact", "true");
-  return url.toString();
-};
-
 const ensureClientRepresentation = (value: unknown) =>
   isRecord(value)
     ? Effect.succeed(value)
@@ -160,42 +146,6 @@ const ensureClientRepresentation = (value: unknown) =>
         message:
           "Keycloak returned an unexpected client representation payload.",
       } as const);
-
-const ensureUserProfileConfiguration = (value: unknown) =>
-  isRecord(value)
-    ? Effect.succeed(value)
-    : Effect.fail({
-        _tag: "ToolingScriptConfigurationError",
-        key: "KEYCLOAK_REALM",
-        message:
-          "Keycloak returned an unexpected user-profile configuration payload.",
-      } as const);
-
-const keycloakActorTypeProtocolMapperName = "comvestec-actor-type";
-
-const buildKeycloakActorTypeProtocolMapper = () => ({
-  name: keycloakActorTypeProtocolMapperName,
-  protocol: "openid-connect",
-  protocolMapper: "oidc-usermodel-attribute-mapper",
-  config: {
-    "access.token.claim": "true",
-    "id.token.claim": "true",
-    "userinfo.token.claim": "true",
-    "claim.name": identityClaimKey.actorType,
-    "jsonType.label": "String",
-    "user.attribute": identityClaimKey.actorType,
-  },
-});
-
-const buildKeycloakActorTypeProfileAttribute = () => ({
-  name: identityClaimKey.actorType,
-  displayName: "Comvestec actor type",
-  permissions: {
-    view: ["admin"],
-    edit: ["admin"],
-  },
-  multivalued: false,
-});
 
 const main = Effect.gen(function* () {
   const environment = yield* decodeBootstrapEnvironment(Bun.env);
@@ -262,29 +212,6 @@ const main = Effect.gen(function* () {
   const clientRepresentation = yield* ensureClientRepresentation(
     rawClientRepresentation,
   );
-  const rawUserProfileConfiguration = yield* requestUnknownJson({
-    operation: "keycloak.readUserProfile",
-    url: new URL(
-      `/admin/realms/${environment.KEYCLOAK_REALM}/users/profile`,
-      environment.KEYCLOAK_BASE_URL,
-    ).toString(),
-    init: {
-      headers: keycloakHeaders,
-    },
-  });
-  const userProfileConfiguration = yield* ensureUserProfileConfiguration(
-    rawUserProfileConfiguration,
-  );
-  const existingProtocolMappers = Array.isArray(
-    clientRepresentation.protocolMappers,
-  )
-    ? clientRepresentation.protocolMappers.filter(isRecord)
-    : [];
-  const existingUserProfileAttributes = Array.isArray(
-    userProfileConfiguration.attributes,
-  )
-    ? userProfileConfiguration.attributes.filter(isRecord)
-    : [];
 
   const appBaseOrigin = yield* originFromUrlString(
     environment.APP_BASE_URL,
@@ -325,37 +252,6 @@ const main = Effect.gen(function* () {
     ...readStringArray(clientRepresentation, "webOrigins"),
     ...desiredOrigins,
   ]);
-  const mergedProtocolMappers = [
-    ...existingProtocolMappers.filter(
-      (mapper) => mapper.name !== keycloakActorTypeProtocolMapperName,
-    ),
-    buildKeycloakActorTypeProtocolMapper(),
-  ];
-  const mergedUserProfileAttributes = [
-    ...existingUserProfileAttributes.filter(
-      (attribute) => attribute.name !== identityClaimKey.actorType,
-    ),
-    buildKeycloakActorTypeProfileAttribute(),
-  ];
-
-  yield* requestEmpty({
-    operation: "keycloak.updateUserProfile",
-    url: new URL(
-      `/admin/realms/${environment.KEYCLOAK_REALM}/users/profile`,
-      environment.KEYCLOAK_BASE_URL,
-    ).toString(),
-    init: {
-      method: "PUT",
-      headers: {
-        ...keycloakHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...userProfileConfiguration,
-        attributes: mergedUserProfileAttributes,
-      }),
-    },
-  });
 
   yield* requestEmpty({
     operation: "keycloak.updateClient",
@@ -373,12 +269,17 @@ const main = Effect.gen(function* () {
         ...clientRepresentation,
         redirectUris: mergedRedirectUris,
         webOrigins: mergedWebOrigins,
-        protocolMappers: mergedProtocolMappers,
         directAccessGrantsEnabled: true,
         serviceAccountsEnabled: true,
         standardFlowEnabled: true,
       }),
     },
+  });
+  yield* ensureKeycloakActorTypeClaimConfiguration({
+    baseUrl: environment.KEYCLOAK_BASE_URL,
+    realm: environment.KEYCLOAK_REALM,
+    clientId: keycloakClient.id,
+    headers: keycloakHeaders,
   });
 
   const keycloakUserLookupUrl = buildExactMatchUrl(

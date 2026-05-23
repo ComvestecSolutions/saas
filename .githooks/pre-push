@@ -1,7 +1,4 @@
 #!/bin/sh
 set -e
 
-bun run tooling/scripts/validate-pre-push.mjs
-bun run format:check
-bun run typecheck
-bun run test
+bun run tooling/scripts/tests/run-pre-push-validation.ts

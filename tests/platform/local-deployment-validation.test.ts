@@ -9,6 +9,8 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { spawnSync } from "child_process";
+import { identityClaimKey } from "@comvestec/contracts";
+import { keycloakActorTypeProtocolMapperName } from "../../tooling/scripts/subscriber-journey/common";
 
 const workspaceRootDirectory = process.cwd();
 
@@ -293,6 +295,45 @@ describe("local deployment validation tooling", () => {
         expect(fileContents).not.toContain(bannedFragment);
       }
     }
+  });
+
+  it("keeps the Keycloak realm export aligned with the platform actor-type claim contract", () => {
+    const realmExport = JSON.parse(
+      readFileSync(
+        resolve(
+          workspaceRootDirectory,
+          "ops/docker/identity/keycloak/realm-export.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      readonly clients?: readonly {
+        readonly clientId?: string;
+        readonly protocolMappers?: readonly {
+          readonly name?: string;
+          readonly protocol?: string;
+          readonly protocolMapper?: string;
+          readonly config?: Readonly<Record<string, string>>;
+        }[];
+      }[];
+    };
+    const saasPlatformClient = realmExport.clients?.find(
+      (client) => client.clientId === "saas-platform",
+    );
+
+    expect(saasPlatformClient?.protocolMappers).toContainEqual(
+      expect.objectContaining({
+        name: keycloakActorTypeProtocolMapperName,
+        protocol: "openid-connect",
+        protocolMapper: "oidc-usermodel-attribute-mapper",
+        config: expect.objectContaining({
+          "claim.name": identityClaimKey.actorType,
+          "user.attribute": identityClaimKey.actorType,
+          "id.token.claim": "true",
+          "access.token.claim": "true",
+        }),
+      }),
+    );
   });
 
   it("keeps the Kong db-less config pointed at the backend-owned API surface", () => {

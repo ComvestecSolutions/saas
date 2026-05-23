@@ -1,0 +1,35 @@
+/**
+ * Domain tints applied at 8% alpha (admin-app plan §13).
+ *
+ * Set `data-domain` on the nearest desk pane / surface and the
+ * `--domain-tint` custom property cascades into `--glass-tint-domain`,
+ * giving each pane a subtle but consistent domain hue without
+ * introducing a third visual layer.
+ */
+
+@layer tokens {
+  [data-domain="identity"] {
+    --domain-tint: color-mix(in oklab, var(--violet-500) 8%, transparent);
+  }
+  [data-domain="governance"] {
+    --domain-tint: color-mix(in oklab, #6366f1 8%, transparent); /* indigo */
+  }
+  [data-domain="tenants"] {
+    --domain-tint: color-mix(in oklab, #14b8a6 8%, transparent); /* teal */
+  }
+  [data-domain="billing"] {
+    --domain-tint: color-mix(in oklab, var(--emerald-500) 8%, transparent);
+  }
+  [data-domain="branding"] {
+    --domain-tint: color-mix(in oklab, #f43f5e 8%, transparent); /* rose */
+  }
+  [data-domain="retention"] {
+    --domain-tint: color-mix(in oklab, var(--amber-500) 8%, transparent);
+  }
+  [data-domain="support"] {
+    --domain-tint: color-mix(in oklab, var(--crimson-500) 8%, transparent);
+  }
+  [data-domain="observability"] {
+    --domain-tint: color-mix(in oklab, #38bdf8 8%, transparent); /* sky */
+  }
+}

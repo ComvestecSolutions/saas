@@ -1,4 +1,14 @@
 import { identitySessionAuditTable } from "./access/identity-session";
+import {
+  adminMemberInvitationsTable,
+  adminMembersTable,
+} from "./access/admin-organization";
+import {
+  adminOperatorTestTokensTable,
+  adminOperatorTestTokenUsageEventsTable,
+} from "./access/admin-operator-test-tokens";
+import { adminSavedViewsTable } from "./access/admin-saved-views";
+import { adminWorkspacesTable } from "./access/admin-workspaces";
 import { auditLogEventsTable } from "./governance/audit-log";
 import {
   retentionLegalHoldsTable,
@@ -49,6 +59,12 @@ import { tenantMembershipInvitationsTable } from "./domains/tenant-invitations";
 import { workflowJobsTable } from "./domains/workflow-jobs";
 
 export {
+  adminMemberInvitationsTable,
+  adminMembersTable,
+  adminOperatorTestTokensTable,
+  adminOperatorTestTokenUsageEventsTable,
+  adminSavedViewsTable,
+  adminWorkspacesTable,
   auditLogEventsTable,
   billingCustomerAccountsTable,
   billingEntitlementsTable,
@@ -85,6 +101,12 @@ export {
 };
 
 export const postgresSchema = {
+  adminMembersTable,
+  adminMemberInvitationsTable,
+  adminOperatorTestTokensTable,
+  adminOperatorTestTokenUsageEventsTable,
+  adminSavedViewsTable,
+  adminWorkspacesTable,
   auditLogEventsTable,
   retentionPoliciesTable,
   retentionLegalHoldsTable,

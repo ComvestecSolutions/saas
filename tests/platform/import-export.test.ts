@@ -66,6 +66,7 @@ const createIdentitySessionModuleDouble = (
 ): IdentitySessionModuleService => ({
   startAuthentication: () => unexpectedImportExportEffect(),
   completeAuthentication: () => unexpectedImportExportEffect(),
+  completePlatformOperatorAuthentication: () => unexpectedImportExportEffect(),
   invalidateSession: () => unexpectedImportExportEffect(),
   resolveRequestContext: () => Effect.succeed(requestContext),
 });

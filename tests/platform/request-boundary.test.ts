@@ -54,6 +54,40 @@ describe("platform request boundary", () => {
     });
   });
 
+  it("adds correlation headers to request-like runtime request objects", async () => {
+    const boundary = createPlatformRequestBoundary();
+    const requestLike = {
+      url: "http://localhost/request-boundary/request-like",
+      method: "GET",
+      headers: new Headers({
+        accept: "application/json",
+      }),
+      body: null,
+      bodyUsed: false,
+      cache: "default",
+      credentials: "same-origin",
+      integrity: "",
+      keepalive: false,
+      mode: "cors",
+      redirect: "follow",
+      referrer: "about:client",
+      referrerPolicy: "",
+      signal: new AbortController().signal,
+    } as unknown as Request;
+
+    const response = await boundary.wrap((request) =>
+      Response.json({
+        correlationId: request.headers.get(
+          platformRequestCorrelationIdHeaderName,
+        ),
+      }),
+    )(requestLike);
+
+    await expect(response.json()).resolves.toEqual({
+      correlationId: expect.any(String),
+    });
+  });
+
   it("routes transform failures through the fallback response and reporters", async () => {
     const emittedTelemetry: {
       readonly correlationId: string;

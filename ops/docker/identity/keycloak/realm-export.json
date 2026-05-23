@@ -25,6 +25,21 @@
         "http://localhost:3002",
         "http://localhost:3004"
       ],
+      "protocolMappers": [
+        {
+          "name": "comvestec-actor-type",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "comvestec_actor_type",
+            "jsonType.label": "String",
+            "user.attribute": "comvestec_actor_type"
+          }
+        }
+      ],
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": true

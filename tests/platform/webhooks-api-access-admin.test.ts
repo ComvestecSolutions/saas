@@ -45,6 +45,12 @@ const createIdentitySessionServiceDouble = (
     Effect.die(new Error("Unexpected identity session start call.")),
   completeAuthentication: () =>
     Effect.die(new Error("Unexpected identity session completion call.")),
+  completePlatformOperatorAuthentication: () =>
+    Effect.die(
+      new Error(
+        "Unexpected platform-operator identity session completion call.",
+      ),
+    ),
   invalidateSession: () =>
     Effect.die(new Error("Unexpected identity session invalidation call.")),
   resolveRequestContext: () => Effect.succeed(requestContext),

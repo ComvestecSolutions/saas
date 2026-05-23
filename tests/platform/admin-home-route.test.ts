@@ -294,6 +294,7 @@ describe("admin tenant repair route server boundary", () => {
         }
       | undefined;
     let capturedEnvironment: unknown;
+    let capturedWorkflowExecutionSessionId: string | undefined;
     const replayAdminTenantRepairGap = createReplayAdminTenantRepairGap(
       (currentEnvironment, input) => {
         capturedEnvironment = currentEnvironment;
@@ -313,6 +314,12 @@ describe("admin tenant repair route server boundary", () => {
       },
       environment,
       serverRuntime,
+      (_, input) => {
+        capturedWorkflowExecutionSessionId = input.sessionId;
+        return Effect.succeed({
+          convexAuthToken: "workflow-token-1",
+        });
+      },
     );
 
     await expect(
@@ -320,7 +327,6 @@ describe("admin tenant repair route server boundary", () => {
         method: "POST",
         data: {
           jobId: "workflow-jobs:billing-repair:organization:org_admin_replay",
-          workflowToken: "workflow-token-1",
           inspectionReason: "Investigate replayed tenant repair failures",
         },
         headers: {
@@ -334,6 +340,7 @@ describe("admin tenant repair route server boundary", () => {
     });
 
     expect(capturedEnvironment).toBe(environment);
+    expect(capturedWorkflowExecutionSessionId).toBe("sess_admin_replay");
     expect(capturedInput).toEqual({
       sessionId: "sess_admin_replay",
       convexAuthToken: "workflow-token-1",
@@ -356,6 +363,7 @@ describe("admin tenant repair route server boundary", () => {
         }
       | undefined;
     let capturedEnvironment: unknown;
+    let capturedWorkflowExecutionSessionId: string | undefined;
     const cancelAdminTenantRepairGap = createCancelAdminTenantRepairGap(
       (currentEnvironment, input) => {
         capturedEnvironment = currentEnvironment;
@@ -376,6 +384,12 @@ describe("admin tenant repair route server boundary", () => {
       },
       environment,
       serverRuntime,
+      (_, input) => {
+        capturedWorkflowExecutionSessionId = input.sessionId;
+        return Effect.succeed({
+          convexAuthToken: "workflow-token-2",
+        });
+      },
     );
 
     await expect(
@@ -383,7 +397,6 @@ describe("admin tenant repair route server boundary", () => {
         method: "POST",
         data: {
           jobId: "workflow-jobs:billing-repair:organization:org_admin_cancel",
-          workflowToken: "workflow-token-2",
           inspectionReason: "Investigate canceled tenant repair failures",
         },
         headers: {
@@ -397,6 +410,7 @@ describe("admin tenant repair route server boundary", () => {
     });
 
     expect(capturedEnvironment).toBe(environment);
+    expect(capturedWorkflowExecutionSessionId).toBe("sess_admin_cancel");
     expect(capturedInput).toEqual({
       sessionId: "sess_admin_cancel",
       convexAuthToken: "workflow-token-2",
