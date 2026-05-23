@@ -13,6 +13,15 @@ import {
 
 const formatCheckCacheVersion = 1;
 const formatCheckCacheFileName = "selective-format-check-cache.json";
+const prettierCheckCommand = [
+  "bunx",
+  "prettier",
+  "--check",
+  "--ignore-unknown",
+] as const;
+const maxPrettierSpawnArgumentLength = 24_000;
+const spawnArgumentSeparatorLength = 1;
+const estimatedQuotedArgumentOverhead = 4;
 const fullFormatCheckTriggerPatterns = [
   /^\.editorconfig$/,
   /^\.prettierignore$/,
@@ -54,6 +63,46 @@ export const shouldRunFullFormatCheck = (changedFiles: readonly string[]) =>
       pattern.test(relativePath),
     ),
   );
+
+const calculateSpawnArgumentLength = (argumentsList: readonly string[]) =>
+  argumentsList.reduce(
+    (totalLength, argument) =>
+      totalLength + argument.length + spawnArgumentSeparatorLength,
+    0,
+  );
+
+export const splitFilesForPrettierCheck = (
+  files: readonly string[],
+  maxArgumentLength = maxPrettierSpawnArgumentLength,
+) => {
+  const batches: string[][] = [];
+  const baseCommandLength = calculateSpawnArgumentLength(prettierCheckCommand);
+
+  let currentBatch: string[] = [];
+  let currentBatchLength = baseCommandLength;
+
+  for (const file of files) {
+    const nextArgumentLength = file.length + estimatedQuotedArgumentOverhead;
+
+    if (
+      currentBatch.length > 0 &&
+      currentBatchLength + nextArgumentLength > maxArgumentLength
+    ) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBatchLength = baseCommandLength;
+    }
+
+    currentBatch.push(file);
+    currentBatchLength += nextArgumentLength;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
+};
 
 const buildFormatCheckFingerprint = (files: readonly string[]) => {
   const hasher = createHash("sha256");
@@ -179,21 +228,28 @@ const runSelectiveFormatCheck = async () => {
     return;
   }
 
-  const processHandle = Bun.spawn(
-    ["bunx", "prettier", "--check", "--ignore-unknown", ...selectedFiles],
-    {
+  const prettierFileBatches = splitFilesForPrettierCheck(selectedFiles);
+
+  for (const [batchIndex, fileBatch] of prettierFileBatches.entries()) {
+    if (prettierFileBatches.length > 1) {
+      console.log(
+        `Checking formatting batch ${batchIndex + 1}/${prettierFileBatches.length} (${fileBatch.length} file(s)).`,
+      );
+    }
+
+    const processHandle = Bun.spawn([...prettierCheckCommand, ...fileBatch], {
       cwd: repoRootDirectory,
       env: Bun.env satisfies NodeJS.ProcessEnv,
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
-    },
-  );
-  const exitCode = await processHandle.exited;
+    });
+    const exitCode = await processHandle.exited;
 
-  if (exitCode !== 0) {
-    process.exitCode = exitCode;
-    return;
+    if (exitCode !== 0) {
+      process.exitCode = exitCode;
+      return;
+    }
   }
 
   writeCacheJson(formatCheckCacheFileName, {
@@ -203,7 +259,7 @@ const runSelectiveFormatCheck = async () => {
   } satisfies FormatCheckCache);
 
   console.log(
-    `Selective format check complete for ${selectedFiles.length} file(s).`,
+    `Selective format check complete for ${selectedFiles.length} file(s) across ${prettierFileBatches.length} batch(es).`,
   );
 };
 

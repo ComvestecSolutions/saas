@@ -1,5 +1,6 @@
 import {
   selectChangedFilesForFormatCheck,
+  splitFilesForPrettierCheck,
   shouldRunFullFormatCheck,
   shouldSkipFormatCheck,
 } from "../../tooling/scripts/validation/run-selective-format-check";
@@ -63,5 +64,29 @@ describe("shouldRunFullFormatCheck", () => {
     expect(shouldRunFullFormatCheck(["tests/platform/example.test.ts"])).toBe(
       false,
     );
+  });
+});
+
+describe("splitFilesForPrettierCheck", () => {
+  it("keeps short file lists in a single batch", () => {
+    expect(
+      splitFilesForPrettierCheck(["README.md", "package.json"], 200),
+    ).toEqual([["README.md", "package.json"]]);
+  });
+
+  it("splits file lists before the spawn argument length is exceeded", () => {
+    const files = ["aaaa.ts", "bbbb.ts", "cccc.ts"];
+
+    expect(splitFilesForPrettierCheck(files, 60)).toEqual([
+      ["aaaa.ts"],
+      ["bbbb.ts"],
+      ["cccc.ts"],
+    ]);
+  });
+
+  it("keeps a single oversized file in its own batch", () => {
+    expect(splitFilesForPrettierCheck(["very-long-file-name.ts"], 10)).toEqual([
+      ["very-long-file-name.ts"],
+    ]);
   });
 });
