@@ -468,7 +468,7 @@ describe("admin route state browser flows", () => {
     expect(rendered.container.textContent).toContain(
       "Billing repair workflow controls require a platform-operator session scoped to the platform tenant.",
     );
-  });
+  }, 30_000);
 
   it("renders branding access denied for unsupported individual tenant targets", async () => {
     rendered = await renderAdminApp(

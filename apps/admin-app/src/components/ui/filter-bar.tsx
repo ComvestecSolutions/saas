@@ -113,7 +113,7 @@ export function SegmentedTabs<T extends string>({
   ariaLabel = "Segmented control",
 }: SegmentedTabsProps<T>) {
   return (
-    <div className="ops-segmented" role="tablist" aria-label={ariaLabel}>
+    <div className="ops-segmented" role="group" aria-label={ariaLabel}>
       {items.map((item) => (
         <button
           key={item.value}

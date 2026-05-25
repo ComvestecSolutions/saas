@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -48,31 +48,15 @@ import type { AdminTokensRouteData } from "../../lib/admin-tokens-route-data";
  */
 const issueReasonCatalog: readonly HighRiskReason[] = [
   {
-    id: "admin-operator-test-tokens.issue.qa",
-    label: "QA harness — issue admin-operator test token",
-  },
-  {
-    id: "admin-operator-test-tokens.issue.smoke",
-    label: "Smoke run — issue admin-operator test token",
-  },
-  {
-    id: "admin-operator-test-tokens.issue.incident",
-    label: "Incident investigation — issue admin-operator test token",
+    id: reasonCatalogId.adminOperatorTestTokensIssue,
+    label: "Admin operator test tokens — issue token",
   },
 ];
 
 const revokeReasonCatalog: readonly HighRiskReason[] = [
   {
-    id: "admin-operator-test-tokens.revoke.rotation",
-    label: "Rotation — revoke admin-operator test token",
-  },
-  {
-    id: "admin-operator-test-tokens.revoke.suspect-leak",
-    label: "Suspected leak — revoke admin-operator test token",
-  },
-  {
-    id: "admin-operator-test-tokens.revoke.lifecycle",
-    label: "Lifecycle cleanup — revoke admin-operator test token",
+    id: reasonCatalogId.adminOperatorTestTokensRevoke,
+    label: "Admin operator test tokens — revoke token",
   },
 ];
 
@@ -149,11 +133,13 @@ function AdminTokensRoute() {
     initialSortKey: "expires",
     initialSortDir: "asc",
   });
-  // Reference the canonical reason-catalog ids so consumers see
-  // the live catalog mapping in the source even though the CTA
-  // `id`s above are the human-facing labels for the guard.
-  void reasonCatalogId.adminOperatorTestTokensIssue;
-  void reasonCatalogId.adminOperatorTestTokensRevoke;
+  useEffect(() => {
+    document.documentElement.dataset.adminTokensHydrated = "true";
+
+    return () => {
+      delete document.documentElement.dataset.adminTokensHydrated;
+    };
+  }, []);
 
   if (data.kind === "shell") {
     return (

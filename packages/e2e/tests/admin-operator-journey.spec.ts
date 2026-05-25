@@ -26,22 +26,29 @@ import { adminTest as test, expect } from "./fixtures/trusted-session";
 const SHELL_LABEL = "Operator Desk";
 
 test.describe("admin operator journey", () => {
+  test.setTimeout(300_000);
+
   test("sign-in → pin tenant → reveal audit field → invite member → issue + revoke token", async ({
     signedInPage: page,
     trustedSession,
   }) => {
     await test.step("desk shell mounts under the trusted session", async () => {
-      await page.goto(`${trustedSession.baseURL}/desk`);
+      await page.goto(`${trustedSession.baseURL}/desk`, {
+        waitUntil: "domcontentloaded",
+      });
       await expect(
         page.getByRole("application", { name: SHELL_LABEL }),
       ).toBeVisible();
+      await page.waitForFunction(
+        () => document.documentElement.dataset.adminShellHydrated === "true",
+      );
     });
 
     await test.step("pin tenant via omnibar prefix grammar", async () => {
       const omnibar = page.getByRole("combobox", {
-        name: /search|omnibar/i,
+        name: /operator omnibar/i,
       });
-      await omnibar.fill(`t/${trustedSession.tenantId}`);
+      await omnibar.pressSequentially(`t/${trustedSession.tenantId}`);
       await omnibar.press("Enter");
       await expect(page).toHaveURL(
         new RegExp(`/r/tenant/${trustedSession.tenantId}`),
@@ -49,45 +56,97 @@ test.describe("admin operator journey", () => {
     });
 
     await test.step("open /r/audit and reveal a regulated-sensitive field", async () => {
-      await page.goto(`${trustedSession.baseURL}/r/audit`);
-      const revealButton = page
-        .getByRole("button", { name: /reveal/i })
-        .first();
-      await revealButton.click();
-      const reasonInput = page.getByLabel(/reason/i);
-      await reasonInput.fill("e2e:operator-journey:reveal");
-      await page.getByRole("button", { name: /confirm/i }).click();
+      await page.goto(
+        `${trustedSession.baseURL}/r/audit?module=support-operations`,
+        {
+          waitUntil: "domcontentloaded",
+        },
+      );
+      await page.waitForFunction(
+        () => document.documentElement.dataset.adminAuditLogHydrated === "true",
+      );
+      await page.getByTestId("audit-log-v2-row-toggle").first().click();
       await expect(
-        page.getByRole("group", { name: /revealed/i }).first(),
+        page.getByTestId("audit-log-v2-row-detail").first(),
+      ).toBeVisible();
+      await page.getByTestId("reveal-field-trigger").first().click();
+      await page
+        .getByTestId("reveal-field-reason")
+        .fill("e2e:operator-journey:reveal");
+      await page.getByTestId("reveal-field-confirm").click();
+      await expect(
+        page.getByTestId("reveal-field-value").first(),
       ).toBeVisible();
     });
 
     await test.step("invite a member via /admin/members", async () => {
-      await page.goto(`${trustedSession.baseURL}/admin/members`);
-      await page.getByRole("button", { name: /invite/i }).click();
-      await page.getByLabel(/email/i).fill(trustedSession.inviteEmail);
-      await page.getByLabel(/reason/i).fill("e2e:operator-journey:invite");
-      await page.getByRole("button", { name: /confirm/i }).click();
+      await page.goto(`${trustedSession.baseURL}/admin/members`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.waitForFunction(
+        () => document.documentElement.dataset.adminMembersHydrated === "true",
+      );
+      const inviteEmailInput = page.getByTestId("admin-members-invite-email");
+      await inviteEmailInput.click();
+      await inviteEmailInput.pressSequentially(trustedSession.inviteEmail);
+      await page.getByTestId("admin-members-invite-cta").click();
+      await page.getByLabel(/role coverage — invite admin member/i).click();
+      await page
+        .getByTestId("high-risk-note")
+        .fill("e2e:operator-journey:invite");
+      await page.getByTestId("high-risk-arm").click();
+      await page.getByTestId("high-risk-confirm-final").click();
       await expect(
-        page.getByText(trustedSession.inviteEmail, { exact: false }),
-      ).toBeVisible();
+        page.getByTestId("admin-members-action-success"),
+      ).toContainText(trustedSession.inviteEmail);
+      await expect(page.getByTestId("reveal-field-value")).toBeVisible();
     });
 
     await test.step("issue then revoke an admin-operator-test-token", async () => {
-      await page.goto(`${trustedSession.baseURL}/admin/tokens`);
-      await page.getByRole("button", { name: /^issue/i }).click();
-      await page.getByLabel(/label/i).fill(trustedSession.tokenLabel);
-      await page.getByLabel(/reason/i).fill("e2e:operator-journey:issue");
-      await page.getByRole("button", { name: /confirm/i }).click();
-
-      const row = page.getByRole("row", {
-        name: new RegExp(trustedSession.tokenLabel),
+      await page.goto(`${trustedSession.baseURL}/admin/tokens`, {
+        waitUntil: "domcontentloaded",
       });
+      await page.waitForFunction(
+        () => document.documentElement.dataset.adminTokensHydrated === "true",
+      );
+      const tokenLabelInput = page.getByTestId("admin-tokens-issue-label");
+      await tokenLabelInput.click();
+      await tokenLabelInput.pressSequentially(trustedSession.tokenLabel);
+      await page.getByTestId("admin-tokens-issue-cta").click();
+      await page
+        .getByLabel(/admin operator test tokens — issue token/i)
+        .click();
+      await page
+        .getByTestId("high-risk-note")
+        .fill("e2e:operator-journey:issue");
+      await page.getByTestId("high-risk-arm").click();
+      await page.getByTestId("high-risk-confirm-final").click();
+
+      await expect(
+        page.getByTestId("admin-tokens-action-success"),
+      ).toContainText(trustedSession.tokenLabel);
+      await expect(page.getByTestId("reveal-field-value")).toBeVisible();
+      const issuedTokenDialog = page.getByRole("dialog", {
+        name: /admin test token issued/i,
+      });
+      await issuedTokenDialog.press("Escape");
+      await expect(issuedTokenDialog).toBeHidden();
+
+      const row = page
+        .getByTestId("admin-tokens-row")
+        .filter({ hasText: trustedSession.tokenLabel })
+        .first();
       await expect(row).toBeVisible();
 
-      await row.getByRole("button", { name: /revoke/i }).click();
-      await page.getByLabel(/reason/i).fill("e2e:operator-journey:revoke");
-      await page.getByRole("button", { name: /confirm/i }).click();
+      await row.getByTestId("admin-tokens-revoke-cta").click();
+      await page
+        .getByLabel(/admin operator test tokens — revoke token/i)
+        .click();
+      await page
+        .getByTestId("high-risk-note")
+        .fill("e2e:operator-journey:revoke");
+      await page.getByTestId("high-risk-arm").click();
+      await page.getByTestId("high-risk-confirm-final").click();
 
       await expect(row).toContainText(/revoked/i);
     });

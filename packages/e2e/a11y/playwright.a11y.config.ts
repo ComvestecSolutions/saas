@@ -12,11 +12,15 @@ import { defineConfig, devices } from "@playwright/test";
  * the same stable origin the visual baselines pin against.
  */
 const baseURL = process.env["ADMIN_E2E_BASE_URL"] ?? "http://127.0.0.1:3004";
+const baseUrlHostname = new URL(baseURL).hostname;
+const usesLocalAdminTarget =
+  baseUrlHostname === "127.0.0.1" || baseUrlHostname === "localhost";
 
 export default defineConfig({
   testDir: ".",
   testMatch: ["**/*.spec.ts"],
   fullyParallel: true,
+  ...(usesLocalAdminTarget ? { timeout: 120_000, workers: 1 } : {}),
   forbidOnly: !!process.env["CI"],
   reporter: process.env["CI"]
     ? [["github"], ["html", { open: "never" }]]

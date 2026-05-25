@@ -1,5 +1,5 @@
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AdminShell } from "@comvestec/ui";
@@ -286,6 +286,70 @@ describe("admin shell browser surface", () => {
         buildAdminAuthRedirectInlineScript(redirectPath),
       );
       expect(markup).toContain(`href="${redirectPath}"`);
+    } finally {
+      restoreAdminBrowserHarnessFlag(previousHarnessFlag);
+    }
+  });
+
+  it("can omit the HTML-first redirect script when the route revalidates before redirecting", () => {
+    const previousHarnessFlag =
+      adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    delete adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+
+    try {
+      const redirectPath = buildAdminShellRedirectPath(
+        parseRouteLocation(adminRoutePath.operationsHome),
+        { kind: "shell" },
+      );
+      const markup = renderToStaticMarkup(
+        <AdminAuthRedirectState
+          redirectPath={redirectPath}
+          htmlRedirectFallbackEnabled={false}
+        />,
+      );
+
+      expect(markup).not.toContain('data-auth-redirect-script="true"');
+      expect(markup).toContain(`href="${redirectPath}"`);
+    } finally {
+      restoreAdminBrowserHarnessFlag(previousHarnessFlag);
+    }
+  });
+
+  it("waits for revalidation before redirecting when a client gate is provided", async () => {
+    const previousHarnessFlag =
+      adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    delete adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+
+    try {
+      const redirectPath = buildAdminShellRedirectPath(
+        parseRouteLocation(adminRoutePath.operationsHome),
+        { kind: "shell" },
+      );
+      const redirect = vi.fn<(path: string) => void>();
+      let resolveInvalidate: (() => void) | undefined;
+      const invalidateBeforeRedirect = () =>
+        new Promise<void>((resolve) => {
+          resolveInvalidate = resolve;
+        });
+
+      await act(async () => {
+        root.render(
+          <AdminAuthRedirectState
+            redirectPath={redirectPath}
+            invalidateBeforeRedirect={invalidateBeforeRedirect}
+            redirect={redirect}
+          />,
+        );
+      });
+
+      expect(redirect).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveInvalidate?.();
+        await Promise.resolve();
+      });
+
+      expect(redirect).toHaveBeenCalledWith(redirectPath);
     } finally {
       restoreAdminBrowserHarnessFlag(previousHarnessFlag);
     }

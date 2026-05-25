@@ -12,11 +12,17 @@ import { test as base, expect, type Page } from "@playwright/test";
  *
  * Bindings (all required when running the suite end-to-end):
  *   - ADMIN_E2E_BASE_URL                       — admin-app origin
- *   - ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME    — cookie name carrying the trusted session id
- *   - ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE   — pre-issued session id for the platform-operator
  *   - ADMIN_E2E_TENANT_ID                      — tenant to pin during the journey
  *   - ADMIN_E2E_INVITE_EMAIL                   — admin-organization invite target
  *   - ADMIN_E2E_TOKEN_LABEL                    — admin-operator-test-token issuance label
+ *
+ * Provide exactly one auth mode:
+ *   - Trusted cookie mode
+ *     - ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME  — cookie name carrying the trusted session id
+ *     - ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE — pre-issued session id for the platform-operator
+ *   - Real operator sign-in mode
+ *     - ADMIN_E2E_OPERATOR_USERNAME            — real operator username/email for Keycloak sign-in
+ *     - ADMIN_E2E_OPERATOR_PASSWORD            — real operator password for Keycloak sign-in
  *
  * These keys live in `.env.example`. Operators run the suite under
  * `bun run test:e2e` after the corresponding values are populated.
@@ -26,9 +32,18 @@ export type AdminTrustedSession = {
   readonly tenantId: string;
   readonly inviteEmail: string;
   readonly tokenLabel: string;
-  readonly cookieName: string;
-  readonly cookieValue: string;
-};
+} & (
+  | {
+      readonly authMode: "cookie";
+      readonly cookieName: string;
+      readonly cookieValue: string;
+    }
+  | {
+      readonly authMode: "operator";
+      readonly operatorUsername: string;
+      readonly operatorPassword: string;
+    }
+);
 
 const requiredString = (key: string): string | undefined => {
   const value = process.env[key];
@@ -47,24 +62,53 @@ export const adminTest = base.extend<{
     const cookieValue = requiredString(
       "ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE",
     );
+    const operatorUsername = requiredString("ADMIN_E2E_OPERATOR_USERNAME");
+    const operatorPassword = requiredString("ADMIN_E2E_OPERATOR_PASSWORD");
     const tenantId = requiredString("ADMIN_E2E_TENANT_ID");
     const inviteEmail = requiredString("ADMIN_E2E_INVITE_EMAIL");
     const tokenLabel = requiredString("ADMIN_E2E_TOKEN_LABEL");
+    const hasTrustedCookie =
+      cookieName !== undefined && cookieValue !== undefined;
+    const hasOperatorCredentials =
+      operatorUsername !== undefined && operatorPassword !== undefined;
+    if (hasTrustedCookie && hasOperatorCredentials) {
+      throw new TypeError(
+        "Configure exactly one ADMIN_E2E auth mode: either trusted session cookie values or operator credentials, not both.",
+      );
+    }
     if (
       baseURL === undefined ||
-      cookieName === undefined ||
-      cookieValue === undefined ||
       tenantId === undefined ||
       inviteEmail === undefined ||
-      tokenLabel === undefined
+      tokenLabel === undefined ||
+      (!hasTrustedCookie && !hasOperatorCredentials)
     ) {
       testInfo.skip(
         true,
-        "ADMIN_E2E_* environment values are not configured; populate the entries in .env.example before running this suite.",
+        "ADMIN_E2E_* environment values are not configured; populate the entries in .env.example with either a trusted session cookie or real operator credentials before running this suite.",
       );
       return;
     }
+    if (hasOperatorCredentials) {
+      await use({
+        authMode: "operator",
+        baseURL,
+        tenantId,
+        inviteEmail,
+        tokenLabel,
+        operatorUsername,
+        operatorPassword,
+      });
+      return;
+    }
+    if (!hasTrustedCookie) {
+      throw new TypeError(
+        "Trusted session cookie values must be present when operator credentials are absent.",
+      );
+    }
+
     await use({
+      authMode: "cookie",
       baseURL,
       tenantId,
       inviteEmail,
@@ -74,19 +118,41 @@ export const adminTest = base.extend<{
     });
   },
   signedInPage: async ({ context, page, trustedSession }, use) => {
-    const url = new URL(trustedSession.baseURL);
-    await context.addCookies([
+    if (trustedSession.authMode === "cookie") {
+      const url = new URL(trustedSession.baseURL);
+      await context.addCookies([
+        {
+          name: trustedSession.cookieName,
+          value: trustedSession.cookieValue,
+          url: trustedSession.baseURL,
+          httpOnly: true,
+          secure: url.protocol === "https:",
+          sameSite: "Lax",
+        },
+      ]);
+      await use(page);
+      return;
+    }
+
+    await page.goto(
+      new URL(
+        "/auth/start?returnTo=%2Fdesk",
+        trustedSession.baseURL,
+      ).toString(),
       {
-        name: trustedSession.cookieName,
-        value: trustedSession.cookieValue,
-        domain: url.hostname,
-        path: "/",
-        httpOnly: true,
-        secure: url.protocol === "https:",
-        sameSite: "Lax",
+        waitUntil: "domcontentloaded",
       },
-    ]);
-    await page.goto(trustedSession.baseURL);
+    );
+    await page
+      .locator('input[name="username"]')
+      .fill(trustedSession.operatorUsername);
+    await page
+      .locator('input[name="password"]')
+      .fill(trustedSession.operatorPassword);
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.waitForURL(/\/desk$/, {
+      timeout: 60_000,
+    });
     await use(page);
   },
 });

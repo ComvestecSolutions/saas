@@ -1,4 +1,5 @@
 import type { AdminOperationsHomeRouteData } from "./operations-home-route-data";
+import { getAdminOperationsHomeData } from "./operations-home-route-server";
 
 /**
  * Loader for the Operations Home route (`/`). Consumes the v2
@@ -11,7 +12,5 @@ import type { AdminOperationsHomeRouteData } from "./operations-home-route-data"
  */
 export const loadAdminOperationsHomeLoaderData = async (
   loadRouteData: () => Promise<AdminOperationsHomeRouteData> = () =>
-    import("./operations-home-route-server").then(
-      ({ getAdminOperationsHomeData }) => getAdminOperationsHomeData(),
-    ),
+    getAdminOperationsHomeData(),
 ): Promise<AdminOperationsHomeRouteData> => loadRouteData();

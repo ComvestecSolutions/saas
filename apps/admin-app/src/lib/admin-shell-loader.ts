@@ -6,6 +6,7 @@ import {
   isAdminAuthRoutePath,
 } from "../auth/paths";
 import type { AdminShellRouteData } from "./admin-shell-route-data";
+import { getAdminShellData } from "./admin-shell-route-server";
 import { resolveCurrentSsrRequestContextRequest } from "./ssr-request-context";
 
 type AdminShellLoaderLocation = {
@@ -59,12 +60,9 @@ export const loadAdminShellRouteDataForCurrentRuntime = async (
       );
     },
     loadClientRouteData = () =>
-      import("./admin-shell-route-server").then(
-        ({ getAdminShellData }) =>
-          getAdminShellData({
-            data: undefined,
-          }) as Promise<AdminShellRouteData>,
-      ),
+      getAdminShellData({
+        data: undefined,
+      }) as Promise<AdminShellRouteData>,
   } = options;
 
   if (isBrowserRuntime) {

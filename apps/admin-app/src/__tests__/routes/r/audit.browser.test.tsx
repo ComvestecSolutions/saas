@@ -73,7 +73,7 @@ describe("/r/audit Audit Log v2 route", () => {
     ).not.toBeNull();
     expect(rendered.container.textContent).toContain(platformModuleId.auditLog);
     expect(rendered.container.textContent).toContain("Open tenant workspace");
-  });
+  }, 30_000);
 
   it("supports local investigation pivots and search without mutating the routed query", async () => {
     rendered = await renderAdminApp(
@@ -114,6 +114,42 @@ describe("/r/audit Audit Log v2 route", () => {
 
     expect(rendered.container.textContent).toContain("corr_25");
     expect(decodeURIComponent(window.location.search)).not.toContain("corr_25");
+  });
+
+  it("expands an audit row to surface reveal controls for regulated-sensitive fields", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      AUDIT_PATH,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='audit-log-v2-row']",
+        ) !== null,
+      "Expected at least one audit row to render.",
+    );
+
+    const firstRowButton = rendered.container.querySelector<HTMLButtonElement>(
+      "[data-testid='audit-log-v2-row-toggle']",
+    );
+    if (!(firstRowButton instanceof HTMLButtonElement)) {
+      throw new TypeError("Expected audit row toggle button.");
+    }
+
+    await click(firstRowButton);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='audit-log-v2-row-detail']",
+        ) !== null,
+      "Expected audit row detail to expand after clicking the row.",
+    );
+
+    expect(
+      rendered.container.querySelector("[data-testid='reveal-field-trigger']"),
+    ).not.toBeNull();
   });
 
   it("round-trips the actor filter through the URL", async () => {

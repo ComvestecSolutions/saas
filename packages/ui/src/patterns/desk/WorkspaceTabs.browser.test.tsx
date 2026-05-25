@@ -13,12 +13,13 @@ describe("WorkspaceTabs", () => {
     const tablist = host.querySelector(
       "[data-pattern='workspace-tabs']",
     ) as HTMLElement;
+    const activeTab = host.querySelector(
+      "[data-tab='incidents']",
+    ) as HTMLElement;
     expect(tablist.getAttribute("role")).toBe("tablist");
-    expect(
-      (
-        host.querySelector("[data-tab='incidents']") as HTMLElement
-      ).getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(activeTab.tagName).toBe("BUTTON");
+    expect(activeTab.getAttribute("aria-selected")).toBe("true");
+    expect(activeTab.querySelector("button")).toBeNull();
   });
 
   it("marks dirty tabs with a data-dirty attribute", () => {

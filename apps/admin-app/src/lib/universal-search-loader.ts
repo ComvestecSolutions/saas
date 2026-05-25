@@ -2,6 +2,7 @@ import type {
   AdminUniversalSearchInput,
   AdminUniversalSearchRouteData,
 } from "./universal-search-route-data";
+import { getAdminUniversalSearchData } from "./universal-search-route-server";
 
 /**
  * Loader for the universal omnibar (admin-app implementation
@@ -15,10 +16,7 @@ export const loadAdminUniversalSearchLoaderData = async (
   loadRouteData: (
     input: AdminUniversalSearchInput,
   ) => Promise<AdminUniversalSearchRouteData> = (next) =>
-    import("./universal-search-route-server").then(
-      ({ getAdminUniversalSearchData }) =>
-        getAdminUniversalSearchData({
-          data: next,
-        }) as Promise<AdminUniversalSearchRouteData>,
-    ),
+    getAdminUniversalSearchData({
+      data: next,
+    }) as Promise<AdminUniversalSearchRouteData>,
 ): Promise<AdminUniversalSearchRouteData> => loadRouteData(input);

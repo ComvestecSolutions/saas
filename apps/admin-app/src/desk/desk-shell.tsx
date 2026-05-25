@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertsPulse,
   AppDesk,
@@ -17,6 +17,7 @@ import {
   type AdminOperatorProfile,
 } from "@comvestec/contracts";
 import { DeskShellOmnibar } from "../components/desk-shell/omnibar";
+import { navigateAdminPath } from "../lib/browser-navigation";
 
 /**
  * DeskShell — the universal admin-app Signal Deck shell. Uses the
@@ -292,16 +293,7 @@ const buildWorkspaceTabs = (
 const navigateToPath = (
   path: string,
   onNavigate: ((path: string) => void) | undefined,
-) => {
-  if (onNavigate !== undefined) {
-    onNavigate(path);
-    return;
-  }
-
-  if (typeof window !== "undefined") {
-    window.location.assign(path);
-  }
-};
+) => navigateAdminPath(path, onNavigate);
 
 export function DeskShell({
   profile,
@@ -333,6 +325,13 @@ export function DeskShell({
   const navigationLinks = visibleCapabilities.filter(
     (capability) => capability.allowed && !capability.routePath.includes("$"),
   );
+
+  useEffect(() => {
+    document.documentElement.dataset.adminShellHydrated = "true";
+    return () => {
+      delete document.documentElement.dataset.adminShellHydrated;
+    };
+  }, []);
 
   return (
     <DeviceProvider>

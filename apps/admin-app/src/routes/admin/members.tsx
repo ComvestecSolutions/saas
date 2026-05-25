@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -174,6 +174,18 @@ function AdminMembersRoute() {
     initialSortKey: "activity",
     initialSortDir: "desc",
   });
+
+  useEffect(() => {
+    if (data.kind !== "ready") {
+      delete document.documentElement.dataset.adminMembersHydrated;
+      return;
+    }
+
+    document.documentElement.dataset.adminMembersHydrated = "true";
+    return () => {
+      delete document.documentElement.dataset.adminMembersHydrated;
+    };
+  }, [data.kind]);
 
   if (data.kind === "shell") {
     return (

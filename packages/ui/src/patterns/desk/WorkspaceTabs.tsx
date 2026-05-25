@@ -44,9 +44,7 @@ export function WorkspaceTabs({
       {tabs.map((tab) => (
         <div
           key={tab.id}
-          role="tab"
-          aria-selected={tab.active === true ? "true" : "false"}
-          data-tab={tab.id}
+          role="presentation"
           data-dirty={tab.dirty === true ? "true" : undefined}
           style={{
             display: "inline-flex",
@@ -66,6 +64,11 @@ export function WorkspaceTabs({
         >
           <button
             type="button"
+            role="tab"
+            aria-selected={tab.active === true ? "true" : "false"}
+            tabIndex={tab.active === true ? 0 : -1}
+            data-tab={tab.id}
+            data-dirty={tab.dirty === true ? "true" : undefined}
             data-tab-activate={tab.id}
             onClick={() => onActivate?.(tab)}
             style={{

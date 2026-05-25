@@ -39,15 +39,49 @@ const visualRoutes = [
   "/admin/tokens",
   "/admin/audit",
 ] as const;
+const supportVisualNow = Date.parse("2026-05-25T09:00:00.000Z");
+
+const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
+  if (route === "/admin/audit") {
+    return [
+      "[data-testid='admin-audit-kpis']",
+      "[data-testid='admin-audit-focus']",
+      "[data-testid='admin-audit-table'] tbody",
+      "[data-testid='admin-audit-ready'] .ops-card-head__count",
+    ] as const;
+  }
+
+  if (route === "/admin/tokens") {
+    return [
+      "[data-testid='admin-tokens-kpis']",
+      "[data-testid='admin-tokens-table'] tbody",
+      "[data-testid='admin-tokens-ready'] .ops-card-head__count",
+    ] as const;
+  }
+
+  return [];
+};
 
 for (const route of visualRoutes) {
   test(`visual baseline: ${route}`, async ({
     signedInPage: page,
     trustedSession,
   }) => {
+    if (route === "/r/support") {
+      await page.addInitScript(
+        ({ now }) => {
+          Date.now = () => now;
+        },
+        { now: supportVisualNow },
+      );
+    }
     await page.goto(`${trustedSession.baseURL}${route}`);
+    const mask = resolveVisualMaskSelectors(route).map((selector) =>
+      page.locator(selector),
+    );
     await expect(page).toHaveScreenshot(`${route.replaceAll("/", "_")}.png`, {
       fullPage: true,
+      mask,
     });
   });
 }

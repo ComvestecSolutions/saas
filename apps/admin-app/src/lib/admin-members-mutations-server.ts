@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { AdminMemberRoleSchema } from "@comvestec/contracts";
+import { AdminMemberRoleSchema, type AdminMember } from "@comvestec/contracts";
 
 import {
   adminRequestServerMiddleware,
@@ -30,6 +30,23 @@ type InviteAdminMemberInput = Schema.Schema.Type<
 type RemoveAdminMemberInput = Schema.Schema.Type<
   typeof RemoveAdminMemberInputSchema
 >;
+
+export const resolveInvitingAdminMember = (
+  members: readonly AdminMember[],
+  actorId: string,
+): AdminMember => {
+  const invitingMember = members.find(
+    (member) => member.keycloakSubjectId === actorId,
+  );
+
+  if (invitingMember === undefined) {
+    throw new Error(
+      `Current admin actor ${actorId} is not registered as an admin member.`,
+    );
+  }
+
+  return invitingMember;
+};
 
 export type InviteAdminMemberServerResult = {
   readonly memberId: string;
@@ -67,8 +84,16 @@ export const inviteAdminMember = createServerFn({
         throw new Error("Current admin session is missing an actor id.");
       }
 
-      const { inviteMemberFromEnvironment } =
-        await import("@comvestec/platform");
+      const {
+        inviteMemberFromEnvironment,
+        listAdminOrganizationMembersFromEnvironment,
+      } = await import("@comvestec/platform");
+      const members = await Effect.runPromise(
+        listAdminOrganizationMembersFromEnvironment(process.env, {
+          requestContext,
+        }),
+      );
+      const invitingMember = resolveInvitingAdminMember(members, actorId);
       const result = await Effect.runPromise(
         inviteMemberFromEnvironment(process.env, {
           requestContext: {
@@ -80,7 +105,8 @@ export const inviteAdminMember = createServerFn({
           },
           email: decoded.email,
           invitedRole: decoded.invitedRole,
-          invitedBy: actorId,
+          invitedBy: invitingMember.id,
+          invitedByDisplayName: invitingMember.displayName,
         }),
       );
 

@@ -1320,6 +1320,7 @@ body {
 .ops-target-picker-option {
   display: grid;
   gap: 4px;
+  width: 100%;
   padding: 8px;
   border: 1px solid var(--ops-border);
   border-radius: var(--ops-radius);

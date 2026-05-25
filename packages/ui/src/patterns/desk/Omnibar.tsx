@@ -47,6 +47,10 @@ export function Omnibar({
   const listId = useId();
   const [open, setOpen] = useState(false);
   const hasSuggestions = suggestions !== undefined && suggestions.length > 0;
+  const handleValueInput = (nextValue: string) => {
+    onValueChange(nextValue);
+    setOpen(true);
+  };
   return (
     <div
       data-pattern="omnibar"
@@ -58,8 +62,10 @@ export function Omnibar({
         type="search"
         value={value}
         onChange={(event) => {
-          onValueChange(event.target.value);
-          setOpen(true);
+          handleValueInput(event.currentTarget.value);
+        }}
+        onInput={(event) => {
+          handleValueInput(event.currentTarget.value);
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => {
@@ -69,13 +75,17 @@ export function Omnibar({
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            onSubmit?.(value);
+            onSubmit?.(event.currentTarget.value);
           }
           if (event.key === "Escape") {
             setOpen(false);
           }
         }}
         placeholder={placeholder}
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-autocomplete="list"
+        aria-haspopup="listbox"
         aria-controls={listId}
         aria-expanded={open && hasSuggestions ? "true" : "false"}
       />

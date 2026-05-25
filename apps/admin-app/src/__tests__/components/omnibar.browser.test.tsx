@@ -108,6 +108,10 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
       throw new TypeError("Expected omnibar input element.");
     }
 
+    expect(input.getAttribute("aria-label")).toBe("Operator omnibar");
+    expect(input.getAttribute("role")).toBe("combobox");
+    expect(input.getAttribute("aria-autocomplete")).toBe("list");
+
     await act(async () => {
       setNativeInputValue(input, "acme");
     });
@@ -153,6 +157,63 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
         ) !== null ||
         rendered?.container.textContent?.includes("ten_acme") === true,
       "Expected tenant workspace v2 route to settle after omnibar navigation.",
+    );
+  });
+
+  it("routes a tenant prefix submission immediately on Enter", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      DESK_PATH,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-component='desk-shell-omnibar']",
+        ) !== null,
+      "Expected the desk-shell omnibar to render in the CommandStrip.",
+    );
+
+    const omnibarRoot = rendered.container.querySelector<HTMLDivElement>(
+      "[data-component='desk-shell-omnibar']",
+    );
+    if (!(omnibarRoot instanceof HTMLDivElement)) {
+      throw new TypeError("Expected omnibar wrapper element.");
+    }
+
+    const input = omnibarRoot.querySelector<HTMLInputElement>(
+      "input[type='search']",
+    );
+    if (!(input instanceof HTMLInputElement)) {
+      throw new TypeError("Expected omnibar input element.");
+    }
+
+    await act(async () => {
+      setNativeInputValue(input, "t/ten_omnibar_fixture");
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    await waitFor(
+      () => window.location.pathname === "/r/tenant/ten_omnibar_fixture",
+      `Expected omnibar Enter submit to navigate to /r/tenant/ten_omnibar_fixture (was ${window.location.pathname}).`,
+    );
+
+    expect(input.value).toBe("");
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='tenant-workspace-v2-actor-card']",
+        ) !== null ||
+        rendered?.container.textContent?.includes("ten_omnibar_fixture") ===
+          true,
+      "Expected tenant workspace v2 route to settle after omnibar Enter navigation.",
     );
   });
 });

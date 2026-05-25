@@ -12,7 +12,8 @@ import {
   workspaceRootDirectory,
   writeVaultKvRecord,
 } from "./local-runtime-environment";
-import { emailDeliveryTemplateId } from "../../../packages/contracts/src/domains/email-delivery";
+import { emailDeliveryTemplateIds } from "../../../packages/contracts/src/domains/email-delivery";
+import { novuWorkflowIds } from "../../../packages/contracts/src/runtime/novu-workflow-ids";
 import {
   buildUnleashClientFeaturesEndpoint,
   buildUnleashValidationHeaders,
@@ -43,6 +44,8 @@ const openpanelBootstrapOrganizationId = "comvestec-local";
 const openpanelBootstrapOrganizationName = "Comvestec Local";
 const openpanelBootstrapProjectName = "Comvestec SaaS Foundation";
 const openpanelBootstrapClientName = "Comvestec SaaS Foundation Backend";
+const keycloakAdminCliClientId = "admin-cli";
+const keycloakAdminRealm = "master";
 const openpanelOperatorFirstName = "OpenPanel";
 const openpanelOperatorLastName = "Operator";
 const glitchtipBootstrapOrganizationSlug = "comvestec-local";
@@ -65,9 +68,9 @@ const unleashDefaultStrategyName = "default";
 const novuRegistrationOrigin = "cli";
 const novuRegistrationJobTitle = "engineer";
 const novuRegistrationProductUseCases = ["notifications"] as const;
-const novuBootstrapWorkflowTemplates = [
-  emailDeliveryTemplateId.billingInvoiceReady,
-  emailDeliveryTemplateId.billingInvoiceReadyDigest,
+export const novuBootstrapWorkflowTemplates = [
+  ...emailDeliveryTemplateIds,
+  ...novuWorkflowIds,
 ] as const;
 const invalidPostalAuthCodes = new Set([
   "AccessDenied",
@@ -150,12 +153,24 @@ const bootstrapRuntimeEnvironmentKeys = [
   "OPENPANEL_OPERATOR_EMAIL",
   "OPENPANEL_OPERATOR_PASSWORD",
 ] as const;
+const keycloakRuntimeEnvironmentKeys = [
+  "KEYCLOAK_BASE_URL",
+  "KEYCLOAK_REALM",
+  "KEYCLOAK_CLIENT_ID",
+  "KEYCLOAK_CLIENT_SECRET",
+  "KEYCLOAK_ADMIN",
+  "KEYCLOAK_ADMIN_PASSWORD",
+] as const;
 
 type BootstrapRuntimeEnvironmentKey =
   (typeof bootstrapRuntimeEnvironmentKeys)[number];
+type KeycloakRuntimeEnvironmentKey =
+  (typeof keycloakRuntimeEnvironmentKeys)[number];
 
 type BootstrapRuntimeEnvironment = RuntimeEnvironment &
   Readonly<Record<BootstrapRuntimeEnvironmentKey, string>>;
+type KeycloakRuntimeEnvironment = RuntimeEnvironment &
+  Readonly<Record<KeycloakRuntimeEnvironmentKey, string>>;
 
 type CommandResult = {
   readonly stdout: string;
@@ -255,6 +270,74 @@ const sleep = (delayMs: number) =>
 
 const buildUrl = (baseUrl: string, path: string) =>
   new URL(path, baseUrl).toString();
+
+const buildKeycloakClientLookupUrl = (input: {
+  readonly baseUrl: string;
+  readonly realm: string;
+  readonly clientId: string;
+}) => {
+  const url = new URL(`/admin/realms/${input.realm}/clients`, input.baseUrl);
+  url.searchParams.set("clientId", input.clientId);
+  url.searchParams.set("exact", "true");
+  return url.toString();
+};
+
+const buildKeycloakClientCredentialsGrantBody = (input: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+}) =>
+  new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+  }).toString();
+
+const buildKeycloakAdminGrantBody = (input: {
+  readonly username: string;
+  readonly password: string;
+}) =>
+  new URLSearchParams({
+    grant_type: "password",
+    client_id: keycloakAdminCliClientId,
+    username: input.username,
+    password: input.password,
+  }).toString();
+
+export const extractKeycloakAccessToken = (value: unknown) => {
+  if (
+    !isRecord(value) ||
+    typeof value.access_token !== "string" ||
+    value.access_token.trim().length === 0
+  ) {
+    throw new Error("Keycloak token response did not include an access_token.");
+  }
+
+  return value.access_token;
+};
+
+export const extractKeycloakClientSecretValue = (value: unknown) => {
+  if (!isRecord(value) || typeof value.value !== "string") {
+    throw new Error(
+      "Keycloak client secret response did not include a string value.",
+    );
+  }
+
+  return value.value;
+};
+
+export const shouldReconcileKeycloakClientConfiguration = (input: {
+  readonly configuredSecret: string;
+  readonly liveSecret: string;
+  readonly publicClient: unknown;
+  readonly directAccessGrantsEnabled: unknown;
+  readonly serviceAccountsEnabled: unknown;
+  readonly standardFlowEnabled: unknown;
+}) =>
+  input.liveSecret.trim() !== input.configuredSecret.trim() ||
+  input.publicClient !== false ||
+  input.directAccessGrantsEnabled !== true ||
+  input.serviceAccountsEnabled !== true ||
+  input.standardFlowEnabled !== true;
 
 const buildUnleashOperatorLoginUrl = (apiUrl: string) =>
   buildUrl(apiUrl, unleashSimpleLoginPath);
@@ -443,6 +526,23 @@ const assertBootstrapRuntimeEnvironment: (
   if (missingKeys.length > 0) {
     throw new Error(
       `Local runtime environment is missing bootstrap credentials: ${missingKeys.join(", ")}`,
+    );
+  }
+};
+const assertKeycloakRuntimeEnvironment: (
+  environment: RuntimeEnvironment,
+) => asserts environment is KeycloakRuntimeEnvironment = (
+  environment: RuntimeEnvironment,
+) => {
+  const missingKeys = keycloakRuntimeEnvironmentKeys.filter((key) => {
+    const value = environment[key]?.trim();
+
+    return value === undefined || value.length === 0;
+  });
+
+  if (missingKeys.length > 0) {
+    throw new Error(
+      `Local runtime environment is missing Keycloak credentials: ${missingKeys.join(", ")}`,
     );
   }
 };
@@ -1488,6 +1588,228 @@ const waitForUnleashRuntime = async (apiUrl: string) =>
     attempts: 45,
     delayMs: 2_000,
   });
+
+const requestKeycloakAdminAccessToken = async (
+  environment: KeycloakRuntimeEnvironment,
+) => {
+  const result = await requestJson({
+    url: buildUrl(
+      environment.KEYCLOAK_BASE_URL,
+      `/realms/${keycloakAdminRealm}/protocol/openid-connect/token`,
+    ),
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: buildKeycloakAdminGrantBody({
+      username: environment.KEYCLOAK_ADMIN,
+      password: environment.KEYCLOAK_ADMIN_PASSWORD,
+    }),
+  });
+
+  if (!result.response.ok) {
+    throw new Error(
+      `Keycloak admin token request failed with ${result.response.status} ${result.response.statusText}.`,
+    );
+  }
+
+  return extractKeycloakAccessToken(result.body);
+};
+
+const isKeycloakPlatformClientCredentialValid = async (
+  environment: KeycloakRuntimeEnvironment,
+) => {
+  const result = await requestJson({
+    url: buildUrl(
+      environment.KEYCLOAK_BASE_URL,
+      `/realms/${environment.KEYCLOAK_REALM}/protocol/openid-connect/token`,
+    ),
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: buildKeycloakClientCredentialsGrantBody({
+      clientId: environment.KEYCLOAK_CLIENT_ID,
+      clientSecret: environment.KEYCLOAK_CLIENT_SECRET,
+    }),
+  });
+
+  return result.response.ok && result.body !== undefined
+    ? (() => {
+        try {
+          extractKeycloakAccessToken(result.body);
+          return true;
+        } catch {
+          return false;
+        }
+      })()
+    : false;
+};
+
+const waitForKeycloakAdminRuntime = async (
+  environment: KeycloakRuntimeEnvironment,
+) =>
+  await waitForEndpoint({
+    description: "Keycloak admin token endpoint",
+    url: buildUrl(
+      environment.KEYCLOAK_BASE_URL,
+      `/realms/${keycloakAdminRealm}/protocol/openid-connect/token`,
+    ),
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: buildKeycloakAdminGrantBody({
+      username: environment.KEYCLOAK_ADMIN,
+      password: environment.KEYCLOAK_ADMIN_PASSWORD,
+    }),
+    attempts: 45,
+    delayMs: 2_000,
+    isReady: ({ response, body }) =>
+      response.ok &&
+      body !== undefined &&
+      (() => {
+        try {
+          extractKeycloakAccessToken(body);
+          return true;
+        } catch {
+          return false;
+        }
+      })(),
+  });
+
+const ensureKeycloakPlatformClientConfiguration = async (
+  environment: KeycloakRuntimeEnvironment,
+) => {
+  await waitForKeycloakAdminRuntime(environment);
+  const wasAlreadyValid =
+    await isKeycloakPlatformClientCredentialValid(environment);
+
+  if (wasAlreadyValid) {
+    return {
+      wasUpdated: false,
+    } as const;
+  }
+
+  const adminAccessToken = await requestKeycloakAdminAccessToken(environment);
+  const adminHeaders = {
+    Accept: "application/json",
+    Authorization: `Bearer ${adminAccessToken}`,
+  } satisfies Record<string, string>;
+  const clientLookupResult = await requestJson({
+    url: buildKeycloakClientLookupUrl({
+      baseUrl: environment.KEYCLOAK_BASE_URL,
+      realm: environment.KEYCLOAK_REALM,
+      clientId: environment.KEYCLOAK_CLIENT_ID,
+    }),
+    headers: adminHeaders,
+  });
+
+  if (!Array.isArray(clientLookupResult.body)) {
+    throw new Error(
+      "Keycloak client lookup returned an unexpected payload for the platform client.",
+    );
+  }
+
+  const clientMatch = clientLookupResult.body.find(
+    (
+      entry,
+    ): entry is Record<string, unknown> &
+      Readonly<{
+        id: string;
+      }> =>
+      isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0,
+  );
+
+  if (clientMatch === undefined) {
+    throw new Error(
+      `Keycloak client "${environment.KEYCLOAK_CLIENT_ID}" was not found in realm "${environment.KEYCLOAK_REALM}".`,
+    );
+  }
+
+  const clientRepresentationResult = await requestJson({
+    url: buildUrl(
+      environment.KEYCLOAK_BASE_URL,
+      `/admin/realms/${environment.KEYCLOAK_REALM}/clients/${clientMatch.id}`,
+    ),
+    headers: adminHeaders,
+  });
+
+  if (!isRecord(clientRepresentationResult.body)) {
+    throw new Error(
+      "Keycloak returned an unexpected client representation for the platform client.",
+    );
+  }
+
+  const clientSecretResult = await requestJson({
+    url: buildUrl(
+      environment.KEYCLOAK_BASE_URL,
+      `/admin/realms/${environment.KEYCLOAK_REALM}/clients/${clientMatch.id}/client-secret`,
+    ),
+    headers: adminHeaders,
+  });
+  const liveSecret =
+    clientSecretResult.body !== undefined
+      ? extractKeycloakClientSecretValue(clientSecretResult.body)
+      : "";
+  const shouldReconcile =
+    shouldReconcileKeycloakClientConfiguration({
+      configuredSecret: environment.KEYCLOAK_CLIENT_SECRET,
+      liveSecret,
+      publicClient: clientRepresentationResult.body.publicClient,
+      directAccessGrantsEnabled:
+        clientRepresentationResult.body.directAccessGrantsEnabled,
+      serviceAccountsEnabled:
+        clientRepresentationResult.body.serviceAccountsEnabled,
+      standardFlowEnabled: clientRepresentationResult.body.standardFlowEnabled,
+    }) || !wasAlreadyValid;
+
+  if (!shouldReconcile) {
+    return {
+      wasUpdated: false,
+    } as const;
+  }
+
+  await requestJson({
+    url: buildUrl(
+      environment.KEYCLOAK_BASE_URL,
+      `/admin/realms/${environment.KEYCLOAK_REALM}/clients/${clientMatch.id}`,
+    ),
+    method: "PUT",
+    headers: {
+      ...adminHeaders,
+      "Content-Type": "application/json",
+    },
+    body: {
+      ...clientRepresentationResult.body,
+      secret: environment.KEYCLOAK_CLIENT_SECRET,
+      publicClient: false,
+      directAccessGrantsEnabled: true,
+      serviceAccountsEnabled: true,
+      standardFlowEnabled: true,
+    },
+  });
+
+  await waitForValidatedRuntimeCredential({
+    description: "Keycloak platform client credentials",
+    validate: async () => {
+      if (!(await isKeycloakPlatformClientCredentialValid(environment))) {
+        throw new Error(
+          "The Keycloak platform client still rejected client_credentials after reconciliation.",
+        );
+      }
+    },
+    attempts: 45,
+    delayMs: 2_000,
+  });
+
+  return {
+    wasUpdated: true,
+  } as const;
+};
 
 const validateOpenPanelClientCredentials = async (input: {
   readonly apiUrl: string;
@@ -2894,6 +3216,9 @@ const main = async () => {
   });
   const environment: RuntimeEnvironment = resolution.values;
   assertBootstrapRuntimeEnvironment(environment);
+  assertKeycloakRuntimeEnvironment(environment);
+  const keycloakResult =
+    await ensureKeycloakPlatformClientConfiguration(environment);
   const glitchtipResult = await ensureGlitchtipDsn(environment);
   const openpanelResult = await ensureOpenPanelClientCredentials(environment);
   const unleashResult = await ensureUnleashBackendApiKey(environment);
@@ -2930,6 +3255,9 @@ const main = async () => {
   if ("organizationId" in openpanelResult) {
     console.log(`OpenPanel organization id: ${openpanelResult.organizationId}`);
     console.log(`OpenPanel project id: ${openpanelResult.projectId}`);
+  }
+  if (keycloakResult.wasUpdated) {
+    console.log("Keycloak platform client secret: reconciled");
   }
   if (unleashResult.operatorWasUpdated) {
     console.log("Unleash operator login: reconciled");

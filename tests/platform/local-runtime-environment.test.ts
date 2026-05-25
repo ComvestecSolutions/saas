@@ -22,6 +22,9 @@ import {
   scrubConcreteSecretValuesFromEnvFileContents,
 } from "../../tooling/scripts/ops/local-runtime-environment";
 
+const novuPasswordPattern =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[#?!@$%^&*()-])[A-Za-z\d#?!@$%^&*()-]{8,64}$/;
+
 describe("local runtime environment resolution", () => {
   it("uses shell values when tracked defaults are still placeholders", async () => {
     const tempDirectoryPath = mkdtempSync(
@@ -902,6 +905,7 @@ describe("local runtime environment resolution", () => {
     expect(
       isPlaceholderValue(managedValues.nextValues.NOVU_PASSWORD ?? ""),
     ).toBe(false);
+    expect(managedValues.nextValues.NOVU_PASSWORD).toMatch(novuPasswordPattern);
     expect(
       isPlaceholderValue(
         managedValues.nextValues.OPENPANEL_OPERATOR_PASSWORD ?? "",
@@ -915,6 +919,19 @@ describe("local runtime environment resolution", () => {
         managedValues.nextValues.UNLEASH_OPERATOR_PASSWORD ?? "",
       ),
     ).toBe(false);
+  });
+
+  it("rotates a stored Novu password when it fails the service complexity policy", () => {
+    const managedValues = buildBootstrapManagedValues({
+      state: {
+        NOVU_PASSWORD: "StrongBut_Invalid1_",
+      },
+    });
+
+    expect(managedValues.nextValues.NOVU_PASSWORD).not.toBe(
+      "StrongBut_Invalid1_",
+    );
+    expect(managedValues.nextValues.NOVU_PASSWORD).toMatch(novuPasswordPattern);
   });
 
   it("keeps the Unleash runtime key aligned with the bootstrap token", () => {

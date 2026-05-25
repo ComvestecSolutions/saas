@@ -1,5 +1,7 @@
 import {
   authorizationFeatureFlag,
+  emailDeliveryTemplateId,
+  novuWorkflowId,
   observabilityFeatureFlag,
 } from "@comvestec/contracts";
 import {
@@ -11,12 +13,15 @@ import {
   buildPostalOperatorValidationScript,
   buildUnleashOperatorBootstrapSql,
   buildUnleashBackendTokenReconcileSql,
+  extractKeycloakAccessToken,
+  extractKeycloakClientSecretValue,
   collectUnleashManifestFeatureFlags,
   buildPostalBootstrapScript,
   extractCookieHeaderFromSetCookieHeaders,
   extractGlitchtipBootstrapResult,
   extractNovuApiKey,
   extractNovuSessionToken,
+  novuBootstrapWorkflowTemplates,
   normalizeGlitchtipOperatorEmail,
   extractOpenPanelOperatorAuthState,
   extractOpenPanelBootstrapResult,
@@ -24,6 +29,7 @@ import {
   extractPostalBootstrapResult,
   extractUnleashOperatorAuthState,
   selectUnleashBackendApiToken,
+  shouldReconcileKeycloakClientConfiguration,
   shouldBootstrapRuntimeCredential,
 } from "../../tooling/scripts/ops/bootstrap-runtime-credentials";
 import { unleashBackendClientName } from "../../packages/platform/src/adapters/features-billing/unleash-shared";
@@ -69,6 +75,15 @@ describe("runtime bootstrap credentials", () => {
     ).toBe("novu_api_3");
   });
 
+  it("reconciles the repo-owned Novu workflows needed by local operator flows", () => {
+    expect(novuBootstrapWorkflowTemplates).toEqual(
+      expect.arrayContaining([
+        emailDeliveryTemplateId.tenantMembershipInvitation,
+        novuWorkflowId.adminOrganizationInvitation,
+      ]),
+    );
+  });
+
   it("extracts the Postal bootstrap result from noisy console output", () => {
     expect(
       extractPostalBootstrapResult(
@@ -83,6 +98,56 @@ describe("runtime bootstrap credentials", () => {
       email: "postal.operator@local.test",
       serverName: "Local Backend",
     });
+  });
+
+  it("extracts a Keycloak access token from the token response", () => {
+    expect(
+      extractKeycloakAccessToken({
+        access_token: "keycloak-access-token",
+      }),
+    ).toBe("keycloak-access-token");
+  });
+
+  it("extracts the Keycloak client secret value from the admin response", () => {
+    expect(
+      extractKeycloakClientSecretValue({
+        type: "secret",
+        value: "configured-client-secret",
+      }),
+    ).toBe("configured-client-secret");
+  });
+
+  it("marks the Keycloak platform client for reconcile when the live secret or grants drift", () => {
+    expect(
+      shouldReconcileKeycloakClientConfiguration({
+        configuredSecret: "configured-client-secret",
+        liveSecret: "",
+        publicClient: false,
+        directAccessGrantsEnabled: true,
+        serviceAccountsEnabled: true,
+        standardFlowEnabled: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldReconcileKeycloakClientConfiguration({
+        configuredSecret: "configured-client-secret",
+        liveSecret: "configured-client-secret",
+        publicClient: false,
+        directAccessGrantsEnabled: true,
+        serviceAccountsEnabled: true,
+        standardFlowEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldReconcileKeycloakClientConfiguration({
+        configuredSecret: "configured-client-secret",
+        liveSecret: "configured-client-secret",
+        publicClient: false,
+        directAccessGrantsEnabled: false,
+        serviceAccountsEnabled: true,
+        standardFlowEnabled: true,
+      }),
+    ).toBe(true);
   });
 
   it("builds a Postal bootstrap script with escaped operator details", () => {

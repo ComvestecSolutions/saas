@@ -1,12 +1,12 @@
 /// <reference types="vite/client" />
 
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import {
   HeadContent,
   Outlet,
   Scripts,
   createRootRoute,
-  useNavigate,
+  useRouter,
   useRouterState,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
@@ -58,7 +58,11 @@ export const Route = createRootRoute({
 function RootComponent() {
   const shellData = Route.useLoaderData() ?? ({ kind: "shell" } as const);
   const routerState = useRouterState();
-  const navigate = useNavigate();
+  const router = useRouter();
+  const invalidateBeforeRedirect = useCallback(
+    () => router.invalidate({ sync: true }),
+    [router],
+  );
   const { pathname, searchStr } = resolveAdminShellCurrentLocation(
     routerState.location,
   );
@@ -73,13 +77,17 @@ function RootComponent() {
   }
 
   if (shellData.kind === "shell" || shellData.kind === "stale-session") {
+    const redirectPath = buildAdminShellRedirectPath(
+      { pathname, searchStr },
+      shellData,
+    );
+
     return (
       <RootDocument>
         <AdminAuthRedirectState
-          redirectPath={buildAdminShellRedirectPath(
-            { pathname, searchStr },
-            shellData,
-          )}
+          redirectPath={redirectPath}
+          invalidateBeforeRedirect={invalidateBeforeRedirect}
+          htmlRedirectFallbackEnabled={false}
         />
         <TanStackRouterDevtools position="bottom-right" />
       </RootDocument>
@@ -118,7 +126,7 @@ function RootComponent() {
         profile={shellData.profile}
         currentPath={pathname}
         onNavigate={(path) => {
-          void navigate({ to: path as never });
+          void router.navigate({ href: path });
         }}
       >
         <Outlet />
@@ -163,16 +171,39 @@ function AdminShellBlockingState({
 
 export function AdminAuthRedirectState({
   redirectPath,
-}: Readonly<{ redirectPath: string }>) {
+  invalidateBeforeRedirect,
+  htmlRedirectFallbackEnabled = true,
+  redirect = (path: string) => {
+    window.location.replace(path);
+  },
+}: Readonly<{
+  redirectPath: string;
+  invalidateBeforeRedirect?: () => Promise<unknown> | unknown;
+  htmlRedirectFallbackEnabled?: boolean;
+  redirect?: (path: string) => void;
+}>) {
   useEffect(() => {
     if (isAdminBrowserHarnessEnabled()) {
       return;
     }
 
-    window.location.replace(redirectPath);
-  }, [redirectPath]);
+    let cancelled = false;
 
-  const renderHtmlFallback = !isAdminBrowserHarnessEnabled();
+    void Promise.resolve(invalidateBeforeRedirect?.())
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          redirect(redirectPath);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [invalidateBeforeRedirect, redirect, redirectPath]);
+
+  const renderHtmlFallback =
+    !isAdminBrowserHarnessEnabled() && htmlRedirectFallbackEnabled;
 
   return (
     <main

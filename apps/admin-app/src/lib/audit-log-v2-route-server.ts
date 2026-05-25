@@ -1,9 +1,5 @@
 import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import {
-  exportAdminAuditEventsFromEnvironment,
-  extractRequiredSubscriberJourneySessionId,
-} from "@comvestec/platform";
 import type { AdminAuditLogV2RouteData } from "./audit-log-v2-route-data";
 import type { AdminAuditLogV2RawSearch } from "./audit-log-v2-search";
 import {
@@ -55,6 +51,10 @@ const runAdminAuditLogV2Export = async (
   environment: unknown,
   rawSearch: AdminAuditLogV2RawSearch,
 ) => {
+  const {
+    exportAdminAuditEventsFromEnvironment,
+    extractRequiredSubscriberJourneySessionId,
+  } = await import("@comvestec/platform");
   const { decodeAuditLogV2Search, toAuditExportFilter } =
     await import("./audit-log-v2-search");
 

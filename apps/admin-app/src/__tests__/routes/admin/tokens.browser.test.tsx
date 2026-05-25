@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { reasonCatalogId } from "@comvestec/contracts";
 import {
   createAdminBrowserFixtureState,
   type AdminBrowserFixtureState,
@@ -153,7 +154,7 @@ describe("/admin/tokens admin operator test tokens route", () => {
     await click(
       getFieldControlByLabel<HTMLInputElement>(
         rendered.container.ownerDocument,
-        "QA harness — issue admin-operator test token",
+        "Admin operator test tokens — issue token",
         "input",
       ),
     );
@@ -190,7 +191,7 @@ describe("/admin/tokens admin operator test tokens route", () => {
       data: {
         label: "Smoke harness token",
         expiresAt: expect.any(String),
-        reasonCatalogId: "admin-operator-test-tokens.issue.qa",
+        reasonCatalogId: reasonCatalogId.adminOperatorTestTokensIssue,
         reasonAttachmentText:
           "Issuing a smoke token for regression verification.",
       },
@@ -231,7 +232,7 @@ describe("/admin/tokens admin operator test tokens route", () => {
     await click(
       getFieldControlByLabel<HTMLInputElement>(
         rendered.container.ownerDocument,
-        "Rotation — revoke admin-operator test token",
+        "Admin operator test tokens — revoke token",
         "input",
       ),
     );
@@ -264,7 +265,7 @@ describe("/admin/tokens admin operator test tokens route", () => {
     expect(mockedLoaders.revokeAdminOperatorTestToken).toHaveBeenCalledWith({
       data: {
         tokenId: "aot_fixture_active",
-        reasonCatalogId: "admin-operator-test-tokens.revoke.rotation",
+        reasonCatalogId: reasonCatalogId.adminOperatorTestTokensRevoke,
         reasonAttachmentText: "Rotating the long-lived active smoke token.",
       },
     });

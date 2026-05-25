@@ -219,11 +219,11 @@ export function AdminTenantTargetForm({
 
           <div className="ops-target-picker-list" role="list">
             {targetStatus === "loading" ? (
-              <div className="ops-target-picker-empty">
+              <div className="ops-target-picker-empty" role="listitem">
                 Loading recent operator targets…
               </div>
             ) : filteredOptions.length === 0 ? (
-              <div className="ops-target-picker-empty">
+              <div className="ops-target-picker-empty" role="listitem">
                 No tenant targets matched the current search. Use exact lookup
                 only if you need a target that is not in the shared operator
                 catalog yet.
@@ -235,20 +235,21 @@ export function AdminTenantTargetForm({
                   option.key === inferredOption?.key;
 
                 return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    className={`ops-target-picker-option${isActive ? " ops-target-picker-option--active" : ""}`}
-                    data-target-option={option.key}
-                    onClick={() => selectTarget(option)}
-                  >
-                    <span className="ops-target-picker-option-label">
-                      {option.label}
-                    </span>
-                    <span className="ops-target-picker-option-meta">
-                      {option.description}
-                    </span>
-                  </button>
+                  <div key={option.key} role="listitem">
+                    <button
+                      type="button"
+                      className={`ops-target-picker-option${isActive ? " ops-target-picker-option--active" : ""}`}
+                      data-target-option={option.key}
+                      onClick={() => selectTarget(option)}
+                    >
+                      <span className="ops-target-picker-option-label">
+                        {option.label}
+                      </span>
+                      <span className="ops-target-picker-option-meta">
+                        {option.description}
+                      </span>
+                    </button>
+                  </div>
                 );
               })
             )}

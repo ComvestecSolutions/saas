@@ -6,14 +6,19 @@ import {
 } from "@comvestec/ui";
 import {
   adminRoutePath,
+  platformModuleIds,
   universalSearchFacet,
   universalSearchPrefix,
+  type PlatformModuleId,
   type UniversalSearchEntry,
   type UniversalSearchFacet,
   type UniversalSearchPrefix,
 } from "@comvestec/contracts";
 import { loadAdminUniversalSearchLoaderData } from "../../lib/universal-search-loader";
 import type { AdminUniversalSearchRouteData } from "../../lib/universal-search-route-data";
+import { buildAdminFeatureFlagPath } from "../../lib/admin-feature-flag-path";
+import { buildAdminRuntimeConfigPath } from "../../lib/admin-runtime-config-path";
+import { navigateAdminPath } from "../../lib/browser-navigation";
 
 /**
  * Desk-shell omnibar wrapper (admin-app implementation plan
@@ -65,6 +70,11 @@ const recognisedPrefixes = new Set<string>(
   Object.values(universalSearchPrefix),
 );
 
+const knownPlatformModuleIds = new Set<string>(platformModuleIds);
+
+const isPlatformModuleId = (value: string): value is PlatformModuleId =>
+  knownPlatformModuleIds.has(value);
+
 const parseOmnibarInput = (raw: string): ParsedOmnibarInput => {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return { query: "" };
@@ -104,14 +114,41 @@ const resolvePermalink = (entry: UniversalSearchEntry): string => {
 const navigateToPermalink = (
   permalink: string,
   onNavigate: ((path: string) => void) | undefined,
-) => {
-  if (onNavigate !== undefined) {
-    onNavigate(permalink);
-    return;
+) => navigateAdminPath(permalink, onNavigate);
+
+const resolveSubmittedPrefixPermalink = (
+  input: ParsedOmnibarInput,
+): string | undefined => {
+  if (input.prefixFilter === undefined || input.query.length === 0) {
+    return undefined;
   }
 
-  if (typeof window !== "undefined") {
-    window.location.assign(permalink);
+  switch (input.prefixFilter) {
+    case universalSearchPrefix.tenant:
+      return adminRoutePath.tenantWorkspace.replace(
+        "$tenantId",
+        encodeURIComponent(input.query),
+      );
+    case universalSearchPrefix.flag:
+      return buildAdminFeatureFlagPath({ flagKey: input.query });
+    case universalSearchPrefix.config: {
+      const dotIndex = input.query.indexOf(".");
+      if (dotIndex <= 0) {
+        return undefined;
+      }
+      const moduleId = input.query.slice(0, dotIndex);
+      return isPlatformModuleId(moduleId)
+        ? buildAdminRuntimeConfigPath({ moduleId, configKey: input.query })
+        : undefined;
+    }
+    case universalSearchPrefix.invoice:
+      return `/r/invoice/${encodeURIComponent(input.query)}`;
+    case universalSearchPrefix.domain:
+      return `/r/domain/${encodeURIComponent(input.query)}`;
+    case universalSearchPrefix.user:
+    case universalSearchPrefix.keycloakUser:
+    case universalSearchPrefix.event:
+      return undefined;
   }
 };
 
@@ -242,17 +279,47 @@ export function DeskShellOmnibar({
 
   const suggestions = useMemo(() => toSuggestions(state), [state]);
 
-  const handleSelectSuggestion = useCallback(
-    (suggestion: OmnibarSuggestion) => {
-      const entry = suggestionEntryIndex.get(suggestion.id);
-      if (entry === undefined) return;
-      const permalink = resolvePermalink(entry);
+  const completeNavigation = useCallback(
+    (permalink: string) => {
       navigateToPermalink(permalink, onNavigate);
       setValue("");
       setOpen(false);
       setState({ kind: "shell" });
     },
-    [onNavigate, suggestionEntryIndex],
+    [onNavigate],
+  );
+
+  const handleSelectSuggestion = useCallback(
+    (suggestion: OmnibarSuggestion) => {
+      const entry = suggestionEntryIndex.get(suggestion.id);
+      if (entry === undefined) return;
+      completeNavigation(resolvePermalink(entry));
+    },
+    [completeNavigation, suggestionEntryIndex],
+  );
+
+  const handleSubmit = useCallback(
+    (rawValue: string) => {
+      const submitted = parseOmnibarInput(rawValue);
+      const currentTopEntry =
+        state.kind === "ready" &&
+        state.result.query === submitted.query &&
+        state.result.entries.length > 0
+          ? state.result.entries[0]
+          : undefined;
+      const permalink =
+        currentTopEntry === undefined
+          ? resolveSubmittedPrefixPermalink(submitted)
+          : resolvePermalink(currentTopEntry);
+
+      if (permalink !== undefined) {
+        completeNavigation(permalink);
+        return;
+      }
+
+      setOpen(false);
+    },
+    [completeNavigation, state],
   );
 
   const deniedReason = state.kind === "denied" ? state.reason : undefined;
@@ -273,7 +340,7 @@ export function DeskShellOmnibar({
           if (next.length > 0) setOpen(true);
           else setOpen(false);
         }}
-        onSubmit={() => setOpen(false)}
+        onSubmit={handleSubmit}
         onSelectSuggestion={handleSelectSuggestion}
         suggestions={suggestions}
         ariaLabel={

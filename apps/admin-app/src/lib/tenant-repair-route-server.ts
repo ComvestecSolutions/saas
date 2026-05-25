@@ -4,15 +4,13 @@ import type {
   cancelBillingRepairGapFromSessionId,
   replayBillingRepairGapFromWorkflowExecutionContext,
 } from "@comvestec/platform";
-import {
-  makeKeycloakAdapter,
-  resolveTrustedRequestContextFromSessionId,
-  type KeycloakAdapterError,
-  type KeycloakImpersonationActorMismatchError,
-  type KeycloakImpersonationCleanupUnavailableError,
-  type KeycloakImpersonationCompensationError,
-  type KeycloakImpersonationIdTokenMissingError,
-  type ResolveTrustedRequestContextError,
+import type {
+  KeycloakAdapterError,
+  KeycloakImpersonationActorMismatchError,
+  KeycloakImpersonationCleanupUnavailableError,
+  KeycloakImpersonationCompensationError,
+  KeycloakImpersonationIdTokenMissingError,
+  ResolveTrustedRequestContextError,
 } from "@comvestec/platform";
 import type {
   loadAdminTenantRepairRouteDataFromRequest,
@@ -98,7 +96,15 @@ type ResolveTenantRepairWorkflowExecutionContextError =
   | KeycloakImpersonationActorMismatchError
   | KeycloakImpersonationCleanupUnavailableError
   | KeycloakImpersonationCompensationError
-  | TenantRepairWorkflowExecutionActorIdMissingError;
+  | TenantRepairWorkflowExecutionActorIdMissingError
+  | Error;
+
+let tenantRepairPlatformModulePromise:
+  | Promise<typeof import("@comvestec/platform")>
+  | undefined;
+
+const loadTenantRepairPlatformModule = () =>
+  (tenantRepairPlatformModulePromise ??= import("@comvestec/platform"));
 
 const TenantRepairWorkflowExecutionEnvironmentSchema = Schema.Struct({
   KEYCLOAK_BASE_URL: Schema.NonEmptyString,
@@ -113,36 +119,49 @@ const decodeTenantRepairWorkflowExecutionEnvironment = Schema.decodeUnknown(
 
 const resolveTenantRepairWorkflowExecutionContextFromSessionId: ResolveTenantRepairWorkflowExecutionContext =
   (environment, input) =>
-    Effect.gen(function* () {
-      const requestContext = yield* resolveTrustedRequestContextFromSessionId(
-        environment,
-        input.sessionId,
-      );
+    Effect.tryPromise({
+      try: loadTenantRepairPlatformModule,
+      catch: (error) =>
+        error instanceof Error ? error : new Error(String(error)),
+    }).pipe(
+      Effect.flatMap(
+        ({ makeKeycloakAdapter, resolveTrustedRequestContextFromSessionId }) =>
+          Effect.gen(function* () {
+            const requestContext =
+              yield* resolveTrustedRequestContextFromSessionId(
+                environment,
+                input.sessionId,
+              );
 
-      if (requestContext.actorId === undefined) {
-        return yield* Effect.fail({
-          _tag: "TenantRepairWorkflowExecutionActorIdMissingError",
-          reason:
-            "Authenticated repair workflow execution requires the current operator session to have a stable actor id.",
-        } satisfies TenantRepairWorkflowExecutionActorIdMissingError);
-      }
+            if (requestContext.actorId === undefined) {
+              return yield* Effect.fail({
+                _tag: "TenantRepairWorkflowExecutionActorIdMissingError",
+                reason:
+                  "Authenticated repair workflow execution requires the current operator session to have a stable actor id.",
+              } satisfies TenantRepairWorkflowExecutionActorIdMissingError);
+            }
 
-      const resolvedEnvironment: TenantRepairWorkflowExecutionEnvironment =
-        yield* decodeTenantRepairWorkflowExecutionEnvironment(environment);
-      const keycloak = yield* makeKeycloakAdapter({
-        baseUrl: resolvedEnvironment.KEYCLOAK_BASE_URL,
-        realm: resolvedEnvironment.KEYCLOAK_REALM,
-        clientId: resolvedEnvironment.KEYCLOAK_CLIENT_ID,
-        clientSecret: resolvedEnvironment.KEYCLOAK_CLIENT_SECRET,
-      });
-      const impersonationSession = yield* keycloak.issueImpersonationSession({
-        impersonatedActorId: requestContext.actorId,
-      });
+            const resolvedEnvironment: TenantRepairWorkflowExecutionEnvironment =
+              yield* decodeTenantRepairWorkflowExecutionEnvironment(
+                environment,
+              );
+            const keycloak = yield* makeKeycloakAdapter({
+              baseUrl: resolvedEnvironment.KEYCLOAK_BASE_URL,
+              realm: resolvedEnvironment.KEYCLOAK_REALM,
+              clientId: resolvedEnvironment.KEYCLOAK_CLIENT_ID,
+              clientSecret: resolvedEnvironment.KEYCLOAK_CLIENT_SECRET,
+            });
+            const impersonationSession =
+              yield* keycloak.issueImpersonationSession({
+                impersonatedActorId: requestContext.actorId,
+              });
 
-      return {
-        convexAuthToken: impersonationSession.idToken,
-      };
-    });
+            return {
+              convexAuthToken: impersonationSession.idToken,
+            };
+          }),
+      ),
+    );
 
 const loadAdminTenantRepairData = async (
   request: Request,

@@ -1,4 +1,5 @@
 import type { AdminCapabilitySnapshotV2RouteData } from "./capability-snapshot-v2-route-data";
+import { getAdminCapabilitySnapshotV2Data } from "./capability-snapshot-v2-route-server";
 
 /**
  * Loader for the Capability snapshot v2 shell refresh. Consumes
@@ -10,8 +11,5 @@ import type { AdminCapabilitySnapshotV2RouteData } from "./capability-snapshot-v
  */
 export const loadAdminCapabilitySnapshotV2LoaderData = async (
   loadRouteData: () => Promise<AdminCapabilitySnapshotV2RouteData> = () =>
-    import("./capability-snapshot-v2-route-server").then(
-      ({ getAdminCapabilitySnapshotV2Data }) =>
-        getAdminCapabilitySnapshotV2Data(),
-    ),
+    getAdminCapabilitySnapshotV2Data(),
 ): Promise<AdminCapabilitySnapshotV2RouteData> => loadRouteData();

@@ -5,6 +5,7 @@ import {
 } from "@comvestec/contracts";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -57,10 +58,48 @@ type CorrelationCluster = {
   readonly tenants: string[];
 };
 
+const resolveAuditLogSearchValue = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+
+const parseAuditLogSearch = (
+  rawSearch: Record<string, unknown>,
+): AuditLogSearch => {
+  const module = resolveAuditLogSearchValue(rawSearch.module);
+  const actor = resolveAuditLogSearchValue(rawSearch.actor);
+  const action = resolveAuditLogSearchValue(rawSearch.action);
+  const target = resolveAuditLogSearchValue(rawSearch.target);
+  const tenantScope = resolveAuditLogSearchValue(rawSearch.tenantScope);
+  const tenantScopeId = resolveAuditLogSearchValue(rawSearch.tenantScopeId);
+  const classification = resolveAuditLogSearchValue(rawSearch.classification);
+  const ip = resolveAuditLogSearchValue(rawSearch.ip);
+  const correlation = resolveAuditLogSearchValue(rawSearch.correlation);
+  const window = resolveAuditLogSearchValue(rawSearch.window);
+  const customFrom = resolveAuditLogSearchValue(rawSearch.customFrom);
+  const customTo = resolveAuditLogSearchValue(rawSearch.customTo);
+  const tail = resolveAuditLogSearchValue(rawSearch.tail);
+
+  return {
+    ...(module === undefined ? {} : { module }),
+    ...(actor === undefined ? {} : { actor }),
+    ...(action === undefined ? {} : { action }),
+    ...(target === undefined ? {} : { target }),
+    ...(tenantScope === undefined ? {} : { tenantScope }),
+    ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
+    ...(classification === undefined ? {} : { classification }),
+    ...(ip === undefined ? {} : { ip }),
+    ...(correlation === undefined ? {} : { correlation }),
+    ...(window === undefined ? {} : { window }),
+    ...(customFrom === undefined ? {} : { customFrom }),
+    ...(customTo === undefined ? {} : { customTo }),
+    ...(tail === undefined ? {} : { tail }),
+  };
+};
+
 export const Route = createAdminAppFileRoute("/r/audit")({
   component: AuditLogV2Route,
-  validateSearch: (rawSearch): AuditLogSearch =>
-    Schema.decodeUnknownSync(auditLogSearchSchema)(rawSearch),
+  validateSearch: parseAuditLogSearch,
   loaderDeps: ({ search }) => ({
     search: compactAuditLogSearch(search),
   }),
@@ -108,6 +147,18 @@ function AuditLogV2Route() {
       });
     });
   }, [router]);
+
+  useEffect(() => {
+    if (data.kind !== "ready") {
+      delete document.documentElement.dataset.adminAuditLogHydrated;
+      return;
+    }
+
+    document.documentElement.dataset.adminAuditLogHydrated = "true";
+    return () => {
+      delete document.documentElement.dataset.adminAuditLogHydrated;
+    };
+  }, [data.kind]);
 
   if (data.kind === "shell") {
     return (
@@ -816,6 +867,7 @@ function AuditLogReadyView({
                   }}
                 >
                   <button
+                    data-testid="audit-log-v2-row-toggle"
                     type="button"
                     onClick={() =>
                       onExpandedEventChange(

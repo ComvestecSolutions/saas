@@ -21,6 +21,12 @@ const isWeakPasswordValue = (value: string) =>
   value.includes("$") ||
   ["admin", "change-me", "comvestec", "postgres", "Passw0rd!"].includes(value);
 
+const novuPasswordPattern =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[#?!@$%^&*()-])[A-Za-z\d#?!@$%^&*()-]{8,64}$/;
+
+const isWeakNovuPasswordValue = (value: string) =>
+  isWeakPasswordValue(value) || !novuPasswordPattern.test(value);
+
 const isWeakUsernameValue = (value: string) =>
   value.trim().length === 0 || ["admin", "postgres"].includes(value);
 
@@ -67,7 +73,7 @@ const generatePassword = (length = 32) => {
   const lowercaseAlphabet = "abcdefghijkmnopqrstuvwxyz";
   const uppercaseAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const digits = "23456789";
-  const symbols = "!@#%^*-_";
+  const symbols = "!@#%^*-";
   const allCharacters =
     lowercaseAlphabet + uppercaseAlphabet + digits + symbols;
 
@@ -304,7 +310,7 @@ export const buildBootstrapManagedValues = (input: {
     state,
     key: "NOVU_PASSWORD",
     nextValue: generatePassword(),
-    isWeakValue: isWeakPasswordValue,
+    isWeakValue: isWeakNovuPasswordValue,
   });
   const openmeterApiKey = resolveStableValue({
     state,

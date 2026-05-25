@@ -2,6 +2,7 @@ import type {
   AdminTenantWorkspaceV2LoaderInput,
   AdminTenantWorkspaceV2RouteData,
 } from "./tenant-workspace-v2-route-data";
+import { getAdminTenantWorkspaceV2Data } from "./tenant-workspace-v2-route-server";
 
 /**
  * Loader for the Tenant workspace v2 route (`/r/tenant/<id>`).
@@ -17,8 +18,5 @@ export const loadAdminTenantWorkspaceV2LoaderData = async (
   loadRouteData: (
     currentInput: AdminTenantWorkspaceV2LoaderInput,
   ) => Promise<AdminTenantWorkspaceV2RouteData> = (currentInput) =>
-    import("./tenant-workspace-v2-route-server").then(
-      ({ getAdminTenantWorkspaceV2Data }) =>
-        getAdminTenantWorkspaceV2Data({ data: currentInput }),
-    ),
+    getAdminTenantWorkspaceV2Data({ data: currentInput }),
 ): Promise<AdminTenantWorkspaceV2RouteData> => loadRouteData(input);
