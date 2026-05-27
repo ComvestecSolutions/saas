@@ -89,27 +89,24 @@ describe("Dialog", () => {
     host.remove();
   });
 
-  it("propagates an explicit aria-describedby attribute to the dialog node", () => {
-    const externalId = "external-dialog-description";
-    const host = mount(
-      <div>
-        <p id={externalId}>External description provided by the caller.</p>
-        <Dialog defaultOpen>
-          <DialogContent title="External" aria-describedby={externalId}>
-            body
-          </DialogContent>
-        </Dialog>
-      </div>,
-    );
-    const dialog = document.querySelector("[role='dialog']") as HTMLElement;
-    expect(dialog.getAttribute("aria-describedby")).toBe(externalId);
-    host.remove();
-  });
-
-  it("rejects DialogContent without a description or aria-describedby (type-level)", () => {
-    // @ts-expect-error DialogContent must receive description or aria-describedby.
+  it("rejects DialogContent without a description (type-level)", () => {
+    // @ts-expect-error DialogContent must receive a description.
     const _missing = <DialogContent title="missing">body</DialogContent>;
     void _missing;
+    expect(true).toBe(true);
+  });
+
+  it("rejects caller-supplied aria-describedby overrides (type-level)", () => {
+    const _external = (
+      // @ts-expect-error DialogContent must receive a description instead of a raw aria-describedby id.
+      <DialogContent
+        title="External"
+        aria-describedby="external-dialog-description"
+      >
+        body
+      </DialogContent>
+    );
+    void _external;
     expect(true).toBe(true);
   });
 });

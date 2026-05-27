@@ -48,22 +48,13 @@ type DialogContentBaseProps = Omit<
 
 /**
  * Accessibility contract: every dialog must expose an accessible description
- * to assistive tech. Callers either pass a `description` node (which the
- * dialog renders inside its sticky header and auto-links via
- * `aria-describedby`) or supply a pre-existing element id through the
- * `aria-describedby` prop. Bare `<DialogContent title="…">` is a type error.
+ * to assistive tech. Callers pass a `description` node, which the dialog
+ * renders inside its sticky header and auto-links via `aria-describedby`.
+ * Bare `<DialogContent title="…">` is a type error.
  */
-export type DialogContentProps = DialogContentBaseProps &
-  (
-    | {
-        readonly description: ReactNode;
-        readonly "aria-describedby"?: undefined;
-      }
-    | {
-        readonly description?: undefined;
-        readonly "aria-describedby": string;
-      }
-  );
+export type DialogContentProps = DialogContentBaseProps & {
+  readonly description: ReactNode;
+};
 
 export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   function DialogContent(

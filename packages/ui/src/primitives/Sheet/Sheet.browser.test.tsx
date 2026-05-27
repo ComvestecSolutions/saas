@@ -6,7 +6,9 @@ describe("Sheet", () => {
   it("renders nothing when closed", () => {
     mount(
       <Sheet>
-        <SheetContent title="t">inside</SheetContent>
+        <SheetContent title="t" description="Sheet description.">
+          inside
+        </SheetContent>
       </Sheet>,
     );
     expect(document.querySelector("[role='dialog']")).toBeNull();
@@ -15,7 +17,11 @@ describe("Sheet", () => {
   it("renders content with role=dialog and the configured title when defaultOpen", () => {
     mount(
       <Sheet defaultOpen>
-        <SheetContent title="Filters" side="right">
+        <SheetContent
+          title="Filters"
+          description="Filter configuration for the current view."
+          side="right"
+        >
           inside
         </SheetContent>
       </Sheet>,
@@ -29,7 +35,7 @@ describe("Sheet", () => {
     const onOpenChange = vi.fn();
     mount(
       <Sheet defaultOpen onOpenChange={onOpenChange}>
-        <SheetContent title="t" side="bottom">
+        <SheetContent title="t" description="Sheet description." side="bottom">
           inside
         </SheetContent>
       </Sheet>,
@@ -44,7 +50,11 @@ describe("Sheet", () => {
     (side) => {
       mount(
         <Sheet defaultOpen>
-          <SheetContent title="t" side={side}>
+          <SheetContent
+            title="t"
+            description={`Sheet positioned on the ${side} side.`}
+            side={side}
+          >
             inside
           </SheetContent>
         </Sheet>,
@@ -66,4 +76,11 @@ describe("Sheet", () => {
       }
     },
   );
+
+  it("rejects SheetContent without a description (type-level)", () => {
+    // @ts-expect-error SheetContent must receive a description.
+    const _missing = <SheetContent title="t">inside</SheetContent>;
+    void _missing;
+    expect(true).toBe(true);
+  });
 });

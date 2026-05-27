@@ -25,16 +25,18 @@ const sidePosition: Record<SheetSide, CSSProperties> = {
   bottom: { left: 0, right: 0, bottom: 0, height: "min(60vh, 480px)" },
 };
 
-export type SheetContentProps = ComponentPropsWithoutRef<
-  typeof DialogPrimitive.Content
+export type SheetContentProps = Omit<
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
+  "aria-describedby"
 > & {
   readonly side?: SheetSide;
   readonly title: ReactNode;
+  readonly description: ReactNode;
 };
 
 export const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
   function SheetContent(
-    { side = "right", title, className, style, children, ...rest },
+    { side = "right", title, description, className, style, children, ...rest },
     ref,
   ) {
     const surface = glassSurface({ radius: "pane" });
@@ -64,6 +66,16 @@ export const SheetContent = forwardRef<HTMLDivElement, SheetContentProps>(
           <DialogPrimitive.Title style={{ margin: 0, padding: 10 }}>
             {title}
           </DialogPrimitive.Title>
+          <DialogPrimitive.Description
+            style={{
+              margin: 0,
+              padding: "0 10px 10px",
+              fontSize: "0.8125rem",
+              color: "var(--fg-muted)",
+            }}
+          >
+            {description}
+          </DialogPrimitive.Description>
           <div style={{ padding: 10, overflowY: "auto", flex: 1 }}>
             {children}
           </div>
