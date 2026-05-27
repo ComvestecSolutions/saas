@@ -77,6 +77,16 @@ describe("/r/access Access Control v2 route", () => {
         "[data-testid='access-control-operators-row']",
       ).length,
     ).toBeGreaterThan(0);
+    expect(
+      rendered.container
+        .querySelector("[data-testid='access-control-current-operator-link']")
+        ?.getAttribute("href"),
+    ).toBe("/r/operator/usr_platform_operator");
+    expect(
+      rendered.container
+        .querySelector("[data-testid='access-control-operator-link']")
+        ?.getAttribute("href"),
+    ).toBe("/r/operator/usr_platform_operator");
   });
 
   it("renders the Projection profiles tab when ?tab=profiles is set", async () => {

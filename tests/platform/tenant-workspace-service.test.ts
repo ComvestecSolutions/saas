@@ -26,9 +26,9 @@
  *   - tenant + windowMinutes propagation to every source
  *   - the snapshot's `correlationId` mirrors the request context
  *     and `tenant` mirrors the input
- *   - the env-bound runtime supplies stub source layers that
- *     surface `TenantWorkspaceSourceUnavailable` for every
- *     section (Phase 1 item 4 documented stub)
+ *   - the exported historical stub layers still surface
+ *     `TenantWorkspaceSourceUnavailable` for the documented
+ *     placeholder seams
  *
  * The harness injects deterministic source implementations via
  * `makeTenantWorkspaceService(audit, sources)` rather than
@@ -39,6 +39,7 @@ import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   actorType,
+  billingSubscriptionStatus,
   dataClassification,
   kpiTone,
   kpiTrendDirection,
@@ -51,7 +52,6 @@ import {
   tenantWorkspaceIncidentSeverity,
   tenantWorkspaceMemberRole,
   tenantWorkspaceSnapshotSection,
-  tenantWorkspaceSupportTier,
   type RequestContext,
   type TenantContext,
   type TenantWorkspaceMember,
@@ -144,10 +144,10 @@ const sampleOverview = (
   brandingState:
     overrides?.brandingState ?? tenantWorkspaceBrandingState.published,
   planTier: overrides?.planTier ?? "growth",
-  currentMau: overrides?.currentMau ?? 1234,
-  openInvoiceCount: overrides?.openInvoiceCount ?? 2,
+  ...(overrides?.billingStatus === undefined
+    ? { billingStatus: billingSubscriptionStatus.active }
+    : { billingStatus: overrides.billingStatus }),
   legalHoldActive: overrides?.legalHoldActive ?? false,
-  supportTier: overrides?.supportTier ?? tenantWorkspaceSupportTier.priority,
 });
 
 const sampleMember = (

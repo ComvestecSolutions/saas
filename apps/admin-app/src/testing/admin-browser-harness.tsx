@@ -613,6 +613,19 @@ vi.mock("/src/lib/incident-detail-mutations-server", async () => {
   }
 });
 
+vi.mock("/src/lib/run-as-banner-mutations-server", async () => {
+  try {
+    const mockState = await import("./admin-browser-mock-state");
+
+    return {
+      releaseAdminRunAsGrant: mockState.mockedLoaders.releaseRunAsGrant,
+    };
+  } catch (error) {
+    console.error("run-as-banner-mutations-server mock failed", error);
+    throw error;
+  }
+});
+
 vi.mock("/src/lib/legal-hold-detail-mutations-server", async () => {
   try {
     const mockState = await import("./admin-browser-mock-state");
@@ -774,7 +787,7 @@ vi.mock("/src/auth/start-route", () => ({
     Promise.resolve(
       new Response(null, {
         status: 302,
-        headers: { Location: "/auth/sign-in" },
+        headers: { Location: "/sign-in" },
       }),
     ),
 }));
@@ -784,7 +797,7 @@ vi.mock("/src/auth/callback-route", () => ({
     Promise.resolve(
       new Response(null, {
         status: 302,
-        headers: { Location: "/" },
+        headers: { Location: "/desk" },
       }),
     ),
 }));
@@ -794,21 +807,21 @@ vi.mock("/src/auth/session-transport-route", () => ({
     Promise.resolve(
       new Response(null, {
         status: 302,
-        headers: { Location: "/auth/sign-in" },
+        headers: { Location: "/sign-in" },
       }),
     ),
   handleAdminLogoutRequest: () =>
     Promise.resolve(
       new Response(null, {
         status: 302,
-        headers: { Location: "/auth/sign-in" },
+        headers: { Location: "/sign-in" },
       }),
     ),
   handleAdminStaleSessionRecoveryRequest: () =>
     Promise.resolve(
       new Response(null, {
         status: 302,
-        headers: { Location: "/auth/sign-in" },
+        headers: { Location: "/sign-in" },
       }),
     ),
 }));
@@ -925,6 +938,86 @@ vi.mock("/src/lib/meter-detail-route-server", async () => {
     };
   } catch (error) {
     console.error("meter-detail-route-server mock failed", error);
+    throw error;
+  }
+});
+
+vi.mock("/src/lib/keycloak-user-detail-loader", async (importOriginal) => {
+  try {
+    const [actual, mockState] = await Promise.all([
+      importOriginal<typeof import("../lib/keycloak-user-detail-loader")>(),
+      import("./admin-browser-mock-state"),
+    ]);
+
+    return {
+      ...actual,
+      loadAdminKeycloakUserDetailLoaderData: (input: unknown) =>
+        mockState.mockedLoaders.keycloakUserDetail(
+          input as Parameters<
+            typeof mockState.mockedLoaders.keycloakUserDetail
+          >[0],
+        ),
+    };
+  } catch (error) {
+    console.error("keycloak-user-detail-loader mock failed", error);
+    throw error;
+  }
+});
+
+vi.mock("/src/lib/keycloak-user-detail-route-server", async () => {
+  try {
+    const mockState = await import("./admin-browser-mock-state");
+
+    return {
+      getAdminKeycloakUserDetailData: (input?: { readonly data?: unknown }) =>
+        mockState.mockedLoaders.keycloakUserDetail(
+          input?.data as Parameters<
+            typeof mockState.mockedLoaders.keycloakUserDetail
+          >[0],
+        ),
+    };
+  } catch (error) {
+    console.error("keycloak-user-detail-route-server mock failed", error);
+    throw error;
+  }
+});
+
+vi.mock("/src/lib/keycloak-role-detail-loader", async (importOriginal) => {
+  try {
+    const [actual, mockState] = await Promise.all([
+      importOriginal<typeof import("../lib/keycloak-role-detail-loader")>(),
+      import("./admin-browser-mock-state"),
+    ]);
+
+    return {
+      ...actual,
+      loadAdminKeycloakRoleDetailLoaderData: (input: unknown) =>
+        mockState.mockedLoaders.keycloakRoleDetail(
+          input as Parameters<
+            typeof mockState.mockedLoaders.keycloakRoleDetail
+          >[0],
+        ),
+    };
+  } catch (error) {
+    console.error("keycloak-role-detail-loader mock failed", error);
+    throw error;
+  }
+});
+
+vi.mock("/src/lib/keycloak-role-detail-route-server", async () => {
+  try {
+    const mockState = await import("./admin-browser-mock-state");
+
+    return {
+      getAdminKeycloakRoleDetailData: (input?: { readonly data?: unknown }) =>
+        mockState.mockedLoaders.keycloakRoleDetail(
+          input?.data as Parameters<
+            typeof mockState.mockedLoaders.keycloakRoleDetail
+          >[0],
+        ),
+    };
+  } catch (error) {
+    console.error("keycloak-role-detail-route-server mock failed", error);
     throw error;
   }
 });
@@ -1486,6 +1579,46 @@ vi.mock("/src/lib/admin-members-route-server", async () => {
     };
   } catch (error) {
     console.error("admin-members-route-server mock failed", error);
+    throw error;
+  }
+});
+
+vi.mock("/src/lib/admin-member-detail-loader", async (importOriginal) => {
+  try {
+    const [actual, mockState] = await Promise.all([
+      importOriginal<typeof import("../lib/admin-member-detail-loader")>(),
+      import("./admin-browser-mock-state"),
+    ]);
+
+    return {
+      ...actual,
+      loadAdminMemberDetailLoaderData: (input: unknown) =>
+        mockState.mockedLoaders.adminMemberDetail(
+          input as Parameters<
+            typeof mockState.mockedLoaders.adminMemberDetail
+          >[0],
+        ),
+    };
+  } catch (error) {
+    console.error("admin-member-detail-loader mock failed", error);
+    throw error;
+  }
+});
+
+vi.mock("/src/lib/admin-member-detail-route-server", async () => {
+  try {
+    const mockState = await import("./admin-browser-mock-state");
+
+    return {
+      getAdminMemberDetailData: (input?: { readonly data?: unknown }) =>
+        mockState.mockedLoaders.adminMemberDetail(
+          input?.data as Parameters<
+            typeof mockState.mockedLoaders.adminMemberDetail
+          >[0],
+        ),
+    };
+  } catch (error) {
+    console.error("admin-member-detail-route-server mock failed", error);
     throw error;
   }
 });

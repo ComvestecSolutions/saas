@@ -4,6 +4,7 @@ import {
   selectAffectedTestSuites,
   selectiveTestSuiteId,
   selectiveTestSuites,
+  shouldRunFullSuiteForSuiteChanges,
   shouldSkipSuiteFromCache,
   shouldUseSelectiveCache,
   suiteRequiresFullRun,
@@ -99,6 +100,41 @@ describe("suiteRequiresFullRun", () => {
   it("forces a full run for app package metadata changes", () => {
     expect(
       suiteRequiresFullRun(adminBrowserSuite, ["apps/admin-app/package.json"]),
+    ).toBe(true);
+  });
+});
+
+describe("shouldRunFullSuiteForSuiteChanges", () => {
+  const backendSuite = selectiveTestSuites[0];
+  const adminBrowserSuite = selectiveTestSuites[2];
+
+  it("forces the backend suite onto full-run mode when related mode is disabled", () => {
+    expect(
+      shouldRunFullSuiteForSuiteChanges(
+        backendSuite,
+        ["packages/modules/src/access/identity-session.ts"],
+        () => true,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps admin browser changes on related mode when the suite supports it", () => {
+    expect(
+      shouldRunFullSuiteForSuiteChanges(
+        adminBrowserSuite,
+        ["apps/admin-app/src/lib/tenant-workspace-index-route-data.ts"],
+        () => true,
+      ),
+    ).toBe(false);
+  });
+
+  it("forces a full run when a changed file no longer exists on disk", () => {
+    expect(
+      shouldRunFullSuiteForSuiteChanges(
+        adminBrowserSuite,
+        ["apps/admin-app/src/lib/tenant-workspace-index-route-data.ts"],
+        () => false,
+      ),
     ).toBe(true);
   });
 });

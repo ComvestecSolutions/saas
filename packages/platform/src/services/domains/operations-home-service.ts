@@ -19,47 +19,51 @@
  * trails.
  *
  * VENDOR-SOURCE STATUS (Phase 1 item 3):
- *   - KPI source (tenant counts, operator counts, open invoices,
- *     usage events, audit volume) → **stubbed** via
- *     {@link OperationsHomeKpiSource}. The env-bound runtime
- *     supplies a degraded stub that fails with
- *     `OperationsHomeSourceUnavailable` so the live aggregate
- *     surfaces a typed `partialFailures` entry instead of
- *     fabricated numbers. // TODO(phase1-item-3): wire to
- *     tenant-management, identity-session, Polar (billing-and-
- *     metering), OpenMeter, and audit-log services once the
- *     downstream count surfaces ship.
- *   - Active alerts source → **stubbed** via
- *     {@link OperationsHomeActiveAlertsSource}. // TODO(phase1-
- *     item-3): wire to GlitchTip via the platform adapter
- *     identified by `platformAdapterServiceName.glitchtip` once
- *     the observability adapter ships an alert-list surface.
- *   - Recent audit source → **stubbed** via
- *     {@link OperationsHomeRecentAuditSource}. The intended live
- *     dependency is `AuditLogModule.listRecent(limit)`, which
- *     does not yet exist on the module surface. // TODO(phase1-
- *     item-3): add `listRecent` to the audit-log module API and
- *     wire the live source here.
- *   - Pending approvals source → **stubbed** via
- *     {@link OperationsHomePendingApprovalsSource}. // TODO
- *     (phase1-item-3): wire to the approval-workflow service
- *     once that service is introduced; this slice does not own
- *     creating it.
- *   - Vendor posture source → **stubbed** via
- *     {@link OperationsHomeVendorPostureSource}. // TODO
- *     (phase1-item-3): wire to per-vendor healthcheck adapters
- *     using `platformAdapterServiceName.*` and
- *     `createPlatformAdapterHealthcheckSchema` once vendor
- *     healthcheck adapters expose a uniform posture surface.
+ *   - KPI source → **live** via admin-billing, support-operations,
+ *     and admin-governance read surfaces. The current cut projects
+ *     repair gaps, support backlog, impersonation volume, break-
+ *     glass reviews, and pending governance proposals into the KPI
+ *     ribbon while longer-horizon tenant/operator totals remain a
+ *     follow-up once dedicated count projections ship.
+ *   - Active alerts source → **live, healthcheck-backed** via
+ *     the default GlitchTip issues client over
+ *     `platformAdapterServiceName.glitchtip`. Until the upstream
+ *     issue-list API ships, the source returns honest empty arrays
+ *     after a successful credential probe rather than fabricated
+ *     incident rows.
+ *   - Recent audit source → **live** via
+ *     `AuditLogModule.queryByTenant(...)`, filtered to the current
+ *     snapshot window and bounded by `recentAuditLimit`.
+ *   - Pending approvals source → **live** for governance-backed
+ *     runtime-config and tenant-branding proposals. A broader shared
+ *     approval-workflow surface is still a follow-up for non-
+ *     governance approval queues.
+ *   - Vendor posture source → **live** via the shared
+ *     vendor-healthcheck port over `platformAdapterServiceName.*`.
+ *     Failed healthchecks degrade individual vendors to `down`
+ *     posture; only an all-vendor outage degrades the whole section.
  */
 import { Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 import {
+  dataClassification,
+  kpiTone,
+  kpiTrendDirection,
+  operationsHomeAlertSeverity,
   operationsHomeAuditAction,
+  operationsHomeDrillResourceKind,
   operationsHomeSnapshotSection,
+  operationsHomeVendorPostureLevel,
   OperationsHomeSnapshotSchema,
+  platformAdapterServiceName,
   platformModuleId,
   reasonCatalogId,
   RequestContextSchema,
+  supportOperationsBreakGlassIncidentStatus,
+  supportOperationsCaseStatus,
+  supportOperationsImpersonationSessionStatus,
+  type AuditEvent,
+  type GlitchTipIssue,
+  type GlitchTipIssueLevel,
   type OperationsHomeActiveAlert,
   type OperationsHomeKpi,
   type OperationsHomePartialFailure,
@@ -69,6 +73,7 @@ import {
   type OperationsHomeSnapshotSection,
   type OperationsHomeVendorPosture,
   type RequestContext,
+  type VendorHealthAggregateEntry,
 } from "@comvestec/contracts";
 import {
   auditLogEventsTable,
@@ -79,12 +84,41 @@ import {
   AuditLogPostgresRepository,
   makeAuditLogModule,
   makeAuditLogPostgresRepository,
+  runtimeConfigSyncArtifactStatus,
 } from "@comvestec/modules";
 import { and, desc, eq } from "drizzle-orm";
 import {
+  makeConvexAdapter,
+  makeGlitchtipAdapter,
+  makeKeycloakAdapter,
+  makeMeilisearchAdapter,
+  makeNovuAdapter,
+  makeObservabilityAdapter,
+  makeOpenmeterAdapter,
+  makeOpenPanelAdapter,
+  makeOryKetoAdapter,
   makePostgresAdapter,
+  makePolarAdapter,
+  makePostalAdapter,
+  makeUnleashAdapter,
+  makeValkeyAdapter,
   type PostgresAdapterConnectionError,
 } from "../../adapters";
+import {
+  makeDefaultGlitchTipIssuesApiClient,
+  type GlitchTipIssuesApiClientService,
+} from "./glitchtip-issues-read-service";
+import {
+  type AdminGovernanceRuntimeConfigProposalView,
+  runAdminGovernanceFromEnvironment,
+} from "../governance/admin-governance";
+import { runSupportOperationsFromEnvironment } from "../governance/support-operations";
+import { runAdminBillingFromEnvironment } from "./admin-billing";
+import {
+  makeDefaultVendorHealthcheckPort,
+  resolveVendorHealthAggregatorRuntimeOptionsFromEnvironment,
+  type VendorHealthcheckPortService,
+} from "./vendor-health-aggregator-service";
 import { buildWriteDatabase } from "../postgres-write-database";
 
 // ---------------------------------------------------------------------------
@@ -229,6 +263,16 @@ export type GetOperationsHomeSnapshotInput = Schema.Schema.Type<
 
 const DEFAULT_WINDOW_MINUTES = 1440;
 const DEFAULT_RECENT_AUDIT_LIMIT = 20;
+const ACTIVE_ALERTS_LIMIT = 10;
+const PENDING_APPROVALS_LIMIT = 10;
+
+const OperationsHomeActiveAlertsEnvironmentSchema = Schema.Struct({
+  ERROR_TRACKING_DSN: Schema.NonEmptyString,
+});
+
+const decodeOperationsHomeActiveAlertsEnvironment = Schema.decodeUnknown(
+  OperationsHomeActiveAlertsEnvironmentSchema,
+);
 
 // ---------------------------------------------------------------------------
 // Service tag
@@ -285,6 +329,857 @@ const unwrapOrEmpty = <T>(
     onLeft: () => [] as readonly T[],
     onRight: (value) => value,
   });
+
+const describeSourceFailure = (error: unknown, fallback: string): string => {
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "args" in error &&
+    typeof (error as { args?: { reason?: unknown } }).args?.reason === "string"
+  ) {
+    return (error as { args: { reason: string } }).args.reason;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "_tag" in error &&
+    typeof (error as { _tag?: unknown })._tag === "string"
+  ) {
+    return (error as { _tag: string })._tag;
+  }
+  if (error instanceof Error) {
+    return error.message.length === 0 ? error.name : error.message;
+  }
+  return fallback;
+};
+
+const isTimestampWithinWindow = (
+  timestamp: string,
+  nowMs: number,
+  windowMinutes: number,
+) => {
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) {
+    return false;
+  }
+  return parsed >= nowMs - windowMinutes * 60_000;
+};
+
+const mapAuditEventToOperationsHomeRecentAuditEntry = (
+  event: AuditEvent,
+): OperationsHomeRecentAuditEntry => ({
+  id: event.eventId,
+  actor: event.actorId,
+  action: event.action,
+  target: event.target,
+  occurredAt: event.timestamp,
+  classification: dataClassification.internal,
+});
+
+const operationsHomeAlertLevels = [
+  "fatal",
+  "error",
+  "warning",
+] as const satisfies readonly GlitchTipIssueLevel[];
+
+const dedupeGlitchTipIssues = (
+  issues: ReadonlyArray<GlitchTipIssue>,
+): ReadonlyArray<GlitchTipIssue> => {
+  const deduped = new Map<string, GlitchTipIssue>();
+  for (const issue of issues) {
+    if (!deduped.has(issue.issueId)) {
+      deduped.set(issue.issueId, issue);
+    }
+  }
+  return [...deduped.values()];
+};
+
+const mapGlitchTipLevelToAlertSeverity = (
+  level: GlitchTipIssue["level"],
+): OperationsHomeActiveAlert["severity"] => {
+  switch (level) {
+    case "fatal":
+    case "error":
+      return operationsHomeAlertSeverity.critical;
+    case "warning":
+      return operationsHomeAlertSeverity.warning;
+    default:
+      return operationsHomeAlertSeverity.info;
+  }
+};
+
+const mapGlitchTipIssueToOperationsHomeAlert = (
+  issue: GlitchTipIssue,
+): OperationsHomeActiveAlert => ({
+  id: issue.issueId,
+  severity: mapGlitchTipLevelToAlertSeverity(issue.level),
+  title: issue.title,
+  summary: issue.culprit,
+  openedAt: issue.firstSeenAt,
+  sourceVendor: platformAdapterServiceName.glitchtip,
+  ...(issue.permalink === undefined ? {} : { deepLink: issue.permalink }),
+});
+
+const mapVendorStatusToPosture = (
+  status: VendorHealthAggregateEntry["status"],
+): OperationsHomeVendorPosture["posture"] => {
+  switch (status) {
+    case "healthy":
+      return operationsHomeVendorPostureLevel.nominal;
+    case "degraded":
+      return operationsHomeVendorPostureLevel.degraded;
+    case "unavailable":
+      return operationsHomeVendorPostureLevel.down;
+    default:
+      return operationsHomeVendorPostureLevel.unknown;
+  }
+};
+
+const mapVendorHealthEntryToOperationsHomeVendorPosture = (
+  entry: VendorHealthAggregateEntry,
+): OperationsHomeVendorPosture => ({
+  vendor: entry.serviceName,
+  posture: mapVendorStatusToPosture(entry.status),
+  ...(entry.version === undefined ? {} : { version: entry.version }),
+  ...(entry.lastIncidentAt === undefined
+    ? {}
+    : { lastIncidentAt: entry.lastIncidentAt }),
+  ...(entry.latencyMs > 0 ? { latencyP95Ms: entry.latencyMs } : {}),
+});
+
+type OperationsHomeKpiSourceResolvers = {
+  readonly listBillingRepairGaps: (
+    requestContext: RequestContext,
+  ) => Effect.Effect<readonly unknown[], unknown>;
+  readonly listSupportCases: (
+    requestContext: RequestContext,
+    status: (typeof supportOperationsCaseStatus)[keyof typeof supportOperationsCaseStatus],
+  ) => Effect.Effect<readonly unknown[], unknown>;
+  readonly listImpersonationSessions: (
+    requestContext: RequestContext,
+    status: (typeof supportOperationsImpersonationSessionStatus)[keyof typeof supportOperationsImpersonationSessionStatus],
+  ) => Effect.Effect<readonly unknown[], unknown>;
+  readonly listBreakGlassIncidents: (
+    requestContext: RequestContext,
+    status: (typeof supportOperationsBreakGlassIncidentStatus)[keyof typeof supportOperationsBreakGlassIncidentStatus],
+  ) => Effect.Effect<readonly unknown[], unknown>;
+  readonly listRuntimeConfigProposals: (
+    requestContext: RequestContext,
+    moduleId: AdminGovernanceRuntimeConfigProposalView["moduleId"],
+  ) => Effect.Effect<
+    readonly AdminGovernanceRuntimeConfigProposalView[],
+    unknown
+  >;
+};
+
+const buildCountKpi = (input: {
+  readonly id: string;
+  readonly label: string;
+  readonly value: number;
+  readonly unit: string;
+  readonly windowMinutes: number;
+  readonly drillResourceKind: OperationsHomeKpi["drillResourceKind"];
+  readonly drillFilters: OperationsHomeKpi["drillFilters"];
+}): OperationsHomeKpi => ({
+  id: input.id,
+  label: input.label,
+  value: input.value,
+  unit: input.unit,
+  trend: {
+    direction: kpiTrendDirection.flat,
+    delta: 0,
+    windowMinutes: input.windowMinutes,
+  },
+  tone: input.value === 0 ? kpiTone.nominal : kpiTone.pending,
+  drillResourceKind: input.drillResourceKind,
+  drillFilters: input.drillFilters,
+});
+
+const resolveRequestedAt = (
+  proposal: AdminGovernanceRuntimeConfigProposalView,
+) => proposal.changedAt ?? proposal.generatedAt;
+
+const mapGovernanceProposalToPendingApproval = (
+  proposal: AdminGovernanceRuntimeConfigProposalView,
+): OperationsHomePendingApproval | null => {
+  const requestedAt = resolveRequestedAt(proposal);
+  if (requestedAt === undefined) {
+    return null;
+  }
+  return {
+    id: proposal.proposalId,
+    kind:
+      proposal.moduleId === platformModuleId.tenantBranding
+        ? "Branding review"
+        : "Runtime config review",
+    target:
+      proposal.scopeId === undefined
+        ? `${proposal.moduleId}:${proposal.key}`
+        : `${proposal.moduleId}:${proposal.key}:${proposal.scopeId}`,
+    requestedBy: proposal.changedBy ?? "unknown-actor",
+    requestedAt,
+    reasonPreview:
+      proposal.approvalReason ??
+      `Review ${proposal.key} for ${proposal.moduleId}.`,
+    ttlSeconds: 0,
+  };
+};
+
+export const makeOperationsHomeKpiSourceService = (
+  deps: OperationsHomeKpiSourceResolvers,
+): OperationsHomeKpiSourceService => ({
+  fetch: (context) =>
+    Effect.all(
+      {
+        repairGaps: Effect.either(
+          deps.listBillingRepairGaps(context.requestContext),
+        ),
+        openSupportCases: Effect.either(
+          deps.listSupportCases(
+            context.requestContext,
+            supportOperationsCaseStatus.open,
+          ),
+        ),
+        escalatedSupportCases: Effect.either(
+          deps.listSupportCases(
+            context.requestContext,
+            supportOperationsCaseStatus.escalated,
+          ),
+        ),
+        activeImpersonationSessions: Effect.either(
+          deps.listImpersonationSessions(
+            context.requestContext,
+            supportOperationsImpersonationSessionStatus.active,
+          ),
+        ),
+        pendingBreakGlassIncidents: Effect.either(
+          deps.listBreakGlassIncidents(
+            context.requestContext,
+            supportOperationsBreakGlassIncidentStatus.pendingReview,
+          ),
+        ),
+        runtimeConfigProposals: Effect.either(
+          deps.listRuntimeConfigProposals(
+            context.requestContext,
+            platformModuleId.runtimeConfig,
+          ),
+        ),
+        brandingProposals: Effect.either(
+          deps.listRuntimeConfigProposals(
+            context.requestContext,
+            platformModuleId.tenantBranding,
+          ),
+        ),
+      },
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.flatMap((results) => {
+        const kpis: OperationsHomeKpi[] = [];
+        if (Either.isRight(results.repairGaps)) {
+          kpis.push(
+            buildCountKpi({
+              id: "repair-gaps",
+              label: "Repair gaps",
+              value: results.repairGaps.right.length,
+              unit: "gaps",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.workflowRuns,
+              drillFilters: {
+                sourceModuleId: platformModuleId.billingAndMetering,
+              },
+            }),
+          );
+        }
+        if (Either.isRight(results.openSupportCases)) {
+          kpis.push(
+            buildCountKpi({
+              id: "open-support-cases",
+              label: "Open support cases",
+              value: results.openSupportCases.right.length,
+              unit: "cases",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.alerts,
+              drillFilters: { status: supportOperationsCaseStatus.open },
+            }),
+          );
+        }
+        if (Either.isRight(results.escalatedSupportCases)) {
+          kpis.push(
+            buildCountKpi({
+              id: "escalated-support-cases",
+              label: "Escalated support",
+              value: results.escalatedSupportCases.right.length,
+              unit: "cases",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.alerts,
+              drillFilters: {
+                status: supportOperationsCaseStatus.escalated,
+              },
+            }),
+          );
+        }
+        if (Either.isRight(results.activeImpersonationSessions)) {
+          kpis.push(
+            buildCountKpi({
+              id: "active-impersonations",
+              label: "Active impersonations",
+              value: results.activeImpersonationSessions.right.length,
+              unit: "sessions",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.users,
+              drillFilters: {
+                status: supportOperationsImpersonationSessionStatus.active,
+              },
+            }),
+          );
+        }
+        if (Either.isRight(results.pendingBreakGlassIncidents)) {
+          kpis.push(
+            buildCountKpi({
+              id: "pending-break-glass",
+              label: "Break-glass reviews",
+              value: results.pendingBreakGlassIncidents.right.length,
+              unit: "incidents",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.approvals,
+              drillFilters: {
+                status: supportOperationsBreakGlassIncidentStatus.pendingReview,
+              },
+            }),
+          );
+        }
+        if (Either.isRight(results.runtimeConfigProposals)) {
+          kpis.push(
+            buildCountKpi({
+              id: "runtime-config-proposals",
+              label: "Runtime proposals",
+              value: results.runtimeConfigProposals.right.filter(
+                (proposal) =>
+                  proposal.status === runtimeConfigSyncArtifactStatus.pending,
+              ).length,
+              unit: "proposals",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.approvals,
+              drillFilters: { moduleId: platformModuleId.runtimeConfig },
+            }),
+          );
+        }
+        if (Either.isRight(results.brandingProposals)) {
+          kpis.push(
+            buildCountKpi({
+              id: "branding-proposals",
+              label: "Branding proposals",
+              value: results.brandingProposals.right.filter(
+                (proposal) =>
+                  proposal.status === runtimeConfigSyncArtifactStatus.pending,
+              ).length,
+              unit: "proposals",
+              windowMinutes: context.windowMinutes,
+              drillResourceKind: operationsHomeDrillResourceKind.approvals,
+              drillFilters: { moduleId: platformModuleId.tenantBranding },
+            }),
+          );
+        }
+        return kpis.length === 0
+          ? Effect.fail(
+              new OperationsHomeSourceUnavailable({
+                section: operationsHomeSnapshotSection.kpis,
+                reason: "KPI source unavailable.",
+              }),
+            )
+          : Effect.succeed(kpis);
+      }),
+      Effect.mapError((error) =>
+        error instanceof OperationsHomeSourceUnavailable
+          ? error
+          : new OperationsHomeSourceUnavailable({
+              section: operationsHomeSnapshotSection.kpis,
+              reason: describeSourceFailure(error, "KPI source unavailable."),
+            }),
+      ),
+    ),
+});
+
+type PendingApprovalsProposalResolver = {
+  readonly listRuntimeConfigProposals: (
+    requestContext: RequestContext,
+    moduleId: AdminGovernanceRuntimeConfigProposalView["moduleId"],
+  ) => Effect.Effect<
+    readonly AdminGovernanceRuntimeConfigProposalView[],
+    unknown
+  >;
+};
+
+export const makeOperationsHomePendingApprovalsSourceService = (
+  deps: PendingApprovalsProposalResolver,
+): OperationsHomePendingApprovalsSourceService => ({
+  fetch: (context) =>
+    Effect.all(
+      [
+        deps.listRuntimeConfigProposals(
+          context.requestContext,
+          platformModuleId.runtimeConfig,
+        ),
+        deps.listRuntimeConfigProposals(
+          context.requestContext,
+          platformModuleId.tenantBranding,
+        ),
+      ],
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.map((groups) =>
+        groups
+          .flat()
+          .filter(
+            (proposal) =>
+              proposal.status === runtimeConfigSyncArtifactStatus.pending,
+          )
+          .map(mapGovernanceProposalToPendingApproval)
+          .filter(
+            (proposal): proposal is OperationsHomePendingApproval =>
+              proposal !== null,
+          )
+          .sort(
+            (left, right) =>
+              Date.parse(right.requestedAt) - Date.parse(left.requestedAt),
+          )
+          .slice(0, PENDING_APPROVALS_LIMIT),
+      ),
+      Effect.mapError(
+        (error) =>
+          new OperationsHomeSourceUnavailable({
+            section: operationsHomeSnapshotSection.pendingApprovals,
+            reason: describeSourceFailure(
+              error,
+              "Pending approvals source unavailable.",
+            ),
+          }),
+      ),
+    ),
+});
+
+const sessionIdRequiredError = (message: string) =>
+  Effect.fail(new Error(message));
+
+const listBillingRepairGapsFromEnvironment = (
+  environment: unknown,
+  requestContext: RequestContext,
+) => {
+  const sessionId = requestContext.sessionId;
+  return sessionId === undefined
+    ? sessionIdRequiredError("Billing repair-gap reads require a session id.")
+    : runAdminBillingFromEnvironment(environment, (service) =>
+        service
+          .listBillingRepairGaps({
+            sessionId,
+            ...(requestContext.reason === undefined
+              ? {}
+              : { inspectionReason: requestContext.reason }),
+          })
+          .pipe(Effect.map((result) => result.jobs)),
+      );
+};
+
+const listSupportCasesFromEnvironment = (
+  environment: unknown,
+  requestContext: RequestContext,
+  status: (typeof supportOperationsCaseStatus)[keyof typeof supportOperationsCaseStatus],
+) => {
+  const sessionId = requestContext.sessionId;
+  return sessionId === undefined
+    ? sessionIdRequiredError("Support case reads require a session id.")
+    : runSupportOperationsFromEnvironment(environment, (service) =>
+        service.listCases({
+          sessionId,
+          status,
+        }),
+      );
+};
+
+const listImpersonationSessionsFromEnvironment = (
+  environment: unknown,
+  requestContext: RequestContext,
+  status: (typeof supportOperationsImpersonationSessionStatus)[keyof typeof supportOperationsImpersonationSessionStatus],
+) => {
+  const sessionId = requestContext.sessionId;
+  return sessionId === undefined
+    ? sessionIdRequiredError(
+        "Impersonation session reads require a session id.",
+      )
+    : runSupportOperationsFromEnvironment(environment, (service) =>
+        service.listImpersonationSessions({
+          sessionId,
+          status,
+        }),
+      );
+};
+
+const listBreakGlassIncidentsFromEnvironment = (
+  environment: unknown,
+  requestContext: RequestContext,
+  status: (typeof supportOperationsBreakGlassIncidentStatus)[keyof typeof supportOperationsBreakGlassIncidentStatus],
+) => {
+  const sessionId = requestContext.sessionId;
+  return sessionId === undefined
+    ? sessionIdRequiredError("Break-glass incident reads require a session id.")
+    : runSupportOperationsFromEnvironment(environment, (service) =>
+        service.listBreakGlassIncidents({
+          sessionId,
+          status,
+        }),
+      );
+};
+
+const listRuntimeConfigProposalsFromEnvironment = (
+  environment: unknown,
+  requestContext: RequestContext,
+  moduleId: AdminGovernanceRuntimeConfigProposalView["moduleId"],
+) =>
+  runAdminGovernanceFromEnvironment(environment, (service) =>
+    service.listRuntimeConfigProposals({
+      requestContext,
+      moduleId,
+    }),
+  );
+
+const makeLiveOperationsHomeKpiSource = (
+  environment: unknown,
+): OperationsHomeKpiSourceService =>
+  makeOperationsHomeKpiSourceService({
+    listBillingRepairGaps: (requestContext) =>
+      listBillingRepairGapsFromEnvironment(environment, requestContext),
+    listSupportCases: (requestContext, status) =>
+      listSupportCasesFromEnvironment(environment, requestContext, status),
+    listImpersonationSessions: (requestContext, status) =>
+      listImpersonationSessionsFromEnvironment(
+        environment,
+        requestContext,
+        status,
+      ),
+    listBreakGlassIncidents: (requestContext, status) =>
+      listBreakGlassIncidentsFromEnvironment(
+        environment,
+        requestContext,
+        status,
+      ),
+    listRuntimeConfigProposals: (requestContext, moduleId) =>
+      listRuntimeConfigProposalsFromEnvironment(
+        environment,
+        requestContext,
+        moduleId,
+      ),
+  });
+
+const makeLiveOperationsHomePendingApprovalsSource = (
+  environment: unknown,
+): OperationsHomePendingApprovalsSourceService =>
+  makeOperationsHomePendingApprovalsSourceService({
+    listRuntimeConfigProposals: (requestContext, moduleId) =>
+      listRuntimeConfigProposalsFromEnvironment(
+        environment,
+        requestContext,
+        moduleId,
+      ),
+  });
+
+export const makeOperationsHomeRecentAuditSource = (
+  audit: AuditLogModuleService,
+  deps?: { readonly now?: () => Date },
+): OperationsHomeRecentAuditSourceService => {
+  const now = deps?.now ?? (() => new Date());
+  return {
+    fetch: (context) =>
+      audit
+        .queryByTenant({
+          tenantScope: context.requestContext.tenant.scope,
+          tenantScopeId: context.requestContext.tenant.scopeId,
+        })
+        .pipe(
+          Effect.map((events) => {
+            const nowMs = now().getTime();
+            return events
+              .filter((event) =>
+                isTimestampWithinWindow(
+                  event.timestamp,
+                  nowMs,
+                  context.windowMinutes,
+                ),
+              )
+              .slice(0, context.limit)
+              .map(mapAuditEventToOperationsHomeRecentAuditEntry);
+          }),
+          Effect.mapError(
+            (error) =>
+              new OperationsHomeSourceUnavailable({
+                section: operationsHomeSnapshotSection.recentAudit,
+                reason: describeSourceFailure(
+                  error,
+                  "Recent audit source unavailable.",
+                ),
+              }),
+          ),
+        ),
+  };
+};
+
+export const makeOperationsHomeActiveAlertsSource = (
+  resolveIssuesClient: () => Effect.Effect<
+    Pick<GlitchTipIssuesApiClientService, "listByLevel">,
+    unknown
+  >,
+): OperationsHomeActiveAlertsSourceService => ({
+  fetch: (context) =>
+    resolveIssuesClient().pipe(
+      Effect.flatMap((issuesClient) =>
+        Effect.all(
+          operationsHomeAlertLevels.map((level) =>
+            issuesClient.listByLevel({
+              tenant: context.requestContext.tenant,
+              level,
+              limit: ACTIVE_ALERTS_LIMIT,
+            }),
+          ),
+          { concurrency: "unbounded" },
+        ),
+      ),
+      Effect.map((groups) =>
+        dedupeGlitchTipIssues(groups.flat())
+          .filter((issue) => issue.status === "unresolved")
+          .sort(
+            (left, right) =>
+              Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt),
+          )
+          .slice(0, ACTIVE_ALERTS_LIMIT)
+          .map(mapGlitchTipIssueToOperationsHomeAlert),
+      ),
+      Effect.mapError(
+        (error) =>
+          new OperationsHomeSourceUnavailable({
+            section: operationsHomeSnapshotSection.activeAlerts,
+            reason: describeSourceFailure(
+              error,
+              "Active alerts source unavailable.",
+            ),
+          }),
+      ),
+    ),
+});
+
+export const makeOperationsHomeVendorPostureSource = (
+  resolveHealthcheckPort: () => Effect.Effect<
+    VendorHealthcheckPortService,
+    unknown
+  >,
+  deps?: { readonly now?: () => Date },
+): OperationsHomeVendorPostureSourceService => {
+  const now = deps?.now ?? (() => new Date());
+  return {
+    fetch: (_context) =>
+      resolveHealthcheckPort().pipe(
+        Effect.flatMap((healthcheckPort) =>
+          Effect.gen(function* () {
+            const checkedAt = now().toISOString();
+            const evaluations = yield* Effect.all(
+              healthcheckPort.checkAll(now).map((entry) =>
+                Effect.either(entry.result).pipe(
+                  Effect.map((result) => ({
+                    serviceName: entry.serviceName,
+                    result,
+                  })),
+                ),
+              ),
+              { concurrency: "unbounded" },
+            );
+            if (
+              evaluations.length === 0 ||
+              evaluations.every((entry) => Either.isLeft(entry.result))
+            ) {
+              return yield* Effect.fail(
+                new OperationsHomeSourceUnavailable({
+                  section: operationsHomeSnapshotSection.vendorPosture,
+                  reason: "Vendor posture source unavailable.",
+                }),
+              );
+            }
+            return evaluations
+              .map(({ serviceName, result }) =>
+                Either.isRight(result)
+                  ? mapVendorHealthEntryToOperationsHomeVendorPosture(
+                      result.right,
+                    )
+                  : mapVendorHealthEntryToOperationsHomeVendorPosture({
+                      serviceName,
+                      status: "unavailable",
+                      latencyMs: 0,
+                      lastCheckedAt: checkedAt,
+                      message: describeSourceFailure(
+                        result.left,
+                        "Vendor healthcheck unavailable.",
+                      ),
+                    }),
+              )
+              .sort((left, right) => left.vendor.localeCompare(right.vendor));
+          }),
+        ),
+        Effect.mapError((error) =>
+          error instanceof OperationsHomeSourceUnavailable
+            ? error
+            : new OperationsHomeSourceUnavailable({
+                section: operationsHomeSnapshotSection.vendorPosture,
+                reason: describeSourceFailure(
+                  error,
+                  "Vendor posture source unavailable.",
+                ),
+              }),
+        ),
+      ),
+  };
+};
+
+const makeLiveOperationsHomeActiveAlertsSource = (
+  environment: unknown,
+): OperationsHomeActiveAlertsSourceService => {
+  let cachedClient:
+    | Pick<GlitchTipIssuesApiClientService, "listByLevel">
+    | undefined;
+  const resolveIssuesClient = () =>
+    cachedClient === undefined
+      ? decodeOperationsHomeActiveAlertsEnvironment(environment).pipe(
+          Effect.flatMap((resolved) =>
+            makeGlitchtipAdapter({
+              dsn: resolved.ERROR_TRACKING_DSN,
+            }),
+          ),
+          Effect.map((adapter) => {
+            cachedClient = makeDefaultGlitchTipIssuesApiClient(adapter);
+            return cachedClient;
+          }),
+        )
+      : Effect.succeed(cachedClient);
+  return makeOperationsHomeActiveAlertsSource(resolveIssuesClient);
+};
+
+const noOpClose = Effect.succeed(undefined);
+
+const makeLiveOperationsHomeVendorPostureSource = (
+  environment: unknown,
+  postgresHealthcheck: Effect.Effect<unknown, unknown>,
+) => {
+  let cachedPort: VendorHealthcheckPortService | undefined;
+  let closeEffect: Effect.Effect<void, never> = noOpClose;
+  const resolveHealthcheckPort = () =>
+    cachedPort === undefined
+      ? resolveVendorHealthAggregatorRuntimeOptionsFromEnvironment(
+          environment,
+        ).pipe(
+          Effect.flatMap((resolved) =>
+            Effect.gen(function* () {
+              const keycloak = yield* makeKeycloakAdapter(
+                resolved.adapters.keycloak,
+              );
+              const convex = yield* makeConvexAdapter(resolved.adapters.convex);
+              const oryKeto = yield* makeOryKetoAdapter(
+                resolved.adapters.oryKeto,
+              );
+              const valkey = yield* makeValkeyAdapter(resolved.adapters.valkey);
+              const unleash = yield* makeUnleashAdapter(
+                resolved.adapters.unleash,
+              );
+              const polar = yield* makePolarAdapter(resolved.adapters.polar);
+              const openmeter = yield* makeOpenmeterAdapter(
+                resolved.adapters.openmeter,
+              );
+              const novu = yield* makeNovuAdapter(resolved.adapters.novu);
+              const postal = yield* makePostalAdapter(resolved.adapters.postal);
+              const glitchtip = yield* makeGlitchtipAdapter(
+                resolved.adapters.glitchtip,
+              );
+              const openpanel = yield* makeOpenPanelAdapter(
+                resolved.adapters.openpanel,
+              );
+              const observability = yield* makeObservabilityAdapter(
+                resolved.adapters.observability,
+              );
+              const meilisearch = yield* makeMeilisearchAdapter(
+                resolved.adapters.meilisearch,
+              );
+              cachedPort = makeDefaultVendorHealthcheckPort({
+                adapters: [
+                  {
+                    serviceName: platformAdapterServiceName.postgres,
+                    healthcheck: postgresHealthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.convex,
+                    healthcheck: convex.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.keycloak,
+                    healthcheck: keycloak.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.oryKeto,
+                    healthcheck: oryKeto.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.valkey,
+                    healthcheck: valkey.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.unleash,
+                    healthcheck: unleash.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.polar,
+                    healthcheck: polar.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.openmeter,
+                    healthcheck: openmeter.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.novu,
+                    healthcheck: novu.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.postal,
+                    healthcheck: postal.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.glitchtip,
+                    healthcheck: glitchtip.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.openpanel,
+                    healthcheck: openpanel.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.observability,
+                    healthcheck: observability.healthcheck,
+                  },
+                  {
+                    serviceName: platformAdapterServiceName.meilisearch,
+                    healthcheck: meilisearch.healthcheck,
+                  },
+                ],
+              });
+              closeEffect = Effect.all(
+                [Effect.ignore(valkey.close), Effect.ignore(unleash.close)],
+                { discard: true },
+              );
+              return cachedPort;
+            }),
+          ),
+        )
+      : Effect.succeed(cachedPort);
+  return {
+    service: makeOperationsHomeVendorPostureSource(resolveHealthcheckPort),
+    close: Effect.suspend(() => closeEffect),
+  };
+};
 
 export const makeOperationsHomeService = (
   audit: AuditLogModuleService,
@@ -407,7 +1302,10 @@ export const makeOperationsHomeServiceLayer = () =>
   );
 
 // ---------------------------------------------------------------------------
-// Stub source layers (Phase 1 item 3 — see TODOs at file top)
+// Historical stub source layers retained as explicit test/export seams.
+// The env-bound runtime now installs the live sources above; these
+// exports remain only so service-level tests can still assert the
+// documented stub behavior when needed.
 // ---------------------------------------------------------------------------
 
 const makeStubSource = <T>(
@@ -424,9 +1322,9 @@ const makeStubSource = <T>(
 
 export const stubOperationsHomeKpiSourceLayer = Layer.succeed(
   OperationsHomeKpiSource,
-  // TODO(phase1-item-3): replace stub with composed source from
-  // tenant-management, identity-session, Polar, OpenMeter, and
-  // audit-log services.
+  // Historical test/export seam retained so the service-level unit
+  // suite can still assert the documented stub surface. The env-bound
+  // runtime now installs the live KPI source instead.
   makeStubSource<OperationsHomeKpi>(
     operationsHomeSnapshotSection.kpis,
     "KPI source not yet wired (stubbed Phase 1 item 3).",
@@ -435,8 +1333,10 @@ export const stubOperationsHomeKpiSourceLayer = Layer.succeed(
 
 export const stubOperationsHomeActiveAlertsSourceLayer = Layer.succeed(
   OperationsHomeActiveAlertsSource,
-  // TODO(phase1-item-3): replace stub with GlitchTip-backed
-  // adapter via platformAdapterServiceName.glitchtip.
+  // Historical test/export seam retained so the service-level unit
+  // suite can still assert the documented stub surface. The env-bound
+  // runtime now installs the live GlitchTip-backed alerts source
+  // instead.
   makeStubSource<OperationsHomeActiveAlert>(
     operationsHomeSnapshotSection.activeAlerts,
     "Active alerts source not yet wired (stubbed Phase 1 item 3).",
@@ -445,9 +1345,9 @@ export const stubOperationsHomeActiveAlertsSourceLayer = Layer.succeed(
 
 export const stubOperationsHomeRecentAuditSourceLayer = Layer.succeed(
   OperationsHomeRecentAuditSource,
-  // TODO(phase1-item-3): replace stub with AuditLogModule.listRecent
-  // once that surface is added; the module currently exposes only
-  // queryByModule/Target/Actor/Tenant.
+  // Historical test/export seam retained so the service-level unit
+  // suite can still assert the documented stub surface. The env-bound
+  // runtime now installs the live recent-audit source instead.
   {
     fetch: (_context) =>
       Effect.fail(
@@ -461,8 +1361,10 @@ export const stubOperationsHomeRecentAuditSourceLayer = Layer.succeed(
 
 export const stubOperationsHomePendingApprovalsSourceLayer = Layer.succeed(
   OperationsHomePendingApprovalsSource,
-  // TODO(phase1-item-3): replace stub with approval-workflow
-  // service once that module ships.
+  // Historical test/export seam retained so the service-level unit
+  // suite can still assert the documented stub surface. The env-bound
+  // runtime now installs the live governance-backed approvals source
+  // instead.
   makeStubSource<OperationsHomePendingApproval>(
     operationsHomeSnapshotSection.pendingApprovals,
     "Pending approvals source not yet wired (stubbed Phase 1 item 3).",
@@ -471,9 +1373,9 @@ export const stubOperationsHomePendingApprovalsSourceLayer = Layer.succeed(
 
 export const stubOperationsHomeVendorPostureSourceLayer = Layer.succeed(
   OperationsHomeVendorPostureSource,
-  // TODO(phase1-item-3): replace stub with per-vendor healthcheck
-  // adapters reusing platformAdapterServiceName.* and
-  // createPlatformAdapterHealthcheckSchema.
+  // Historical test/export seam retained so the service-level unit
+  // suite can still assert the documented stub surface. The env-bound
+  // runtime now installs the live vendor-posture source instead.
   makeStubSource<OperationsHomeVendorPosture>(
     operationsHomeSnapshotSection.vendorPosture,
     "Vendor posture source not yet wired (stubbed Phase 1 item 3).",
@@ -515,7 +1417,10 @@ const resolveOperationsHomeRuntimeOptionsFromEnvironment = (
     ),
   );
 
-const makeOperationsHomeRuntime = (options: OperationsHomeRuntimeOptions) =>
+const makeOperationsHomeRuntime = (
+  environment: unknown,
+  options: OperationsHomeRuntimeOptions,
+) =>
   Effect.gen(function* () {
     const postgres = yield* makePostgresAdapter({
       connectionString: options.postgresUrl,
@@ -562,17 +1467,42 @@ const makeOperationsHomeRuntime = (options: OperationsHomeRuntimeOptions) =>
       ...auditLogQueryable,
     });
     const audit = yield* makeAuditLogModule(auditLogRepository);
+    const liveActiveAlerts =
+      makeLiveOperationsHomeActiveAlertsSource(environment);
+    const liveVendorPosture = makeLiveOperationsHomeVendorPostureSource(
+      environment,
+      postgres.healthcheck,
+    );
     const baseLayer = Layer.mergeAll(
       Layer.succeed(AuditLogPostgresRepository, auditLogRepository),
       Layer.succeed(AuditLogModule, audit),
-      stubOperationsHomeSourcesLayer,
+      Layer.succeed(
+        OperationsHomeKpiSource,
+        makeLiveOperationsHomeKpiSource(environment),
+      ),
+      Layer.succeed(OperationsHomeActiveAlertsSource, liveActiveAlerts),
+      Layer.succeed(
+        OperationsHomeRecentAuditSource,
+        makeOperationsHomeRecentAuditSource(audit),
+      ),
+      Layer.succeed(
+        OperationsHomePendingApprovalsSource,
+        makeLiveOperationsHomePendingApprovalsSource(environment),
+      ),
+      Layer.succeed(
+        OperationsHomeVendorPostureSource,
+        liveVendorPosture.service,
+      ),
     );
     const serviceLayer = makeOperationsHomeServiceLayer().pipe(
       Layer.provide(baseLayer),
     );
     return {
       serviceLayer,
-      close: Effect.ignore(postgres.close),
+      close: Effect.all(
+        [Effect.ignore(postgres.close), liveVendorPosture.close],
+        { discard: true },
+      ),
     };
   });
 
@@ -586,7 +1516,7 @@ export const runOperationsHomeFromEnvironment = <A, E>(
 ): Effect.Effect<A, E | OperationsHomeRuntimeError> =>
   resolveOperationsHomeRuntimeOptionsFromEnvironment(environment).pipe(
     Effect.flatMap((options) =>
-      makeOperationsHomeRuntime(options).pipe(
+      makeOperationsHomeRuntime(environment, options).pipe(
         Effect.flatMap((runtime) =>
           Effect.flatMap(OperationsHomeService, use).pipe(
             Effect.provide(runtime.serviceLayer),

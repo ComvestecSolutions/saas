@@ -1136,6 +1136,18 @@ describe("modules domains", () => {
             service: platformAdapterServiceName.novu,
           } as const),
           triggerNotification,
+          triggerEvent: () =>
+            Effect.die(
+              new Error("Unexpected notification-center triggerEvent call."),
+            ),
+          getNotification: () =>
+            Effect.die(
+              new Error("Unexpected notification-center getNotification call."),
+            ),
+          listMessages: () =>
+            Effect.die(
+              new Error("Unexpected notification-center listMessages call."),
+            ),
         }),
         Effect.provideService(NotificationCenterPostgresRepository, {
           createEmailReceipt: (record) => Effect.succeed(record),

@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { Link } from "@tanstack/react-router";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -34,6 +35,12 @@ import {
   inviteAdminMember,
   removeAdminMember,
 } from "../../lib/admin-members-mutations-server";
+import {
+  adminMemberRoleLabel,
+  formatAdminMemberDay,
+  resolveAdminMemberActivityAt,
+  resolveAdminMemberActivityLabel,
+} from "../../lib/admin-member-display";
 import type { AdminMembersRouteData } from "../../lib/admin-members-route-data";
 
 /**
@@ -84,16 +91,6 @@ const removeReasonCatalog: readonly HighRiskReason[] = [
 type AdminMembersStatusFilter = "all" | AdminMemberStatus;
 type AdminMembersSortKey = "member" | "role" | "status" | "activity";
 
-const memberRoleLabel: Record<AdminMemberRole, string> = {
-  [adminMemberRole.adminOwner]: "Owner",
-  [adminMemberRole.adminAdmin]: "Admin",
-  [adminMemberRole.adminOperator]: "Operator",
-  [adminMemberRole.supportReviewer]: "Support reviewer",
-  [adminMemberRole.billingOnly]: "Billing only",
-  [adminMemberRole.compliance]: "Compliance",
-  [adminMemberRole.viewer]: "Viewer",
-};
-
 const memberRoleFilterLabel: Record<AdminMemberRole, string> = {
   [adminMemberRole.adminOwner]: "Owners",
   [adminMemberRole.adminAdmin]: "Admins",
@@ -113,12 +110,6 @@ const adminMemberRoleFilters = [
   adminMemberRole.compliance,
   adminMemberRole.viewer,
 ] as const;
-
-const resolveMemberActivityAt = (member: AdminMember): string =>
-  member.lastActiveAt ?? member.acceptedAt ?? member.updatedAt;
-
-const formatMemberDay = (value: string | undefined): string =>
-  value === undefined ? "—" : value.slice(0, 10);
 
 const buildRoleFilterButtonStyle = (active: boolean) =>
   ({
@@ -250,12 +241,12 @@ function AdminMembersRoute() {
 
   const { visible, total } = applyTableState(filteredMembers, tableState, {
     searchOn: (member) =>
-      `${member.displayName} ${member.email} ${memberRoleLabel[member.role]} ${member.status} ${member.createdBy}`,
+      `${member.displayName} ${member.email} ${adminMemberRoleLabel[member.role]} ${member.status} ${member.createdBy}`,
     sortOn: {
       member: (member) => `${member.displayName} ${member.email}`,
-      role: (member) => memberRoleLabel[member.role],
+      role: (member) => adminMemberRoleLabel[member.role],
       status: (member) => member.status,
-      activity: (member) => resolveMemberActivityAt(member),
+      activity: (member) => resolveAdminMemberActivityAt(member),
     },
   });
 
@@ -449,7 +440,7 @@ function AdminMembersRoute() {
           >
             {adminMemberRoleFilters.map((role) => (
               <option key={role} value={role}>
-                {memberRoleLabel[role]}
+                {adminMemberRoleLabel[role]}
               </option>
             ))}
           </select>
@@ -606,7 +597,19 @@ function AdminMembersRoute() {
                 >
                   <td style={{ padding: 4 }}>
                     <div style={{ display: "grid", gap: 2 }}>
-                      <span className="text-strong">{member.displayName}</span>
+                      <Link
+                        to="/r/admin-member/$id"
+                        params={{ id: member.id }}
+                        data-testid="admin-members-detail-link"
+                        data-member-id={member.id}
+                        style={{
+                          color: "inherit",
+                          textDecoration: "none",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {member.displayName}
+                      </Link>
                       <span
                         className="mono"
                         style={{ color: "var(--ops-text-secondary)" }}
@@ -618,7 +621,7 @@ function AdminMembersRoute() {
                   <td style={{ padding: 4 }}>
                     <div style={{ display: "grid", gap: 2 }}>
                       <span className="text-strong">
-                        {memberRoleLabel[member.role]}
+                        {adminMemberRoleLabel[member.role]}
                       </span>
                       <span
                         className="mono"
@@ -638,21 +641,19 @@ function AdminMembersRoute() {
                         className="mono"
                         style={{ color: "var(--ops-text-secondary)" }}
                       >
-                        Invited {formatMemberDay(member.invitedAt)}
+                        Invited {formatAdminMemberDay(member.invitedAt)}
                       </span>
                     </div>
                   </td>
                   <td style={{ padding: 4 }}>
                     <div style={{ display: "grid", gap: 2 }}>
                       <span className="mono">
-                        {formatMemberDay(resolveMemberActivityAt(member))}
+                        {formatAdminMemberDay(
+                          resolveAdminMemberActivityAt(member),
+                        )}
                       </span>
                       <span style={{ color: "var(--ops-text-secondary)" }}>
-                        {member.lastActiveAt !== undefined
-                          ? "Last active"
-                          : member.acceptedAt !== undefined
-                            ? "Accepted"
-                            : "Updated"}
+                        {resolveAdminMemberActivityLabel(member)}
                       </span>
                     </div>
                   </td>

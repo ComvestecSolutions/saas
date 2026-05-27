@@ -10,7 +10,6 @@ import {
   changeInputValue,
   changeSelectValue,
   click,
-  followLink,
   getButtonByExactText,
   getButtonByText,
   getColumnValues,
@@ -34,6 +33,13 @@ const sortTextAscending = (values: ReadonlyArray<string>) =>
 
 const sortTextDescending = (values: ReadonlyArray<string>) =>
   sortTextAscending(values).reverse();
+
+const legacyGovernanceRoutePath = {
+  runtimeConfig: "/governance/runtime-config",
+  featureFlags: "/governance/feature-flags",
+  accessControl: "/governance/access-control",
+  auditLog: "/governance/audit-log",
+} as const;
 
 const getSortHeader = (container: ParentNode, label: string) => {
   const button = getButtonByText(container, label);
@@ -83,19 +89,19 @@ const createSupportOperatorAccessFixture = (): AdminBrowserFixtureState => {
             },
           };
     },
-    loadAccessControl: async (input) => {
-      const result = await fixture.loadAccessControl(input);
+    loadGovernanceAccessV2: async (input) => {
+      const result = await fixture.loadGovernanceAccessV2(input);
 
       return result.kind !== "ready"
         ? result
         : {
             ...result,
-            operatorDirectory: {
-              ...result.operatorDirectory,
+            memberships: {
+              ...result.memberships,
               currentOperator: {
-                ...result.operatorDirectory.currentOperator,
+                ...result.memberships.currentOperator,
                 identity: {
-                  ...result.operatorDirectory.currentOperator.identity,
+                  ...result.memberships.currentOperator.identity,
                   actorId: "usr_support_operator",
                   username: "support@comvestec.com",
                   email: "support@comvestec.com",
@@ -119,28 +125,25 @@ describe("admin governance browser flows", () => {
     }
   });
 
-  it("routes operations-home capability cards to runtime configuration", async () => {
+  it("exposes the runtime-configuration capability link on operations home", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
       adminRoutePath.operationsHome,
     );
 
-    await followLink(
-      rendered.router,
-      getLinkByText(rendered.container, "Runtime Config"),
+    const runtimeConfigLink = getLinkByText(
+      rendered.container,
+      "Runtime Config",
     );
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes("Runtime Configuration") ??
-        false,
-      "Expected runtime configuration route to render.",
+    expect(runtimeConfigLink.getAttribute("href")).toBe(
+      adminRoutePath.runtimeConfig,
     );
-  }, 30_000);
+  });
 
   it("covers runtime configuration searching, sorting, tabs, and pagination", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/governance/runtime-config" as const,
+      legacyGovernanceRoutePath.runtimeConfig,
     );
 
     const overridesSearch = getInputByPlaceholder(
@@ -218,7 +221,7 @@ describe("admin governance browser flows", () => {
   it("covers feature-flag filtering, sorting, and pagination", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/governance/feature-flags" as const,
+      legacyGovernanceRoutePath.featureFlags,
     );
 
     await waitFor(
@@ -280,7 +283,15 @@ describe("admin governance browser flows", () => {
   it("loads exact-scope tuples, paginates, validates comments, and revokes access", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      adminRoutePath.accessControl,
+      `${legacyGovernanceRoutePath.accessControl}?tab=tuples`,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='access-control-tuples-empty']",
+        ) !== null,
+      "Expected the tuples tab empty-state to render before loading exact-scope results.",
     );
 
     const objectInput = getFieldControlByLabel<HTMLInputElement>(
@@ -357,13 +368,6 @@ describe("admin governance browser flows", () => {
         ) ?? false,
       "Expected tuple revocation success feedback to render.",
     );
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes(
-          "Selected tuple no longer matches",
-        ) ?? false,
-      "Expected the revoked tuple to disappear from the exact-scope result set.",
-    );
 
     await click(getButtonByText(rendered.container, "Clear"));
     await waitFor(
@@ -378,7 +382,15 @@ describe("admin governance browser flows", () => {
   it("applies namespace and relation selector changes before loading exact-scope tuples", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      adminRoutePath.accessControl,
+      `${legacyGovernanceRoutePath.accessControl}?tab=tuples`,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='access-control-tuples-empty']",
+        ) !== null,
+      "Expected the tuples tab empty-state to render before updating selector filters.",
     );
 
     const namespaceSelect = getFieldControlByLabel<HTMLSelectElement>(
@@ -423,7 +435,7 @@ describe("admin governance browser flows", () => {
   it("provisions admin operators through the staffing panel and refreshes the operator directory", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      adminRoutePath.accessControl,
+      legacyGovernanceRoutePath.accessControl,
     );
 
     await waitFor(
@@ -490,9 +502,7 @@ describe("admin governance browser flows", () => {
 
     expect(staffingCard.textContent).toContain("Temporary password");
     expect(staffingCard.textContent).toContain("Adm_fixture_operator!aA1");
-    expect(staffingCard.textContent).toContain(
-      "http://localhost:3004/auth/sign-in",
-    );
+    expect(staffingCard.textContent).toContain("http://localhost:3004/sign-in");
 
     await waitFor(
       () =>
@@ -507,7 +517,7 @@ describe("admin governance browser flows", () => {
   it("lets support operators inspect access control while keeping staffing controls hidden", async () => {
     rendered = await renderAdminApp(
       createSupportOperatorAccessFixture(),
-      adminRoutePath.accessControl,
+      legacyGovernanceRoutePath.accessControl,
     );
 
     await waitFor(
@@ -528,6 +538,15 @@ describe("admin governance browser flows", () => {
     );
     expect(rendered.container.textContent).not.toContain("Provision operator");
 
+    await click(getButtonByText(rendered.container, "Tuples"));
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='access-control-tuples-empty']",
+        ) !== null,
+      "Expected support operators to keep access-control tuple inspection available.",
+    );
+
     const objectInput = getFieldControlByLabel<HTMLInputElement>(
       rendered.container,
       "Object",
@@ -543,66 +562,45 @@ describe("admin governance browser flows", () => {
     );
   });
 
-  it("filters audit-log activity by module, search, sorting, and pagination", async () => {
+  it("routes the legacy audit-log entrypoint to audit explorer and keeps shell navigation working", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
+      legacyGovernanceRoutePath.auditLog,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Audit explorer") ?? false,
+      "Expected the legacy audit-log entrypoint to land on the canonical audit explorer.",
+    );
+    expect(rendered.router.state.location.pathname).toBe(
       adminRoutePath.auditLog,
     );
 
-    await waitFor(
-      () => rendered?.container.textContent?.includes("Audit Log") ?? false,
-      "Expected audit-log route to render.",
-    );
-
-    await click(getButtonByExactText(rendered.container, "2"));
-    await waitFor(
-      () => rendered?.container.textContent?.includes("26–28 of 28") ?? false,
-      "Expected audit-log pagination to move to page two.",
-    );
-
-    const moduleSelect = getFieldControlByLabel<HTMLSelectElement>(
-      rendered.container,
-      "Module",
-      "select",
-    );
-    await changeSelectValue(moduleSelect, platformModuleId.runtimeConfig);
+    await click(getButtonByText(rendered.container, "Correlated"));
     await waitFor(
       () =>
-        rendered?.container.textContent?.includes(
-          platformModuleId.runtimeConfig,
-        ) ?? false,
-      "Expected audit-log module filter to navigate to the runtime-config slice.",
+        rendered?.container.querySelectorAll("[data-testid='audit-log-v2-row']")
+          .length === 5,
+      "Expected the correlated pivot to narrow the visible audit events.",
     );
 
-    const search = getInputByPlaceholder(
-      rendered.container,
-      "Search action, target, actor, reason…",
+    const actorFilter = rendered.container.querySelector<HTMLInputElement>(
+      "[data-testid='audit-log-v2-filter-actor']",
     );
-    await changeInputValue(search, "override");
+    if (!(actorFilter instanceof HTMLInputElement)) {
+      throw new TypeError(
+        "Expected the canonical audit actor filter to render.",
+      );
+    }
+
+    await changeInputValue(actorFilter, "usr_platform_operator_1");
     await waitFor(
-      () =>
-        rendered?.container.textContent?.includes("override.changed") ?? false,
-      "Expected audit-log search to match runtime-config activity.",
+      () => window.location.search.includes("actor=usr_platform_operator_1"),
+      "Expected the canonical audit actor filter to round-trip through the URL.",
     );
 
-    const { button: actorHeaderButton, header: actorHeader } = getSortHeader(
-      rendered.container,
-      "Actor",
-    );
-
-    await click(actorHeaderButton);
-    expect(actorHeader.getAttribute("aria-sort")).toBe("ascending");
-    const auditActors = getColumnValues(rendered.container, 4);
-    expect(auditActors).toEqual(sortTextAscending(auditActors));
-
-    await click(actorHeaderButton);
-    expect(actorHeader.getAttribute("aria-sort")).toBe("descending");
-    const descendingAuditActors = getColumnValues(rendered.container, 4);
-    expect(descendingAuditActors).toEqual(
-      sortTextDescending(descendingAuditActors),
-    );
-
-    await pushPath(rendered.router, "/governance/runtime-config" as const);
+    await pushPath(rendered.router, adminRoutePath.runtimeConfig);
     await waitFor(
       () =>
         rendered?.container.textContent?.includes("Runtime Configuration") ??

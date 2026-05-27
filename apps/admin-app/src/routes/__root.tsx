@@ -9,6 +9,7 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import appCss from "../styles/app.css?url";
 import uiCss from "@comvestec/ui/styles?url";
@@ -19,6 +20,10 @@ import {
 } from "../lib/admin-shell-loader";
 import { isAdminAuthRoutePath } from "../auth/paths";
 import { DeskShell } from "../desk/desk-shell";
+import {
+  releaseAdminRunAsGrant,
+  type ReleaseAdminRunAsGrantInput,
+} from "../lib/run-as-banner-mutations-server";
 
 type AdminShellBrowserLocation = {
   readonly pathname: string;
@@ -59,9 +64,17 @@ function RootComponent() {
   const shellData = Route.useLoaderData() ?? ({ kind: "shell" } as const);
   const routerState = useRouterState();
   const router = useRouter();
+  const releaseRunAsGrant = useServerFn(releaseAdminRunAsGrant);
   const invalidateBeforeRedirect = useCallback(
     () => router.invalidate({ sync: true }),
     [router],
+  );
+  const handleRunAsGrantRelease = useCallback(
+    async (input: ReleaseAdminRunAsGrantInput) => {
+      await releaseRunAsGrant({ data: input });
+      await router.invalidate({ sync: true });
+    },
+    [releaseRunAsGrant, router],
   );
   const { pathname, searchStr } = resolveAdminShellCurrentLocation(
     routerState.location,
@@ -124,10 +137,14 @@ function RootComponent() {
     <RootDocument>
       <DeskShell
         profile={shellData.profile}
+        workspaces={shellData.workspaces}
+        savedViews={shellData.savedViews}
+        runAsBanner={shellData.runAsBanner}
         currentPath={pathname}
         onNavigate={(path) => {
           void router.navigate({ href: path });
         }}
+        onReleaseRunAsGrant={handleRunAsGrantRelease}
       >
         <Outlet />
       </DeskShell>

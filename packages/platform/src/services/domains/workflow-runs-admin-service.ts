@@ -10,13 +10,12 @@
  *     — tests inject directly; the env-bound default Layer wraps
  *     `AdminOrganizationRepository.getMembershipByKeycloakSubjectId`)
  *   - an injected {@link WorkflowRunsPort} (Context.Tag — tests
- *     inject directly; the env-bound default Layer ships a staged
- *     pass-through stub `TODO(phase1-item15)` returning honest
- *     empty results until the workflow-jobs module publishes its
- *     admin port; same staged pattern used by the per-vendor read
- *     slices). The platform service owns ALL authz + reason +
- *     attachment + audit + cache invariants ABOVE the port so
- *     swapping the underlying engine never erodes the contract.
+ *     inject directly; the env-bound default Layer binds a live
+ *     PostgreSQL-backed workflow-jobs port for list/detail and
+ *     durable replay/cancel transitions). The platform service
+ *     owns ALL authz + reason + attachment + audit + cache
+ *     invariants ABOVE the port so swapping the underlying
+ *     engine never erodes the contract.
  *
  * Owner-locked invariants enforced HERE (not in the HTTP
  * transport, not in the port):
@@ -63,8 +62,9 @@
  * `WORKFLOW_RUNS_ADMIN_LIST_PAGE_SIZE_MAX` at the boundary with
  * NO local fallbacks.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, gte, lt, lte, or } from "drizzle-orm";
 import { Context, Effect, Layer, Option, ParseResult, Schema } from "effect";
+import { workflowJobsRunningClaimTimeoutSeconds } from "@comvestec/config";
 import {
   actorType,
   getReasonCatalogEntry,
@@ -72,6 +72,8 @@ import {
   reasonCatalogId,
   ReasonCatalogIdSchema,
   validateReasonForAction,
+  workflowJobStatus,
+  workflowRunStatus,
   workflowRunsAdminAuditAction,
   WorkflowRunCancelInputSchema,
   WorkflowRunDetailInputSchema,
@@ -86,6 +88,7 @@ import {
   type WorkflowRunDetailInput,
   type WorkflowRunReplayInput,
   type WorkflowRunReplayResult,
+  type WorkflowRunStatus,
   type WorkflowRunSummary,
   type WorkflowRunsListInput,
   type WorkflowRunsListResult,
@@ -105,10 +108,17 @@ import {
   AdminOrganizationRepository,
   type AdminOrganizationRepositoryError,
   type AdminOrganizationRepositoryService,
+  buildWorkflowJobsPostgresQueryable,
   makeAdminOrganizationRepositoryLayer,
+  makeWorkflowJobsPostgresRepositoryForRecordSchema,
+  type WorkflowJobRecord,
+  WorkflowJobRecordSchema,
+  type WorkflowJobsPostgresRepositoryServiceForRecord,
+  workflowJobsTable,
 } from "@comvestec/modules";
 import {
   makePostgresAdapter,
+  type PostgresRuntimeDatabase,
   type PostgresAdapterConnectionError,
 } from "../../adapters";
 import { buildWriteDatabase } from "../postgres-write-database";
@@ -176,6 +186,26 @@ export class WorkflowRunsAdminRunNotFound {
   ) {}
 }
 
+export class WorkflowRunsAdminReplayUnavailable {
+  readonly _tag = "WorkflowRunsAdminReplayUnavailable" as const;
+  constructor(
+    readonly args: {
+      readonly runId: string;
+      readonly status: WorkflowRunStatus;
+    },
+  ) {}
+}
+
+export class WorkflowRunsAdminCancelUnavailable {
+  readonly _tag = "WorkflowRunsAdminCancelUnavailable" as const;
+  constructor(
+    readonly args: {
+      readonly runId: string;
+      readonly status: WorkflowRunStatus;
+    },
+  ) {}
+}
+
 export class WorkflowRunsAdminPageSizeTooLarge {
   readonly _tag = "WorkflowRunsAdminPageSizeTooLarge" as const;
   constructor(
@@ -206,14 +236,13 @@ export type WorkflowRunsAdminServiceError =
   | WorkflowRunsAdminReasonActionMismatch
   | WorkflowRunsAdminReasonAttachmentRequired
   | WorkflowRunsAdminRunNotFound
+  | WorkflowRunsAdminReplayUnavailable
+  | WorkflowRunsAdminCancelUnavailable
   | WorkflowRunsAdminPageSizeTooLarge
   | WorkflowRunsAdminPortError;
 
 // ---------------------------------------------------------------------------
-// WorkflowRunsPort (Context.Tag — tests inject directly; the
-// env-bound default Layer ships a staged pass-through stub that
-// returns honest empty results until workflow-jobs publishes its
-// admin port)
+// WorkflowRunsPort
 // ---------------------------------------------------------------------------
 
 export type WorkflowRunsPortListResult = {
@@ -238,13 +267,17 @@ export type WorkflowRunsPortService = {
     readonly runId: string;
   }) => Effect.Effect<
     { readonly accepted: true; readonly replayRunId?: string },
-    WorkflowRunsAdminPortError | WorkflowRunsAdminRunNotFound
+    | WorkflowRunsAdminPortError
+    | WorkflowRunsAdminRunNotFound
+    | WorkflowRunsAdminReplayUnavailable
   >;
   readonly cancelRun: (input: {
     readonly runId: string;
   }) => Effect.Effect<
     { readonly accepted: true },
-    WorkflowRunsAdminPortError | WorkflowRunsAdminRunNotFound
+    | WorkflowRunsAdminPortError
+    | WorkflowRunsAdminRunNotFound
+    | WorkflowRunsAdminCancelUnavailable
   >;
 };
 
@@ -253,14 +286,523 @@ export class WorkflowRunsPort extends Context.Tag("WorkflowRunsPort")<
   WorkflowRunsPortService
 >() {}
 
-/**
- * Default {@link WorkflowRunsPort} implementation. TODO(phase1-item15):
- * swap to the real workflow-jobs admin port once the upstream
- * publishes the typed surface. Until then the port returns honest
- * empty results so the cache + audit + authz invariants still
- * exercise correctly and the admin console renders an empty
- * envelope rather than synthesized data.
- */
+type WorkflowJobRow = typeof workflowJobsTable.$inferSelect;
+
+const decodeWorkflowJobRow = (input: unknown) =>
+  Schema.decodeUnknown(WorkflowJobRecordSchema)(input);
+
+const toIsoString = (value: Date | string | null | undefined) =>
+  value == null
+    ? undefined
+    : value instanceof Date
+      ? value.toISOString()
+      : value;
+
+const buildWorkflowRunsStaleThreshold = (now: Date) =>
+  new Date(now.getTime() - workflowJobsRunningClaimTimeoutSeconds * 1_000);
+
+const resolveWorkflowRunStatusFromJob = (
+  job: Pick<WorkflowJobRecord, "status" | "updatedAt">,
+  now: Date,
+): WorkflowRunStatus => {
+  switch (job.status) {
+    case workflowJobStatus.scheduled:
+      return workflowRunStatus.queued;
+    case workflowJobStatus.running:
+      return new Date(job.updatedAt).getTime() <=
+        buildWorkflowRunsStaleThreshold(now).getTime()
+        ? workflowRunStatus.stale
+        : workflowRunStatus.running;
+    case workflowJobStatus.completed:
+      return workflowRunStatus.succeeded;
+    case workflowJobStatus.blocked:
+      return workflowRunStatus.stale;
+    case workflowJobStatus.failed:
+      return workflowRunStatus.failed;
+    case workflowJobStatus.canceled:
+      return workflowRunStatus.canceled;
+  }
+};
+
+const buildWorkflowRunTiming = (input: {
+  readonly queuedAt: string;
+  readonly completedAt: string | undefined;
+  readonly attempt: number;
+  readonly status: WorkflowRunStatus;
+}) => {
+  const startedAt =
+    input.status === workflowRunStatus.queued || input.attempt <= 0
+      ? undefined
+      : input.queuedAt;
+  const finishedAt =
+    input.status === workflowRunStatus.succeeded ||
+    input.status === workflowRunStatus.failed ||
+    input.status === workflowRunStatus.canceled
+      ? input.completedAt
+      : undefined;
+  const durationMs =
+    startedAt === undefined || finishedAt === undefined
+      ? undefined
+      : Math.max(
+          0,
+          new Date(finishedAt).getTime() - new Date(startedAt).getTime(),
+        );
+
+  return {
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(finishedAt === undefined ? {} : { finishedAt }),
+    ...(durationMs === undefined ? {} : { durationMs }),
+  };
+};
+
+const resolveAuditCorrelationId = (
+  payload: WorkflowJobRecord["payload"],
+  fallback: string,
+) => {
+  if (typeof payload !== "object" || payload === null) {
+    return fallback;
+  }
+
+  const directCorrelationId = (payload as { correlationId?: unknown })
+    .correlationId;
+  if (
+    typeof directCorrelationId === "string" &&
+    directCorrelationId.length > 0
+  ) {
+    return directCorrelationId;
+  }
+
+  const requestContextCorrelationId = (
+    payload as {
+      requestContext?: {
+        correlationId?: unknown;
+      };
+    }
+  ).requestContext?.correlationId;
+  if (
+    typeof requestContextCorrelationId === "string" &&
+    requestContextCorrelationId.length > 0
+  ) {
+    return requestContextCorrelationId;
+  }
+
+  const dispatchCorrelationId = (
+    payload as {
+      dispatch?: {
+        correlationId?: unknown;
+        requestContext?: {
+          correlationId?: unknown;
+        };
+      };
+    }
+  ).dispatch?.correlationId;
+  if (
+    typeof dispatchCorrelationId === "string" &&
+    dispatchCorrelationId.length > 0
+  ) {
+    return dispatchCorrelationId;
+  }
+
+  const dispatchRequestContextCorrelationId = (
+    payload as {
+      dispatch?: {
+        requestContext?: {
+          correlationId?: unknown;
+        };
+      };
+    }
+  ).dispatch?.requestContext?.correlationId;
+  if (
+    typeof dispatchRequestContextCorrelationId === "string" &&
+    dispatchRequestContextCorrelationId.length > 0
+  ) {
+    return dispatchRequestContextCorrelationId;
+  }
+
+  return fallback;
+};
+
+const mapWorkflowJobToSummary = (
+  job: WorkflowJobRecord,
+  now: Date,
+): WorkflowRunSummary => {
+  const status = resolveWorkflowRunStatusFromJob(job, now);
+  const attempt = Math.max(1, job.attempts);
+  return {
+    runId: job.jobId,
+    moduleId: job.sourceModuleId,
+    workflowKey: job.kind,
+    status,
+    queuedAt: job.scheduledAt,
+    attempt,
+    ...(job.lastError === undefined ? {} : { lastError: job.lastError }),
+    ...buildWorkflowRunTiming({
+      queuedAt: job.scheduledAt,
+      completedAt: job.completedAt,
+      attempt,
+      status,
+    }),
+  };
+};
+
+const mapWorkflowJobToDetail = (
+  job: WorkflowJobRecord,
+  now: Date,
+): WorkflowRunDetail => {
+  const summary = mapWorkflowJobToSummary(job, now);
+  return {
+    ...summary,
+    steps: [
+      {
+        stepKey: job.kind,
+        status: summary.status,
+        ...(summary.startedAt === undefined
+          ? {}
+          : { startedAt: summary.startedAt }),
+        ...(summary.finishedAt === undefined
+          ? {}
+          : { finishedAt: summary.finishedAt }),
+        ...(job.lastError === undefined ? {} : { error: job.lastError }),
+      },
+    ],
+    payloadProjection: JSON.stringify(job.payload, null, 2) ?? "null",
+    auditCorrelationId: resolveAuditCorrelationId(job.payload, job.jobId),
+  };
+};
+
+const isReplayableWorkflowRun = (status: WorkflowRunStatus) =>
+  status === workflowRunStatus.failed ||
+  status === workflowRunStatus.canceled ||
+  status === workflowRunStatus.stale;
+
+const isCancelableWorkflowRun = (status: WorkflowRunStatus) =>
+  status === workflowRunStatus.queued || status === workflowRunStatus.running;
+
+const buildWorkflowRunsPageToken = (input: {
+  readonly queuedAt: string;
+  readonly runId: string;
+}) => `${input.queuedAt}::${input.runId}`;
+
+const decodeWorkflowRunsPageToken = (
+  pageToken: string | undefined,
+): { readonly queuedAt: Date; readonly runId: string } | undefined => {
+  if (pageToken === undefined) {
+    return undefined;
+  }
+
+  const separatorIndex = pageToken.indexOf("::");
+  if (separatorIndex <= 0 || separatorIndex >= pageToken.length - 2) {
+    return undefined;
+  }
+
+  const queuedAt = new Date(pageToken.slice(0, separatorIndex));
+  const runId = pageToken.slice(separatorIndex + 2);
+  if (Number.isNaN(queuedAt.getTime()) || runId.length === 0) {
+    return undefined;
+  }
+
+  return { queuedAt, runId };
+};
+
+const toPortError = (operation: Operation, cause: unknown) =>
+  cause instanceof WorkflowRunsAdminPortError
+    ? cause
+    : new WorkflowRunsAdminPortError({ operation, cause });
+
+export type WorkflowRunsPortDependencies = {
+  readonly listWorkflowJobRows: (input: {
+    readonly filters: WorkflowRunsListInput["filters"];
+    readonly pageSize: number;
+    readonly pageToken?: string;
+    readonly now: Date;
+  }) => Effect.Effect<readonly WorkflowJobRow[], WorkflowRunsAdminPortError>;
+  readonly getWorkflowJob: (input: {
+    readonly jobId: string;
+  }) => Effect.Effect<
+    WorkflowJobRecord | undefined,
+    WorkflowRunsAdminPortError
+  >;
+  readonly persistWorkflowJob: (
+    record: WorkflowJobRecord,
+  ) => Effect.Effect<WorkflowJobRecord, WorkflowRunsAdminPortError>;
+  readonly cancelWorkflowJobIfUpdatedAtMatches: (input: {
+    readonly jobId: string;
+    readonly expectedUpdatedAt: string;
+    readonly canceledAt: string;
+  }) => Effect.Effect<
+    WorkflowJobRecord | undefined,
+    WorkflowRunsAdminPortError
+  >;
+  readonly now?: () => Date;
+};
+
+export const makeDefaultWorkflowRunsPort = (
+  deps: WorkflowRunsPortDependencies,
+): WorkflowRunsPortService => {
+  const nowFn = deps.now ?? (() => new Date());
+
+  return {
+    listRuns: (input) =>
+      Effect.gen(function* () {
+        const now = nowFn();
+        const rows = yield* deps.listWorkflowJobRows({
+          filters: input.filters,
+          pageSize: input.pageSize,
+          ...(input.pageToken === undefined
+            ? {}
+            : { pageToken: input.pageToken }),
+          now,
+        });
+        const visibleRows = rows.slice(0, input.pageSize);
+        const jobs = yield* Effect.forEach(visibleRows, (row) =>
+          decodeWorkflowJobRow({
+            jobId: row.jobId,
+            runtime: row.runtime,
+            sourceModuleId: row.sourceModuleId,
+            kind: row.kind,
+            trigger: row.trigger,
+            status: row.status,
+            tenantScope: row.tenantScope,
+            tenantScopeId: row.tenantScopeId,
+            attempts: row.attempts,
+            scheduledAt: row.scheduledAt.toISOString(),
+            ...(row.completedAt == null
+              ? {}
+              : { completedAt: toIsoString(row.completedAt) }),
+            ...(row.lastError == null ? {} : { lastError: row.lastError }),
+            ...(row.gapReason == null ? {} : { gapReason: row.gapReason }),
+            payload: row.payload,
+            createdAt: row.createdAt.toISOString(),
+            updatedAt: row.updatedAt.toISOString(),
+          }),
+        );
+        const lastVisibleRow = visibleRows.at(-1);
+
+        return {
+          runs: jobs.map((job) => mapWorkflowJobToSummary(job, now)),
+          ...(rows.length > input.pageSize && lastVisibleRow !== undefined
+            ? {
+                nextPageToken: buildWorkflowRunsPageToken({
+                  queuedAt: lastVisibleRow.scheduledAt.toISOString(),
+                  runId: lastVisibleRow.jobId,
+                }),
+              }
+            : {}),
+        };
+      }).pipe(Effect.mapError((cause) => toPortError("listRuns", cause))),
+    getRunDetail: (input) =>
+      Effect.gen(function* () {
+        const job = yield* deps.getWorkflowJob({ jobId: input.runId });
+        return job === undefined
+          ? Option.none<WorkflowRunDetail>()
+          : Option.some(mapWorkflowJobToDetail(job, nowFn()));
+      }),
+    replayRun: (input) =>
+      Effect.gen(function* () {
+        const now = nowFn().toISOString();
+        const job = yield* deps.getWorkflowJob({ jobId: input.runId });
+        if (job === undefined) {
+          return yield* Effect.fail(
+            new WorkflowRunsAdminRunNotFound({
+              operation: "replayRun",
+              runId: input.runId,
+            }),
+          );
+        }
+
+        const status = resolveWorkflowRunStatusFromJob(job, new Date(now));
+        if (!isReplayableWorkflowRun(status)) {
+          return yield* Effect.fail(
+            new WorkflowRunsAdminReplayUnavailable({
+              runId: input.runId,
+              status,
+            }),
+          );
+        }
+
+        yield* deps
+          .persistWorkflowJob({
+            ...job,
+            status: workflowJobStatus.scheduled,
+            scheduledAt: now,
+            completedAt: undefined,
+            lastError: undefined,
+            gapReason: undefined,
+            updatedAt: now,
+          })
+          .pipe(Effect.mapError((cause) => toPortError("replayRun", cause)));
+
+        return { accepted: true as const };
+      }),
+    cancelRun: (input) =>
+      Effect.gen(function* () {
+        const now = nowFn().toISOString();
+        const job = yield* deps.getWorkflowJob({ jobId: input.runId });
+        if (job === undefined) {
+          return yield* Effect.fail(
+            new WorkflowRunsAdminRunNotFound({
+              operation: "cancelRun",
+              runId: input.runId,
+            }),
+          );
+        }
+
+        const status = resolveWorkflowRunStatusFromJob(job, new Date(now));
+        if (status === workflowRunStatus.canceled) {
+          return { accepted: true as const };
+        }
+        if (!isCancelableWorkflowRun(status)) {
+          return yield* Effect.fail(
+            new WorkflowRunsAdminCancelUnavailable({
+              runId: input.runId,
+              status,
+            }),
+          );
+        }
+
+        const canceledOrMissing = yield* deps
+          .cancelWorkflowJobIfUpdatedAtMatches({
+            jobId: job.jobId,
+            expectedUpdatedAt: job.updatedAt,
+            canceledAt: now,
+          })
+          .pipe(Effect.mapError((cause) => toPortError("cancelRun", cause)));
+
+        if (canceledOrMissing !== undefined) {
+          return { accepted: true as const };
+        }
+
+        const currentJob = yield* deps.getWorkflowJob({ jobId: input.runId });
+        if (currentJob === undefined) {
+          return yield* Effect.fail(
+            new WorkflowRunsAdminRunNotFound({
+              operation: "cancelRun",
+              runId: input.runId,
+            }),
+          );
+        }
+        if (
+          resolveWorkflowRunStatusFromJob(currentJob, new Date(now)) ===
+          workflowRunStatus.canceled
+        ) {
+          return { accepted: true as const };
+        }
+
+        return yield* Effect.fail(
+          new WorkflowRunsAdminCancelUnavailable({
+            runId: input.runId,
+            status: resolveWorkflowRunStatusFromJob(currentJob, new Date(now)),
+          }),
+        );
+      }),
+  };
+};
+
+const buildWorkflowRunsStatusPredicate = (
+  status: WorkflowRunsListInput["filters"]["status"],
+  now: Date,
+) => {
+  const staleThreshold = buildWorkflowRunsStaleThreshold(now);
+  switch (status) {
+    case undefined:
+      return undefined;
+    case workflowRunStatus.queued:
+      return eq(workflowJobsTable.status, workflowJobStatus.scheduled);
+    case workflowRunStatus.running:
+      return and(
+        eq(workflowJobsTable.status, workflowJobStatus.running),
+        gt(workflowJobsTable.updatedAt, staleThreshold),
+      );
+    case workflowRunStatus.stale:
+      return or(
+        eq(workflowJobsTable.status, workflowJobStatus.blocked),
+        and(
+          eq(workflowJobsTable.status, workflowJobStatus.running),
+          lte(workflowJobsTable.updatedAt, staleThreshold),
+        ),
+      );
+    case workflowRunStatus.succeeded:
+      return eq(workflowJobsTable.status, workflowJobStatus.completed);
+    case workflowRunStatus.failed:
+      return eq(workflowJobsTable.status, workflowJobStatus.failed);
+    case workflowRunStatus.canceled:
+      return eq(workflowJobsTable.status, workflowJobStatus.canceled);
+  }
+};
+
+const makeLiveWorkflowRunsPort = (input: {
+  readonly database: PostgresRuntimeDatabase;
+  readonly workflowJobsRepository: WorkflowJobsPostgresRepositoryServiceForRecord<WorkflowJobRecord>;
+}) =>
+  makeDefaultWorkflowRunsPort({
+    listWorkflowJobRows: ({ filters, pageSize, pageToken, now }) =>
+      Effect.tryPromise({
+        try: () => {
+          const cursor = decodeWorkflowRunsPageToken(pageToken);
+          const statusPredicate = buildWorkflowRunsStatusPredicate(
+            filters.status,
+            now,
+          );
+          return input.database
+            .select()
+            .from(workflowJobsTable)
+            .where(
+              and(
+                ...(filters.moduleId === undefined
+                  ? []
+                  : [eq(workflowJobsTable.sourceModuleId, filters.moduleId)]),
+                ...(statusPredicate === undefined ? [] : [statusPredicate]),
+                ...(filters.since === undefined
+                  ? []
+                  : [
+                      gte(
+                        workflowJobsTable.scheduledAt,
+                        new Date(filters.since),
+                      ),
+                    ]),
+                ...(filters.until === undefined
+                  ? []
+                  : [
+                      lte(
+                        workflowJobsTable.scheduledAt,
+                        new Date(filters.until),
+                      ),
+                    ]),
+                ...(cursor === undefined
+                  ? []
+                  : [
+                      or(
+                        lt(workflowJobsTable.scheduledAt, cursor.queuedAt),
+                        and(
+                          eq(workflowJobsTable.scheduledAt, cursor.queuedAt),
+                          lt(workflowJobsTable.jobId, cursor.runId),
+                        ),
+                      ),
+                    ]),
+              ),
+            )
+            .orderBy(
+              desc(workflowJobsTable.scheduledAt),
+              desc(workflowJobsTable.jobId),
+            )
+            .limit(pageSize + 1);
+        },
+        catch: (cause) => toPortError("listRuns", cause),
+      }),
+    getWorkflowJob: ({ jobId }) =>
+      input.workflowJobsRepository
+        .getWorkflowJob({ jobId })
+        .pipe(Effect.mapError((cause) => toPortError("getRunDetail", cause))),
+    persistWorkflowJob: (record) =>
+      input.workflowJobsRepository
+        .persistWorkflowJob(record)
+        .pipe(Effect.mapError((cause) => toPortError("replayRun", cause))),
+    cancelWorkflowJobIfUpdatedAtMatches: (request) =>
+      input.workflowJobsRepository
+        .cancelWorkflowJobIfUpdatedAtMatches(request)
+        .pipe(Effect.mapError((cause) => toPortError("cancelRun", cause))),
+  });
+
 export const makeStubWorkflowRunsPort = (): WorkflowRunsPortService => ({
   listRuns: () =>
     Effect.succeed({ runs: [] as ReadonlyArray<WorkflowRunSummary> }),
@@ -958,6 +1500,14 @@ const makeWorkflowRunsAdminRuntime = (
       ...auditLogQueryable,
     });
     const auditLog = yield* makeAuditLogModule(auditLogRepository);
+    const workflowJobsQueryable =
+      buildWorkflowJobsPostgresQueryable(writeDatabase);
+    const workflowJobsRepository =
+      yield* makeWorkflowJobsPostgresRepositoryForRecordSchema(
+        writeDatabase,
+        workflowJobsQueryable,
+        WorkflowJobRecordSchema,
+      );
     const adminOrgRepositoryLayer =
       makeAdminOrganizationRepositoryLayer(writeDatabase);
     const baseLayer = Layer.mergeAll(
@@ -968,7 +1518,13 @@ const makeWorkflowRunsAdminRuntime = (
         Layer.provide(adminOrgRepositoryLayer),
       ),
       makeDefaultWorkflowRunsAdminFieldSecurityPortLayer,
-      makeStubWorkflowRunsPortLayer,
+      Layer.succeed(
+        WorkflowRunsPort,
+        makeLiveWorkflowRunsPort({
+          database: postgres.database,
+          workflowJobsRepository,
+        }),
+      ),
     );
     const serviceLayer = makeWorkflowRunsAdminServiceLayer({
       bounds: options.bounds,

@@ -11,14 +11,12 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 const PATH_WITH_ACCESS_DENIED_RETURN_TO =
-  "/auth/sign-in" +
-  "?returnTo=%2Fgovernance%2Fruntime-config" +
-  "&reason=access-denied";
+  "/sign-in" + "?returnTo=%2Fr%2Fconfig" + "&reason=access-denied";
 const PATH_WITH_INVALID_SEARCH =
-  "/auth/sign-in?returnTo=https%3A%2F%2Fevil.example&reason=bogus";
-const PATH_SIGNED_OUT = "/auth/sign-in?reason=signed-out";
+  "/sign-in?returnTo=https%3A%2F%2Fevil.example&reason=bogus";
+const PATH_SIGNED_OUT = "/sign-in?reason=signed-out";
 
-describe("/auth/sign-in route", () => {
+describe("/sign-in route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -48,9 +46,7 @@ describe("/auth/sign-in route", () => {
     expect(rendered.container.textContent).toContain(
       "After sign-in, you will be returned to the page you were trying to open.",
     );
-    expect(rendered.container.textContent).not.toContain(
-      "/governance/runtime-config",
-    );
+    expect(rendered.container.textContent).not.toContain("/r/config");
 
     const continueLink = getLinkByText(
       rendered.container,
@@ -58,7 +54,7 @@ describe("/auth/sign-in route", () => {
     );
 
     expect(continueLink.getAttribute("href")).toBe(
-      "/auth/start?returnTo=%2Fgovernance%2Fruntime-config",
+      "/auth/start?returnTo=%2Fr%2Fconfig",
     );
   });
 

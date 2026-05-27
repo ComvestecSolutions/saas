@@ -21,6 +21,18 @@ type FixtureTransform = (
 const buildOrganizationScopedPath = (path: string): string =>
   `${path}?scope=${knownAdminTargets.organization.scope}&scopeId=${knownAdminTargets.organization.scopeId}`;
 
+const legacyAdminRoutePath = {
+  branding: "/branding",
+  supportOperations: "/support-operations",
+  billing: "/billing",
+  complianceRetention: "/compliance-retention",
+  webhooksApiAccess: "/integrations/webhooks-api-access",
+  runtimeConfig: "/governance/runtime-config",
+  featureFlags: "/governance/feature-flags",
+  accessControl: "/governance/access-control",
+  auditLog: "/governance/audit-log",
+} as const;
+
 const deniedRouteCases: ReadonlyArray<{
   readonly name: string;
   readonly path: string;
@@ -71,12 +83,12 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "support operations",
-    path: adminRoutePath.supportOperations,
+    path: legacyAdminRoutePath.supportOperations,
     reason:
       "Support operations require a trusted support or platform operator session.",
     apply: (fixture) => ({
       ...fixture,
-      loadSupport: async () => ({
+      loadSupportCases: async () => ({
         kind: "denied",
         reason:
           "Support operations require a trusted support or platform operator session.",
@@ -85,12 +97,12 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "billing",
-    path: adminRoutePath.billing,
+    path: legacyAdminRoutePath.billing,
     reason:
       "Billing explanation and reconciliation workflows are currently platform-operator only.",
     apply: (fixture) => ({
       ...fixture,
-      loadBilling: async () => ({
+      loadBillingList: async () => ({
         kind: "denied",
         reason:
           "Billing explanation and reconciliation workflows are currently platform-operator only.",
@@ -99,11 +111,11 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "compliance retention",
-    path: adminRoutePath.complianceRetention,
+    path: legacyAdminRoutePath.complianceRetention,
     reason: "Compliance review requires a trusted operator session.",
     apply: (fixture) => ({
       ...fixture,
-      loadCompliance: async () => ({
+      loadRetentionList: async () => ({
         kind: "denied",
         reason: "Compliance review requires a trusted operator session.",
       }),
@@ -111,11 +123,11 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "webhooks API access",
-    path: adminRoutePath.webhooksApiAccess,
+    path: legacyAdminRoutePath.webhooksApiAccess,
     reason: "Integration inspection requires a trusted operator session.",
     apply: (fixture) => ({
       ...fixture,
-      loadWebhooks: async () => ({
+      loadWebhookList: async () => ({
         kind: "denied",
         reason: "Integration inspection requires a trusted operator session.",
       }),
@@ -123,12 +135,12 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "runtime configuration",
-    path: "/governance/runtime-config" as const,
+    path: legacyAdminRoutePath.runtimeConfig,
     reason:
       "Runtime config inspection requires a trusted operator session on the governance backend.",
     apply: (fixture) => ({
       ...fixture,
-      loadRuntimeConfig: async () => ({
+      loadGovernanceConfigV2: async () => ({
         kind: "denied",
         reason:
           "Runtime config inspection requires a trusted operator session on the governance backend.",
@@ -137,12 +149,12 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "feature flags",
-    path: "/governance/feature-flags" as const,
+    path: legacyAdminRoutePath.featureFlags,
     reason:
       "Feature-flag inspection requires a trusted operator session on the governance backend.",
     apply: (fixture) => ({
       ...fixture,
-      loadFeatureFlags: async () => ({
+      loadGovernanceFlagV2: async () => ({
         kind: "denied",
         reason:
           "Feature-flag inspection requires a trusted operator session on the governance backend.",
@@ -151,12 +163,12 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "access control",
-    path: adminRoutePath.accessControl,
+    path: legacyAdminRoutePath.accessControl,
     reason:
       "Access-control inspection requires a trusted operator session on the governance backend.",
     apply: (fixture) => ({
       ...fixture,
-      loadAccessControl: async () => ({
+      loadGovernanceAccessV2: async () => ({
         kind: "denied",
         reason:
           "Access-control inspection requires a trusted operator session on the governance backend.",
@@ -165,12 +177,12 @@ const deniedRouteCases: ReadonlyArray<{
   },
   {
     name: "audit log",
-    path: adminRoutePath.auditLog,
+    path: legacyAdminRoutePath.auditLog,
     reason:
       "Audit-log review requires a trusted operator session on the governance backend.",
     apply: (fixture) => ({
       ...fixture,
-      loadAuditLog: async () => ({
+      loadAuditLogV2: async () => ({
         kind: "denied",
         reason:
           "Audit-log review requires a trusted operator session on the governance backend.",
@@ -225,74 +237,75 @@ const staleRouteCases: ReadonlyArray<{
   },
   {
     name: "support operations",
-    path: adminRoutePath.supportOperations,
-    expectedDescription: "Re-authenticate to access support operations.",
+    path: legacyAdminRoutePath.supportOperations,
+    expectedDescription: "Re-authenticate to access the support workspace.",
     apply: (fixture) => ({
       ...fixture,
-      loadSupport: async () => ({ kind: "stale-session" }),
+      loadSupportCases: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "billing",
-    path: adminRoutePath.billing,
-    expectedDescription: "Re-authenticate to view billing data.",
+    path: legacyAdminRoutePath.billing,
+    expectedDescription: "Re-authenticate to access billing posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadBilling: async () => ({ kind: "stale-session" }),
+      loadBillingList: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "compliance retention",
-    path: adminRoutePath.complianceRetention,
-    expectedDescription: "Re-authenticate to access compliance and retention.",
+    path: legacyAdminRoutePath.complianceRetention,
+    expectedDescription: "Re-authenticate to access retention posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadCompliance: async () => ({ kind: "stale-session" }),
+      loadRetentionList: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "webhooks API access",
-    path: adminRoutePath.webhooksApiAccess,
-    expectedDescription: "Re-authenticate to view integration data.",
+    path: legacyAdminRoutePath.webhooksApiAccess,
+    expectedDescription: "Re-authenticate to access webhook posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadWebhooks: async () => ({ kind: "stale-session" }),
+      loadWebhookList: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "runtime configuration",
-    path: "/governance/runtime-config" as const,
+    path: legacyAdminRoutePath.runtimeConfig,
     expectedDescription: "Re-authenticate to access runtime configuration.",
     apply: (fixture) => ({
       ...fixture,
-      loadRuntimeConfig: async () => ({ kind: "stale-session" }),
+      loadGovernanceConfigV2: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "feature flags",
-    path: "/governance/feature-flags" as const,
+    path: legacyAdminRoutePath.featureFlags,
     expectedDescription: "Re-authenticate to access feature flags.",
     apply: (fixture) => ({
       ...fixture,
-      loadFeatureFlags: async () => ({ kind: "stale-session" }),
+      loadGovernanceFlagV2: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "access control",
-    path: adminRoutePath.accessControl,
+    path: legacyAdminRoutePath.accessControl,
     expectedDescription: "Re-authenticate to access authorization data.",
     apply: (fixture) => ({
       ...fixture,
-      loadAccessControl: async () => ({ kind: "stale-session" }),
+      loadGovernanceAccessV2: async () => ({ kind: "stale-session" }),
     }),
   },
   {
     name: "audit log",
-    path: adminRoutePath.auditLog,
-    expectedDescription: "Re-authenticate to access the audit log.",
+    path: legacyAdminRoutePath.auditLog,
+    expectedDescription:
+      "Re-authenticate to continue investigating audit activity.",
     apply: (fixture) => ({
       ...fixture,
-      loadAuditLog: async () => ({ kind: "stale-session" }),
+      loadAuditLogV2: async () => ({ kind: "stale-session" }),
     }),
   },
 ];
@@ -345,92 +358,92 @@ const sessionRequiredRouteCases: ReadonlyArray<{
   },
   {
     name: "support operations",
-    path: adminRoutePath.supportOperations,
+    path: legacyAdminRoutePath.supportOperations,
     expectedDescription:
-      "Sign in with a platform-operator or support-operator session to access support operations.",
+      "Sign in with a platform-operator or support-operator session to access the support workspace.",
     apply: (fixture) => ({
       ...fixture,
-      loadSupport: async () => ({ kind: "shell" }),
+      loadSupportCases: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "billing",
-    path: adminRoutePath.billing,
+    path: legacyAdminRoutePath.billing,
     expectedDescription:
-      "Sign in with a platform-operator session to view billing repair gaps.",
+      "Sign in with a platform-operator or support-operator session to view billing posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadBilling: async () => ({ kind: "shell" }),
+      loadBillingList: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "branding",
-    path: buildOrganizationScopedPath(adminRoutePath.branding),
+    path: buildOrganizationScopedPath(legacyAdminRoutePath.branding),
     expectedDescription:
-      "Sign in with a platform-operator or support-operator session to view tenant branding.",
+      "Sign in with a platform-operator or support-operator session to view branding posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadBranding: async () => ({ kind: "shell" }),
+      loadBrandingList: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "compliance retention",
-    path: buildOrganizationScopedPath(adminRoutePath.complianceRetention),
+    path: buildOrganizationScopedPath(legacyAdminRoutePath.complianceRetention),
     expectedDescription:
-      "Sign in with a platform-operator or support-operator session to access compliance and retention.",
+      "Sign in with a platform-operator or support-operator session to view retention posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadCompliance: async () => ({ kind: "shell" }),
+      loadRetentionList: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "webhooks API access",
-    path: buildOrganizationScopedPath(adminRoutePath.webhooksApiAccess),
+    path: buildOrganizationScopedPath(legacyAdminRoutePath.webhooksApiAccess),
     expectedDescription:
-      "Sign in with a platform-operator or support-operator session to view webhooks and API access.",
+      "Sign in with a platform-operator or support-operator session to view webhook posture.",
     apply: (fixture) => ({
       ...fixture,
-      loadWebhooks: async () => ({ kind: "shell" }),
+      loadWebhookList: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "runtime configuration",
-    path: "/governance/runtime-config" as const,
+    path: legacyAdminRoutePath.runtimeConfig,
     expectedDescription:
       "Sign in with a platform-operator or support-operator session to access runtime configuration.",
     apply: (fixture) => ({
       ...fixture,
-      loadRuntimeConfig: async () => ({ kind: "shell" }),
+      loadGovernanceConfigV2: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "feature flags",
-    path: "/governance/feature-flags" as const,
+    path: legacyAdminRoutePath.featureFlags,
     expectedDescription:
       "Sign in with a platform-operator or support-operator session to access feature flags.",
     apply: (fixture) => ({
       ...fixture,
-      loadFeatureFlags: async () => ({ kind: "shell" }),
+      loadGovernanceFlagV2: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "access control",
-    path: adminRoutePath.accessControl,
+    path: legacyAdminRoutePath.accessControl,
     expectedDescription:
       "Sign in with a platform-operator or support-operator session to access authorization data.",
     apply: (fixture) => ({
       ...fixture,
-      loadAccessControl: async () => ({ kind: "shell" }),
+      loadGovernanceAccessV2: async () => ({ kind: "shell" }),
     }),
   },
   {
     name: "audit log",
-    path: adminRoutePath.auditLog,
+    path: legacyAdminRoutePath.auditLog,
     expectedDescription:
-      "Sign in with a platform-operator or support-operator session to access the audit log.",
+      "Sign in with a platform-operator or support-operator session to inspect audit activity.",
     apply: (fixture) => ({
       ...fixture,
-      loadAuditLog: async () => ({ kind: "shell" }),
+      loadAuditLogV2: async () => ({ kind: "shell" }),
     }),
   },
 ];
@@ -473,16 +486,21 @@ describe("admin route state browser flows", () => {
   it("renders branding access denied for unsupported individual tenant targets", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      `${adminRoutePath.branding}?scope=${platformScope.individual}&scopeId=ind_demo`,
+      `${legacyAdminRoutePath.branding}?scope=${platformScope.individual}&scopeId=ind_demo`,
     );
 
     await waitFor(
-      () => rendered?.container.textContent?.includes("Access denied") ?? false,
-      "Expected branding denied state to render for unsupported tenant targets.",
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='branding-list-ready']",
+        ) !== null,
+      "Expected legacy branding redirect to land on the canonical branding surface.",
     );
-    expect(rendered.container.textContent).toContain(
-      "Branding view currently supports organization and enterprise tenant targets.",
+    expect(rendered.router.state.location.pathname).toBe(
+      adminRoutePath.branding,
     );
+    expect(rendered.container.textContent).toContain("unsupported scope");
+    expect(rendered.container.textContent).toContain("ind_demo");
   });
 
   it("renders branding access denied when the control plane blocks support-safe branding access", async () => {
@@ -492,12 +510,12 @@ describe("admin route state browser flows", () => {
     rendered = await renderAdminApp(
       {
         ...createAdminBrowserFixtureState(),
-        loadBranding: async () => ({
+        loadBrandingList: async () => ({
           kind: "denied",
           reason: deniedReason,
         }),
       },
-      buildOrganizationScopedPath(adminRoutePath.branding),
+      buildOrganizationScopedPath(legacyAdminRoutePath.branding),
     );
 
     await waitFor(
@@ -511,12 +529,12 @@ describe("admin route state browser flows", () => {
     const fixture = createAdminBrowserFixtureState();
     const staleFixture: AdminBrowserFixtureState = {
       ...fixture,
-      loadBranding: async () => ({ kind: "stale-session" }),
+      loadBrandingList: async () => ({ kind: "stale-session" }),
     };
 
     rendered = await renderAdminApp(
       staleFixture,
-      buildOrganizationScopedPath(adminRoutePath.branding),
+      buildOrganizationScopedPath(legacyAdminRoutePath.branding),
     );
 
     await waitFor(
@@ -526,7 +544,7 @@ describe("admin route state browser flows", () => {
       "Expected branding stale-session state to render.",
     );
     expect(rendered.container.textContent).toContain(
-      "Re-authenticate to view tenant branding.",
+      "Re-authenticate to access branding posture.",
     );
   });
 

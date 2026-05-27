@@ -1,5 +1,6 @@
 export * from "./file-storage";
 export * from "./import-export";
+export * from "./keycloak-role-read";
 export * from "./keycloak-user-read";
 export * from "./search";
 export * from "./tenant-branding";

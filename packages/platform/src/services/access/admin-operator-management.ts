@@ -279,7 +279,7 @@ const makeAdminOperatorManagementRuntime = (
     const identitySessionRepository =
       yield* makeIdentitySessionPostgresRepository(writeDatabase);
     const adminSignInUrl = new URL(
-      "/auth/sign-in",
+      "/sign-in",
       options.adminAppBaseUrl,
     ).toString();
 

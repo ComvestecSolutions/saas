@@ -478,7 +478,7 @@ const main = Effect.gen(function* () {
   );
   console.log(`- Password: ${input.password}`);
   console.log(
-    `- Sign-in URL: ${new URL("/auth/sign-in", environment.ADMIN_APP_BASE_URL).toString()}`,
+    `- Sign-in URL: ${new URL("/sign-in", environment.ADMIN_APP_BASE_URL).toString()}`,
   );
 });
 

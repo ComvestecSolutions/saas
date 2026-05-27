@@ -51,6 +51,10 @@ import {
   operatorWebhookDeliveryApiBasePath,
 } from "../services/communication/operator-webhook-delivery-http";
 import {
+  handleKeycloakRoleReadHttpRequest,
+  keycloakRoleReadApiBasePath,
+} from "../services/communication/keycloak-role-read-http";
+import {
   handleKeycloakUserReadHttpRequest,
   keycloakUserReadApiBasePath,
 } from "../services/communication/keycloak-user-read-http";
@@ -185,6 +189,7 @@ export type BackendApiAppOptions = {
   readonly manualBreakGlassHandler?: BackendApiWebHandler;
   readonly operationsHomeHandler?: BackendApiWebHandler;
   readonly operatorWebhookDeliveryHandler?: BackendApiWebHandler;
+  readonly keycloakRoleReadHandler?: BackendApiWebHandler;
   readonly keycloakUserReadHandler?: BackendApiWebHandler;
   readonly polarCustomerReadHandler?: BackendApiWebHandler;
   readonly openMeterMeterReadHandler?: BackendApiWebHandler;
@@ -284,6 +289,9 @@ export const createBackendApiApp = (options: BackendApiAppOptions): H3 => {
   const openMeterUsageQueryHandler =
     options.openMeterUsageQueryHandler ??
     (() => createNotFoundResponse("OpenMeter usage query route not found."));
+  const keycloakRoleReadHandler =
+    options.keycloakRoleReadHandler ??
+    (() => createNotFoundResponse("Keycloak role read route not found."));
   const keycloakUserReadHandler =
     options.keycloakUserReadHandler ??
     (() => createNotFoundResponse("Keycloak user read route not found."));
@@ -453,6 +461,11 @@ export const createBackendApiApp = (options: BackendApiAppOptions): H3 => {
     app,
     openMeterUsageQueryApiBasePath,
     wrapHandler(openMeterUsageQueryHandler),
+  );
+  registerFullPathWebHandler(
+    app,
+    keycloakRoleReadApiBasePath,
+    wrapHandler(keycloakRoleReadHandler),
   );
   registerFullPathWebHandler(
     app,
@@ -655,6 +668,9 @@ export const createBackendApiRequestHandler = (environment: unknown) => {
     ),
     openMeterUsageQueryHandler: fromEffectResponseHandler((request) =>
       handleOpenMeterUsageQueryHttpRequest(environment, request),
+    ),
+    keycloakRoleReadHandler: fromEffectResponseHandler((request) =>
+      handleKeycloakRoleReadHttpRequest(environment, request),
     ),
     keycloakUserReadHandler: fromEffectResponseHandler((request) =>
       handleKeycloakUserReadHttpRequest(environment, request),

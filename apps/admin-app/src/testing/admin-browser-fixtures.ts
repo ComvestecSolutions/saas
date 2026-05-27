@@ -6,7 +6,9 @@ import {
   adminOperatorTestTokensAuditAction,
   adminOrganizationAuditAction,
   adminOrgRole,
+  adminSavedViewResourceKind,
   type AdminOperatorCapabilitySnapshot,
+  type AdminSavedView,
   adminWorkspacesAuditAction,
   adminGovernanceActionPolicyId,
   adminOperatorCapability,
@@ -43,6 +45,7 @@ import {
   runtimeChangeProposalAction,
   runtimeConfigAuditAction,
   runtimeResolutionSource,
+  runAsBannerStateAuditAction,
   supportOperationsAuditAction,
   supportOperationsBreakGlassIncidentStatus,
   supportOperationsCasePriority,
@@ -63,6 +66,7 @@ import {
   workflowJobStatus,
   workflowJobsAuditAction,
   workflowRunsAdminAuditAction,
+  type RunAsBannerState,
 } from "@comvestec/contracts";
 import {
   auditLogFields,
@@ -95,6 +99,14 @@ import type {
   AdminMeterDetailInput,
   AdminMeterDetailRouteData,
 } from "../lib/meter-detail-route-data";
+import type {
+  AdminKeycloakUserDetailInput,
+  AdminKeycloakUserDetailRouteData,
+} from "../lib/keycloak-user-detail-route-data";
+import type {
+  AdminKeycloakRoleDetailInput,
+  AdminKeycloakRoleDetailRouteData,
+} from "../lib/keycloak-role-detail-route-data";
 import type {
   AdminBrandingListInput,
   AdminBrandingListRouteData,
@@ -169,6 +181,10 @@ import type {
   AdminMembersInput,
   AdminMembersRouteData,
 } from "../lib/admin-members-route-data";
+import type {
+  AdminMemberDetailInput,
+  AdminMemberDetailRouteData,
+} from "../lib/admin-member-detail-route-data";
 import type {
   AdminTokensInput,
   AdminTokensRouteData,
@@ -2018,10 +2034,8 @@ const buildTenantWorkspaceV2Snapshot = (
       displayName: formatFixtureTenantName(target),
       brandingState: "published",
       planTier: "platform-foundation",
-      currentMau: 250,
-      openInvoiceCount: 0,
+      billingStatus: billingSubscriptionStatus.active,
       legalHoldActive: false,
-      supportTier: "standard",
     },
     members: [],
     recentActivity: [],
@@ -2141,6 +2155,9 @@ export type AdminBrowserFixtureState = {
   loadAdminMembers: (
     input: AdminMembersInput,
   ) => Promise<AdminMembersRouteData>;
+  loadAdminMemberDetail: (
+    input: AdminMemberDetailInput,
+  ) => Promise<AdminMemberDetailRouteData>;
   loadAdminTokens: (input: AdminTokensInput) => Promise<AdminTokensRouteData>;
   loadAdminWorkspaces: (
     input: AdminWorkspacesInput,
@@ -2162,6 +2179,12 @@ export type AdminBrowserFixtureState = {
   loadMeterDetail: (
     input: AdminMeterDetailInput,
   ) => Promise<AdminMeterDetailRouteData>;
+  loadKeycloakUserDetail: (
+    input: AdminKeycloakUserDetailInput,
+  ) => Promise<AdminKeycloakUserDetailRouteData>;
+  loadKeycloakRoleDetail: (
+    input: AdminKeycloakRoleDetailInput,
+  ) => Promise<AdminKeycloakRoleDetailRouteData>;
   loadBrandingList: (
     input: AdminBrandingListInput,
   ) => Promise<AdminBrandingListRouteData>;
@@ -2244,6 +2267,15 @@ export type AdminBrowserFixtureState = {
     };
   }) => Promise<{
     readonly caseId: string;
+  }>;
+  releaseRunAsGrant: (input: {
+    readonly data: {
+      readonly grantId: string;
+      readonly reasonId: string;
+      readonly reasonAttachmentText: string;
+    };
+  }) => Promise<{
+    readonly grantId: string;
   }>;
   releaseLegalHold: (input: {
     readonly data: {
@@ -2597,21 +2629,27 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
   const adminMembers = [
     {
       id: "adm_member_fixture_1",
+      keycloakSubjectId: "kc_owner_fixture_1",
       email: "owner@comvestec.com",
       displayName: "Admin Owner Fixture",
       role: adminMemberRole.adminOwner,
       status: adminMemberStatus.active,
       invitedAt: new Date(0).toISOString(),
+      acceptedAt: new Date(500).toISOString(),
+      lastActiveAt: new Date(1500).toISOString(),
       createdBy: "usr_platform_operator",
       updatedAt: new Date(1000).toISOString(),
     },
     {
       id: "adm_member_fixture_2",
+      keycloakSubjectId: "kc_audit_fixture_2",
       email: "audit@comvestec.com",
       displayName: "Admin Auditor Fixture",
       role: adminMemberRole.compliance,
       status: adminMemberStatus.active,
       invitedAt: new Date(2000).toISOString(),
+      acceptedAt: new Date(2500).toISOString(),
+      lastActiveAt: new Date(3500).toISOString(),
       createdBy: "usr_platform_operator",
       updatedAt: new Date(3000).toISOString(),
     },
@@ -2641,7 +2679,8 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       ownerSubjectId: "usr_platform_operator",
       name: "Daily driver",
       position: 1,
-      serializedLayout: '{"panes":[]}',
+      serializedLayout:
+        '{"panes":[{"id":"mission-control","resource":"operations-home"}]}',
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     },
@@ -2650,11 +2689,54 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       ownerSubjectId: "usr_platform_operator",
       name: "Incident response",
       position: 2,
-      serializedLayout: '{"panes":[]}',
+      serializedLayout:
+        '{"panes":[{"id":"support","resource":"support"},{"id":"audit","resource":"audit"}]}',
       createdAt: new Date(500).toISOString(),
       updatedAt: new Date(1000).toISOString(),
     },
   ];
+  const adminSavedViews: AdminSavedView[] = [
+    {
+      id: "sv_fixture_audit_focus",
+      ownerSubjectId: "usr_platform_operator",
+      name: "Audit triage",
+      resourceKind: adminSavedViewResourceKind.auditEvents,
+      serializedView:
+        '{"filters":{"action":["manual-break-glass.issue"]},"sort":{"field":"timestamp","direction":"desc"},"columns":["eventId","action","actorId"],"density":"compact"}',
+      pinned: true,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(1000).toISOString(),
+      lastUsedAt: new Date(1500).toISOString(),
+    },
+    {
+      id: "sv_fixture_runtime_watch",
+      ownerSubjectId: "usr_platform_operator",
+      name: "Runtime drift watch",
+      resourceKind: adminSavedViewResourceKind.runtimeConfig,
+      serializedView:
+        '{"filters":{"source":["override"]},"sort":{"field":"updatedAt","direction":"desc"},"columns":["key","effectiveValue"],"density":"comfortable"}',
+      pinned: true,
+      createdAt: new Date(2000).toISOString(),
+      updatedAt: new Date(2500).toISOString(),
+      lastUsedAt: new Date(2600).toISOString(),
+    },
+    {
+      id: "sv_fixture_delivery_failures",
+      ownerSubjectId: "usr_platform_operator",
+      name: "Failed deliveries",
+      resourceKind: adminSavedViewResourceKind.webhookDeliveries,
+      serializedView:
+        '{"filters":{"status":["failed"]},"sort":{"field":"updatedAt","direction":"desc"},"columns":["deliveryId","status"],"density":"compact"}',
+      pinned: false,
+      createdAt: new Date(3000).toISOString(),
+      updatedAt: new Date(3500).toISOString(),
+      lastUsedAt: new Date(3600).toISOString(),
+    },
+  ];
+  let runAsBannerState: RunAsBannerState = {
+    active: false,
+    releasable: false,
+  };
   let adminOperators = operatorDirectory.operators.map((operator) => ({
     ...operator,
   }));
@@ -2763,6 +2845,9 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
     loadShell: async () => ({
       kind: "ready",
       profile: clone(operatorProfile),
+      workspaces: clone(adminWorkspaces),
+      savedViews: clone(adminSavedViews),
+      runAsBanner: clone(runAsBannerState),
     }),
     loadOperationsHome: async (): Promise<AdminOperationsHomeRouteData> => ({
       kind: "ready",
@@ -3136,6 +3221,22 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       filter: input.filter,
       members: clone(adminMembers),
     }),
+    loadAdminMemberDetail: async (input) => {
+      const member = adminMembers.find(
+        (candidate) => candidate.id === input.memberId,
+      );
+
+      return member === undefined
+        ? {
+            kind: "error",
+            title: "Admin member not found",
+            description: `No admin organization member matched '${input.memberId}'.`,
+          }
+        : {
+            kind: "ready",
+            member: clone(member),
+          };
+    },
     loadAdminTokens: async (input) => ({
       kind: "ready",
       filter: input.filter,
@@ -3377,6 +3478,60 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
         },
       };
     },
+    loadKeycloakUserDetail: async (input) => ({
+      kind: "ready",
+      tenant: input.tenant,
+      user: {
+        userId: input.userId,
+        username: "fixture.operator",
+        email: "fixture.operator@comvestec.com",
+        firstName: "Fixture",
+        lastName: "Operator",
+        enabled: true,
+        emailVerified: true,
+        createdAt: new Date(0).toISOString(),
+        lastLogin: new Date(60_000).toISOString(),
+        requiredActions: ["UPDATE_PASSWORD"],
+        realm: "comvestec-admin",
+      },
+      isFresh: true,
+    }),
+    loadKeycloakRoleDetail: async (input) => ({
+      kind: "ready",
+      tenant: input.tenant,
+      role: {
+        roleId: input.roleId,
+        roleName: "tenant-admin",
+        description: "Tenant-wide administrative role.",
+        composite: true,
+        clientRole: false,
+        realm: "comvestec-admin",
+        compositeRoles: [
+          {
+            roleId: "kc_role_support",
+            roleName: "tenant-support",
+            description: "Support operator role.",
+            composite: false,
+            clientRole: false,
+          },
+        ],
+        members: [
+          {
+            userId: "kc_usr_fixture_1",
+            username: "fixture.member",
+            email: "fixture.member@comvestec.com",
+            enabled: true,
+          },
+          {
+            userId: "kc_usr_fixture_2",
+            username: "fixture.viewer",
+            email: "fixture.viewer@comvestec.com",
+            enabled: false,
+          },
+        ],
+      },
+      isFresh: true,
+    }),
     loadBrandingList: async (input) => {
       const rows = input.tenantTargets.map((tenant) => {
         if (tenant.scope !== "enterprise" && tenant.scope !== "organization") {
@@ -3807,7 +3962,7 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
         operator: clone(operator),
         updatedExisting: existingIndex !== -1,
         credentialHandoff: {
-          signInUrl: "http://localhost:3004/auth/sign-in",
+          signInUrl: "http://localhost:3004/sign-in",
           temporaryPassword: "Adm_fixture_operator!aA1",
         },
       };
@@ -4058,6 +4213,28 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
 
       return {
         caseId: data.caseId,
+      };
+    },
+    releaseRunAsGrant: async ({ data }) => {
+      runAsBannerState = {
+        active: false,
+        releasable: false,
+      };
+
+      pushAuditEvent({
+        eventId: `audit_event_run_as_release_${data.grantId}`,
+        timestamp: timestamp(16, 10, 6),
+        actorId: capabilitySnapshot.actorId ?? "usr_platform_operator",
+        tenantScope: platformScope.platform,
+        tenantScopeId: "platform",
+        moduleId: platformModuleId.runAsBannerState,
+        action: runAsBannerStateAuditAction.released,
+        target: data.grantId,
+        reason: data.reasonId,
+      });
+
+      return {
+        grantId: data.grantId,
       };
     },
     releaseLegalHold: async ({ data }) => {

@@ -765,7 +765,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
+      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
     );
   });
 
@@ -790,7 +790,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?reason=restart-sign-in",
+      "http://localhost:3004/sign-in?reason=restart-sign-in",
     );
     expect(startAuthenticationCalled).toBe(false);
   });
@@ -930,7 +930,7 @@ describe("app auth routes", () => {
       "corr_admin_callback_expired",
     );
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Faccess-control&reason=callback-expired",
+      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Faccess-control&reason=callback-expired",
     );
   });
 
@@ -944,7 +944,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?reason=restart-sign-in",
+      "http://localhost:3004/sign-in?reason=restart-sign-in",
     );
   });
 
@@ -1036,7 +1036,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?returnTo=%2Fprofile&reason=access-denied",
+      "http://localhost:3004/sign-in?returnTo=%2Fprofile&reason=access-denied",
     );
   });
 
@@ -1186,7 +1186,7 @@ describe("app auth routes", () => {
       "corr_admin_callback_session_read",
     );
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
+      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
     );
   });
 
@@ -1204,7 +1204,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?reason=signed-out",
+      "http://localhost:3004/sign-in?reason=signed-out",
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
@@ -1229,7 +1229,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=signed-out",
+      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=signed-out",
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
@@ -1250,7 +1250,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?reason=stale-session",
+      "http://localhost:3004/sign-in?reason=stale-session",
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
@@ -1275,7 +1275,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/auth/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=stale-session",
+      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=stale-session",
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,

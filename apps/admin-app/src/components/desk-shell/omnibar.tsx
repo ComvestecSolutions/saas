@@ -16,6 +16,10 @@ import {
 } from "@comvestec/contracts";
 import { loadAdminUniversalSearchLoaderData } from "../../lib/universal-search-loader";
 import type { AdminUniversalSearchRouteData } from "../../lib/universal-search-route-data";
+import {
+  resolveUniversalSearchEntryPermalink,
+  universalSearchFacetLabel,
+} from "../../lib/universal-search-presentation";
 import { buildAdminFeatureFlagPath } from "../../lib/admin-feature-flag-path";
 import { buildAdminRuntimeConfigPath } from "../../lib/admin-runtime-config-path";
 import { navigateAdminPath } from "../../lib/browser-navigation";
@@ -91,26 +95,6 @@ const parseOmnibarInput = (raw: string): ParsedOmnibarInput => {
   };
 };
 
-const facetFallbackPath: Record<UniversalSearchFacet, string> = {
-  [universalSearchFacet.tenants]: adminRoutePath.tenantWorkspaceDiscovery,
-  [universalSearchFacet.users]: adminRoutePath.accessControl,
-  [universalSearchFacet.featureFlags]: adminRoutePath.featureFlags,
-  [universalSearchFacet.configKeys]: adminRoutePath.runtimeConfig,
-  [universalSearchFacet.auditEvents]: "/r/audit",
-  [universalSearchFacet.invoices]: adminRoutePath.billing,
-  [universalSearchFacet.webhooks]: adminRoutePath.webhooksApiAccess,
-  [universalSearchFacet.customDomains]: adminRoutePath.branding,
-};
-
-const resolvePermalink = (entry: UniversalSearchEntry): string => {
-  if (entry.permalink.length > 0) return entry.permalink;
-  if (entry.facet === universalSearchFacet.tenants) {
-    return `/r/tenant/${entry.id}`;
-  }
-  const fallback = facetFallbackPath[entry.facet];
-  return fallback === undefined ? `/r/${entry.facet}/${entry.id}` : fallback;
-};
-
 const navigateToPermalink = (
   permalink: string,
   onNavigate: ((path: string) => void) | undefined,
@@ -152,27 +136,6 @@ const resolveSubmittedPrefixPermalink = (
   }
 };
 
-const facetLabel = (facet: UniversalSearchFacet): string => {
-  switch (facet) {
-    case universalSearchFacet.tenants:
-      return "Tenant";
-    case universalSearchFacet.users:
-      return "User";
-    case universalSearchFacet.featureFlags:
-      return "Flag";
-    case universalSearchFacet.configKeys:
-      return "Config";
-    case universalSearchFacet.auditEvents:
-      return "Audit";
-    case universalSearchFacet.invoices:
-      return "Invoice";
-    case universalSearchFacet.webhooks:
-      return "Webhook";
-    case universalSearchFacet.customDomains:
-      return "Domain";
-  }
-};
-
 const toSuggestions = (
   data: AdminUniversalSearchRouteData,
 ): readonly OmnibarSuggestion[] => {
@@ -180,7 +143,7 @@ const toSuggestions = (
   return data.result.entries.map((entry) => ({
     id: `${entry.facet}:${entry.id}`,
     label: entry.label,
-    hint: facetLabel(entry.facet),
+    hint: universalSearchFacetLabel(entry.facet),
   }));
 };
 
@@ -293,7 +256,7 @@ export function DeskShellOmnibar({
     (suggestion: OmnibarSuggestion) => {
       const entry = suggestionEntryIndex.get(suggestion.id);
       if (entry === undefined) return;
-      completeNavigation(resolvePermalink(entry));
+      completeNavigation(resolveUniversalSearchEntryPermalink(entry));
     },
     [completeNavigation, suggestionEntryIndex],
   );
@@ -310,7 +273,7 @@ export function DeskShellOmnibar({
       const permalink =
         currentTopEntry === undefined
           ? resolveSubmittedPrefixPermalink(submitted)
-          : resolvePermalink(currentTopEntry);
+          : resolveUniversalSearchEntryPermalink(currentTopEntry);
 
       if (permalink !== undefined) {
         completeNavigation(permalink);

@@ -201,6 +201,12 @@ const buildErrorResponse = (error: unknown): Response => {
           { error: "Requested resource was not found." },
           404,
         );
+      case "WorkflowRunsAdminReplayUnavailable":
+      case "WorkflowRunsAdminCancelUnavailable":
+        return createJsonResponse(
+          { error: "Workflow run state no longer allows that action." },
+          409,
+        );
     }
   }
   return createJsonResponse(

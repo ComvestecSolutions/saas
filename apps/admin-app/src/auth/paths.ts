@@ -1,8 +1,10 @@
 import { Schema } from "effect";
 import { FirstPartyAppPostAuthRedirectPathSchema } from "@comvestec/contracts";
+import { buildCanonicalAdminLegacyHref } from "../lib/legacy-admin-route-redirect";
 
 const AdminAuthRoutePathSchema = Schema.Struct({
-  signIn: Schema.Literal("/auth/sign-in"),
+  signIn: Schema.Literal("/sign-in"),
+  legacySignIn: Schema.Literal("/auth/sign-in"),
   start: Schema.Literal("/auth/start"),
   callback: Schema.Literal("/auth/callback"),
   logout: Schema.Literal("/auth/logout"),
@@ -11,7 +13,8 @@ const AdminAuthRoutePathSchema = Schema.Struct({
 
 export const adminAuthRoutePath = Schema.validateSync(AdminAuthRoutePathSchema)(
   {
-    signIn: "/auth/sign-in",
+    signIn: "/sign-in",
+    legacySignIn: "/auth/sign-in",
     start: "/auth/start",
     callback: "/auth/callback",
     logout: "/auth/logout",
@@ -39,6 +42,7 @@ const isFirstPartyAppPostAuthRedirectPath = Schema.is(
 
 const adminAuthRoutePaths = [
   adminAuthRoutePath.signIn,
+  adminAuthRoutePath.legacySignIn,
   adminAuthRoutePath.start,
   adminAuthRoutePath.callback,
   adminAuthRoutePath.logout,
@@ -80,7 +84,7 @@ export const buildAdminAuthReturnTo = ({
   pathname,
   searchStr,
 }: Readonly<AdminAuthLocation>) =>
-  searchStr.length === 0 ? pathname : `${pathname}${searchStr}`;
+  buildCanonicalAdminLegacyHref({ pathname, searchStr });
 
 export const buildAdminSignInPath = (
   input: BuildAdminAuthRoutePathInput = {},

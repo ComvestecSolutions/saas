@@ -116,6 +116,14 @@ const createSignedPostalWebhookRequest = (body: string) => {
   );
 };
 
+const createJsonTestResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
 const createPostalWebhookJwksResponse = () =>
   new Response(
     JSON.stringify({
@@ -1326,6 +1334,293 @@ describe("platform adapters", () => {
     });
   });
 
+  it("returns none when a Keycloak realm role is not found", async () => {
+    const baseOptions = createKeycloakTestOptions({
+      adminUsername: "admin",
+      adminPassword: "password",
+    });
+    const adminTokenEndpoint = `${baseOptions.baseUrl}/realms/master/protocol/openid-connect/token`;
+    const missingRolePath = `/admin/realms/${baseOptions.realm}/roles-by-id/kc-role-missing`;
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter({
+        ...baseOptions,
+        adminUsername: "admin",
+        adminPassword: "password",
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+          const requestUrl = new URL(url);
+
+          if (url === adminTokenEndpoint) {
+            return createJsonTestResponse({
+              access_token: "admin-access-token",
+              expires_in: 1800,
+            });
+          }
+
+          if (requestUrl.pathname === missingRolePath) {
+            return new Response("Not Found", {
+              status: 404,
+              statusText: "Not Found",
+            });
+          }
+
+          return baseOptions.fetch!(input, init);
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      keycloak.readRealmRoleById({
+        roleId: "kc-role-missing",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "None",
+    });
+  });
+
+  it("reads Keycloak realm role detail with composite roles and paginated members", async () => {
+    const baseOptions = createKeycloakTestOptions({
+      adminUsername: "admin",
+      adminPassword: "password",
+    });
+    const adminTokenEndpoint = `${baseOptions.baseUrl}/realms/master/protocol/openid-connect/token`;
+    const rolePath = `/admin/realms/${baseOptions.realm}/roles-by-id/kc-role-001`;
+    const firstPageMembers = Array.from({ length: 100 }, (_, index) => ({
+      id: `usr_${index}`,
+      username: `member-${index}`,
+      ...(index === 0 ? { email: "member-0@example.test" } : {}),
+      enabled: index % 2 === 0,
+    }));
+    const secondPageMembers = [
+      {
+        id: "usr_100",
+        username: "member-100",
+        enabled: true,
+      },
+    ];
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter({
+        ...baseOptions,
+        adminUsername: "admin",
+        adminPassword: "password",
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+          const requestUrl = new URL(url);
+
+          if (url === adminTokenEndpoint) {
+            return createJsonTestResponse({
+              access_token: "admin-access-token",
+              expires_in: 1800,
+            });
+          }
+
+          if (requestUrl.pathname === rolePath) {
+            return createJsonTestResponse({
+              id: "kc-role-001",
+              name: "tenant-admin",
+              description: "Tenant administrators",
+              composite: true,
+              clientRole: false,
+            });
+          }
+
+          if (requestUrl.pathname === `${rolePath}/composites`) {
+            return createJsonTestResponse([
+              {
+                id: "kc-role-002",
+                name: "tenant-support",
+                composite: false,
+                clientRole: false,
+              },
+            ]);
+          }
+
+          if (requestUrl.pathname === `${rolePath}/users`) {
+            if (requestUrl.searchParams.get("first") === "0") {
+              return createJsonTestResponse(firstPageMembers);
+            }
+
+            if (requestUrl.searchParams.get("first") === "100") {
+              return createJsonTestResponse(secondPageMembers);
+            }
+          }
+
+          return baseOptions.fetch!(input, init);
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      keycloak.readRealmRoleById({
+        roleId: "kc-role-001",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Some",
+      value: {
+        roleId: "kc-role-001",
+        roleName: "tenant-admin",
+        description: "Tenant administrators",
+        composite: true,
+        clientRole: false,
+        realm: baseOptions.realm,
+        compositeRoles: [
+          {
+            roleId: "kc-role-002",
+            roleName: "tenant-support",
+            composite: false,
+            clientRole: false,
+          },
+        ],
+      },
+    });
+    if (result._tag === "Some") {
+      expect(result.value.members).toHaveLength(101);
+      expect(result.value.members[0]).toMatchObject({
+        userId: "usr_0",
+        username: "member-0",
+        email: "member-0@example.test",
+        enabled: true,
+      });
+      expect(result.value.members[100]).toMatchObject({
+        userId: "usr_100",
+        username: "member-100",
+        enabled: true,
+      });
+    }
+  });
+
+  it("surfaces composite-role fetch failures during Keycloak realm role reads", async () => {
+    const baseOptions = createKeycloakTestOptions({
+      adminUsername: "admin",
+      adminPassword: "password",
+    });
+    const adminTokenEndpoint = `${baseOptions.baseUrl}/realms/master/protocol/openid-connect/token`;
+    const rolePath = `/admin/realms/${baseOptions.realm}/roles-by-id/kc-role-001`;
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter({
+        ...baseOptions,
+        adminUsername: "admin",
+        adminPassword: "password",
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+          const requestUrl = new URL(url);
+
+          if (url === adminTokenEndpoint) {
+            return createJsonTestResponse({
+              access_token: "admin-access-token",
+              expires_in: 1800,
+            });
+          }
+
+          if (requestUrl.pathname === rolePath) {
+            return createJsonTestResponse({
+              id: "kc-role-001",
+              name: "tenant-admin",
+              composite: true,
+              clientRole: false,
+            });
+          }
+
+          if (requestUrl.pathname === `${rolePath}/composites`) {
+            return new Response("Service Unavailable", {
+              status: 503,
+              statusText: "Service Unavailable",
+            });
+          }
+
+          return baseOptions.fetch!(input, init);
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        keycloak.readRealmRoleById({
+          roleId: "kc-role-001",
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        _tag: "KeycloakAdapterRequestError",
+        operation: "listAdminRoleComposites",
+        status: 503,
+      },
+    });
+  });
+
+  it("surfaces member-enumeration failures during Keycloak realm role reads", async () => {
+    const baseOptions = createKeycloakTestOptions({
+      adminUsername: "admin",
+      adminPassword: "password",
+    });
+    const adminTokenEndpoint = `${baseOptions.baseUrl}/realms/master/protocol/openid-connect/token`;
+    const rolePath = `/admin/realms/${baseOptions.realm}/roles-by-id/kc-role-001`;
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter({
+        ...baseOptions,
+        adminUsername: "admin",
+        adminPassword: "password",
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+          const requestUrl = new URL(url);
+
+          if (url === adminTokenEndpoint) {
+            return createJsonTestResponse({
+              access_token: "admin-access-token",
+              expires_in: 1800,
+            });
+          }
+
+          if (requestUrl.pathname === rolePath) {
+            return createJsonTestResponse({
+              id: "kc-role-001",
+              name: "tenant-admin",
+              composite: true,
+              clientRole: false,
+            });
+          }
+
+          if (requestUrl.pathname === `${rolePath}/composites`) {
+            return createJsonTestResponse([]);
+          }
+
+          if (requestUrl.pathname === `${rolePath}/users`) {
+            return new Response("Service Unavailable", {
+              status: 503,
+              statusText: "Service Unavailable",
+            });
+          }
+
+          return baseOptions.fetch!(input, init);
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        keycloak.readRealmRoleById({
+          roleId: "kc-role-001",
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        _tag: "KeycloakAdapterRequestError",
+        operation: "listAdminRoleMembers",
+        status: 503,
+      },
+    });
+  });
+
   it("creates healthy adapters for all new services", async () => {
     const originalFetch = globalThis.fetch;
     const fetchCalls: {
@@ -1961,6 +2256,266 @@ describe("platform adapters", () => {
         operation: "healthcheck",
         status: 401,
       },
+    });
+  });
+
+  it("lists Novu messages with delivery query filters", async () => {
+    const requests: Array<{ readonly url: string; readonly method: string }> =
+      [];
+    const novu = await Effect.runPromise(
+      makeNovuAdapter({
+        apiUrl: "http://localhost:3101",
+        apiKey: "novu-key",
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+          const method = init?.method ?? "GET";
+
+          requests.push({ url, method });
+
+          if (url.startsWith("http://localhost:3101/v1/messages")) {
+            return new Response(
+              JSON.stringify({
+                hasMore: false,
+                pageSize: 1,
+                page: 2,
+                totalCount: 1,
+                data: [
+                  {
+                    _id: "msg_1",
+                    _notificationId: "evt_1",
+                    _subscriberId: "sub_1",
+                    templateIdentifier: "billing-invoice-ready",
+                    createdAt: "2026-06-01T10:00:00.000Z",
+                    deliveredAt: ["2026-06-01T10:01:00.000Z"],
+                    transactionId: "tx_1",
+                    subject: "Invoice ready",
+                    channel: "email",
+                    email: "customer@example.com",
+                    status: "sent",
+                    contextKeys: ["tenantId:org_1"],
+                  },
+                ],
+              }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+          }
+
+          return new Response("Not found", { status: 404 });
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        novu.listMessages({
+          channel: "email",
+          subscriberId: "sub_1",
+          transactionIds: ["tx_1", "tx_2"],
+          contextKeys: ["tenantId:org_1"],
+          page: 2,
+          limit: 5,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      hasMore: false,
+      page: 2,
+      pageSize: 1,
+      totalCount: 1,
+      data: [
+        expect.objectContaining({
+          _id: "msg_1",
+          _notificationId: "evt_1",
+          _subscriberId: "sub_1",
+          channel: "email",
+          status: "sent",
+        }),
+      ],
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      method: "GET",
+    });
+    const requestUrl = new URL(requests[0]!.url);
+    expect(requestUrl.pathname).toBe("/v1/messages");
+    expect(requestUrl.searchParams.get("channel")).toBe("email");
+    expect(requestUrl.searchParams.get("subscriberId")).toBe("sub_1");
+    expect(requestUrl.searchParams.getAll("transactionId")).toEqual([
+      "tx_1",
+      "tx_2",
+    ]);
+    expect(requestUrl.searchParams.getAll("contextKeys")).toEqual([
+      "tenantId:org_1",
+    ]);
+    expect(requestUrl.searchParams.get("page")).toBe("2");
+    expect(requestUrl.searchParams.get("limit")).toBe("5");
+  });
+
+  it("reads Novu notification detail and maps 404s to none", async () => {
+    const novu = await Effect.runPromise(
+      makeNovuAdapter({
+        apiUrl: "http://localhost:3101",
+        apiKey: "novu-key",
+        fetch: async (input) => {
+          const url = typeof input === "string" ? input : input.toString();
+
+          if (url === "http://localhost:3101/v1/notifications/evt_1") {
+            return new Response(
+              JSON.stringify({
+                _id: "evt_1",
+                transactionId: "tx_1",
+                payload: {
+                  invoiceId: "inv_1",
+                },
+                contextKeys: ["tenantId:org_1"],
+                subscriber: {
+                  subscriberId: "sub_1",
+                  email: "customer@example.com",
+                },
+                template: {
+                  triggers: [{ identifier: "billing-invoice-ready" }],
+                },
+              }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+          }
+
+          if (url === "http://localhost:3101/v1/notifications/evt_missing") {
+            return new Response("Not found", { status: 404 });
+          }
+
+          return new Response("Not found", { status: 404 });
+        },
+      }),
+    );
+
+    const found = await Effect.runPromise(
+      novu.getNotification({ notificationId: "evt_1" }),
+    );
+    expect(found._tag).toBe("Some");
+    if (found._tag === "Some") {
+      expect(found.value).toMatchObject({
+        _id: "evt_1",
+        transactionId: "tx_1",
+        contextKeys: ["tenantId:org_1"],
+        subscriber: {
+          subscriberId: "sub_1",
+          email: "customer@example.com",
+        },
+      });
+    }
+
+    const missing = await Effect.runPromise(
+      novu.getNotification({ notificationId: "evt_missing" }),
+    );
+    expect(missing._tag).toBe("None");
+  });
+
+  it("triggers generic Novu events and unwraps nested transaction receipts", async () => {
+    const requests: Array<{
+      readonly url: string;
+      readonly method: string;
+      readonly body?: string;
+    }> = [];
+    const novu = await Effect.runPromise(
+      makeNovuAdapter({
+        apiUrl: "http://localhost:3101",
+        apiKey: "novu-key",
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+          const method = init?.method ?? "GET";
+          const body = typeof init?.body === "string" ? init.body : undefined;
+
+          requests.push({
+            url,
+            method,
+            ...(body === undefined ? {} : { body }),
+          });
+
+          if (url === "http://localhost:3101/v1/events/trigger") {
+            return new Response(
+              JSON.stringify({
+                data: {
+                  acknowledged: true,
+                  status: "processed",
+                  data: {
+                    transactionId: "novu_tx_2",
+                  },
+                },
+              }),
+              {
+                status: 201,
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+          }
+
+          return new Response("Not found", { status: 404 });
+        },
+      }),
+    );
+
+    const receipt = await Effect.runPromise(
+      novu.triggerEvent({
+        name: "billing-invoice-ready",
+        to: {
+          subscriberId: "sub_1",
+          email: "customer@example.com",
+        },
+        payload: {
+          invoiceId: "inv_1",
+        },
+        overrides: {
+          email: {
+            subject: "Invoice ready",
+          },
+        },
+        context: {
+          tenantId: "org_1",
+        },
+        transactionId: "tx_source_1-resend",
+      }),
+    );
+
+    expect(receipt).toMatchObject({
+      id: "novu_tx_2",
+      provider: platformAdapterServiceName.novu,
+    });
+    expect(Date.parse(receipt.createdAt)).not.toBeNaN();
+    expect(requests[0]).toMatchObject({
+      url: "http://localhost:3101/v1/events/trigger",
+      method: "POST",
+    });
+    expect(JSON.parse(requests[0]!.body ?? "{}")).toEqual({
+      name: "billing-invoice-ready",
+      to: {
+        subscriberId: "sub_1",
+        email: "customer@example.com",
+      },
+      payload: {
+        invoiceId: "inv_1",
+      },
+      overrides: {
+        email: {
+          subject: "Invoice ready",
+        },
+      },
+      context: {
+        tenantId: "org_1",
+      },
+      transactionId: "tx_source_1-resend",
     });
   });
 

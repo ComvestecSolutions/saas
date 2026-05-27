@@ -21,23 +21,20 @@
  * loader test only pins the discriminated-union mapping the
  * admin-app omnibar consumes.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
 
-vi.mock("@comvestec/platform", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@comvestec/platform")>();
-  return {
-    ...actual,
-    resolveTrustedRequestContextFromSessionId: vi.fn(),
-    runUniversalSearchFromEnvironment: vi.fn(),
-  };
-});
-
-import {
-  resolveTrustedRequestContextFromSessionId,
-  runUniversalSearchFromEnvironment,
-} from "@comvestec/platform";
+import * as platform from "@comvestec/platform";
 import { loadAdminUniversalSearchRouteDataFromRequest } from "../../apps/admin-app/src/lib/universal-search-route-data";
+
+const resolveTrustedRequestContextFromSessionIdSpy = vi.spyOn(
+  platform,
+  "resolveTrustedRequestContextFromSessionId",
+);
+const runUniversalSearchFromEnvironmentSpy = vi.spyOn(
+  platform,
+  "runUniversalSearchFromEnvironment",
+);
 
 const buildRequest = (sessionId: string | undefined) =>
   new Request("https://admin.local/", {
@@ -77,19 +74,24 @@ const okResult = {
 };
 
 const mockResolveContextOk = () =>
-  vi
-    .mocked(resolveTrustedRequestContextFromSessionId)
-    .mockImplementation(() => Effect.succeed(fakeRequestContext) as never);
+  resolveTrustedRequestContextFromSessionIdSpy.mockImplementation(
+    () => Effect.succeed(fakeRequestContext) as never,
+  );
 
 describe("admin-app universal-search loader", () => {
   beforeEach(() => {
-    vi.mocked(resolveTrustedRequestContextFromSessionId).mockReset();
-    vi.mocked(runUniversalSearchFromEnvironment).mockReset();
+    resolveTrustedRequestContextFromSessionIdSpy.mockReset();
+    runUniversalSearchFromEnvironmentSpy.mockReset();
+  });
+
+  afterAll(() => {
+    resolveTrustedRequestContextFromSessionIdSpy.mockRestore();
+    runUniversalSearchFromEnvironmentSpy.mockRestore();
   });
 
   it("short-circuits to shell when the query is empty", async () => {
     mockResolveContextOk();
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () => Effect.succeed(okResult) as never,
     );
     const result = await Effect.runPromise(
@@ -100,12 +102,12 @@ describe("admin-app universal-search loader", () => {
       ),
     );
     expect(result.kind).toBe("shell");
-    expect(runUniversalSearchFromEnvironment).not.toHaveBeenCalled();
+    expect(runUniversalSearchFromEnvironmentSpy).not.toHaveBeenCalled();
   });
 
   it("returns shell when the subscriber-journey session id is missing", async () => {
     mockResolveContextOk();
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () => Effect.succeed(okResult) as never,
     );
     const result = await Effect.runPromise(
@@ -120,7 +122,7 @@ describe("admin-app universal-search loader", () => {
 
   it("returns ready with the result envelope on the happy path", async () => {
     mockResolveContextOk();
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () => Effect.succeed(okResult) as never,
     );
     const result = await Effect.runPromise(
@@ -139,7 +141,7 @@ describe("admin-app universal-search loader", () => {
 
   it("maps UniversalSearchUnauthorized to denied", async () => {
     mockResolveContextOk();
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () =>
         Effect.fail({
           _tag: "UniversalSearchUnauthorized",
@@ -157,7 +159,7 @@ describe("admin-app universal-search loader", () => {
 
   it("maps UniversalSearchMissingActorIdentity to denied", async () => {
     mockResolveContextOk();
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () =>
         Effect.fail({
           _tag: "UniversalSearchMissingActorIdentity",
@@ -174,13 +176,13 @@ describe("admin-app universal-search loader", () => {
   });
 
   it("maps IdentitySessionRequestContextNotFoundError to stale-session", async () => {
-    vi.mocked(resolveTrustedRequestContextFromSessionId).mockImplementation(
+    resolveTrustedRequestContextFromSessionIdSpy.mockImplementation(
       () =>
         Effect.fail({
           _tag: "IdentitySessionRequestContextNotFoundError",
         } as const) as never,
     );
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () => Effect.succeed(okResult) as never,
     );
     const result = await Effect.runPromise(
@@ -195,7 +197,7 @@ describe("admin-app universal-search loader", () => {
 
   it("returns error when the platform helper raises an untagged Error", async () => {
     mockResolveContextOk();
-    vi.mocked(runUniversalSearchFromEnvironment).mockImplementation(
+    runUniversalSearchFromEnvironmentSpy.mockImplementation(
       () =>
         Effect.fail(
           new Error("Upstream universal-search service unavailable."),
@@ -218,9 +220,9 @@ describe("admin-app universal-search loader", () => {
 
   it("forwards the typed prefixFilter to the service", async () => {
     mockResolveContextOk();
-    const runMock = vi
-      .mocked(runUniversalSearchFromEnvironment)
-      .mockImplementation(() => Effect.succeed(okResult) as never);
+    const runMock = runUniversalSearchFromEnvironmentSpy.mockImplementation(
+      () => Effect.succeed(okResult) as never,
+    );
     await Effect.runPromise(
       loadAdminUniversalSearchRouteDataFromRequest(
         buildRequest("sess-ok"),

@@ -545,6 +545,16 @@ function AccessControlRoute() {
                   </div>
                 ))}
               </div>
+              <div style={{ marginTop: 10 }}>
+                <a
+                  href={`/r/operator/${encodeURIComponent(
+                    currentOperator.identity.actorId,
+                  )}`}
+                  data-testid="access-control-current-operator-link"
+                >
+                  Open operator detail
+                </a>
+              </div>
             </div>
 
             <div className="ops-card">
@@ -726,7 +736,16 @@ function AccessControlRoute() {
                         data-testid="access-control-operators-row"
                         data-row-key={operator.actorId}
                       >
-                        <td>{operator.displayName}</td>
+                        <td>
+                          <a
+                            href={`/r/operator/${encodeURIComponent(
+                              operator.actorId,
+                            )}`}
+                            data-testid="access-control-operator-link"
+                          >
+                            {operator.displayName}
+                          </a>
+                        </td>
                         <td>{operator.email}</td>
                         <td className="mono">{operator.username}</td>
                         <td>{operator.actorType}</td>

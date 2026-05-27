@@ -243,6 +243,13 @@ export const keycloakUserReadAuditAction = defineModuleAuditActions(
   },
 );
 
+export const keycloakRoleReadAuditAction = defineModuleAuditActions(
+  platformModuleId.keycloakRoleRead,
+  {
+    readPerformed: "read.performed",
+  },
+);
+
 export const polarCustomerReadAuditAction = defineModuleAuditActions(
   platformModuleId.polarCustomerRead,
   {
@@ -424,6 +431,7 @@ export const auditActions = [
   openMeterUsageQueryAuditAction.queryExecuted,
   openMeterUsageQueryAuditAction.backfillRequested,
   vendorHealthAggregatorAuditAction.snapshotComputed,
+  keycloakRoleReadAuditAction.readPerformed,
   keycloakUserReadAuditAction.readPerformed,
   polarCustomerReadAuditAction.readPerformed,
   openMeterMeterReadAuditAction.readPerformed,

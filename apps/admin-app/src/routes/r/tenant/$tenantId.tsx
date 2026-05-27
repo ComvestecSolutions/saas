@@ -12,6 +12,7 @@ import {
 } from "@comvestec/ui";
 import {
   authorizationRelation,
+  billingSubscriptionStatus,
   tenantMembershipMutationAction,
   tenantMembershipRelations,
 } from "@comvestec/contracts";
@@ -172,6 +173,24 @@ const formatTrend = (
         : "flat";
   return `${prefix} ${Math.abs(spotlight.trend.delta)} in ${spotlight.trend.windowMinutes}m`;
 };
+
+const resolveBillingStatusTone = (
+  billingStatus: string | undefined,
+): KpiTone => {
+  switch (billingStatus) {
+    case billingSubscriptionStatus.active:
+      return "good";
+    case billingSubscriptionStatus.pending:
+      return "accent";
+    case billingSubscriptionStatus.pastDue:
+      return "warn";
+    default:
+      return "neutral";
+  }
+};
+
+const formatBillingStatus = (billingStatus: string | undefined): string =>
+  billingStatus ?? "unassigned";
 
 const buildAuditWorkspacePath = (
   target: Readonly<AdminTenantTarget>,
@@ -381,6 +400,7 @@ function TenantWorkspaceV2Route() {
   const incidentCount = snapshot.openIncidents.length;
   const usageSpotlightCount = snapshot.usageSpotlights.length;
   const pendingApprovalCount = snapshot.pendingTenantApprovals.length;
+  const billingStatus = snapshot.tenantOverview?.billingStatus;
   const roleCounts = snapshot.members.reduce(
     (acc, member) => {
       acc[member.role] += 1;
@@ -802,16 +822,8 @@ function TenantWorkspaceV2Route() {
                   legal hold{" "}
                   {snapshot.tenantOverview.legalHoldActive ? "active" : "clear"}
                 </SignalBadge>
-                <SignalBadge
-                  tone={
-                    snapshot.tenantOverview.supportTier === "enterprise"
-                      ? "good"
-                      : snapshot.tenantOverview.supportTier === "priority"
-                        ? "accent"
-                        : "neutral"
-                  }
-                >
-                  support {snapshot.tenantOverview.supportTier}
+                <SignalBadge tone={resolveBillingStatusTone(billingStatus)}>
+                  billing {formatBillingStatus(billingStatus)}
                 </SignalBadge>
               </div>
               <div className="ops-meta-grid">
@@ -820,13 +832,12 @@ function TenantWorkspaceV2Route() {
                   value={snapshot.tenantOverview.displayName}
                 />
                 <MetaRow
-                  label="Current MAU"
-                  value={snapshot.tenantOverview.currentMau.toString()}
-                  mono
+                  label="Billing status"
+                  value={formatBillingStatus(billingStatus)}
                 />
                 <MetaRow
-                  label="Open invoices"
-                  value={snapshot.tenantOverview.openInvoiceCount.toString()}
+                  label="Pending approvals"
+                  value={pendingApprovalCount.toString()}
                   mono
                 />
                 <MetaRow
@@ -1029,15 +1040,9 @@ function TenantWorkspaceV2Route() {
                     }
                   />
                   <KpiCard
-                    label="Support tier"
-                    value={snapshot.tenantOverview.supportTier}
-                    tone={
-                      snapshot.tenantOverview.supportTier === "enterprise"
-                        ? "good"
-                        : snapshot.tenantOverview.supportTier === "priority"
-                          ? "accent"
-                          : "neutral"
-                    }
+                    label="Billing status"
+                    value={formatBillingStatus(billingStatus)}
+                    tone={resolveBillingStatusTone(billingStatus)}
                   />
                   <KpiCard
                     label="Legal hold"
@@ -1057,13 +1062,13 @@ function TenantWorkspaceV2Route() {
                     value={snapshot.tenantOverview.displayName}
                   />
                   <MetaRow
-                    label="Current MAU"
-                    value={snapshot.tenantOverview.currentMau.toString()}
+                    label="Open incidents"
+                    value={incidentCount.toString()}
                     mono
                   />
                   <MetaRow
-                    label="Open invoices"
-                    value={snapshot.tenantOverview.openInvoiceCount.toString()}
+                    label="Pending approvals"
+                    value={pendingApprovalCount.toString()}
                     mono
                   />
                   <MetaRow
@@ -1479,18 +1484,14 @@ function TenantWorkspaceV2Route() {
                     tone="accent"
                   />
                   <KpiCard
-                    label="Open invoices"
-                    value={snapshot.tenantOverview.openInvoiceCount}
-                    tone={
-                      snapshot.tenantOverview.openInvoiceCount > 0
-                        ? "warn"
-                        : "good"
-                    }
+                    label="Billing status"
+                    value={formatBillingStatus(billingStatus)}
+                    tone={resolveBillingStatusTone(billingStatus)}
                   />
                   <KpiCard
-                    label="Current MAU"
-                    value={snapshot.tenantOverview.currentMau}
-                    tone="neutral"
+                    label="Usage spotlights"
+                    value={usageSpotlightCount}
+                    tone={usageSpotlightCount > 0 ? "accent" : "neutral"}
                   />
                   <KpiCard
                     label="Approval queue"
@@ -1576,15 +1577,9 @@ function TenantWorkspaceV2Route() {
                     }
                   />
                   <KpiCard
-                    label="Support tier"
-                    value={snapshot.tenantOverview.supportTier}
-                    tone={
-                      snapshot.tenantOverview.supportTier === "enterprise"
-                        ? "good"
-                        : snapshot.tenantOverview.supportTier === "priority"
-                          ? "accent"
-                          : "neutral"
-                    }
+                    label="Display name"
+                    value={snapshot.tenantOverview.displayName}
+                    tone="neutral"
                   />
                   <KpiCard
                     label="Legal hold"
@@ -1861,15 +1856,9 @@ function TenantWorkspaceV2Route() {
                   tone="neutral"
                 />
                 <KpiCard
-                  label="Support tier"
-                  value={snapshot.tenantOverview?.supportTier ?? "unknown"}
-                  tone={
-                    snapshot.tenantOverview?.supportTier === "enterprise"
-                      ? "good"
-                      : snapshot.tenantOverview?.supportTier === "priority"
-                        ? "accent"
-                        : "neutral"
-                  }
+                  label="Billing status"
+                  value={formatBillingStatus(billingStatus)}
+                  tone={resolveBillingStatusTone(billingStatus)}
                 />
               </div>
               <Tabs<IncidentFilter>
@@ -2030,8 +2019,8 @@ function TenantWorkspaceV2Route() {
           <Pane title="Current blockers" ariaLabel="Current blockers">
             <div style={{ display: "grid", gap: 6 }}>
               <ChecklistRow
-                label="No open invoices"
-                done={snapshot.tenantOverview?.openInvoiceCount === 0}
+                label="No past-due subscription"
+                done={billingStatus !== billingSubscriptionStatus.pastDue}
               />
               <ChecklistRow
                 label="No legal hold"

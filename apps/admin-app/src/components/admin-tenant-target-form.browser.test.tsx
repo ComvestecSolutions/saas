@@ -76,13 +76,39 @@ describe("admin tenant target form", () => {
     });
   });
 
-  it("keeps the exact lookup path behind explicit disclosure and trims the fallback scope id", async () => {
+  it("keeps exact scope lookup hidden by default", async () => {
     const onSubmit = vi.fn();
 
     await act(async () => {
       root.render(
         <AdminTenantTargetForm
           initialScope={platformScope.organization}
+          submitLabel="Open workspace"
+          targetOptions={[]}
+          onSubmit={onSubmit}
+        />,
+      );
+    });
+
+    expect(container.querySelector("summary")).toBeNull();
+    expect(
+      container.textContent?.includes("Use exact scope lookup") ?? false,
+    ).toBe(false);
+    expect(
+      container.textContent?.includes("Search the shared operator catalog") ??
+        false,
+    ).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("trims exact scope lookup submissions only when the governed fallback is explicitly enabled", async () => {
+    const onSubmit = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <AdminTenantTargetForm
+          initialScope={platformScope.organization}
+          allowExactScopeLookup
           submitLabel="Open workspace"
           targetOptions={[]}
           onSubmit={onSubmit}

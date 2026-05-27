@@ -23,6 +23,7 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  *
  * Covers: ready (lifecycle chip + DNS records + verify CTA),
  * tenant-required error, copy-to-clipboard affordance fires,
+ * empty DNS-proof state, not-found StateScreen,
  * verify-CTA arms the HighRiskActionGuard, denied StateScreen,
  * stale-session StateScreen, error StateScreen.
  */
@@ -84,7 +85,7 @@ describe("/r/domain/$hostname Custom-domain lifecycle v2 route", () => {
         "[data-testid='domain-detail-verify-cta']",
       ),
     ).not.toBeNull();
-  });
+  }, 30_000);
 
   it("surfaces a tenant-required error when search params are missing", async () => {
     rendered = await renderAdminApp(
@@ -221,6 +222,43 @@ describe("/r/domain/$hostname Custom-domain lifecycle v2 route", () => {
     );
   });
 
+  it("renders an honest empty state when the ready payload has no DNS proof rows", async () => {
+    const emptyDnsFixture = withFixtureTransform(
+      createAdminBrowserFixtureState(),
+      (fixture) => ({
+        ...fixture,
+        loadDomainDetail: async (input) => ({
+          kind: "ready",
+          hostname: input.hostname,
+          tenant: input.tenant,
+          lifecycleState: "verifying",
+          dnsRecords: [],
+          changedAt: new Date(0).toISOString(),
+        }),
+      }),
+    );
+
+    rendered = await renderAdminApp(emptyDnsFixture, PATH_READY);
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes(
+          "DNS proof not yet published",
+        ) ?? false,
+      "Expected empty DNS-proof state to render.",
+    );
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='domain-detail-dns-empty']",
+      ),
+    ).not.toBeNull();
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='domain-detail-dns-copy']",
+      ),
+    ).toBeNull();
+  });
+
   it("surfaces a denied StateScreen when the loader returns denied", async () => {
     const deniedFixture = withFixtureTransform(
       createAdminBrowserFixtureState(),
@@ -239,6 +277,29 @@ describe("/r/domain/$hostname Custom-domain lifecycle v2 route", () => {
     await waitFor(
       () => rendered?.container.textContent?.includes("Access denied") ?? false,
       "Expected domain denied state to render.",
+    );
+  });
+
+  it("surfaces a not-found StateScreen when the loader returns not-found", async () => {
+    const notFoundFixture = withFixtureTransform(
+      createAdminBrowserFixtureState(),
+      (fixture) => ({
+        ...fixture,
+        loadDomainDetail: async () => ({
+          kind: "not-found",
+          title: "Domain not found",
+          description:
+            "No custom-domain verification record was found for 'ops.fixture.tenant.example' under organization/org_demo.",
+        }),
+      }),
+    );
+
+    rendered = await renderAdminApp(notFoundFixture, PATH_READY);
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Domain not found") ?? false,
+      "Expected domain not-found state to render.",
     );
   });
 

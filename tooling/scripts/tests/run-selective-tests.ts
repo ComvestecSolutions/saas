@@ -46,6 +46,7 @@ type SelectiveTestSuite = {
   readonly label: string;
   readonly projectName: string;
   readonly passWithNoTests?: boolean;
+  readonly supportsRelatedMode?: boolean;
   readonly includePatterns: readonly RegExp[];
   readonly fullRunPatterns: readonly RegExp[];
   readonly relatedFallbacks?: Readonly<Record<string, readonly string[]>>;
@@ -130,6 +131,7 @@ export const selectiveTestSuites = [
     id: selectiveTestSuiteId.backend,
     label: "backend",
     projectName: "backend",
+    supportsRelatedMode: false,
     includePatterns: backendIncludePatterns,
     fullRunPatterns: [
       ...sharedFullRunPatterns,
@@ -315,6 +317,25 @@ export const resolveSuiteRelatedFiles = (
   );
 
   return uniqueSorted([...directRelatedFiles, ...fallbackRelatedFiles]);
+};
+
+export const shouldRunFullSuiteForSuiteChanges = (
+  suite: SelectiveTestSuite,
+  changedFiles: readonly string[],
+  repoFileExists: (relativePath: string) => boolean = (relativePath) =>
+    existsSync(resolve(repoRootDirectory, relativePath)),
+) => {
+  const normalizedChangedFiles = uniqueSorted(changedFiles);
+  const relatedFiles = resolveSuiteRelatedFiles(suite, normalizedChangedFiles);
+
+  return (
+    suite.supportsRelatedMode === false ||
+    suiteRequiresFullRun(suite, normalizedChangedFiles) ||
+    relatedFiles.length === 0 ||
+    normalizedChangedFiles.some(
+      (relativePath) => repoFileExists(relativePath) !== true,
+    )
+  );
 };
 
 export const shouldUseSelectiveCache = (input: {
@@ -770,12 +791,7 @@ const runSelectiveTests = async () => {
     if (options.dryRun) {
       const shouldRunFullSuite =
         options.all ||
-        suiteRequiresFullRun(suite, suiteChangedFiles) ||
-        relatedFiles.length === 0 ||
-        suiteChangedFiles.some(
-          (relativePath) =>
-            !existsSync(resolve(repoRootDirectory, relativePath)),
-        );
+        shouldRunFullSuiteForSuiteChanges(suite, suiteChangedFiles);
 
       console.log(
         `[dry-run] Would run ${suite.label} (${shouldRunFullSuite ? "full suite" : "related tests"}).`,
@@ -786,11 +802,7 @@ const runSelectiveTests = async () => {
 
     const shouldRunFullSuite =
       options.all ||
-      suiteRequiresFullRun(suite, suiteChangedFiles) ||
-      relatedFiles.length === 0 ||
-      suiteChangedFiles.some(
-        (relativePath) => !existsSync(resolve(repoRootDirectory, relativePath)),
-      );
+      shouldRunFullSuiteForSuiteChanges(suite, suiteChangedFiles);
     const command = shouldRunFullSuite
       ? buildFullSuiteCommand(suite)
       : buildRelatedSuiteCommand(suite, relatedFiles);

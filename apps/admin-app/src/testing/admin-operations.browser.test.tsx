@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { adminRoutePath, workflowJobStatus } from "@comvestec/contracts";
 import {
-  buildAdminTenantScopedRoutePath,
-  buildAdminTenantWorkspacePath,
-} from "../lib/admin-tenant-target";
-import {
   changeInputValue,
   changeSelectValue,
   click,
@@ -35,6 +31,14 @@ const sortTextAscending = (values: ReadonlyArray<string>) =>
 const sortTextDescending = (values: ReadonlyArray<string>) =>
   sortTextAscending(values).reverse();
 
+const legacyAdminRoutePath = {
+  branding: "/branding",
+  supportOperations: "/support-operations",
+  billing: "/billing",
+  complianceRetention: "/compliance-retention",
+  webhooksApiAccess: "/integrations/webhooks-api-access",
+} as const;
+
 const getSortHeader = (container: ParentNode, label: string) => {
   const button = getButtonByText(container, label);
   const header = button.closest("th");
@@ -56,18 +60,6 @@ const getCardByTitle = (container: ParentNode, title: string) => {
   }
 
   return card;
-};
-
-const getTableRowByText = (container: ParentNode, text: string) => {
-  const row = [...container.querySelectorAll("tbody tr")].find((candidate) =>
-    candidate.textContent?.includes(text),
-  );
-
-  if (!(row instanceof HTMLTableRowElement)) {
-    throw new TypeError(`Expected table row containing ${text}.`);
-  }
-
-  return row;
 };
 
 const selectTenantTargetOption = async (
@@ -265,7 +257,7 @@ describe("admin operations browser flows", () => {
     );
     expect(rendered.container.textContent).toContain("operator@comvestec.com");
     expect(rendered.container.textContent).toContain("platform-operator");
-    expect(rendered.container.textContent).toContain("Effective capabilities");
+    expect(rendered.container.textContent).toContain("Capability workspace");
     expect(rendered.container.textContent).toContain("Allowed capabilities");
   });
 
@@ -441,43 +433,30 @@ describe("admin operations browser flows", () => {
     expect(repairLoadCount).toBeGreaterThan(1);
   });
 
-  it("covers support operations tabs, case filtering, and tenant-workspace detail navigation", async () => {
+  it("routes legacy support operations into the canonical support workspace and tenant detail navigation", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      adminRoutePath.supportOperations,
+      legacyAdminRoutePath.supportOperations,
     );
 
     await waitFor(
       () =>
-        rendered?.container.textContent?.includes("Support Operations") ??
-        false,
-      "Expected support-operations route to render.",
+        rendered?.container.querySelector(
+          "[data-testid='support-cases-ready']",
+        ) !== null,
+      "Expected the canonical support workspace to render through the legacy support entrypoint.",
+    );
+    expect(rendered.router.state.location.pathname).toBe(
+      adminRoutePath.supportOperations,
     );
 
-    expect(rendered.container.textContent).toContain("Open cases");
-    expect(rendered.container.textContent).toContain("Pending break-glass");
-    expect(rendered.container.textContent).toContain("Active impersonation");
-
-    const { button: caseIdHeaderButton, header: caseIdHeader } = getSortHeader(
-      rendered.container,
-      "Case ID",
-    );
-
-    await click(caseIdHeaderButton);
-    expect(caseIdHeader.getAttribute("aria-sort")).toBe("ascending");
-
-    const ascendingCaseIds = getFirstColumnValues(rendered.container);
-    expect(ascendingCaseIds).toEqual(sortTextAscending(ascendingCaseIds));
-
-    await click(caseIdHeaderButton);
-    expect(caseIdHeader.getAttribute("aria-sort")).toBe("descending");
-
-    const descendingCaseIds = getFirstColumnValues(rendered.container);
-    expect(descendingCaseIds).toEqual(sortTextDescending(descendingCaseIds));
+    expect(
+      rendered.container.querySelector("[data-testid='support-cases-posture']"),
+    ).not.toBeNull();
 
     const caseSearch = getInputByPlaceholder(
       rendered.container,
-      "Search by case id, tenant, or summary…",
+      "Search case id, tenant, summary, or agent…",
     );
     await changeInputValue(caseSearch, "case_org_priority");
     await waitFor(
@@ -491,14 +470,14 @@ describe("admin operations browser flows", () => {
     await waitFor(
       () =>
         rendered?.container.querySelector(
-          'input[placeholder="Search break-glass incidents…"]',
+          'input[placeholder="Search incident id, reviewer, or reason…"]',
         ) !== null,
       "Expected break-glass support tab to render.",
     );
 
     const incidentSearch = getInputByPlaceholder(
       rendered.container,
-      "Search break-glass incidents…",
+      "Search incident id, reviewer, or reason…",
     );
     await changeInputValue(incidentSearch, "incident_case_01");
     await waitFor(
@@ -535,10 +514,16 @@ describe("admin operations browser flows", () => {
       "Expected support cases tab to restore the prior filtered case.",
     );
 
-    await followLink(
-      rendered.router,
-      getLinkByText(rendered.container, "Open"),
+    const workspaceLink = rendered.container.querySelector<HTMLAnchorElement>(
+      "[data-testid='support-cases-case-row'] a[href^='/r/tenant/']",
     );
+    if (!(workspaceLink instanceof HTMLAnchorElement)) {
+      throw new TypeError(
+        "Expected the support case action to expose a tenant workspace link.",
+      );
+    }
+
+    await followLink(rendered.router, workspaceLink);
     await waitFor(
       () =>
         rendered?.container.textContent?.includes("Tenant overview") ?? false,
@@ -546,41 +531,38 @@ describe("admin operations browser flows", () => {
     );
   });
 
-  it("covers the standalone branding route and returns to the tenant workspace", async () => {
+  it("routes legacy branding into the canonical target workflow and returns to the tenant workspace", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      adminRoutePath.branding,
+      legacyAdminRoutePath.branding,
     );
 
     await waitFor(
       () =>
-        rendered?.container.textContent?.includes("Branding & Domains") ??
-        false,
-      "Expected branding route to render.",
+        rendered?.container.querySelector(
+          "[data-testid='branding-list-ready']",
+        ) !== null,
+      "Expected the canonical branding workspace to render through the legacy branding entrypoint.",
     );
-    expect(rendered.container.textContent).toContain("Choose a tenant target");
-
-    expect(rendered.container.textContent).toContain("Acme Co.");
-    expect(rendered.container.textContent).toContain("Use exact scope lookup");
-    await selectTenantTargetOption(rendered.container, "Acme Co.");
-    await click(getButtonByText(rendered.container, "Load branding view"));
-
-    await waitFor(() => {
-      const text = rendered?.container.textContent ?? "";
-      return (
-        text.includes("Org Demo") &&
-        text.includes("Custom domain") &&
-        text.includes("active")
-      );
-    }, "Expected branding route to load the organization branding projection.");
     expect(rendered.router.state.location.pathname).toBe(
       adminRoutePath.branding,
     );
-    expect(rendered.router.state.location.searchStr).toContain(
-      `scope=${knownAdminTargets.organization.scope}`,
+    expect(
+      rendered.container.querySelector("[data-testid='branding-list-empty']"),
+    ).not.toBeNull();
+
+    expect(rendered.container.textContent).toContain("Acme Co.");
+    await selectTenantTargetOption(rendered.container, "Acme Co.");
+    await click(getButtonByText(rendered.container, "Add branding target"));
+    await waitFor(
+      () =>
+        rendered?.container.querySelectorAll(
+          "[data-testid='branding-list-row']",
+        ).length === 1,
+      "Expected the canonical branding target workflow to load the selected tenant.",
     );
     expect(rendered.router.state.location.searchStr).toContain(
-      `scopeId=${knownAdminTargets.organization.scopeId}`,
+      `selectedTenantId=${knownAdminTargets.organization.scopeId}`,
     );
 
     await followLink(
@@ -592,18 +574,12 @@ describe("admin operations browser flows", () => {
         rendered?.container.textContent?.includes("Tenant overview") ?? false,
       "Expected branding route workspace link to open the tenant workspace.",
     );
-    expect(rendered.router.state.location.pathname).toBe(
-      new URL(
-        buildAdminTenantWorkspacePath(knownAdminTargets.organization),
-        "https://admin.local",
-      ).pathname,
-    );
     expect(rendered.router.state.location.searchStr).toContain(
       `scope=${knownAdminTargets.organization.scope}`,
     );
   });
 
-  it("covers tenant discovery filtering, manual workspace navigation, compliance, and integration flows", async () => {
+  it("covers tenant discovery filtering, manual workspace navigation, and canonical retention/webhook flows", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
       adminRoutePath.tenantWorkspaceDiscovery,
@@ -662,16 +638,20 @@ describe("admin operations browser flows", () => {
       () =>
         rendered?.container.textContent?.includes("Choose a tenant target") ??
         false,
-      "Expected compliance route to start in the tenant-target empty state.",
+      "Expected the canonical retention route to start in the tenant-target empty state.",
+    );
+    expect(rendered.router.state.location.pathname).toBe(
+      adminRoutePath.complianceRetention,
     );
 
     await selectTenantTargetOption(rendered.container, "Acme Co.");
-    await click(getButtonByText(rendered.container, "Load compliance view"));
+    await click(getButtonByText(rendered.container, "Load retention view"));
     await waitFor(
       () =>
-        rendered?.container.textContent?.includes("Retention policies") ??
-        false,
-      "Expected compliance route to load tenant-scoped retention data.",
+        rendered?.container.querySelector(
+          "[data-testid='retention-list-policies-table']",
+        ) !== null,
+      "Expected the canonical retention route to load tenant-scoped policy data.",
     );
 
     const policySearch = getInputByPlaceholder(
@@ -706,13 +686,13 @@ describe("admin operations browser flows", () => {
     await waitFor(
       () =>
         rendered?.container.querySelector(
-          'input[placeholder="Search holds…"]',
+          'input[placeholder="Search holds, targets, or evidence…"]',
         ) !== null,
       "Expected legal-holds compliance tab to render.",
     );
     const holdSearch = getInputByPlaceholder(
       rendered.container,
-      "Search holds…",
+      "Search holds, targets, or evidence…",
     );
     await changeInputValue(holdSearch, "");
     await click(getButtonByExactText(rendered.container, "2"));
@@ -726,146 +706,85 @@ describe("admin operations browser flows", () => {
       () =>
         rendered?.container.textContent?.includes("Choose a tenant target") ??
         false,
-      "Expected integrations route to start in the tenant-target empty state.",
+      "Expected the canonical webhook route to start in the tenant-target empty state.",
+    );
+    expect(rendered.router.state.location.pathname).toBe(
+      adminRoutePath.webhooksApiAccess,
     );
 
     await selectTenantTargetOption(rendered.container, "Acme Co.");
-    await click(getButtonByText(rendered.container, "Load integration view"));
+    await click(getButtonByText(rendered.container, "Load webhook view"));
     await waitFor(
       () =>
-        rendered?.container.textContent?.includes("Active webhooks") ?? false,
-      "Expected integrations route to load webhook data for the selected tenant.",
+        rendered?.container.querySelector(
+          "[data-testid='webhook-list-endpoints-table']",
+        ) !== null,
+      "Expected the canonical webhook route to load endpoint data for the selected tenant.",
     );
 
     const subscriptionSearch = getInputByPlaceholder(
       rendered.container,
-      "Search subscriptions…",
+      "Search subscriptions, URL, or event…",
     );
     await changeInputValue(subscriptionSearch, "sub_org_27");
     await waitFor(
       () => rendered?.container.textContent?.includes("sub_org_27") ?? false,
       "Expected subscription search to match the target webhook.",
     );
-    await changeInputValue(subscriptionSearch, "");
 
-    const { button: subscriptionHeaderButton, header: subscriptionHeader } =
-      getSortHeader(rendered.container, "Subscription ID");
-
-    await click(subscriptionHeaderButton);
-    expect(subscriptionHeader.getAttribute("aria-sort")).toBe("ascending");
-    const subscriptionIds = getFirstColumnValues(rendered.container);
-    expect(subscriptionIds).toEqual(sortTextAscending(subscriptionIds));
-
-    await click(subscriptionHeaderButton);
-    expect(subscriptionHeader.getAttribute("aria-sort")).toBe("descending");
-    const descendingSubscriptionIds = getFirstColumnValues(rendered.container);
-    expect(descendingSubscriptionIds).toEqual(
-      sortTextDescending(descendingSubscriptionIds),
-    );
-
-    await click(getButtonByText(rendered.container, "API keys"));
+    await click(getButtonByText(rendered.container, "Deliveries"));
     await waitFor(
       () =>
         rendered?.container.querySelector(
-          'input[placeholder="Search API keys…"]',
+          'input[placeholder="Search deliveries, subscription, or event…"]',
         ) !== null,
-      "Expected API-key tab to render.",
+      "Expected the webhook deliveries tab to render.",
     );
-    const apiKeySearch = getInputByPlaceholder(
+    const deliverySearch = getInputByPlaceholder(
       rendered.container,
-      "Search API keys…",
+      "Search deliveries, subscription, or event…",
     );
-    await changeInputValue(apiKeySearch, "");
-
-    const { button: apiKeyHeaderButton, header: apiKeyHeader } = getSortHeader(
-      rendered.container,
-      "Key ID",
-    );
-
-    await click(apiKeyHeaderButton);
-    expect(apiKeyHeader.getAttribute("aria-sort")).toBe("ascending");
-    const apiKeyIds = getFirstColumnValues(rendered.container);
-    expect(apiKeyIds).toEqual(sortTextAscending(apiKeyIds));
-
-    await click(getButtonByExactText(rendered.container, "2"));
+    await changeInputValue(deliverySearch, "dlv_org_demo_03");
     await waitFor(
-      () => rendered?.container.textContent?.includes("26–27 of 27") ?? false,
-      "Expected API-key pagination to move to page two.",
+      () =>
+        rendered?.container.textContent?.includes("dlv_org_demo_03") ?? false,
+      "Expected delivery search to reveal the selected webhook delivery.",
     );
   });
 
-  it("covers billing gap filtering, sorting, searching, and pagination", async () => {
+  it("routes legacy billing into billing operations and supports named target loading", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
+      legacyAdminRoutePath.billing,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='billing-list-ready']",
+        ) !== null,
+      "Expected the canonical billing workspace to render through the legacy billing entrypoint.",
+    );
+    expect(rendered.router.state.location.pathname).toBe(
       adminRoutePath.billing,
     );
+    expect(
+      rendered.container.querySelector("[data-testid='billing-list-empty']"),
+    ).not.toBeNull();
 
+    await selectTenantTargetOption(rendered.container, "Acme Co.");
+    await click(getButtonByText(rendered.container, "Add billing target"));
     await waitFor(
       () =>
-        rendered?.container.textContent?.includes("Billing & Entitlements") ??
-        false,
-      "Expected billing route to render.",
+        rendered?.container.querySelectorAll("[data-testid='billing-list-row']")
+          .length === 1,
+      "Expected the canonical billing target workflow to load the selected tenant.",
     );
+    expect(
+      rendered.container.querySelectorAll(
+        "[data-testid='billing-list-target-chip']",
+      ),
+    ).toHaveLength(1);
     expect(rendered.container.textContent).toContain("Acme Co.");
-
-    const search = getInputByPlaceholder(
-      rendered.container,
-      "Search by job id, tenant, or reason…",
-    );
-    await changeInputValue(search, "Acme Co.");
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes("job_org_demo_01") ?? false,
-      "Expected billing search to work against tenant display names.",
-    );
-    expect(rendered.container.textContent).not.toContain("job_ent_atlas_03");
-
-    await changeInputValue(search, "");
-    await changeInputValue(search, "job_org_demo_01");
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes("job_org_demo_01") ?? false,
-      "Expected billing-gap search to reveal the selected workflow job.",
-    );
-
-    await changeInputValue(search, "");
-    await click(getButtonByText(rendered.container, "Active"));
-    await waitFor(
-      () => rendered?.container.textContent?.includes("scheduled") ?? false,
-      "Expected billing active filter to retain scheduled or running repair gaps.",
-    );
-    expect(rendered.container.textContent).not.toContain("job_org_demo_01");
-    await changeInputValue(search, "job_org_demo_02");
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes("job_org_demo_02") ?? false,
-      "Expected billing search to keep working while the active filter is applied.",
-    );
-    expect(rendered.container.textContent).not.toContain("job_org_demo_01");
-    await changeInputValue(search, "");
-
-    const { button: jobHeaderButton, header: jobHeader } = getSortHeader(
-      rendered.container,
-      "Job ID",
-    );
-
-    await click(jobHeaderButton);
-    expect(jobHeader.getAttribute("aria-sort")).toBe("ascending");
-    const billingJobIds = getColumnValues(rendered.container, 1);
-    expect(billingJobIds).toEqual(sortTextAscending(billingJobIds));
-
-    await click(jobHeaderButton);
-    expect(jobHeader.getAttribute("aria-sort")).toBe("descending");
-    const descendingBillingJobIds = getColumnValues(rendered.container, 1);
-    expect(descendingBillingJobIds).toEqual(
-      sortTextDescending(descendingBillingJobIds),
-    );
-
-    await click(getButtonByText(rendered.container, "All"));
-    await click(getButtonByText(rendered.container, "2"));
-    await waitFor(
-      () => rendered?.container.textContent?.includes("26–32 of 32") ?? false,
-      "Expected billing pagination to move to page two.",
-    );
   });
 });

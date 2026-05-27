@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AdminShell } from "@comvestec/ui";
 import { adminRoutePath } from "@comvestec/contracts";
+import { adminAuthRoutePath } from "./auth/paths";
 import { buildAdminShellRedirectPath } from "./lib/admin-shell-loader";
 import {
   AdminAuthRedirectState,
@@ -19,7 +20,7 @@ const adminBrowserHarnessGlobals = globalThis as AdminBrowserHarnessGlobals;
 
 const baseNavGroups = [
   {
-    href: "/",
+    href: adminRoutePath.operationsHome,
     label: "Operations Home",
     icon: "O",
     isActive: true,
@@ -29,14 +30,14 @@ const baseNavGroups = [
     label: "Governance",
     items: [
       {
-        href: "/governance/runtime-config",
+        href: adminRoutePath.runtimeConfig,
         label: "Runtime Config",
         icon: "R",
         isActive: false,
         allowed: true,
       },
       {
-        href: "/governance/audit-log",
+        href: adminRoutePath.auditLog,
         label: "Audit Log",
         icon: "A",
         isActive: false,
@@ -97,7 +98,7 @@ describe("admin shell browser surface", () => {
       root.render(
         <AdminShell
           navGroups={baseNavGroups}
-          currentPath="/"
+          currentPath={adminRoutePath.operationsHome}
           contextChips={[
             { label: "Env", value: "platform" },
             { label: "Session", value: "sess_admin_shell", mono: true },
@@ -122,7 +123,7 @@ describe("admin shell browser surface", () => {
       root.render(
         <AdminShell
           navGroups={baseNavGroups}
-          currentPath="/"
+          currentPath={adminRoutePath.operationsHome}
           contextChips={[{ label: "Env", value: "platform" }]}
         >
           <section>Mobile shell</section>
@@ -155,7 +156,7 @@ describe("admin shell browser surface", () => {
       root.render(
         <AdminShell
           navGroups={baseNavGroups}
-          currentPath="/"
+          currentPath={adminRoutePath.operationsHome}
           contextChips={[{ label: "Env", value: "platform" }]}
         >
           <section>Mobile shell</section>
@@ -181,7 +182,7 @@ describe("admin shell browser surface", () => {
       root.render(
         <AdminShell
           navGroups={baseNavGroups}
-          currentPath="/governance/runtime-config"
+          currentPath={adminRoutePath.runtimeConfig}
           contextChips={[{ label: "Env", value: "platform" }]}
         >
           <section>Runtime config</section>
@@ -363,13 +364,13 @@ describe("admin shell browser surface", () => {
           searchStr: "",
         },
         {
-          pathname: "/auth/sign-in",
-          search: "?returnTo=%2F",
+          pathname: adminAuthRoutePath.legacySignIn,
+          search: "?returnTo=%2Fdesk",
         },
       ),
     ).toEqual({
-      pathname: "/auth/sign-in",
-      searchStr: "?returnTo=%2F",
+      pathname: adminAuthRoutePath.legacySignIn,
+      searchStr: "?returnTo=%2Fdesk",
     });
   });
 });

@@ -41,7 +41,7 @@ describe("/r/vendor/$service Vendor Detail v2 route", () => {
     }
   });
 
-  it("renders the ready vendor summary with version + latency + runbook deep-link", async () => {
+  it("renders the ready vendor summary with timeline and service-specific follow-up links", async () => {
     rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
 
     await waitFor(
@@ -72,7 +72,18 @@ describe("/r/vendor/$service Vendor Detail v2 route", () => {
         ?.getAttribute("data-status"),
     ).toBe("healthy");
     expect(rendered.container.textContent).toContain("Console handoff");
-  });
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='vendor-detail-follow-ups']",
+      ),
+    ).not.toBeNull();
+    expect(
+      rendered.container
+        .querySelector("[data-testid='vendor-detail-follow-ups'] a")
+        ?.getAttribute("href"),
+    ).toBe("/r/search?q=keycloak");
+    expect(rendered.container.textContent).toContain("Aggregate generated");
+  }, 30_000);
 
   it("surfaces the partial-failure pane when the aggregate carries one for this service", async () => {
     rendered = await renderAdminApp(
@@ -93,6 +104,11 @@ describe("/r/vendor/$service Vendor Detail v2 route", () => {
         "[data-testid='vendor-detail-partial-failure-reason']",
       )?.textContent,
     ).toContain("Postal admin API unreachable.");
+    expect(
+      rendered.container
+        .querySelector("[data-testid='vendor-detail-follow-ups'] a")
+        ?.getAttribute("href"),
+    ).toBe("/r/notify");
   });
 
   it("surfaces a denied StateScreen when the loader returns denied", async () => {

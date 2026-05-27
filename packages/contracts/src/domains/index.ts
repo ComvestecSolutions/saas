@@ -2,6 +2,7 @@ export * from "./billing-metering";
 export * from "./email-delivery";
 export * from "./file-storage";
 export * from "./import-export";
+export * from "./keycloak-role-read";
 export * from "./keycloak-user-read";
 export * from "./notification-center";
 export * from "./notification-center-admin";

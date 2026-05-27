@@ -30,21 +30,19 @@ import type { AdminVendorDetailRouteData } from "../../../lib/vendor-detail-rout
  * `/r/legal-hold/$holdId`, and `/r/delivery/$deliveryId`:
  *   - Summary panel (status chip, version, latency, last
  *     checked, last incident).
- *   - Health-history placeholder pane (multi-snapshot history
- *     is tracked under the Admin app row's Phase 6 follow-ups
- *     — spine first, body second; the aggregate ships one row
- *     per adapter today).
- *   - Deep-link pane out to the vendor console / matching
- *     per-vendor read helper surface (Phase 1 backend item 10:
- *     Keycloak users/roles, Polar customers, OpenMeter meters,
- *     Novu deliveries, Postal mail log, GlitchTip issues,
- *     OpenPanel events).
+ *   - Health timeline pane built from the aggregate's current
+ *     snapshot, correlation frame, last incident, and partial-
+ *     failure state.
+ *   - Operator handoff pane with typed service-specific follow-up
+ *     links into the existing admin routes (Phase 1 backend item
+ *     10 surfaces such as Keycloak users/roles, billing, notify,
+ *     access control, workflow runs, and search).
  *
- * The vendor-specific data panes (e.g. embedding the matching
- * Polar customer roster or Keycloak user table inline) are
- * deferred to the same Phase 6 follow-ups roll-up — today the
- * detail pane stays loader-clean against the single shared
- * aggregator helper to keep the spine honest.
+ * The page stays loader-clean against the single shared
+ * aggregator helper to keep the spine honest: vendor-specific
+ * operator follow-up is mapped client-side from the canonical
+ * {@link platformAdapterServiceName} vocabulary instead of
+ * issuing extra per-vendor loader calls here.
  */
 
 const knownServiceNames = new Set<string>(
@@ -78,6 +76,134 @@ const runbookLinkLabelByService: Partial<
     "GlitchTip issues console (operator).",
   [platformAdapterServiceName.openpanel]:
     "OpenPanel events console (operator).",
+};
+
+type VendorFollowUpLink = {
+  readonly label: string;
+  readonly href: string;
+  readonly description: string;
+};
+
+const operatorFollowUpLinksByService: Partial<
+  Record<PlatformAdapterServiceName, readonly VendorFollowUpLink[]>
+> = {
+  [platformAdapterServiceName.convex]: [
+    {
+      label: "Workflow runs",
+      href: "/r/runs",
+      description: "Inspect workflow execution posture and background jobs.",
+    },
+  ],
+  [platformAdapterServiceName.glitchtip]: [
+    {
+      label: "Search incidents",
+      href: "/r/search?q=glitchtip",
+      description:
+        "Correlate error spikes with the broader operator incident context.",
+    },
+  ],
+  [platformAdapterServiceName.keycloak]: [
+    {
+      label: "Search Keycloak resources",
+      href: "/r/search?q=keycloak",
+      description:
+        "Locate Keycloak users and roles before drilling into /r/kc-user and /r/kc-role with concrete ids.",
+    },
+    {
+      label: "Access control",
+      href: "/r/access",
+      description:
+        "Compare Keycloak role posture with the platform authorization view.",
+    },
+  ],
+  [platformAdapterServiceName.meilisearch]: [
+    {
+      label: "Search workspace",
+      href: "/r/search",
+      description:
+        "Validate operator-facing search behavior and correlation context.",
+    },
+  ],
+  [platformAdapterServiceName.novu]: [
+    {
+      label: "Notification center",
+      href: "/r/notify",
+      description:
+        "Inspect outbound notification deliveries and resend guardrails.",
+    },
+  ],
+  [platformAdapterServiceName.openmeter]: [
+    {
+      label: "Billing posture",
+      href: "/r/billing",
+      description:
+        "Review usage anomalies and metering impact in the billing workspace.",
+    },
+  ],
+  [platformAdapterServiceName.openpanel]: [
+    {
+      label: "Search analytics context",
+      href: "/r/search?q=openpanel",
+      description:
+        "Correlate analytics degradation with broader operator search context.",
+    },
+  ],
+  [platformAdapterServiceName.observability]: [
+    {
+      label: "Support operations",
+      href: "/r/support",
+      description:
+        "Review incidents, break-glass posture, and operator escalation state.",
+    },
+  ],
+  [platformAdapterServiceName.oryKeto]: [
+    {
+      label: "Access control",
+      href: "/r/access",
+      description:
+        "Inspect authorization tuples and field-security posture.",
+    },
+  ],
+  [platformAdapterServiceName.polar]: [
+    {
+      label: "Billing posture",
+      href: "/r/billing",
+      description:
+        "Inspect subscriptions, invoices, and reconciliation posture.",
+    },
+  ],
+  [platformAdapterServiceName.postal]: [
+    {
+      label: "Notification center",
+      href: "/r/notify",
+      description:
+        "Inspect mail-related delivery state and downstream resend controls.",
+    },
+  ],
+  [platformAdapterServiceName.postgres]: [
+    {
+      label: "Audit log",
+      href: "/r/audit",
+      description:
+        "Review persistence-impacting changes and related operator activity.",
+    },
+  ],
+  [platformAdapterServiceName.unleash]: [
+    {
+      label: "Feature flags",
+      href: "/r/flag",
+      description:
+        "Inspect rollout posture and runtime flag governance state.",
+    },
+  ],
+  [platformAdapterServiceName.valkey]: [
+    {
+      label: "Support operations",
+      href: "/r/support",
+      description:
+        "Correlate cache degradation with active incidents and break-glass state.",
+    },
+  ],
 };
 
 const toneByStatus: Record<VendorHealthAggregateEntryStatus, StatusChipTone> = {
@@ -177,6 +303,46 @@ function VendorDetailRoute() {
 
   const { entry, partialFailure, correlationId, generatedAt } = data;
   const runbookLink = runbookLinkLabelByService[entry.serviceName];
+  const followUpLinks = operatorFollowUpLinksByService[entry.serviceName] ?? [];
+  const historyItems = [
+    {
+      key: "snapshot",
+      label: "Current snapshot",
+      detail:
+        entry.message ?? "Latest vendor-health snapshot recorded for this adapter.",
+      timestamp: entry.lastCheckedAt,
+      dotClassName: "ops-dot--active",
+    },
+    ...(partialFailure === undefined
+      ? []
+      : [
+          {
+            key: "partial-failure",
+            label: "Aggregate partial failure",
+            detail: partialFailure.reason,
+            timestamp: generatedAt,
+            dotClassName: "ops-dot--pending",
+          },
+        ]),
+    ...(entry.lastIncidentAt === undefined
+      ? []
+      : [
+          {
+            key: "last-incident",
+            label: "Last incident",
+            detail: "Most recent vendor-side degradation recorded for this adapter.",
+            timestamp: entry.lastIncidentAt,
+            dotClassName: "ops-dot--pending",
+          },
+        ]),
+    {
+      key: "aggregate-generated",
+      label: "Aggregate generated",
+      detail: `Correlation ${correlationId}`,
+      timestamp: generatedAt,
+      dotClassName: "ops-dot--active",
+    },
+  ] as const;
 
   return (
     <section
@@ -300,33 +466,18 @@ function VendorDetailRoute() {
           <p className="ops-card-head__title">Health history</p>
         </div>
         <div className="ops-activity-list">
-          <div className="ops-activity-item">
-            <div>
-              <span className="ops-activity-module">
-                <span className="ops-dot ops-dot--active" />
-                Current snapshot
-              </span>
-              <div className="ops-alert-detail">
-                The vendor-health aggregator still publishes a single snapshot per
-                adapter. Multi-snapshot history remains a dedicated follow-up.
-              </div>
-            </div>
-            <span className="mono">{formatVendorTimestamp(entry.lastCheckedAt)}</span>
-          </div>
-          {entry.lastIncidentAt !== undefined ? (
-            <div className="ops-activity-item">
+          {historyItems.map((item) => (
+            <div key={item.key} className="ops-activity-item">
               <div>
                 <span className="ops-activity-module">
-                  <span className="ops-dot ops-dot--pending" />
-                  Last incident
+                  <span className={`ops-dot ${item.dotClassName}`} />
+                  {item.label}
                 </span>
-                <div className="ops-alert-detail">
-                  Most recent vendor-side degradation recorded for this adapter.
-                </div>
+                <div className="ops-alert-detail">{item.detail}</div>
               </div>
-              <span className="mono">{formatVendorTimestamp(entry.lastIncidentAt)}</span>
+              <span className="mono">{formatVendorTimestamp(item.timestamp)}</span>
             </div>
-          ) : null}
+          ))}
         </div>
       </section>
 
@@ -346,6 +497,19 @@ function VendorDetailRoute() {
             Use the live posture above with the aggregate correlation id to bridge
             from the admin app into the vendor-specific operator recovery flow.
           </span>
+          {followUpLinks.length > 0 ? (
+            <div
+              data-testid="vendor-detail-follow-ups"
+              style={{ display: "grid", gap: 8, paddingTop: 4 }}
+            >
+              {followUpLinks.map((link) => (
+                <div key={link.href} style={{ display: "grid", gap: 2 }}>
+                  <a href={link.href}>{link.label}</a>
+                  <span style={secondaryTextStyle}>{link.description}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
 

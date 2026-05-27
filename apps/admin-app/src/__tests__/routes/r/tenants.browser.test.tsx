@@ -101,7 +101,7 @@ describe("/r/tenants resource route", () => {
     ).not.toBeNull();
   });
 
-  it("renders the shared tenant directory on the legacy /tenants alias", async () => {
+  it("redirects the legacy /tenants alias into the canonical tenant directory", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
       LEGACY_TENANTS_PATH,
@@ -117,6 +117,7 @@ describe("/r/tenants resource route", () => {
 
     expect(rendered.container.textContent).toContain("Tenant Directory");
     expect(rendered.container.textContent).toContain("Open workspace");
+    expect(rendered.router.state.location.pathname).toBe(TENANTS_PATH);
   });
 
   it("opens the HighRiskActionGuard via renderBulkActionConfirm on bulk-action activation", async () => {

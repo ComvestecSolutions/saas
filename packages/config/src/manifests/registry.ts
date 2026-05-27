@@ -26,6 +26,7 @@ import {
 import {
   billingAndMeteringManifest,
   glitchTipIssuesReadManifest,
+  keycloakRoleReadManifest,
   keycloakUserReadManifest,
   novuDeliveriesReadManifest,
   observabilityManifest,
@@ -87,6 +88,7 @@ const platformModuleManifestSeed = [
   polarRevenueProjectionManifest,
   openMeterUsageQueryManifest,
   vendorHealthAggregatorManifest,
+  keycloakRoleReadManifest,
   keycloakUserReadManifest,
   polarCustomerReadManifest,
   openMeterMeterReadManifest,

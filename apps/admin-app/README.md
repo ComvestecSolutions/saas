@@ -2,7 +2,7 @@
 
 This TanStack Start shell hosts platform operations, configuration, permissions, audit review, and support tooling.
 
-Current status: scaffolded. The intended operator workflow lives in [../../specs/02-apps/admin-app/spec.md](../../specs/02-apps/admin-app/spec.md), and current delivery maturity lives in [../../specs/00-governance/implementation-tracker.md](../../specs/00-governance/implementation-tracker.md).
+Current status: live operator shell with the current delivery maturity tracked in [../../specs/00-governance/implementation-tracker.md](../../specs/00-governance/implementation-tracker.md). The intended operator workflow lives in [../../specs/02-apps/admin-app/spec.md](../../specs/02-apps/admin-app/spec.md).
 
 Local development:
 

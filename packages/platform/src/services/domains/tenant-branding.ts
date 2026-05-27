@@ -98,6 +98,18 @@ export type RequestCustomDomainVerificationBySessionRequest =
     typeof RequestCustomDomainVerificationBySessionRequestSchema
   >;
 
+export const GetCustomDomainVerificationBySessionRequestSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+  scope: RequestCustomDomainVerificationInputSchema.fields.scope,
+  scopeId: Schema.NonEmptyString,
+  requestedHost:
+    RequestCustomDomainVerificationInputSchema.fields.requestedHost,
+});
+
+export type GetCustomDomainVerificationBySessionRequest = Schema.Schema.Type<
+  typeof GetCustomDomainVerificationBySessionRequestSchema
+>;
+
 export const GetTenantBrandingSupportSafeViewBySessionRequestSchema =
   Schema.Struct({
     sessionId: Schema.NonEmptyString,
@@ -256,6 +268,12 @@ export type TenantBrandingService = {
     input: RequestCustomDomainVerificationBySessionRequest,
   ) => Effect.Effect<
     CustomDomainVerificationAdminView,
+    TenantBrandingServiceError
+  >;
+  readonly getCustomDomainVerification: (
+    input: GetCustomDomainVerificationBySessionRequest,
+  ) => Effect.Effect<
+    CustomDomainVerificationRecord,
     TenantBrandingServiceError
   >;
   readonly getSupportSafeView: (
@@ -983,6 +1001,72 @@ const buildTenantBrandingService = (
                 lifecycleState: verification.lifecycleState,
                 changedAt: verification.changedAt,
               });
+            }),
+          ),
+        ),
+      getCustomDomainVerification: (
+        input: GetCustomDomainVerificationBySessionRequest,
+      ): Effect.Effect<
+        CustomDomainVerificationRecord,
+        TenantBrandingServiceError
+      > =>
+        Schema.decodeUnknown(GetCustomDomainVerificationBySessionRequestSchema)(
+          input,
+        ).pipe(
+          Effect.flatMap((request) =>
+            Effect.gen(function* () {
+              const authorizedRequestContext = yield* identitySession
+                .resolveRequestContext({
+                  sessionId: request.sessionId,
+                })
+                .pipe(
+                  Effect.flatMap((requestContext) =>
+                    authorizeTenantBrandingOperatorAccess({
+                      authorization,
+                      requestContext,
+                      target: {
+                        scope: request.scope,
+                        scopeId: request.scopeId,
+                      },
+                    }),
+                  ),
+                );
+              const tenantAccessState =
+                yield* billingState.getTenantAccessState(
+                  authorizedRequestContext.tenant,
+                );
+
+              yield* ensureTenantBrandingCustomDomainEnabled({
+                runtimeConfig,
+                requestContext: authorizedRequestContext,
+                target: {
+                  scope: request.scope,
+                  scopeId: request.scopeId,
+                },
+                entitlements: tenantAccessState.entitlements,
+              });
+
+              return yield* tenantBranding
+                .findCustomDomainVerification({
+                  scope: request.scope,
+                  scopeId: request.scopeId,
+                  requestedHost: request.requestedHost.toLowerCase(),
+                })
+                .pipe(
+                  Effect.mapError(normalizeTenantBrandingModuleError),
+                  Effect.flatMap((verification) =>
+                    Effect.fromNullable(verification).pipe(
+                      Effect.orElseFail(
+                        () =>
+                          ({
+                            _tag: "TenantBrandingCustomDomainVerificationNotFoundError",
+                            scope: request.scope,
+                            scopeId: request.scopeId,
+                          }) satisfies TenantBrandingCustomDomainVerificationNotFoundError,
+                      ),
+                    ),
+                  ),
+                );
             }),
           ),
         ),

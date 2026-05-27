@@ -3,12 +3,13 @@
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 2).
  * Covers the discriminated-union mapping of the
  * `/r/domain/$hostname` loader trio backed live by
- * `getTenantBrandingSupportSafeViewFromSessionId`:
+ * `getCustomDomainVerificationFromSessionId`:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`
  *   - `IdentitySessionRequestContextNotFoundError` → `stale-session`
  *   - `TenantBrandingAccessDeniedError` → `denied`
  *   - unsupported scope → `denied` (short-circuited at boundary)
+ *   - not found → `not-found`
  *   - boundary error → `error`
  *   - happy path → `ready` carrying hostname, lifecycle, DNS
  *
@@ -30,11 +31,26 @@ const buildRequest = (sessionId: string | undefined) =>
   });
 
 const sampleBranding = {
+  verificationId:
+    "tenant-branding:custom-domain:organization:org_demo:verification_1",
   scope: platformScope.organization,
   scopeId: "org_demo",
-  companyName: "Fixture Org",
-  customDomainStatus: "verifying",
-  effectiveScope: platformScope.organization,
+  requestedHost: "ops.fixture.tenant.example",
+  lifecycleState: "verifying",
+  dnsProof: {
+    records: [
+      {
+        recordType: "TXT",
+        host: "_comvestec-verify.ops.fixture.tenant.example",
+        value: "comvestec-domain-verify=organization:org_demo",
+      },
+      {
+        recordType: "CNAME",
+        host: "ops.fixture.tenant.example",
+        value: "tenant-edge.comvestec.app",
+      },
+    ],
+  },
   changedAt: new Date(0).toISOString(),
 };
 
@@ -44,26 +60,17 @@ const baseInput: AdminDomainDetailInput = {
 };
 
 const succeedingDependencies = {
-  resolveTrustedRequestContext: () => Effect.succeed({}),
-  getTenantBrandingSupportSafeView: () => Effect.succeed(sampleBranding),
+  getCustomDomainVerification: () => Effect.succeed(sampleBranding),
 } as unknown as AdminDomainDetailDependencies;
-
-const failingResolveContext = (tag: string): AdminDomainDetailDependencies =>
-  ({
-    resolveTrustedRequestContext: () => Effect.fail({ _tag: tag } as const),
-    getTenantBrandingSupportSafeView: () => Effect.succeed(sampleBranding),
-  }) as unknown as AdminDomainDetailDependencies;
 
 const failingBranding = (tag: string): AdminDomainDetailDependencies =>
   ({
-    resolveTrustedRequestContext: () => Effect.succeed({}),
-    getTenantBrandingSupportSafeView: () => Effect.fail({ _tag: tag } as const),
+    getCustomDomainVerification: () => Effect.fail({ _tag: tag } as const),
   }) as unknown as AdminDomainDetailDependencies;
 
 const throwingDependencies = (error: unknown): AdminDomainDetailDependencies =>
   ({
-    resolveTrustedRequestContext: () => Effect.succeed({}),
-    getTenantBrandingSupportSafeView: () => Effect.fail(error),
+    getCustomDomainVerification: () => Effect.fail(error),
   }) as unknown as AdminDomainDetailDependencies;
 
 describe("admin-app domain-detail loader", () => {
@@ -79,7 +86,7 @@ describe("admin-app domain-detail loader", () => {
     expect(result.kind).toBe("shell");
   });
 
-  it("returns ready with lifecycle state and placeholder DNS records when deps succeed", async () => {
+  it("returns ready with lifecycle state and live DNS proof records when deps succeed", async () => {
     const result = await Effect.runPromise(
       loadAdminDomainDetailRouteDataFromRequest(
         buildRequest("sess-ok"),
@@ -93,8 +100,36 @@ describe("admin-app domain-detail loader", () => {
     expect(result.hostname).toBe("ops.fixture.tenant.example");
     expect(result.lifecycleState).toBe("verifying");
     expect(result.dnsRecords).toHaveLength(2);
-    expect(result.dnsRecords[0]?.recordType).toBe("TXT");
-    expect(result.dnsRecords[1]?.recordType).toBe("CNAME");
+    expect(result.dnsRecords[0]).toEqual({
+      recordType: "TXT",
+      host: "_comvestec-verify.ops.fixture.tenant.example",
+      value: "comvestec-domain-verify=organization:org_demo",
+    });
+    expect(result.dnsRecords[1]).toEqual({
+      recordType: "CNAME",
+      host: "ops.fixture.tenant.example",
+      value: "tenant-edge.comvestec.app",
+    });
+  });
+
+  it("returns ready with an empty dnsRecords list when the verification omits publishable proof rows", async () => {
+    const result = await Effect.runPromise(
+      loadAdminDomainDetailRouteDataFromRequest(
+        buildRequest("sess-ok"),
+        {},
+        baseInput,
+        {
+          getCustomDomainVerification: () =>
+            Effect.succeed({
+              ...sampleBranding,
+              dnsProof: undefined,
+            }),
+        } as unknown as AdminDomainDetailDependencies,
+      ),
+    );
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.dnsRecords).toEqual([]);
   });
 
   it("short-circuits to denied when tenant scope is individual or platform", async () => {
@@ -118,7 +153,7 @@ describe("admin-app domain-detail loader", () => {
         buildRequest("sess-stale"),
         {},
         baseInput,
-        failingResolveContext("IdentitySessionRequestContextNotFoundError"),
+        failingBranding("IdentitySessionRequestContextNotFoundError"),
       ),
     );
     expect(result.kind).toBe("stale-session");
@@ -134,6 +169,20 @@ describe("admin-app domain-detail loader", () => {
       ),
     );
     expect(result.kind).toBe("denied");
+  });
+
+  it("returns not-found state when the verification record is missing", async () => {
+    const result = await Effect.runPromise(
+      loadAdminDomainDetailRouteDataFromRequest(
+        buildRequest("sess-missing"),
+        {},
+        baseInput,
+        failingBranding("TenantBrandingCustomDomainVerificationNotFoundError"),
+      ),
+    );
+    expect(result.kind).toBe("not-found");
+    if (result.kind !== "not-found") return;
+    expect(result.title).toBe("Domain not found");
   });
 
   it("returns error when the branding helper raises an untagged Error", async () => {

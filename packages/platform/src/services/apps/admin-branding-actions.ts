@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import type {
+  GetCustomDomainVerificationBySessionRequest,
   GetTenantBrandingSupportSafeViewBySessionRequest,
   PublishTenantBrandingAssetBySessionRequest,
   RequestCustomDomainVerificationBySessionRequest,
@@ -30,6 +31,18 @@ export const getTenantBrandingSupportSafeViewFromEnvironment = (
     Effect.flatMap(({ runTenantBrandingFromEnvironment }) =>
       runTenantBrandingFromEnvironment(environment, (service) =>
         service.getSupportSafeView(input),
+      ),
+    ),
+  );
+
+export const getCustomDomainVerificationFromEnvironment = (
+  environment: unknown,
+  input: GetCustomDomainVerificationBySessionRequest,
+) =>
+  loadTenantBrandingRuntime().pipe(
+    Effect.flatMap(({ runTenantBrandingFromEnvironment }) =>
+      runTenantBrandingFromEnvironment(environment, (service) =>
+        service.getCustomDomainVerification(input),
       ),
     ),
   );
@@ -66,6 +79,10 @@ type GetTenantBrandingSupportSafeView = (
   input: GetTenantBrandingSupportSafeViewBySessionRequest,
 ) => ReturnType<typeof getTenantBrandingSupportSafeViewFromEnvironment>;
 
+type GetCustomDomainVerification = (
+  input: GetCustomDomainVerificationBySessionRequest,
+) => ReturnType<typeof getCustomDomainVerificationFromEnvironment>;
+
 type PublishTenantBrandingAsset = (
   input: PublishTenantBrandingAssetBySessionRequest,
 ) => ReturnType<typeof publishTenantBrandingAssetFromEnvironment>;
@@ -91,6 +108,13 @@ export const getTenantBrandingSupportSafeViewFromSessionId = (
   ) =>
     getTenantBrandingSupportSafeViewFromEnvironment(environment, requestInput),
 ) => getTenantBrandingSupportSafeView(input);
+
+export const getCustomDomainVerificationFromSessionId = (
+  environment: unknown,
+  input: GetCustomDomainVerificationBySessionRequest,
+  getCustomDomainVerification: GetCustomDomainVerification = (requestInput) =>
+    getCustomDomainVerificationFromEnvironment(environment, requestInput),
+) => getCustomDomainVerification(input);
 
 export const publishTenantBrandingAssetFromSessionId = (
   environment: unknown,

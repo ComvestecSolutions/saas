@@ -606,7 +606,7 @@ export type VendorHealthAggregatorRuntimeOptions = {
   };
 };
 
-const resolveVendorHealthAggregatorRuntimeOptionsFromEnvironment = (
+export const resolveVendorHealthAggregatorRuntimeOptionsFromEnvironment = (
   environment: unknown,
 ) =>
   decodeVendorHealthAggregatorProcessEnvironment(environment).pipe(

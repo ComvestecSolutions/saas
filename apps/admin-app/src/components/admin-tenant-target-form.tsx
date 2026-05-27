@@ -17,6 +17,7 @@ type AdminTenantTargetFormProps = {
   readonly initialScope?: string | undefined;
   readonly initialScopeId?: string | undefined;
   readonly allowedScopes?: readonly AdminTenantTargetScope[] | undefined;
+  readonly allowExactScopeLookup?: boolean;
   readonly scopeLabel?: string;
   readonly scopeIdLabel?: string;
   readonly scopeIdPlaceholder?: string;
@@ -30,6 +31,7 @@ export function AdminTenantTargetForm({
   initialScope,
   initialScopeId,
   allowedScopes,
+  allowExactScopeLookup = false,
   scopeLabel = "Scope",
   scopeIdLabel = "Internal scope ID",
   scopeIdPlaceholder = "Enter exact internal scope ID…",
@@ -164,6 +166,10 @@ export function AdminTenantTargetForm({
       return;
     }
 
+    if (!allowExactScopeLookup) {
+      return;
+    }
+
     const trimmedScopeId = manualScopeId.trim();
 
     if (trimmedScopeId.length === 0) {
@@ -189,7 +195,9 @@ export function AdminTenantTargetForm({
             </div>
             <p className="ops-target-picker-caption">
               {selectedOption?.description ??
-                "Start from tenant names and operator context first. Exact scope IDs stay behind the internal lookup fallback."}
+                (allowExactScopeLookup
+                  ? "Start from tenant names and operator context first. Exact scope IDs stay behind explicit operator disclosure."
+                  : "Start from tenant names and operator context first. Search the shared operator catalog before loading a tenant view.")}
             </p>
           </div>
 
@@ -224,9 +232,9 @@ export function AdminTenantTargetForm({
               </div>
             ) : filteredOptions.length === 0 ? (
               <div className="ops-target-picker-empty" role="listitem">
-                No tenant targets matched the current search. Use exact lookup
-                only if you need a target that is not in the shared operator
-                catalog yet.
+                {allowExactScopeLookup
+                  ? "No tenant targets matched the current search. Clear the search or use exact lookup only for governed operator recovery paths."
+                  : "No tenant targets matched the current search. Clear the search or broaden the tenant query to stay on the shared operator catalog."}
               </div>
             ) : (
               filteredOptions.slice(0, 6).map((option) => {
@@ -256,55 +264,58 @@ export function AdminTenantTargetForm({
           </div>
         </section>
 
-        <details className="ops-target-manual">
-          <summary className="ops-target-manual-summary">
-            Use exact scope lookup
-          </summary>
+        {allowExactScopeLookup ? (
+          <details className="ops-target-manual">
+            <summary className="ops-target-manual-summary">
+              Use exact scope lookup
+            </summary>
 
-          <div className="ops-target-manual-grid">
-            <label className="ops-field">
-              <span className="ops-field-label">{scopeLabel}</span>
-              <select
-                className="ops-field-input"
-                value={manualScope}
-                onChange={(event) => {
-                  setSelectedOptionKey(null);
-                  setQuery("");
-                  setManualScope(resolveFormScope(event.currentTarget.value));
-                }}
-              >
-                {enabledScopes.map((targetScope) => (
-                  <option key={targetScope} value={targetScope}>
-                    {targetScope}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="ops-target-manual-grid">
+              <label className="ops-field">
+                <span className="ops-field-label">{scopeLabel}</span>
+                <select
+                  className="ops-field-input"
+                  value={manualScope}
+                  onChange={(event) => {
+                    setSelectedOptionKey(null);
+                    setQuery("");
+                    setManualScope(resolveFormScope(event.currentTarget.value));
+                  }}
+                >
+                  {enabledScopes.map((targetScope) => (
+                    <option key={targetScope} value={targetScope}>
+                      {targetScope}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label className="ops-field ops-target-form-field">
-              <span className="ops-field-label">{scopeIdLabel}</span>
-              <input
-                className="ops-field-input"
-                type="text"
-                value={manualScopeId}
-                onChange={(event) => {
-                  setSelectedOptionKey(null);
-                  setQuery("");
-                  setManualScopeId(event.currentTarget.value);
-                }}
-                placeholder={scopeIdPlaceholder}
-                autoComplete="off"
-              />
-            </label>
-          </div>
-        </details>
+              <label className="ops-field ops-target-form-field">
+                <span className="ops-field-label">{scopeIdLabel}</span>
+                <input
+                  className="ops-field-input"
+                  type="text"
+                  value={manualScopeId}
+                  onChange={(event) => {
+                    setSelectedOptionKey(null);
+                    setQuery("");
+                    setManualScopeId(event.currentTarget.value);
+                  }}
+                  placeholder={scopeIdPlaceholder}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+          </details>
+        ) : null}
 
         <div className="ops-target-form-submit">
           <Button
             type="submit"
             variant={submitVariant}
             disabled={
-              inferredOption === undefined && manualScopeId.trim().length === 0
+              inferredOption === undefined &&
+              (!allowExactScopeLookup || manualScopeId.trim().length === 0)
             }
           >
             {submitLabel}

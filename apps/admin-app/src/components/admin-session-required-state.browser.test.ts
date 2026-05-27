@@ -1,6 +1,7 @@
 import { act, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
+import { adminRoutePath } from "@comvestec/contracts";
 import { buildAdminAuthReturnTo } from "../auth/paths";
 
 const mockedLocation = vi.hoisted(() => ({
@@ -60,7 +61,7 @@ describe("admin session required return path", () => {
         pathname: "/governance/runtime-config",
         searchStr: "",
       }),
-    ).toBe("/governance/runtime-config");
+    ).toBe(adminRoutePath.runtimeConfig);
   });
 
   it("preserves the search string when rebuilding the return path", () => {
@@ -83,7 +84,7 @@ describe("admin session required return path", () => {
     });
 
     const continueLink = container.querySelector(
-      'a[href="/auth/sign-in?returnTo=%2Ftenants%2Facme%3Ftab%3Dmembers%26view%3Daudit"]',
+      'a[href="/sign-in?returnTo=%2Ftenants%2Facme%3Ftab%3Dmembers%26view%3Daudit"]',
     );
 
     expect(continueLink).not.toBeNull();

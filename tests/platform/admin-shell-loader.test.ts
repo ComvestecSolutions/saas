@@ -14,6 +14,8 @@ import {
   loadAdminShellLoaderData,
 } from "../../apps/admin-app/src/lib/admin-shell-loader";
 import type { AdminShellRouteData } from "../../apps/admin-app/src/lib/admin-shell-route-data";
+import { buildAdminTenantTarget } from "../../apps/admin-app/src/lib/admin-tenant-target";
+import { encodeAdminRouteTenantTargets } from "../../apps/admin-app/src/lib/admin-route-tenant-targets";
 import { vi } from "vitest";
 
 const capabilitySnapshot = {
@@ -48,6 +50,12 @@ const operatorProfile = {
 const readyShellData = {
   kind: "ready",
   profile: operatorProfile,
+  workspaces: [],
+  savedViews: [],
+  runAsBanner: {
+    active: false,
+    releasable: false,
+  },
 } as const satisfies AdminShellRouteData;
 
 describe("admin shell loader", () => {
@@ -58,7 +66,7 @@ describe("admin shell loader", () => {
       loadAdminShellLoaderData(
         {
           pathname: adminAuthRoutePath.signIn,
-          searchStr: "?returnTo=%2Fgovernance%2Fruntime-config",
+          searchStr: "?returnTo=%2Fr%2Fconfig",
         },
         loadRouteData,
       ),
@@ -189,7 +197,7 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminSignInPath({
-        returnTo: "/governance/runtime-config?tab=audit",
+        returnTo: "/r/config?tab=audit",
       }),
     );
   });
@@ -205,7 +213,42 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminStaleSessionPath({
-        returnTo: "/billing?view=entitlements",
+        returnTo: "/r/billing?view=entitlements",
+      }),
+    );
+  });
+
+  it("canonicalizes legacy branding return-to paths before auth redirects", () => {
+    const tenantTarget = buildAdminTenantTarget({
+      scope: "organization",
+      scopeId: "org_demo",
+    });
+
+    if (tenantTarget === undefined) {
+      throw new TypeError(
+        "Expected branding tenant target fixture to be valid.",
+      );
+    }
+
+    const encodedTargets = encodeAdminRouteTenantTargets([tenantTarget]);
+
+    if (encodedTargets === undefined) {
+      throw new TypeError("Expected branding tenant targets to encode.");
+    }
+
+    expect(
+      buildAdminShellRedirectPath(
+        {
+          pathname: "/branding",
+          searchStr: "?scope=organization&scopeId=org_demo",
+        },
+        { kind: "shell" },
+      ),
+    ).toBe(
+      buildAdminSignInPath({
+        returnTo: `/r/branding?tenants=${encodeURIComponent(
+          JSON.stringify(encodedTargets),
+        )}&selectedTenantId=org_demo`,
       }),
     );
   });
@@ -221,7 +264,7 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminSignInPath({
-        returnTo: "/support-operations?queue=open",
+        returnTo: "/r/support?queue=open",
       }),
     );
   });

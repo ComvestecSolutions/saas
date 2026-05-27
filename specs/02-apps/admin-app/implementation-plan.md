@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Last updated: 2026-05-19
+Last updated: 2026-05-26
 
 This plan supersedes the previous admin implementation plan. It
 covers the full redesign on the **Operator Desk** shell with the new
@@ -380,8 +380,15 @@ module, owner-only, governed by
    helpers.
 3. **Operations Home aggregate v2**: 12 posture counters +
    per-domain sparkline series.
-4. **Tenant workspace aggregate v2**: adds billing meters, current
-   break-glass grant summary, repair-gap summary.
+4. **Tenant workspace aggregate v2**: adds billing meters, billing
+   posture, repair posture, and governed danger-zone context. The
+   tenant overview surface only ships fields with a declared backend
+   owner today (display name, branding state, plan tier, billing
+   status, legal-hold posture); MAU and support-tier fields stay
+   deferred until tenant-scoped reporting and support-governance
+   ownership exist, and tenant-scoped current break-glass summaries
+   stay deferred until support-operations impersonation and
+   break-glass persistence become tenant-scoped.
 5. **Manual break-glass grant + release endpoints** with reviewer
    metadata persistence.
 6. **Operator-facing webhook delivery envelope**: list, detail,

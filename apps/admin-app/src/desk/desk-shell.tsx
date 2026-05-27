@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertsPulse,
   AppDesk,
@@ -6,18 +6,28 @@ import {
   ContextSpine,
   DeviceProvider,
   EdgeRail,
+  HighRiskActionGuard,
   PulseRibbon,
+  RunAsBanner,
   Workbench,
   WorkspaceTabs,
   type DeviceClass,
+  type HighRiskReason,
 } from "@comvestec/ui";
 import {
   adminRoutePath,
+  adminSavedViewResourceKind,
+  reasonCatalogId,
   type AdminOperatorCapabilityEntry,
   type AdminOperatorProfile,
+  type AdminSavedView,
+  type AdminSavedViewResourceKind,
+  type AdminWorkspace,
+  type RunAsBannerState,
 } from "@comvestec/contracts";
 import { DeskShellOmnibar } from "../components/desk-shell/omnibar";
 import { navigateAdminPath } from "../lib/browser-navigation";
+import { adminPathMatchesRoute } from "../lib/admin-route-aliases";
 
 /**
  * DeskShell — the universal admin-app Signal Deck shell. Uses the
@@ -27,9 +37,17 @@ import { navigateAdminPath } from "../lib/browser-navigation";
  */
 export type DeskShellProps = {
   readonly profile: AdminOperatorProfile;
+  readonly workspaces: readonly AdminWorkspace[];
+  readonly savedViews: readonly AdminSavedView[];
+  readonly runAsBanner: RunAsBannerState;
   readonly children: ReactNode;
   readonly currentPath?: string;
   readonly onNavigate?: (path: string) => void;
+  readonly onReleaseRunAsGrant?: (input: {
+    readonly grantId: string;
+    readonly reasonId: typeof reasonCatalogId.runAsBannerStateRelease;
+    readonly reasonAttachmentText: string;
+  }) => Promise<unknown> | unknown;
   readonly deviceClass?: DeviceClass;
 };
 
@@ -49,9 +67,7 @@ const resolveCurrentPath = (path: string | undefined): string =>
     : window.location.pathname);
 
 const routeMatches = (currentPath: string, routePath: string): boolean =>
-  routePath === adminRoutePath.operationsHome
-    ? currentPath === routePath || currentPath === "/desk"
-    : currentPath === routePath || currentPath.startsWith(`${routePath}/`);
+  adminPathMatchesRoute(currentPath, routePath);
 
 const resolveDomainId = (routePath: string): DeskDomainId => {
   if (
@@ -238,57 +254,228 @@ const buildEdgeRailItems = (
 const buildWorkspaceTabs = (
   currentPath: string,
   capabilities: readonly AdminOperatorCapabilityEntry[],
+  workspaces: readonly AdminWorkspace[],
+  savedViews: readonly AdminSavedView[],
 ) => {
-  const anchors = [
-    {
-      id: "mission-control",
-      label: "Mission Control",
-      path: adminRoutePath.operationsHome,
-    },
-    {
-      id: "tenant-ops",
-      label: "Fleet Ops",
-      path: adminRoutePath.tenantWorkspaceDiscovery,
-    },
-    {
-      id: "runtime-control",
-      label: "Runtime Control",
-      path: adminRoutePath.runtimeConfig,
-    },
-    {
-      id: "admin-org",
-      label: "Admin Org",
-      path: adminRoutePath.profile,
-    },
-  ].filter((anchor) =>
-    capabilities.some(
-      (capability) =>
-        capability.visible &&
-        capability.allowed &&
-        capability.routePath === anchor.path,
-    ),
-  );
+  const savedViewCountByPath = new Map<string, number>();
 
-  const currentLabel = resolveCurrentRouteLabel(currentPath, capabilities);
+  for (const savedView of savedViews) {
+    const routePath = resolveSavedViewRoutePath(savedView.resourceKind);
+    if (routePath === undefined) {
+      continue;
+    }
+    savedViewCountByPath.set(
+      routePath,
+      (savedViewCountByPath.get(routePath) ?? 0) + 1,
+    );
+  }
+
+  let activeWorkspaceAssigned = false;
+  const liveTabs = [...workspaces]
+    .sort((left, right) => left.position - right.position)
+    .map((workspace) => {
+      const path = resolveWorkspaceRoutePath(workspace.serializedLayout);
+      const active =
+        activeWorkspaceAssigned === false && routeMatches(currentPath, path);
+
+      if (active) {
+        activeWorkspaceAssigned = true;
+      }
+
+      const savedViewCount = savedViewCountByPath.get(path) ?? 0;
+
+      return {
+        id: workspace.id,
+        label: workspace.name,
+        active,
+        path,
+        trailing:
+          savedViewCount > 0 ? (
+            <span
+              aria-label={`${savedViewCount} saved view${savedViewCount === 1 ? "" : "s"}`}
+              title={`${savedViewCount} saved view${savedViewCount === 1 ? "" : "s"}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 18,
+                height: 18,
+                paddingInline: 4,
+                borderRadius: 999,
+                background:
+                  "color-mix(in oklab, var(--status-info-bg) 78%, transparent)",
+                color: "var(--status-info-fg)",
+                fontSize: "0.625rem",
+                fontWeight: 700,
+              }}
+            >
+              {savedViewCount}
+            </span>
+          ) : undefined,
+      };
+    });
+
+  if (liveTabs.some((tab) => tab.active)) {
+    return liveTabs;
+  }
 
   return [
     {
-      id: "current",
-      label: currentLabel,
+      id: `current:${currentPath}`,
+      label: resolveCurrentRouteLabel(currentPath, capabilities),
       active: true,
       path: currentPath,
     },
-    ...anchors
-      .filter((anchor) => !routeMatches(currentPath, anchor.path))
-      .slice(0, 3)
-      .map((anchor) => ({
-        id: anchor.id,
-        label: anchor.label,
-        active: false,
-        path: anchor.path,
-      })),
+    ...liveTabs,
   ];
 };
+
+const workspacePaneResourceRoutePath = {
+  "operations-home": adminRoutePath.operationsHome,
+  support: adminRoutePath.supportOperations,
+  audit: adminRoutePath.auditLog,
+  vendors: "/r/vendors",
+  runs: "/r/runs",
+  notify: "/r/notify",
+  tenants: adminRoutePath.tenantWorkspaceDiscovery,
+  config: adminRoutePath.runtimeConfig,
+  "feature-flags": adminRoutePath.featureFlags,
+  access: adminRoutePath.accessControl,
+  billing: adminRoutePath.billing,
+  retention: adminRoutePath.complianceRetention,
+  webhook: adminRoutePath.webhooksApiAccess,
+  profile: adminRoutePath.profile,
+  "admin-members": "/admin/members",
+  "admin-workspaces": "/admin/workspaces",
+} as const satisfies Record<string, string>;
+
+const resolveWorkspacePaneResources = (
+  serializedLayout: string,
+): readonly string[] => {
+  try {
+    const parsed: unknown = JSON.parse(serializedLayout);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("panes" in parsed) ||
+      !Array.isArray(parsed.panes)
+    ) {
+      return [];
+    }
+
+    return parsed.panes.flatMap((pane) =>
+      typeof pane === "object" &&
+      pane !== null &&
+      "resource" in pane &&
+      typeof pane.resource === "string"
+        ? [pane.resource]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+};
+
+const resolveWorkspaceRoutePath = (serializedLayout: string): string => {
+  for (const resource of resolveWorkspacePaneResources(serializedLayout)) {
+    if (resource in workspacePaneResourceRoutePath) {
+      return workspacePaneResourceRoutePath[
+        resource as keyof typeof workspacePaneResourceRoutePath
+      ];
+    }
+  }
+
+  return adminRoutePath.operationsHome;
+};
+
+const resolveSavedViewRoutePath = (
+  resourceKind: AdminSavedViewResourceKind,
+): string | undefined => {
+  switch (resourceKind) {
+    case adminSavedViewResourceKind.tenants:
+      return adminRoutePath.tenantWorkspaceDiscovery;
+    case adminSavedViewResourceKind.auditEvents:
+      return adminRoutePath.auditLog;
+    case adminSavedViewResourceKind.billingInvoices:
+    case adminSavedViewResourceKind.openmeterUsage:
+      return adminRoutePath.billing;
+    case adminSavedViewResourceKind.featureFlags:
+      return adminRoutePath.featureFlags;
+    case adminSavedViewResourceKind.runtimeConfig:
+      return adminRoutePath.runtimeConfig;
+    case adminSavedViewResourceKind.webhookDeliveries:
+      return adminRoutePath.webhooksApiAccess;
+    case adminSavedViewResourceKind.workflowRuns:
+      return "/r/runs";
+    case adminSavedViewResourceKind.notifications:
+      return "/r/notify";
+    case adminSavedViewResourceKind.adminMembers:
+      return "/admin/members";
+    case adminSavedViewResourceKind.users:
+    case adminSavedViewResourceKind.keycloakEvents:
+      return undefined;
+  }
+};
+
+const resolveSavedViewResourceLabel = (
+  resourceKind: AdminSavedViewResourceKind,
+): string => {
+  switch (resourceKind) {
+    case adminSavedViewResourceKind.tenants:
+      return "Tenants";
+    case adminSavedViewResourceKind.auditEvents:
+      return "Audit events";
+    case adminSavedViewResourceKind.users:
+      return "Users";
+    case adminSavedViewResourceKind.keycloakEvents:
+      return "Keycloak events";
+    case adminSavedViewResourceKind.billingInvoices:
+      return "Billing invoices";
+    case adminSavedViewResourceKind.openmeterUsage:
+      return "OpenMeter usage";
+    case adminSavedViewResourceKind.featureFlags:
+      return "Feature flags";
+    case adminSavedViewResourceKind.runtimeConfig:
+      return "Runtime config";
+    case adminSavedViewResourceKind.webhookDeliveries:
+      return "Webhook deliveries";
+    case adminSavedViewResourceKind.workflowRuns:
+      return "Workflow runs";
+    case adminSavedViewResourceKind.notifications:
+      return "Notifications";
+    case adminSavedViewResourceKind.adminMembers:
+      return "Admin members";
+  }
+};
+
+const runAsReleaseReasons = [
+  {
+    id: reasonCatalogId.runAsBannerStateRelease,
+    label: "Release active run-as grant",
+    description:
+      "End the acting-as session and return to the operator identity.",
+  },
+] as const satisfies readonly HighRiskReason[];
+
+const resolveShellActionErrorMessage = (
+  error: unknown,
+  fallback: string,
+): string =>
+  error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : fallback;
+
+const resolveRunAsActorLabel = (runAsBanner: RunAsBannerState): string => {
+  const parts = [
+    runAsBanner.actingAsActorType,
+    runAsBanner.actingAsActorId,
+  ].filter((value): value is string => value !== undefined);
+
+  return parts.length === 0 ? "delegated actor" : parts.join(" · ");
+};
+
+const resolveRunAsReason = (runAsBanner: RunAsBannerState): string =>
+  runAsBanner.reasonText ?? runAsBanner.reasonId ?? "Break-glass grant active";
 
 const navigateToPath = (
   path: string,
@@ -297,12 +484,20 @@ const navigateToPath = (
 
 export function DeskShell({
   profile,
+  workspaces,
+  savedViews,
+  runAsBanner,
   children,
   currentPath: currentPathProp,
   onNavigate,
+  onReleaseRunAsGrant,
   deviceClass,
 }: DeskShellProps) {
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [runAsReleaseArmed, setRunAsReleaseArmed] = useState(false);
+  const [runAsReleaseError, setRunAsReleaseError] = useState<string | null>(
+    null,
+  );
   const operator = profile.identity;
   const currentPath = resolveCurrentPath(currentPathProp);
   const deviceClassProps: { readonly deviceClass: DeviceClass } | {} =
@@ -313,18 +508,54 @@ export function DeskShell({
   const visibleCapabilities = profile.capabilities.filter(
     (capability) => capability.visible,
   );
-  const activeBreakGlass = visibleCapabilities.find(
-    (capability) => capability.reason !== undefined && capability.allowed,
-  );
+  const activeRunAsBanner = runAsBanner.active ? runAsBanner : undefined;
   const gatedSurfaces = visibleCapabilities.filter(
     (capability) => !capability.allowed,
   );
   const pulseSegments = buildPulseSegments(currentPath, visibleCapabilities);
   const edgeRailItems = buildEdgeRailItems(currentPath, visibleCapabilities);
-  const workspaceTabs = buildWorkspaceTabs(currentPath, visibleCapabilities);
+  const workspaceTabs = buildWorkspaceTabs(
+    currentPath,
+    visibleCapabilities,
+    workspaces,
+    savedViews,
+  );
   const navigationLinks = visibleCapabilities.filter(
     (capability) => capability.allowed && !capability.routePath.includes("$"),
   );
+  const savedViewLinks = useMemo(
+    () =>
+      [...savedViews]
+        .sort((left, right) => {
+          if (left.pinned !== right.pinned) {
+            return left.pinned ? -1 : 1;
+          }
+
+          const leftTimestamp = left.lastUsedAt ?? left.updatedAt;
+          const rightTimestamp = right.lastUsedAt ?? right.updatedAt;
+
+          return rightTimestamp.localeCompare(leftTimestamp);
+        })
+        .map((savedView) => ({
+          ...savedView,
+          routePath: resolveSavedViewRoutePath(savedView.resourceKind),
+          resourceLabel: resolveSavedViewResourceLabel(savedView.resourceKind),
+        })),
+    [savedViews],
+  );
+  const featuredSavedViews = useMemo(() => {
+    const currentRouteMatches = savedViewLinks.filter(
+      (savedView) =>
+        savedView.routePath !== undefined &&
+        routeMatches(currentPath, savedView.routePath),
+    );
+
+    if (currentRouteMatches.length > 0) {
+      return currentRouteMatches.slice(0, 4);
+    }
+
+    return savedViewLinks.filter((savedView) => savedView.pinned).slice(0, 4);
+  }, [currentPath, savedViewLinks]);
 
   useEffect(() => {
     document.documentElement.dataset.adminShellHydrated = "true";
@@ -333,175 +564,140 @@ export function DeskShell({
     };
   }, []);
 
+  useEffect(() => {
+    if (!runAsBanner.active) {
+      setRunAsReleaseArmed(false);
+      setRunAsReleaseError(null);
+    }
+  }, [runAsBanner.active]);
+
+  const handleRunAsReleaseConfirm = async (input: {
+    readonly reasonId: string;
+    readonly note: string;
+  }) => {
+    if (
+      activeRunAsBanner?.grantId === undefined ||
+      onReleaseRunAsGrant === undefined
+    ) {
+      return;
+    }
+
+    try {
+      setRunAsReleaseError(null);
+      await onReleaseRunAsGrant({
+        grantId: activeRunAsBanner.grantId,
+        reasonId: reasonCatalogId.runAsBannerStateRelease,
+        reasonAttachmentText: input.note.trim(),
+      });
+      setRunAsReleaseArmed(false);
+    } catch (error) {
+      setRunAsReleaseError(
+        resolveShellActionErrorMessage(
+          error,
+          "The active run-as grant could not be released.",
+        ),
+      );
+    }
+  };
+
   return (
     <DeviceProvider>
-      <AppDesk
-        {...deviceClassProps}
-        pulseRibbon={
-          <PulseRibbon
-            {...deviceClassProps}
-            segments={pulseSegments}
-            onSelect={(segment) => {
-              const firstRoute = visibleCapabilities.find(
-                (capability) =>
-                  resolveDomainId(capability.routePath) === segment.id,
-              );
-              if (firstRoute?.allowed !== true) {
-                return;
-              }
-              navigateToPath(firstRoute.routePath, onNavigate);
-            }}
-          />
-        }
-        edgeRail={
-          <EdgeRail
-            {...deviceClassProps}
-            items={edgeRailItems}
-            onActivate={(item) => {
-              const match = visibleCapabilities.find(
-                (capability) => capability.capability === item.id,
-              );
-              if (match === undefined) {
-                return;
-              }
-              navigateToPath(match.routePath, onNavigate);
-            }}
-          />
-        }
-        workbench={<Workbench {...deviceClassProps}>{children}</Workbench>}
-        contextSpine={
-          <ContextSpine {...deviceClassProps}>
-            <section
-              data-testid="context-spine-actor-card"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                padding: 6,
-                borderRadius: 10,
-                border: "1px solid color-mix(in oklab, white 8%, transparent)",
-                background:
-                  "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 82%, transparent)",
+      <>
+        <AppDesk
+          {...deviceClassProps}
+          pulseRibbon={
+            <PulseRibbon
+              {...deviceClassProps}
+              segments={pulseSegments}
+              onSelect={(segment) => {
+                const firstRoute = visibleCapabilities.find(
+                  (capability) =>
+                    resolveDomainId(capability.routePath) === segment.id,
+                );
+                if (firstRoute?.allowed !== true) {
+                  return;
+                }
+                navigateToPath(firstRoute.routePath, onNavigate);
               }}
-            >
-              <span
-                style={{
-                  fontFamily: "var(--font-condensed)",
-                  fontSize: "0.68rem",
-                  color: "var(--fg-muted)",
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Operator
-              </span>
-              <strong
-                style={{ fontSize: "0.92rem", color: "var(--fg-elevated)" }}
-              >
-                {operator.displayName}
-              </strong>
-              <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
-                {operator.email}
-              </span>
-              <span
-                data-testid="context-spine-actor-role"
-                style={{
-                  fontSize: "0.68rem",
-                  color: "var(--fg-muted)",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}
-              >
-                {operator.actorType}
-              </span>
-            </section>
-            <section
-              style={{
-                display: "grid",
-                gap: 6,
+            />
+          }
+          edgeRail={
+            <EdgeRail
+              {...deviceClassProps}
+              items={edgeRailItems}
+              onActivate={(item) => {
+                const match = visibleCapabilities.find(
+                  (capability) => capability.capability === item.id,
+                );
+                if (match === undefined) {
+                  return;
+                }
+                navigateToPath(match.routePath, onNavigate);
               }}
-            >
-              <div
+            />
+          }
+          workbench={<Workbench {...deviceClassProps}>{children}</Workbench>}
+          contextSpine={
+            <ContextSpine {...deviceClassProps}>
+              <section
+                data-testid="context-spine-actor-card"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
                   padding: 6,
                   borderRadius: 10,
                   border:
                     "1px solid color-mix(in oklab, white 8%, transparent)",
                   background:
-                    "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
+                    "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 82%, transparent)",
                 }}
               >
-                <div
+                <span
                   style={{
                     fontFamily: "var(--font-condensed)",
-                    fontSize: "0.66rem",
+                    fontSize: "0.68rem",
+                    color: "var(--fg-muted)",
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                    color: "var(--fg-muted)",
-                    marginBottom: 4,
                   }}
                 >
-                  In focus
-                </div>
-                <div
-                  style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
+                  Operator
+                </span>
+                <strong
+                  style={{ fontSize: "0.92rem", color: "var(--fg-elevated)" }}
                 >
-                  {resolveCurrentRouteLabel(currentPath, visibleCapabilities)}
-                </div>
-                <div
-                  className="mono"
-                  style={{ fontSize: "0.72rem", color: "var(--fg-muted)" }}
+                  {operator.displayName}
+                </strong>
+                <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
+                  {operator.email}
+                </span>
+                <span
+                  data-testid="context-spine-actor-role"
+                  style={{
+                    fontSize: "0.68rem",
+                    color: "var(--fg-muted)",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
                 >
-                  {currentPath}
-                </div>
-              </div>
-              <div
+                  {operator.actorType}
+                </span>
+              </section>
+              <section
                 style={{
-                  padding: 6,
-                  borderRadius: 10,
-                  border:
-                    "1px solid color-mix(in oklab, white 8%, transparent)",
-                  background:
-                    "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
+                  display: "grid",
+                  gap: 6,
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: "var(--font-condensed)",
-                    fontSize: "0.66rem",
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    color: "var(--fg-muted)",
-                    marginBottom: 4,
-                  }}
-                >
-                  Capability posture
-                </div>
-                <div
-                  style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
-                >
-                  {
-                    visibleCapabilities.filter(
-                      (capability) => capability.allowed,
-                    ).length
-                  }{" "}
-                  active surfaces
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
-                  {gatedSurfaces.length === 0
-                    ? "No gated surfaces in this session."
-                    : `${gatedSurfaces.length} gated surface${gatedSurfaces.length === 1 ? "" : "s"} need higher privilege.`}
-                </div>
-              </div>
-              {activeBreakGlass?.reason !== undefined ? (
                 <div
                   style={{
                     padding: 6,
                     borderRadius: 10,
-                    border: "1px solid var(--status-error-border)",
+                    border:
+                      "1px solid color-mix(in oklab, white 8%, transparent)",
                     background:
-                      "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
-                    color: "var(--status-error-fg)",
+                      "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
                   }}
                 >
                   <div
@@ -510,164 +706,415 @@ export function DeskShell({
                       fontSize: "0.66rem",
                       letterSpacing: "0.12em",
                       textTransform: "uppercase",
+                      color: "var(--fg-muted)",
                       marginBottom: 4,
                     }}
                   >
-                    Run-as context
+                    In focus
                   </div>
-                  <div style={{ fontSize: "0.82rem" }}>
-                    {activeBreakGlass.reason}
+                  <div
+                    style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
+                  >
+                    {resolveCurrentRouteLabel(currentPath, visibleCapabilities)}
+                  </div>
+                  <div
+                    className="mono"
+                    style={{ fontSize: "0.72rem", color: "var(--fg-muted)" }}
+                  >
+                    {currentPath}
                   </div>
                 </div>
-              ) : null}
-            </section>
-          </ContextSpine>
-        }
-        commandStrip={
-          <CommandStrip
-            {...deviceClassProps}
-            omnibar={<DeskShellOmnibar {...omnibarNavigationProps} />}
-            workspaceTabs={
-              <WorkspaceTabs
-                tabs={workspaceTabs}
-                onActivate={(tab) => {
-                  const match = workspaceTabs.find(
-                    (entry) => entry.id === tab.id,
-                  );
-                  if (match === undefined) {
-                    return;
-                  }
-                  navigateToPath(match.path, onNavigate);
-                }}
-              />
-            }
-            alertsPulse={
-              <AlertsPulse
-                count={gatedSurfaces.length}
-                tone={
-                  gatedSurfaces.length === 0
-                    ? "neutral"
-                    : gatedSurfaces.length >= 3
-                      ? "error"
-                      : "pending"
-                }
-                ariaLabel="Gated admin surfaces"
-              />
-            }
-            runAsBanner={
-              <div
-                style={{
-                  position: "relative",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <button
-                  type="button"
-                  aria-label="Open navigation"
-                  onClick={() => setNavigationOpen((current) => !current)}
+                <div
                   style={{
-                    height: 28,
-                    paddingInline: 8,
-                    borderRadius: 8,
+                    padding: 6,
+                    borderRadius: 10,
                     border:
                       "1px solid color-mix(in oklab, white 8%, transparent)",
                     background:
-                      "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
-                    color: "var(--fg-secondary)",
-                    cursor: "pointer",
+                      "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
                   }}
                 >
-                  Menu
-                </button>
-                <a
-                  href={adminRoutePath.profile}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigateToPath(adminRoutePath.profile, onNavigate);
-                  }}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    height: 28,
-                    paddingInline: 8,
-                    borderRadius: 8,
-                    border:
-                      "1px solid color-mix(in oklab, white 8%, transparent)",
-                    background:
-                      "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
-                    color: "var(--fg-secondary)",
-                    textDecoration: "none",
-                  }}
-                >
-                  My profile
-                </a>
-                {navigationOpen ? (
                   <div
-                    data-testid="desk-shell-navigation-menu"
                     style={{
-                      position: "absolute",
-                      right: 0,
-                      bottom: "calc(100% + 6px)",
-                      width: 240,
-                      maxHeight: 280,
-                      overflow: "auto",
-                      padding: 6,
-                      borderRadius: 10,
-                      border:
-                        "1px solid color-mix(in oklab, white 10%, transparent)",
-                      background:
-                        "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 94%, transparent)",
-                      boxShadow: "0 22px 48px -28px rgb(0 0 0 / 0.82)",
-                      display: "grid",
-                      gap: 4,
-                      zIndex: 20,
+                      fontFamily: "var(--font-condensed)",
+                      fontSize: "0.66rem",
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: "var(--fg-muted)",
+                      marginBottom: 4,
                     }}
                   >
-                    {navigationLinks.map((capability) => (
-                      <a
-                        key={capability.capability}
-                        href={capability.routePath}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          setNavigationOpen(false);
-                          navigateToPath(capability.routePath, onNavigate);
-                        }}
-                        style={{
-                          display: "grid",
-                          gap: 2,
-                          padding: "6px 8px",
-                          borderRadius: 8,
-                          textDecoration: "none",
-                          background: routeMatches(
-                            currentPath,
-                            capability.routePath,
-                          )
-                            ? "color-mix(in oklab, white 6%, transparent)"
-                            : "transparent",
-                          color: "var(--fg-elevated)",
-                        }}
-                      >
-                        <span>{capability.label}</span>
-                        <span
-                          className="mono"
+                    Capability posture
+                  </div>
+                  <div
+                    style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
+                  >
+                    {
+                      visibleCapabilities.filter(
+                        (capability) => capability.allowed,
+                      ).length
+                    }{" "}
+                    active surfaces
+                  </div>
+                  <div
+                    style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}
+                  >
+                    {gatedSurfaces.length === 0
+                      ? "No gated surfaces in this session."
+                      : `${gatedSurfaces.length} gated surface${gatedSurfaces.length === 1 ? "" : "s"} need higher privilege.`}
+                  </div>
+                </div>
+                <div
+                  data-testid="context-spine-saved-views"
+                  style={{
+                    padding: 6,
+                    borderRadius: 10,
+                    border:
+                      "1px solid color-mix(in oklab, white 8%, transparent)",
+                    background:
+                      "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
+                    display: "grid",
+                    gap: 4,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "var(--font-condensed)",
+                      fontSize: "0.66rem",
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: "var(--fg-muted)",
+                    }}
+                  >
+                    Saved views
+                  </div>
+                  {featuredSavedViews.length === 0 ? (
+                    <div
+                      style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}
+                    >
+                      No pinned saved views for this surface yet.
+                    </div>
+                  ) : (
+                    featuredSavedViews.map((savedView) =>
+                      savedView.routePath === undefined ? (
+                        <div
+                          key={savedView.id}
                           style={{
-                            fontSize: "0.7rem",
-                            color: "var(--fg-muted)",
+                            display: "grid",
+                            gap: 2,
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            background:
+                              "color-mix(in oklab, white 4%, transparent)",
                           }}
                         >
-                          {capability.routePath}
-                        </span>
-                      </a>
-                    ))}
+                          <span
+                            style={{
+                              fontSize: "0.8rem",
+                              color: "var(--fg-elevated)",
+                            }}
+                          >
+                            {savedView.name}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              color: "var(--fg-muted)",
+                            }}
+                          >
+                            {savedView.resourceLabel}
+                            {savedView.pinned ? " · pinned" : ""}
+                          </span>
+                        </div>
+                      ) : (
+                        <a
+                          key={savedView.id}
+                          href={savedView.routePath}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            navigateToPath(savedView.routePath!, onNavigate);
+                          }}
+                          style={{
+                            display: "grid",
+                            gap: 2,
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            textDecoration: "none",
+                            background: routeMatches(
+                              currentPath,
+                              savedView.routePath,
+                            )
+                              ? "color-mix(in oklab, white 6%, transparent)"
+                              : "color-mix(in oklab, white 4%, transparent)",
+                            color: "var(--fg-elevated)",
+                          }}
+                        >
+                          <span style={{ fontSize: "0.8rem" }}>
+                            {savedView.name}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              color: "var(--fg-muted)",
+                            }}
+                          >
+                            {savedView.resourceLabel}
+                            {savedView.pinned ? " · pinned" : ""}
+                          </span>
+                        </a>
+                      ),
+                    )
+                  )}
+                </div>
+                {activeRunAsBanner?.expiresAt !== undefined ? (
+                  <div
+                    style={{
+                      padding: 6,
+                      borderRadius: 10,
+                      border: "1px solid var(--status-error-border)",
+                      background:
+                        "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
+                      color: "var(--status-error-fg)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: "var(--font-condensed)",
+                        fontSize: "0.66rem",
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Run-as context
+                    </div>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                      {resolveRunAsActorLabel(activeRunAsBanner)}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", marginTop: 2 }}>
+                      {resolveRunAsReason(activeRunAsBanner)}
+                    </div>
+                    <div
+                      className="mono"
+                      style={{ fontSize: "0.72rem", marginTop: 2 }}
+                    >
+                      until {activeRunAsBanner.expiresAt}
+                    </div>
                   </div>
                 ) : null}
+                {runAsReleaseError !== null ? (
+                  <div
+                    data-testid="desk-shell-run-as-error"
+                    style={{
+                      padding: 6,
+                      borderRadius: 10,
+                      border: "1px solid var(--status-error-border)",
+                      background:
+                        "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
+                      color: "var(--status-error-fg)",
+                      fontSize: "0.75rem",
+                    }}
+                  >
+                    {runAsReleaseError}
+                  </div>
+                ) : null}
+              </section>
+            </ContextSpine>
+          }
+          commandStrip={
+            <CommandStrip
+              {...deviceClassProps}
+              omnibar={<DeskShellOmnibar {...omnibarNavigationProps} />}
+              workspaceTabs={
+                <WorkspaceTabs
+                  tabs={workspaceTabs}
+                  onActivate={(tab) => {
+                    const match = workspaceTabs.find(
+                      (entry) => entry.id === tab.id,
+                    );
+                    if (match === undefined) {
+                      return;
+                    }
+                    navigateToPath(match.path, onNavigate);
+                  }}
+                />
+              }
+              alertsPulse={
+                <AlertsPulse
+                  count={gatedSurfaces.length}
+                  tone={
+                    gatedSurfaces.length === 0
+                      ? "neutral"
+                      : gatedSurfaces.length >= 3
+                        ? "error"
+                        : "pending"
+                  }
+                  ariaLabel="Gated admin surfaces"
+                />
+              }
+              runAsBanner={
+                <div
+                  style={{
+                    position: "relative",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  {activeRunAsBanner?.expiresAt !== undefined ? (
+                    <RunAsBanner
+                      actorLabel={resolveRunAsActorLabel(activeRunAsBanner)}
+                      reason={resolveRunAsReason(activeRunAsBanner)}
+                      expiresAtIso={activeRunAsBanner.expiresAt}
+                      {...(activeRunAsBanner.releasable &&
+                      activeRunAsBanner.grantId !== undefined &&
+                      onReleaseRunAsGrant !== undefined
+                        ? {
+                            onRelease: () => {
+                              setRunAsReleaseError(null);
+                              setRunAsReleaseArmed(true);
+                            },
+                          }
+                        : {})}
+                    />
+                  ) : null}
+                  <div
+                    style={{
+                      position: "relative",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      aria-label="Open navigation"
+                      onClick={() => setNavigationOpen((current) => !current)}
+                      style={{
+                        height: 28,
+                        paddingInline: 8,
+                        borderRadius: 8,
+                        border:
+                          "1px solid color-mix(in oklab, white 8%, transparent)",
+                        background:
+                          "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
+                        color: "var(--fg-secondary)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Menu
+                    </button>
+                    <a
+                      href={adminRoutePath.profile}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigateToPath(adminRoutePath.profile, onNavigate);
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        height: 28,
+                        paddingInline: 8,
+                        borderRadius: 8,
+                        border:
+                          "1px solid color-mix(in oklab, white 8%, transparent)",
+                        background:
+                          "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
+                        color: "var(--fg-secondary)",
+                        textDecoration: "none",
+                      }}
+                    >
+                      My profile
+                    </a>
+                    {navigationOpen ? (
+                      <div
+                        data-testid="desk-shell-navigation-menu"
+                        style={{
+                          position: "absolute",
+                          right: 0,
+                          bottom: "calc(100% + 6px)",
+                          width: 240,
+                          maxHeight: 280,
+                          overflow: "auto",
+                          padding: 6,
+                          borderRadius: 10,
+                          border:
+                            "1px solid color-mix(in oklab, white 10%, transparent)",
+                          background:
+                            "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 94%, transparent)",
+                          boxShadow: "0 22px 48px -28px rgb(0 0 0 / 0.82)",
+                          display: "grid",
+                          gap: 4,
+                          zIndex: 20,
+                        }}
+                      >
+                        {navigationLinks.map((capability) => (
+                          <a
+                            key={capability.capability}
+                            href={capability.routePath}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setNavigationOpen(false);
+                              navigateToPath(capability.routePath, onNavigate);
+                            }}
+                            style={{
+                              display: "grid",
+                              gap: 2,
+                              padding: "6px 8px",
+                              borderRadius: 8,
+                              textDecoration: "none",
+                              background: routeMatches(
+                                currentPath,
+                                capability.routePath,
+                              )
+                                ? "color-mix(in oklab, white 6%, transparent)"
+                                : "transparent",
+                              color: "var(--fg-elevated)",
+                            }}
+                          >
+                            <span>{capability.label}</span>
+                            <span
+                              className="mono"
+                              style={{
+                                fontSize: "0.7rem",
+                                color: "var(--fg-muted)",
+                              }}
+                            >
+                              {capability.routePath}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              }
+            />
+          }
+        />
+        {runAsReleaseArmed && activeRunAsBanner?.grantId !== undefined ? (
+          <HighRiskActionGuard
+            action={{
+              id: "run-as-banner-release",
+              label: "Release active run-as grant",
+            }}
+            selection={[activeRunAsBanner.grantId]}
+            reasons={runAsReleaseReasons}
+            requireNote
+            confirmLabel="Release"
+            renderSelectionSummary={() => (
+              <div style={{ display: "grid", gap: 4 }}>
+                <strong>{resolveRunAsActorLabel(activeRunAsBanner)}</strong>
+                <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
+                  {resolveRunAsReason(activeRunAsBanner)}
+                </span>
               </div>
-            }
+            )}
+            onConfirm={handleRunAsReleaseConfirm}
+            onCancel={() => setRunAsReleaseArmed(false)}
           />
-        }
-      />
+        ) : null}
+      </>
     </DeviceProvider>
   );
 }

@@ -11,9 +11,15 @@ Suites:
   trusted-session fixture under `tests/fixtures/trusted-session.ts`;
   no manual token paste, no synthesized credentials.
 - `visual/**` — per-route Playwright screenshots at desktop / tablet
-  / mobile for every `/desk`, `/r/*`, and `/admin/*` route (Phase 8c).
-- `a11y/**` — `@axe-core/playwright`-backed WCAG 2.1 AA audit per
-  primary route; serious + critical violations fail CI (Phase 8d).
+  / mobile for the current primary admin route subset declared in
+  `visual/admin-routes.spec.ts`: `/desk`, `/r/tenants`, `/r/audit`,
+  `/r/config`, `/r/flag`, `/r/access`, `/r/billing`, `/r/branding`,
+  `/r/retention`, `/r/webhook`, `/r/runs`, `/r/vendors`, `/r/notify`,
+  `/r/support`, `/admin/profile`, `/admin/members`,
+  `/admin/workspaces`, `/admin/tokens`, and `/admin/audit` (Phase 8c).
+- `a11y/**` — `@axe-core/playwright`-backed WCAG 2.1 AA audit for the
+  same primary route subset declared in `a11y/admin-routes.spec.ts`;
+  serious + critical violations fail CI (Phase 8d).
 
 Run from the repository root:
 

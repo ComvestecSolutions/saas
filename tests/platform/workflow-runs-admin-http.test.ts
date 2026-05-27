@@ -23,10 +23,12 @@ import {
 } from "@comvestec/contracts";
 import {
   createWorkflowRunsAdminHttpHandlerWithDependencies,
+  WorkflowRunsAdminCancelUnavailable,
   workflowRunsAdminApiBasePath,
   workflowRunsAdminApiPath,
   WorkflowRunsAdminMissingActorIdentity,
   WorkflowRunsAdminPageSizeTooLarge,
+  WorkflowRunsAdminReplayUnavailable,
   WorkflowRunsAdminReasonActionMismatch,
   WorkflowRunsAdminReasonAttachmentRequired,
   WorkflowRunsAdminReasonNotInCatalog,
@@ -465,6 +467,22 @@ describe("workflow-runs-admin HTTP — /replay", () => {
     expect(response.status).toBe(404);
   });
 
+  it("maps WorkflowRunsAdminReplayUnavailable to 409", async () => {
+    const handler = createTestHandler({
+      replayRun: () =>
+        Effect.fail(
+          new WorkflowRunsAdminReplayUnavailable({
+            runId: "wfr_target_replay",
+            status: workflowRunStatus.running,
+          }),
+        ),
+    });
+    const response = await Effect.runPromise(
+      handler(postJson(workflowRunsAdminApiPath.replay, replayBody())),
+    );
+    expect(response.status).toBe(409);
+  });
+
   it("maps WorkflowRunsAdminUnauthorized to 401", async () => {
     const handler = createTestHandler({
       replayRun: () =>
@@ -559,6 +577,22 @@ describe("workflow-runs-admin HTTP — /cancel", () => {
       handler(postJson(workflowRunsAdminApiPath.cancel, cancelBody())),
     );
     expect(response.status).toBe(404);
+  });
+
+  it("maps WorkflowRunsAdminCancelUnavailable to 409", async () => {
+    const handler = createTestHandler({
+      cancelRun: () =>
+        Effect.fail(
+          new WorkflowRunsAdminCancelUnavailable({
+            runId: "wfr_target_cancel",
+            status: workflowRunStatus.failed,
+          }),
+        ),
+    });
+    const response = await Effect.runPromise(
+      handler(postJson(workflowRunsAdminApiPath.cancel, cancelBody())),
+    );
+    expect(response.status).toBe(409);
   });
 
   it("maps WorkflowRunsAdminUnauthorized to 401", async () => {

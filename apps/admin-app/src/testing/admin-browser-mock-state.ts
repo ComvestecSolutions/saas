@@ -41,6 +41,9 @@ export const mockedLoaders = {
   notifyDetail: vi.fn((input) => requireFixtureState().loadNotifyDetail(input)),
   adminProfile: vi.fn(() => requireFixtureState().loadAdminProfile({})),
   adminMembers: vi.fn((input) => requireFixtureState().loadAdminMembers(input)),
+  adminMemberDetail: vi.fn((input) =>
+    requireFixtureState().loadAdminMemberDetail(input),
+  ),
   adminTokens: vi.fn((input) => requireFixtureState().loadAdminTokens(input)),
   adminWorkspaces: vi.fn(() => requireFixtureState().loadAdminWorkspaces({})),
   adminAudit: vi.fn(() => requireFixtureState().loadAdminAudit({})),
@@ -56,6 +59,12 @@ export const mockedLoaders = {
     requireFixtureState().loadInvoiceDetail(input),
   ),
   meterDetail: vi.fn((input) => requireFixtureState().loadMeterDetail(input)),
+  keycloakUserDetail: vi.fn((input) =>
+    requireFixtureState().loadKeycloakUserDetail(input),
+  ),
+  keycloakRoleDetail: vi.fn((input) =>
+    requireFixtureState().loadKeycloakRoleDetail(input),
+  ),
   brandingList: vi.fn((input) => requireFixtureState().loadBrandingList(input)),
   domainDetail: vi.fn((input) => requireFixtureState().loadDomainDetail(input)),
   runtimeConfig: vi.fn(() => requireFixtureState().loadRuntimeConfig()),
@@ -105,6 +114,9 @@ export const mockedLoaders = {
   ),
   releaseBreakGlassGrant: vi.fn((input) =>
     requireFixtureState().releaseBreakGlassGrant(input),
+  ),
+  releaseRunAsGrant: vi.fn((input) =>
+    requireFixtureState().releaseRunAsGrant(input),
   ),
   releaseLegalHold: vi.fn((input) =>
     requireFixtureState().releaseLegalHold(input),

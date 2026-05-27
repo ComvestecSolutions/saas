@@ -26,6 +26,7 @@
 import { Schema } from "effect";
 import { TenantContextSchema } from "../access/tenant-context";
 import { IsoTimestampSchema } from "../runtime/timestamps";
+import { BillingSubscriptionStatusSchema } from "./billing-metering";
 import {
   OperationsHomeKpiSchema,
   OperationsHomePendingApprovalSchema,
@@ -103,10 +104,8 @@ export const TenantWorkspaceOverviewSchema = Schema.Struct({
   displayName: Schema.NonEmptyString,
   brandingState: TenantWorkspaceBrandingStateSchema,
   planTier: Schema.NonEmptyString,
-  currentMau: Schema.Int.pipe(Schema.greaterThanOrEqualTo(0)),
-  openInvoiceCount: Schema.Int.pipe(Schema.greaterThanOrEqualTo(0)),
+  billingStatus: Schema.optional(BillingSubscriptionStatusSchema),
   legalHoldActive: Schema.Boolean,
-  supportTier: TenantWorkspaceSupportTierSchema,
 });
 
 export type TenantWorkspaceOverview = Schema.Schema.Type<

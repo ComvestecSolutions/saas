@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Last updated: 2026-05-19
+Last updated: 2026-05-26
 
 The admin app is the internal operator and governance control surface
 for the Comvestec Solutions SaaS Foundation. It is built on the
@@ -170,8 +170,15 @@ adapters before the matching UI lands.
 2. `admin-saved-views` + `admin-workspaces` per-user persistence.
 3. Operations Home aggregate v2 (12 posture counters + per-domain
    sparkline series).
-4. Tenant workspace aggregate v2 (adds billing meters, current
-   break-glass grant, repair gap summary).
+4. Tenant workspace aggregate v2 (adds billing meters, billing
+   posture, repair posture, and governed danger-zone context). The
+   tenant overview card stays limited to fields with an explicit
+   backend owner today: display name, branding state, plan tier,
+   billing status, and legal-hold posture. MAU and support-tier
+   indicators remain out of scope until dedicated tenant-scoped
+   reporting and support-governance owners exist, and tenant-scoped
+   current break-glass summaries stay deferred until support-operations
+   impersonation and break-glass persistence become tenant-scoped.
 5. Manual break-glass grant + release endpoints with reviewer
    metadata persistence.
 6. Operator-facing webhook delivery envelope (list, detail, replay,

@@ -1,6 +1,7 @@
 export * from "./tenant-management";
 export * from "./tenant-branding";
 export * from "./billing-and-metering";
+export * from "./keycloak-role-read";
 export * from "./keycloak-user-read";
 export * from "./observability";
 export * from "./open-meter-usage-query";

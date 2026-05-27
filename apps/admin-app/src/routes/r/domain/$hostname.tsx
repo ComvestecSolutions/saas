@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  EmptyState,
   HighRiskActionGuard,
   StateScreen,
   type HighRiskReason,
@@ -30,14 +31,15 @@ import type {
  * copy-to-clipboard), and a verify CTA gated through
  * `HighRiskActionGuard` per spec §8.10.
  *
- * The DNS-record set ships as a deterministic placeholder until
- * the typed by-session helper for the full
- * `CustomDomainVerificationRecord.dnsProof` projection lands
- * (tracked under the Admin app row's Phase 4 follow-ups in the
- * implementation tracker). The verify CTA now executes through
- * the `verifyAdminCustomDomain` mutations-server entrypoint,
- * which activates the current verification through the trusted
- * session and carries the guard reason inside `approvalNotes`.
+ * The DNS-record set now projects live `dnsProof.records` data
+ * when the current verification record includes publishable DNS
+ * proof. When the backend record exists but no proof rows have
+ * been materialized yet, the route renders an honest empty
+ * state instead of deterministic placeholder records. The verify
+ * CTA executes through the `verifyAdminCustomDomain`
+ * mutations-server entrypoint, which activates the current
+ * verification through the trusted session and carries the
+ * guard reason inside `approvalNotes`.
  */
 const knownPlatformScopes = Object.values(platformScope);
 
@@ -136,6 +138,15 @@ function DomainDetailRoute() {
         variant="denied"
         title="Access denied"
         description={data.reason}
+      />
+    );
+  }
+  if (data.kind === "not-found") {
+    return (
+      <StateScreen
+        variant="404"
+        title={data.title}
+        description={data.description}
       />
     );
   }
@@ -276,59 +287,68 @@ function DomainDetailRoute() {
       >
         Last changed: <span className="mono">{changedAt ?? "—"}</span>
       </div>
-      <table
-        data-testid="domain-detail-dns-table"
-        data-pattern="dense-data-table"
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "0.8125rem",
-        }}
-      >
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left", padding: 4 }}>Type</th>
-            <th style={{ textAlign: "left", padding: 4 }}>Host</th>
-            <th style={{ textAlign: "left", padding: 4 }}>Value</th>
-            <th style={{ textAlign: "left", padding: 4 }}>Copy</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dnsRecords.map((record) => {
-            const key = `${record.recordType}:${record.host}`;
-            const copied = copiedRecord === key;
-            return (
-              <tr
-                key={key}
-                data-testid="domain-detail-dns-row"
-                data-record-key={key}
-              >
-                <td style={{ padding: 4 }} className="mono">
-                  {record.recordType}
-                </td>
-                <td style={{ padding: 4 }} className="mono">
-                  {record.host}
-                </td>
-                <td style={{ padding: 4 }} className="mono">
-                  {record.value}
-                </td>
-                <td style={{ padding: 4 }}>
-                  <button
-                    type="button"
-                    data-testid="domain-detail-dns-copy"
-                    data-copied={copied ? "true" : "false"}
-                    onClick={() => {
-                      void handleCopy(key, record.value);
-                    }}
-                  >
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {dnsRecords.length === 0 ? (
+        <div data-testid="domain-detail-dns-empty">
+          <EmptyState
+            title="DNS proof not yet published"
+            description="The current custom-domain verification exists, but the backend record does not yet expose publishable DNS proof rows."
+          />
+        </div>
+      ) : (
+        <table
+          data-testid="domain-detail-dns-table"
+          data-pattern="dense-data-table"
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "0.8125rem",
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 4 }}>Type</th>
+              <th style={{ textAlign: "left", padding: 4 }}>Host</th>
+              <th style={{ textAlign: "left", padding: 4 }}>Value</th>
+              <th style={{ textAlign: "left", padding: 4 }}>Copy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dnsRecords.map((record) => {
+              const key = `${record.recordType}:${record.host}`;
+              const copied = copiedRecord === key;
+              return (
+                <tr
+                  key={key}
+                  data-testid="domain-detail-dns-row"
+                  data-record-key={key}
+                >
+                  <td style={{ padding: 4 }} className="mono">
+                    {record.recordType}
+                  </td>
+                  <td style={{ padding: 4 }} className="mono">
+                    {record.host}
+                  </td>
+                  <td style={{ padding: 4 }} className="mono">
+                    {record.value}
+                  </td>
+                  <td style={{ padding: 4 }}>
+                    <button
+                      type="button"
+                      data-testid="domain-detail-dns-copy"
+                      data-copied={copied ? "true" : "false"}
+                      onClick={() => {
+                        void handleCopy(key, record.value);
+                      }}
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
       {canVerify ? (
         <div>
           <button

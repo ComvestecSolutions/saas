@@ -178,6 +178,19 @@ export const keycloakUserReadFeatureFlag = defineModuleFeatureFlags(
   {},
 );
 
+export const keycloakRoleReadConfigKey = defineModuleConfigKeys(
+  platformModuleId.keycloakRoleRead,
+  {
+    cacheMaxSize: "cache.maxSize",
+    snapshotCacheTtlSeconds: "snapshot.cacheTtlSeconds",
+  },
+);
+
+export const keycloakRoleReadFeatureFlag = defineModuleFeatureFlags(
+  platformModuleId.keycloakRoleRead,
+  {},
+);
+
 export const polarCustomerReadConfigKey = defineModuleConfigKeys(
   platformModuleId.polarCustomerRead,
   {

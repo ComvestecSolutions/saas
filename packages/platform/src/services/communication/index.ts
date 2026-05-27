@@ -25,6 +25,7 @@ export * from "./capability-snapshot-v2-http";
 export * from "./run-as-banner-state-http";
 export * from "./universal-search-http";
 export * from "./open-meter-usage-query-http";
+export * from "./keycloak-role-read-http";
 export * from "./keycloak-user-read-http";
 export * from "./polar-customer-read-http";
 export * from "./polar-revenue-projection-http";

@@ -1,12 +1,15 @@
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import type { AdminOperatorProfile } from "@comvestec/contracts";
 import {
+  actorType,
   adminOperatorCapability,
   adminRoutePath,
+  adminSavedViewResourceKind,
   platformModuleId,
   projectionProfile,
+  reasonCatalogId,
 } from "@comvestec/contracts";
 import { DeskShell } from "../../desk/desk-shell";
 
@@ -45,6 +48,51 @@ const buildProfile = (): AdminOperatorProfile => ({
     },
   ],
 });
+
+const buildWorkspaces = () =>
+  [
+    {
+      id: "wsp_fixture_1",
+      ownerSubjectId: "operator-fixture",
+      name: "Daily driver",
+      position: 1,
+      serializedLayout:
+        '{"panes":[{"id":"mission-control","resource":"operations-home"}]}',
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    },
+    {
+      id: "wsp_fixture_2",
+      ownerSubjectId: "operator-fixture",
+      name: "Incident response",
+      position: 2,
+      serializedLayout:
+        '{"panes":[{"id":"support","resource":"support"},{"id":"audit","resource":"audit"}]}',
+      createdAt: new Date(500).toISOString(),
+      updatedAt: new Date(1000).toISOString(),
+    },
+  ] as const;
+
+const buildSavedViews = () =>
+  [
+    {
+      id: "sv_fixture_1",
+      ownerSubjectId: "operator-fixture",
+      name: "Audit triage",
+      resourceKind: adminSavedViewResourceKind.auditEvents,
+      serializedView:
+        '{"filters":{"action":["manual-break-glass.issue"]},"sort":{"field":"timestamp","direction":"desc"}}',
+      pinned: true,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(1000).toISOString(),
+      lastUsedAt: new Date(1500).toISOString(),
+    },
+  ] as const;
+
+const inactiveRunAsBanner = {
+  active: false,
+  releasable: false,
+} as const;
 
 const waitForSelector = async (
   selector: string,
@@ -87,7 +135,13 @@ describe("Operator Desk shell route", () => {
   it("renders PulseRibbon, EdgeRail, ContextSpine, and CommandStrip around the workbench", async () => {
     await act(async () => {
       root.render(
-        <DeskShell profile={buildProfile()} deviceClass="desktop">
+        <DeskShell
+          profile={buildProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          deviceClass="desktop"
+        >
           <section data-testid="workbench-stub">Pane content</section>
         </DeskShell>,
       );
@@ -109,6 +163,9 @@ describe("Operator Desk shell route", () => {
     ).not.toBeNull();
     expect(document.body.textContent).toContain("Operator Fixture");
     expect(document.body.textContent).toContain("operator@example.test");
+    expect(document.body.textContent).toContain("Daily driver");
+    expect(document.body.textContent).toContain("Incident response");
+    expect(document.body.textContent).toContain("Audit triage");
     expect(
       container.querySelector('[data-testid="workbench-stub"]'),
     ).not.toBeNull();
@@ -117,7 +174,13 @@ describe("Operator Desk shell route", () => {
   it("renders an Omnibar that opens via the ⌘K shortcut handler", async () => {
     await act(async () => {
       root.render(
-        <DeskShell profile={buildProfile()} deviceClass="desktop">
+        <DeskShell
+          profile={buildProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          deviceClass="desktop"
+        >
           <span />
         </DeskShell>,
       );
@@ -140,5 +203,102 @@ describe("Operator Desk shell route", () => {
     expect(omnibarAfter?.getAttribute("aria-label")).toBe(
       "Operator omnibar (open)",
     );
+  });
+
+  it("arms a governed release flow for an active run-as banner", async () => {
+    const onReleaseRunAsGrant = vi.fn(async () => undefined);
+
+    await act(async () => {
+      root.render(
+        <DeskShell
+          profile={buildProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={{
+            active: true,
+            grantId: "grant_fixture_1",
+            actingAsActorId: "usr_tenant_fixture",
+            actingAsActorType: actorType.individualUser,
+            reasonId: "incident-review",
+            reasonText: "Investigating tenant incident",
+            grantedAt: new Date(0).toISOString(),
+            expiresAt: new Date(60_000).toISOString(),
+            secondsRemaining: 60,
+            releasable: true,
+          }}
+          onReleaseRunAsGrant={onReleaseRunAsGrant}
+          deviceClass="desktop"
+        >
+          <span />
+        </DeskShell>,
+      );
+    });
+
+    const releaseButton = container.querySelector(
+      "button[data-run-as-release]",
+    );
+
+    expect(releaseButton).not.toBeNull();
+
+    await act(async () => {
+      releaseButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const reasonInput = (await waitForSelector(
+      `input[value="${reasonCatalogId.runAsBannerStateRelease}"]`,
+    )) as HTMLInputElement | null;
+    const note = (await waitForSelector(
+      '[data-testid="high-risk-note"]',
+    )) as HTMLTextAreaElement | null;
+
+    expect(reasonInput).not.toBeNull();
+    expect(note).not.toBeNull();
+
+    await act(async () => {
+      if (reasonInput !== null) {
+        reasonInput.click();
+      }
+      if (note !== null) {
+        const setValue = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype,
+          "value",
+        )?.set;
+
+        setValue?.call(
+          note,
+          "Closing the delegated session after incident review.",
+        );
+        note.dispatchEvent(new Event("input", { bubbles: true }));
+        note.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+
+    const continueButton = (await waitForSelector(
+      '[data-testid="high-risk-arm"]',
+    )) as HTMLButtonElement | null;
+
+    expect(continueButton).not.toBeNull();
+    expect(continueButton?.disabled).toBe(false);
+
+    await act(async () => {
+      continueButton?.click();
+    });
+
+    const confirmButton = (await waitForSelector(
+      '[data-testid="high-risk-confirm-final"]',
+    )) as HTMLButtonElement | null;
+
+    expect(confirmButton).not.toBeNull();
+
+    await act(async () => {
+      confirmButton?.click();
+    });
+
+    expect(onReleaseRunAsGrant).toHaveBeenCalledWith({
+      grantId: "grant_fixture_1",
+      reasonId: reasonCatalogId.runAsBannerStateRelease,
+      reasonAttachmentText:
+        "Closing the delegated session after incident review.",
+    });
   });
 });

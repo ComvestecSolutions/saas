@@ -12,14 +12,13 @@
  *     inject directly; the env-bound default Layer wraps
  *     `AdminOrganizationRepository.getMembershipByKeycloakSubjectId`)
  *   - an injected {@link NotificationCenterPort} (Context.Tag —
- *     tests inject directly; the env-bound default Layer ships a
- *     staged pass-through stub `TODO(phase1-item16)` returning
- *     honest empty results until the notification-center module
- *     publishes its Novu-backed admin port; same staged pattern
- *     used by `workflow-runs-admin-service`). The platform
- *     service owns ALL authz + reason + attachment + audit +
- *     cache invariants ABOVE the port so swapping the underlying
- *     Novu integration never erodes the contract.
+ *     tests inject directly; the env-bound default Layer now wraps
+ *     the live Novu notifications/messages APIs so the Operator
+ *     Desk reads and resend flow are backed by the upstream
+ *     provider instead of the earlier honest-empty stub. The
+ *     platform service owns ALL authz + reason + attachment +
+ *     audit + cache invariants ABOVE the port so swapping the
+ *     underlying Novu integration never erodes the contract.
  *
  * Owner-locked invariants enforced HERE (not in the HTTP
  * transport, not in the port):
@@ -65,6 +64,8 @@
  * Runtime config:
  * `runNotificationCenterAdminFromEnvironment` decodes
  * `POSTGRES_URL` +
+ * `NOVU_API_URL` +
+ * `NOVU_API_KEY` +
  * `NOTIFICATION_CENTER_ADMIN_CACHE_MAX_SIZE` +
  * `NOTIFICATION_CENTER_ADMIN_CACHE_TTL_SECONDS` +
  * `NOTIFICATION_CENTER_ADMIN_LIST_PAGE_SIZE_MAX` at the boundary
@@ -75,10 +76,12 @@ import { Context, Effect, Layer, Option, ParseResult, Schema } from "effect";
 import {
   actorType,
   getReasonCatalogEntry,
+  notificationChannel,
   notificationCenterAdminAuditAction,
   NotificationCenterAdminDetailInputSchema,
   NotificationCenterAdminListInputSchema,
   NotificationCenterAdminResendInputSchema,
+  notificationDeliveryStatus,
   platformModuleId,
   reasonCatalogId,
   ReasonCatalogIdSchema,
@@ -112,8 +115,15 @@ import {
   type AuditLogPostgresQueryable,
 } from "@comvestec/modules";
 import {
+  makeNovuAdapter,
+  NovuAdapter,
   makePostgresAdapter,
+  type NovuAdapterError,
+  type NovuAdapterService,
+  type NovuMessageRecord,
+  type NovuNotificationEventRecord,
   type PostgresAdapterConnectionError,
+  platformAdapterServiceName,
 } from "../../adapters";
 import { buildWriteDatabase } from "../postgres-write-database";
 
@@ -218,9 +228,8 @@ export type NotificationCenterAdminServiceError =
 
 // ---------------------------------------------------------------------------
 // NotificationCenterPort (Context.Tag — tests inject directly; the
-// env-bound default Layer ships a staged pass-through stub that
-// returns honest empty results until the notification-center module
-// publishes its Novu-backed admin port)
+// env-bound default Layer now wraps the live Novu notifications +
+// messages APIs)
 // ---------------------------------------------------------------------------
 
 export type NotificationCenterPortListResult = {
@@ -257,14 +266,634 @@ export class NotificationCenterPort extends Context.Tag(
   "NotificationCenterPort",
 )<NotificationCenterPort, NotificationCenterPortService>() {}
 
+type NotificationCenterPortCursor = {
+  readonly page: number;
+  readonly offset: number;
+};
+
+type NotificationCenterCompositeNotificationId = {
+  readonly notificationEventId: string;
+  readonly messageId: string;
+};
+
+const notificationCenterCompositeIdSeparator = "--";
+const notificationCenterCursorSeparator = ":";
+const novuMessagesPageSize = 50;
+const novuMessagesScanPageLimit = 12;
+const novuMessagesLookupPageLimit = 6;
+
+const mapNotificationCenterPortError =
+  (operation: Operation) => (cause: unknown) =>
+    new NotificationCenterAdminPortError({
+      operation,
+      cause,
+    });
+
+const normalizeNullableString = (
+  value: string | null | undefined,
+): string | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return value.length > 0 ? value : undefined;
+};
+
+const buildNotificationCenterCompositeNotificationId = (
+  input: NotificationCenterCompositeNotificationId,
+) =>
+  `${input.notificationEventId}${notificationCenterCompositeIdSeparator}${input.messageId}`;
+
+const parseNotificationCenterCompositeNotificationId = (input: {
+  readonly notificationId: string;
+  readonly operation: Operation;
+}): Effect.Effect<
+  NotificationCenterCompositeNotificationId,
+  NotificationCenterAdminNotificationNotFound
+> => {
+  const parts = input.notificationId.split(
+    notificationCenterCompositeIdSeparator,
+  );
+  if (
+    parts.length !== 2 ||
+    parts[0] === undefined ||
+    parts[1] === undefined ||
+    parts[0].length === 0 ||
+    parts[1].length === 0
+  ) {
+    return Effect.fail(
+      new NotificationCenterAdminNotificationNotFound({
+        operation: input.operation,
+        notificationId: input.notificationId,
+      }),
+    );
+  }
+
+  return Effect.succeed({
+    notificationEventId: parts[0],
+    messageId: parts[1],
+  });
+};
+
+const buildNotificationCenterCursorToken = (
+  cursor: NotificationCenterPortCursor,
+) => `${cursor.page}${notificationCenterCursorSeparator}${cursor.offset}`;
+
+const parseNotificationCenterCursorToken = (input: {
+  readonly pageToken: string | undefined;
+  readonly operation: Operation;
+}): Effect.Effect<
+  NotificationCenterPortCursor,
+  NotificationCenterAdminPortError
+> => {
+  if (input.pageToken === undefined) {
+    return Effect.succeed({ page: 0, offset: 0 });
+  }
+
+  const [pageText, offsetText] = input.pageToken.split(
+    notificationCenterCursorSeparator,
+  );
+  const page = Number.parseInt(pageText ?? "", 10);
+  const offset = Number.parseInt(offsetText ?? "", 10);
+
+  if (
+    !Number.isInteger(page) ||
+    !Number.isInteger(offset) ||
+    page < 0 ||
+    offset < 0
+  ) {
+    return Effect.fail(
+      new NotificationCenterAdminPortError({
+        operation: input.operation,
+        cause: new Error(
+          `Invalid notification-center page token: ${input.pageToken}`,
+        ),
+      }),
+    );
+  }
+
+  return Effect.succeed({ page, offset });
+};
+
+const resolveNotificationDeliveredAt = (
+  message: NovuMessageRecord,
+): string | undefined => {
+  const deliveredAt = message.deliveredAt;
+  if (deliveredAt === undefined || deliveredAt.length === 0) {
+    return undefined;
+  }
+
+  const latest = deliveredAt[deliveredAt.length - 1];
+  return latest === undefined || latest.length === 0 ? undefined : latest;
+};
+
+const mapNovuMessageChannel = (
+  message: NovuMessageRecord,
+): (typeof notificationChannel)[keyof typeof notificationChannel] => {
+  switch (message.channel) {
+    case "email":
+      return notificationChannel.email;
+    case "sms":
+      return notificationChannel.sms;
+    case "push":
+      return notificationChannel.push;
+    case "in_app":
+      return notificationChannel.inApp;
+    case "chat":
+      return notificationChannel.webhook;
+  }
+};
+
+const resolveNotificationDeliveryStatusFromMessage = (
+  message: NovuMessageRecord,
+): (typeof notificationDeliveryStatus)[keyof typeof notificationDeliveryStatus] => {
+  if (message.status === "error") {
+    return notificationDeliveryStatus.failed;
+  }
+  if (message.status === "warning") {
+    return notificationDeliveryStatus.suppressed;
+  }
+  return resolveNotificationDeliveredAt(message) === undefined
+    ? notificationDeliveryStatus.sent
+    : notificationDeliveryStatus.delivered;
+};
+
+const resolveNotificationRecipientProjection = (
+  message: NovuMessageRecord,
+): string =>
+  normalizeNullableString(message.email) ??
+  normalizeNullableString(message.phone) ??
+  normalizeNullableString(message.directWebhookUrl) ??
+  normalizeNullableString(message.subscriber?.email ?? undefined) ??
+  normalizeNullableString(message.subscriber?.phone ?? undefined) ??
+  message.subscriber?.subscriberId ??
+  message._subscriberId;
+
+const resolveNotificationSubjectProjection = (
+  message: NovuMessageRecord,
+): string =>
+  normalizeNullableString(message.subject) ??
+  normalizeNullableString(message.title) ??
+  normalizeNullableString(message.templateIdentifier) ??
+  message._id;
+
+const formatProjection = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  const encoded = JSON.stringify(value ?? {}, null, 2);
+  return encoded === undefined ? "{}" : encoded;
+};
+
+const buildNotificationSummaryFromMessage = (
+  message: NovuMessageRecord,
+): NotificationSummary => {
+  const deliveredAt = resolveNotificationDeliveredAt(message);
+  const lastError = normalizeNullableString(message.errorText);
+
+  return {
+    notificationId: buildNotificationCenterCompositeNotificationId({
+      notificationEventId: message._notificationId,
+      messageId: message._id,
+    }),
+    channel: mapNovuMessageChannel(message),
+    status: resolveNotificationDeliveryStatusFromMessage(message),
+    recipientProjection: resolveNotificationRecipientProjection(message),
+    subjectProjection: resolveNotificationSubjectProjection(message),
+    createdAt: message.createdAt,
+    ...(deliveredAt === undefined ? {} : { deliveredAt }),
+    ...(lastError === undefined ? {} : { lastError }),
+  };
+};
+
+const buildNotificationDetailFromMessage = (input: {
+  readonly message: NovuMessageRecord;
+  readonly event: NovuNotificationEventRecord;
+}): NotificationDetail => {
+  const summary = buildNotificationSummaryFromMessage(input.message);
+  const payloadProjectionValue: Record<string, unknown> = {};
+  if (input.event.payload !== undefined) {
+    payloadProjectionValue.payload = input.event.payload;
+  } else if (input.message.payload !== undefined) {
+    payloadProjectionValue.payload = input.message.payload;
+  }
+  if (input.message.content !== undefined) {
+    payloadProjectionValue.renderedContent = input.message.content;
+  }
+
+  const providerMetadataValue: Record<string, unknown> = {
+    provider: platformAdapterServiceName.novu,
+    messageId: input.message._id,
+    parentNotificationId: input.message._notificationId,
+    transactionId: input.message.transactionId,
+  };
+  const providerId = normalizeNullableString(input.message.providerId);
+  if (providerId !== undefined) {
+    providerMetadataValue.providerId = providerId;
+  }
+  const templateId = normalizeNullableString(input.message._templateId);
+  if (templateId !== undefined) {
+    providerMetadataValue.templateId = templateId;
+  }
+  const templateIdentifier = normalizeNullableString(
+    input.message.templateIdentifier,
+  );
+  if (templateIdentifier !== undefined) {
+    providerMetadataValue.templateIdentifier = templateIdentifier;
+  }
+  if (input.message.overrides !== undefined) {
+    providerMetadataValue.overrides = input.message.overrides;
+  }
+  if (input.message.contextKeys !== undefined) {
+    providerMetadataValue.contextKeys = input.message.contextKeys;
+  } else if (input.event.contextKeys !== undefined) {
+    providerMetadataValue.contextKeys = input.event.contextKeys;
+  }
+  const webhookUrl = normalizeNullableString(input.message.directWebhookUrl);
+  if (webhookUrl !== undefined) {
+    providerMetadataValue.directWebhookUrl = webhookUrl;
+  }
+
+  return {
+    ...summary,
+    payloadProjection: formatProjection(payloadProjectionValue),
+    providerMetadata: formatProjection(providerMetadataValue),
+    auditCorrelationId: input.event.transactionId,
+  };
+};
+
+const hashRecipientProjection = (
+  operation: Operation,
+  value: string,
+): Effect.Effect<string, NotificationCenterAdminPortError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(value.trim().toLowerCase()),
+      );
+      return Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+    },
+    catch: mapNotificationCenterPortError(operation),
+  });
+
+const resolveNovuListMessagesChannelFilter = (
+  channelValue: NotificationCenterAdminListInput["filters"]["channel"],
+): NovuMessageRecord["channel"] | undefined => {
+  switch (channelValue) {
+    case notificationChannel.email:
+      return "email";
+    case notificationChannel.sms:
+      return "sms";
+    case notificationChannel.push:
+      return "push";
+    case notificationChannel.inApp:
+      return "in_app";
+    case notificationChannel.webhook:
+      return "chat";
+    default:
+      return undefined;
+  }
+};
+
+const matchesNotificationFilters = (input: {
+  readonly message: NovuMessageRecord;
+  readonly filters: NotificationCenterAdminListInput["filters"];
+}): Effect.Effect<boolean, NotificationCenterAdminPortError> =>
+  Effect.gen(function* () {
+    if (
+      input.filters.channel !== undefined &&
+      mapNovuMessageChannel(input.message) !== input.filters.channel
+    ) {
+      return false;
+    }
+    if (
+      input.filters.status !== undefined &&
+      resolveNotificationDeliveryStatusFromMessage(input.message) !==
+        input.filters.status
+    ) {
+      return false;
+    }
+
+    const createdAtMs = Date.parse(input.message.createdAt);
+    if (
+      input.filters.since !== undefined &&
+      (!Number.isFinite(createdAtMs) ||
+        createdAtMs < Date.parse(input.filters.since))
+    ) {
+      return false;
+    }
+    if (
+      input.filters.until !== undefined &&
+      (!Number.isFinite(createdAtMs) ||
+        createdAtMs > Date.parse(input.filters.until))
+    ) {
+      return false;
+    }
+
+    if (input.filters.recipientHash !== undefined) {
+      const recipientHash = yield* hashRecipientProjection(
+        "listNotifications",
+        resolveNotificationRecipientProjection(input.message),
+      );
+      if (recipientHash !== input.filters.recipientHash) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+const buildContextFromContextKeys = (
+  contextKeys: ReadonlyArray<string> | undefined,
+): Record<string, string> | undefined => {
+  if (contextKeys === undefined || contextKeys.length === 0) {
+    return undefined;
+  }
+
+  const context: Record<string, string> = {};
+  for (const key of contextKeys) {
+    const separatorIndex = key.indexOf(":");
+    if (separatorIndex <= 0 || separatorIndex === key.length - 1) {
+      continue;
+    }
+    context[key.slice(0, separatorIndex)] = key.slice(separatorIndex + 1);
+  }
+
+  return Object.keys(context).length === 0 ? undefined : context;
+};
+
+const loadNotificationCenterMessageRecord = (input: {
+  readonly novuAdapter: NovuAdapterService;
+  readonly notificationId: string;
+  readonly operation: Operation;
+}): Effect.Effect<
+  {
+    readonly event: NovuNotificationEventRecord;
+    readonly message: NovuMessageRecord;
+  },
+  NotificationCenterAdminPortError | NotificationCenterAdminNotificationNotFound
+> =>
+  Effect.gen(function* () {
+    const composite = yield* parseNotificationCenterCompositeNotificationId({
+      notificationId: input.notificationId,
+      operation: input.operation,
+    });
+    const event = yield* input.novuAdapter
+      .getNotification({ notificationId: composite.notificationEventId })
+      .pipe(Effect.mapError(mapNotificationCenterPortError(input.operation)));
+
+    if (Option.isNone(event)) {
+      return yield* Effect.fail(
+        new NotificationCenterAdminNotificationNotFound({
+          operation: input.operation,
+          notificationId: input.notificationId,
+        }),
+      );
+    }
+
+    let page = 0;
+    for (
+      let lookupPage = 0;
+      lookupPage < novuMessagesLookupPageLimit;
+      lookupPage += 1
+    ) {
+      const messagePage = yield* input.novuAdapter
+        .listMessages({
+          transactionIds: [event.value.transactionId],
+          page,
+          limit: novuMessagesPageSize,
+        })
+        .pipe(Effect.mapError(mapNotificationCenterPortError(input.operation)));
+
+      const message = messagePage.data.find(
+        (candidate) =>
+          candidate._id === composite.messageId &&
+          candidate._notificationId === composite.notificationEventId,
+      );
+      if (message !== undefined) {
+        return { event: event.value, message };
+      }
+
+      if (!messagePage.hasMore) {
+        break;
+      }
+      page += 1;
+    }
+
+    return yield* Effect.fail(
+      new NotificationCenterAdminNotificationNotFound({
+        operation: input.operation,
+        notificationId: input.notificationId,
+      }),
+    );
+  });
+
 /**
- * Default {@link NotificationCenterPort} implementation.
- * TODO(phase1-item16): swap to the real Novu-backed admin port
- * once the upstream publishes the typed surface. Until then the
- * port returns honest empty results so the cache + audit + authz
- * invariants still exercise correctly and the admin console
- * renders an empty envelope rather than synthesized data.
+ * Default {@link NotificationCenterPort} implementation backed by
+ * the live Novu notifications/messages APIs. The port translates
+ * upstream event + message payloads into the admin contract while
+ * keeping provider-specific pagination and resend details below the
+ * platform-service boundary.
  */
+export const makeDefaultNotificationCenterPort = (
+  novuAdapter: NovuAdapterService,
+): NotificationCenterPortService => ({
+  listNotifications: (input) =>
+    Effect.gen(function* () {
+      const startCursor = yield* parseNotificationCenterCursorToken({
+        pageToken: input.pageToken,
+        operation: "listNotifications",
+      });
+      const notifications: NotificationSummary[] = [];
+      let page = startCursor.page;
+      let offset = startCursor.offset;
+      let morePagesAvailable = false;
+
+      for (let scan = 0; scan < novuMessagesScanPageLimit; scan += 1) {
+        const messagePage = yield* novuAdapter
+          .listMessages({
+            ...(resolveNovuListMessagesChannelFilter(input.filters.channel) ===
+            undefined
+              ? {}
+              : {
+                  channel: resolveNovuListMessagesChannelFilter(
+                    input.filters.channel,
+                  ),
+                }),
+            page,
+            limit: novuMessagesPageSize,
+          })
+          .pipe(
+            Effect.mapError(
+              mapNotificationCenterPortError("listNotifications"),
+            ),
+          );
+
+        for (let index = offset; index < messagePage.data.length; index += 1) {
+          const message = messagePage.data[index];
+          if (message === undefined) {
+            continue;
+          }
+          const matches = yield* matchesNotificationFilters({
+            message,
+            filters: input.filters,
+          });
+          if (!matches) {
+            continue;
+          }
+
+          notifications.push(buildNotificationSummaryFromMessage(message));
+          if (notifications.length >= input.pageSize) {
+            const nextCursor =
+              index + 1 < messagePage.data.length
+                ? { page, offset: index + 1 }
+                : messagePage.hasMore
+                  ? { page: page + 1, offset: 0 }
+                  : undefined;
+
+            return {
+              notifications,
+              ...(nextCursor === undefined
+                ? {}
+                : {
+                    nextPageToken:
+                      buildNotificationCenterCursorToken(nextCursor),
+                  }),
+            } satisfies NotificationCenterPortListResult;
+          }
+        }
+
+        if (!messagePage.hasMore) {
+          return {
+            notifications,
+          } satisfies NotificationCenterPortListResult;
+        }
+
+        morePagesAvailable = true;
+        page += 1;
+        offset = 0;
+      }
+
+      return {
+        notifications,
+        ...(morePagesAvailable
+          ? {
+              nextPageToken: buildNotificationCenterCursorToken({
+                page,
+                offset: 0,
+              }),
+            }
+          : {}),
+        ...(morePagesAvailable
+          ? {
+              partialFailures: [
+                {
+                  bucket: "novu.messages.pagination",
+                  reason:
+                    "Notification list scanning stopped before exhausting all upstream Novu pages.",
+                },
+              ] as ReadonlyArray<NotificationCenterAdminPartialFailure>,
+            }
+          : {}),
+      } satisfies NotificationCenterPortListResult;
+    }),
+  getNotificationDetail: (input) =>
+    loadNotificationCenterMessageRecord({
+      novuAdapter,
+      notificationId: input.notificationId,
+      operation: "getNotificationDetail",
+    }).pipe(
+      Effect.map((resolved) =>
+        Option.some(
+          buildNotificationDetailFromMessage({
+            message: resolved.message,
+            event: resolved.event,
+          }),
+        ),
+      ),
+      Effect.catchTag("NotificationCenterAdminNotificationNotFound", () =>
+        Effect.succeed(Option.none<NotificationDetail>()),
+      ),
+    ),
+  resendNotification: (input) =>
+    Effect.gen(function* () {
+      const resolved = yield* loadNotificationCenterMessageRecord({
+        novuAdapter,
+        notificationId: input.notificationId,
+        operation: "resendNotification",
+      });
+      const triggerIdentifier =
+        normalizeNullableString(resolved.message.templateIdentifier) ??
+        resolved.event.template?.triggers[0]?.identifier;
+      if (triggerIdentifier === undefined) {
+        return yield* Effect.fail(
+          new NotificationCenterAdminPortError({
+            operation: "resendNotification",
+            cause: new Error(
+              `No trigger identifier was available for ${input.notificationId}.`,
+            ),
+          }),
+        );
+      }
+
+      const subscriberId =
+        resolved.event.subscriber?.subscriberId ??
+        resolved.message.subscriber?.subscriberId ??
+        resolved.message._subscriberId;
+      const resendEmail =
+        normalizeNullableString(resolved.event.subscriber?.email) ??
+        normalizeNullableString(resolved.message.email);
+      const resendPhone =
+        normalizeNullableString(resolved.event.subscriber?.phone) ??
+        normalizeNullableString(resolved.message.phone);
+      const resendTarget =
+        resolved.event.to ??
+        (resendEmail === undefined && resendPhone === undefined
+          ? subscriberId
+          : {
+              subscriberId,
+              ...(resendEmail === undefined ? {} : { email: resendEmail }),
+              ...(resendPhone === undefined ? {} : { phone: resendPhone }),
+            });
+      const resendContext = buildContextFromContextKeys(
+        resolved.event.contextKeys ?? resolved.message.contextKeys,
+      );
+
+      const resent = yield* novuAdapter
+        .triggerEvent({
+          name: triggerIdentifier,
+          to: resendTarget,
+          ...(resolved.event.payload === undefined
+            ? resolved.message.payload === undefined
+              ? {}
+              : { payload: resolved.message.payload }
+            : { payload: resolved.event.payload }),
+          ...(resolved.message.overrides === undefined
+            ? {}
+            : { overrides: resolved.message.overrides }),
+          ...(resendContext === undefined ? {} : { context: resendContext }),
+          transactionId: `${resolved.event.transactionId}-resend-${crypto.randomUUID()}`,
+        })
+        .pipe(
+          Effect.mapError(mapNotificationCenterPortError("resendNotification")),
+        );
+
+      return {
+        accepted: true as const,
+        resendNotificationId: resent.id,
+      };
+    }),
+});
+
+export const makeDefaultNotificationCenterPortLayer = Layer.effect(
+  NotificationCenterPort,
+  NovuAdapter.pipe(Effect.map(makeDefaultNotificationCenterPort)),
+);
+
 export const makeStubNotificationCenterPort =
   (): NotificationCenterPortService => ({
     listNotifications: () =>
@@ -864,6 +1493,8 @@ export const makeNotificationCenterAdminServiceLayer = (deps: {
 
 const NotificationCenterAdminProcessEnvironmentSchema = Schema.Struct({
   POSTGRES_URL: Schema.NonEmptyString,
+  NOVU_API_URL: Schema.NonEmptyString,
+  NOVU_API_KEY: Schema.NonEmptyString,
   NOTIFICATION_CENTER_ADMIN_CACHE_MAX_SIZE: Schema.NumberFromString.pipe(
     Schema.int(),
     Schema.positive(),
@@ -884,6 +1515,10 @@ const decodeNotificationCenterAdminProcessEnvironment = Schema.decodeUnknown(
 
 export type NotificationCenterAdminRuntimeOptions = {
   readonly postgresUrl: string;
+  readonly novu: {
+    readonly apiUrl: string;
+    readonly apiKey: string;
+  };
   readonly bounds: NotificationCenterAdminRuntimeBounds;
 };
 
@@ -894,6 +1529,10 @@ const resolveNotificationCenterAdminRuntimeOptionsFromEnvironment = (
     Effect.map(
       (resolved): NotificationCenterAdminRuntimeOptions => ({
         postgresUrl: resolved.POSTGRES_URL,
+        novu: {
+          apiUrl: resolved.NOVU_API_URL,
+          apiKey: resolved.NOVU_API_KEY,
+        },
         bounds: {
           cacheMaxSize: resolved.NOTIFICATION_CENTER_ADMIN_CACHE_MAX_SIZE,
           cacheTtlSeconds: resolved.NOTIFICATION_CENTER_ADMIN_CACHE_TTL_SECONDS,
@@ -953,8 +1592,13 @@ const makeNotificationCenterAdminRuntime = (
       ...auditLogQueryable,
     });
     const auditLog = yield* makeAuditLogModule(auditLogRepository);
+    const novuAdapter = yield* makeNovuAdapter({
+      apiUrl: options.novu.apiUrl,
+      apiKey: options.novu.apiKey,
+    });
     const adminOrgRepositoryLayer =
       makeAdminOrganizationRepositoryLayer(writeDatabase);
+    const novuAdapterLayer = Layer.succeed(NovuAdapter, novuAdapter);
     const baseLayer = Layer.mergeAll(
       adminOrgRepositoryLayer,
       Layer.succeed(AuditLogPostgresRepository, auditLogRepository),
@@ -963,7 +1607,9 @@ const makeNotificationCenterAdminRuntime = (
         Layer.provide(adminOrgRepositoryLayer),
       ),
       makeDefaultNotificationCenterAdminFieldSecurityPortLayer,
-      makeStubNotificationCenterPortLayer,
+      makeDefaultNotificationCenterPortLayer.pipe(
+        Layer.provide(novuAdapterLayer),
+      ),
     );
     const serviceLayer = makeNotificationCenterAdminServiceLayer({
       bounds: options.bounds,
@@ -976,7 +1622,8 @@ const makeNotificationCenterAdminRuntime = (
 
 export type NotificationCenterAdminRuntimeError =
   | ParseResult.ParseError
-  | PostgresAdapterConnectionError;
+  | PostgresAdapterConnectionError
+  | NovuAdapterError;
 
 export const runNotificationCenterAdminFromEnvironment = <A, E>(
   environment: unknown,

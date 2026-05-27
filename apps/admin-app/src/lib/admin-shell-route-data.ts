@@ -1,12 +1,28 @@
 import { Effect } from "effect";
 import {
   extractRequiredSubscriberJourneySessionId,
+  getRunAsBannerStateFromEnvironment,
   getAdminOperatorProfileFromSessionId,
   isTaggedError,
+  listAdminWorkspacesFromEnvironment,
+  listSavedViewsFromEnvironment,
+  resolveTrustedRequestContextFromSessionId,
 } from "@comvestec/platform";
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 import { loadAdminCapabilitySnapshotV2RouteDataFromRequest } from "./capability-snapshot-v2-route-data";
-import type { AdminOperatorProfile } from "@comvestec/contracts";
+import type {
+  AdminOperatorProfile,
+  AdminSavedView,
+  AdminWorkspace,
+  RunAsBannerState,
+} from "@comvestec/contracts";
+
+export type AdminShellReadyPayload = {
+  readonly profile: AdminOperatorProfile;
+  readonly workspaces: readonly AdminWorkspace[];
+  readonly savedViews: readonly AdminSavedView[];
+  readonly runAsBanner: RunAsBannerState;
+};
 
 export type AdminShellRouteData =
   | { readonly kind: "shell" }
@@ -17,22 +33,58 @@ export type AdminShellRouteData =
       readonly title: string;
       readonly description: string;
     }
-  | {
-      readonly kind: "ready";
-      readonly profile: AdminOperatorProfile;
-    };
-
-type GetAdminOperatorProfile = (
-  environment: unknown,
-  input: {
-    readonly sessionId: string;
-  },
-) => ReturnType<typeof getAdminOperatorProfileFromSessionId>;
+  | ({ readonly kind: "ready" } & AdminShellReadyPayload);
 
 type RefreshCapabilitySnapshotV2 = (
   request: Request,
   environment: unknown,
 ) => ReturnType<typeof loadAdminCapabilitySnapshotV2RouteDataFromRequest>;
+
+const loadAdminShellReadyPayloadFromEnvironment = (
+  environment: unknown,
+  input: {
+    readonly sessionId: string;
+  },
+) =>
+  Effect.all({
+    profile: getAdminOperatorProfileFromSessionId(environment, input),
+    requestContext: resolveTrustedRequestContextFromSessionId(
+      environment,
+      input.sessionId,
+    ),
+  }).pipe(
+    Effect.flatMap(({ profile, requestContext }) =>
+      Effect.all({
+        workspaces: listAdminWorkspacesFromEnvironment(environment, {
+          requestContext,
+          ownerSubjectId: profile.identity.actorId,
+        }),
+        savedViews: listSavedViewsFromEnvironment(environment, {
+          requestContext,
+          ownerSubjectId: profile.identity.actorId,
+        }),
+        runAsBannerView: getRunAsBannerStateFromEnvironment(environment, {
+          requestContext,
+        }),
+      }).pipe(
+        Effect.map(
+          ({
+            workspaces,
+            savedViews,
+            runAsBannerView,
+          }): AdminShellReadyPayload => ({
+            profile,
+            workspaces,
+            savedViews,
+            runAsBanner: runAsBannerView.banner,
+          }),
+        ),
+      ),
+    ),
+  );
+
+type LoadAdminShellReadyPayload =
+  typeof loadAdminShellReadyPayloadFromEnvironment;
 
 /**
  * Fire-and-forget capability snapshot v2 refresh runs in
@@ -75,10 +127,10 @@ const isAdminShellAccessDeniedError = (error: unknown): boolean =>
 export const loadAdminShellRouteDataFromRequest = (
   request: Request,
   environment: unknown,
-  getAdminOperatorProfile: GetAdminOperatorProfile = (
+  loadAdminShellReadyPayload: LoadAdminShellReadyPayload = (
     currentEnvironment,
     input,
-  ) => getAdminOperatorProfileFromSessionId(currentEnvironment, input),
+  ) => loadAdminShellReadyPayloadFromEnvironment(currentEnvironment, input),
   refreshCapabilitySnapshotV2: RefreshCapabilitySnapshotV2 = (
     currentRequest,
     currentEnvironment,
@@ -98,11 +150,11 @@ export const loadAdminShellRouteDataFromRequest = (
     ),
     Effect.flatMap((sessionId) =>
       retryTransientAdminSessionReadiness(() =>
-        getAdminOperatorProfile(environment, { sessionId }).pipe(
+        loadAdminShellReadyPayload(environment, { sessionId }).pipe(
           Effect.map(
-            (profile): AdminShellRouteData => ({
+            (ready): AdminShellRouteData => ({
               kind: "ready",
-              profile,
+              ...ready,
             }),
           ),
         ),

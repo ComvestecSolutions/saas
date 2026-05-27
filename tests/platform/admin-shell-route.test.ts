@@ -44,7 +44,17 @@ const operatorProfile = {
   capabilities: capabilitySnapshot.capabilities,
 } as const;
 
-const failingProfileLookup = (
+const readyShellPayload = {
+  profile: operatorProfile,
+  workspaces: [],
+  savedViews: [],
+  runAsBanner: {
+    active: false,
+    releasable: false,
+  },
+} as const;
+
+const failingShellReadyLoad = (
   error: unknown,
 ): NonNullable<Parameters<typeof loadAdminShellRouteDataFromRequest>[2]> =>
   (() => Effect.fail(error)) as unknown as NonNullable<
@@ -58,7 +68,7 @@ describe("admin shell route data", () => {
         loadAdminShellRouteDataFromRequest(
           new Request("http://localhost:3004/"),
           {},
-          () => Effect.succeed(operatorProfile),
+          () => Effect.succeed(readyShellPayload),
         ),
       ),
     ).resolves.toEqual({ kind: "shell" });
@@ -137,12 +147,12 @@ describe("admin shell route data", () => {
             },
           }),
           {},
-          () => Effect.succeed(operatorProfile),
+          () => Effect.succeed(readyShellPayload),
         ),
       ),
     ).resolves.toEqual({
       kind: "ready",
-      profile: operatorProfile,
+      ...readyShellPayload,
     });
   });
 
@@ -168,13 +178,13 @@ describe("admin shell route data", () => {
               } as const);
             }
 
-            return Effect.succeed(operatorProfile);
+            return Effect.succeed(readyShellPayload);
           },
         ),
       ),
     ).resolves.toEqual({
       kind: "ready",
-      profile: operatorProfile,
+      ...readyShellPayload,
     });
     expect(attempts).toBe(3);
   });
@@ -189,7 +199,7 @@ describe("admin shell route data", () => {
             },
           }),
           {},
-          failingProfileLookup(
+          failingShellReadyLoad(
             new Error("Admin operator directory is unavailable."),
           ),
         ),

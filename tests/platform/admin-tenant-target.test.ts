@@ -38,7 +38,7 @@ describe("admin tenant target helpers", () => {
     );
     expect(
       buildAdminTenantScopedRoutePath(adminRoutePath.branding, target),
-    ).toBe("/branding?scope=individual&scopeId=ind_demo");
+    ).toBe("/r/branding?scope=individual&scopeId=ind_demo");
     expect(serializeAdminTenantTarget(target)).toBe("individual:ind_demo");
   });
 });

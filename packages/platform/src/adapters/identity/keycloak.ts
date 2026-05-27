@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, ParseResult, Schema } from "effect";
+import { Context, Effect, Layer, Option, ParseResult, Schema } from "effect";
 import {
   AbsoluteRedirectUriSchema,
   adminManagedOperatorRoles,
@@ -6,6 +6,7 @@ import {
   AdminOperatorIdentity,
   ActorTypeSchema,
   identityClaimKey,
+  type KeycloakRoleDetail,
 } from "@comvestec/contracts";
 import {
   createPlatformAdapterHealthcheckSchema,
@@ -271,6 +272,22 @@ const KeycloakAdminUserRepresentationListSchema = Schema.Array(
   KeycloakAdminUserRepresentationSchema,
 );
 
+const KeycloakAdminRoleRepresentationSchema = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: Schema.NonEmptyString,
+  description: Schema.optional(Schema.NonEmptyString),
+  composite: Schema.optional(Schema.Boolean),
+  clientRole: Schema.optional(Schema.Boolean),
+});
+
+type KeycloakAdminRoleRepresentation = Schema.Schema.Type<
+  typeof KeycloakAdminRoleRepresentationSchema
+>;
+
+const KeycloakAdminRoleRepresentationListSchema = Schema.Array(
+  KeycloakAdminRoleRepresentationSchema,
+);
+
 export type KeycloakAdapterRequestError = {
   readonly _tag: "KeycloakAdapterRequestError";
   readonly operation:
@@ -285,6 +302,9 @@ export type KeycloakAdapterRequestError = {
     | "lookupAdminUsers"
     | "readAdminUser"
     | "listAdminUsers"
+    | "readAdminRole"
+    | "listAdminRoleComposites"
+    | "listAdminRoleMembers"
     | "createAdminUser"
     | "updateAdminUser"
     | "resetAdminUserPassword";
@@ -439,6 +459,14 @@ const decodeKeycloakAdminUserRepresentationList = Schema.decodeUnknown(
   KeycloakAdminUserRepresentationListSchema,
 );
 
+const decodeKeycloakAdminRoleRepresentation = Schema.decodeUnknown(
+  KeycloakAdminRoleRepresentationSchema,
+);
+
+const decodeKeycloakAdminRoleRepresentationList = Schema.decodeUnknown(
+  KeycloakAdminRoleRepresentationListSchema,
+);
+
 const stripRealmPrefix = (
   issuer: string | undefined,
   fallbackRealm: string,
@@ -520,6 +548,25 @@ const mapKeycloakUserToAdminOperator = (
     enabled: user.enabled ?? true,
   } satisfies AdminOperatorIdentity;
 };
+
+const mapKeycloakRoleToCompositeSummary = (
+  role: KeycloakAdminRoleRepresentation,
+): KeycloakRoleDetail["compositeRoles"][number] => ({
+  roleId: role.id,
+  roleName: role.name,
+  ...(role.description !== undefined ? { description: role.description } : {}),
+  composite: role.composite ?? false,
+  clientRole: role.clientRole ?? false,
+});
+
+const mapKeycloakUserToRoleMember = (
+  user: KeycloakAdminUserRepresentation,
+): KeycloakRoleDetail["members"][number] => ({
+  userId: user.id,
+  username: user.username,
+  ...(user.email !== undefined ? { email: user.email } : {}),
+  enabled: user.enabled ?? false,
+});
 
 const fetchKeycloakResponseText = (options: {
   readonly operation: KeycloakAdapterRequestError["operation"];
@@ -659,6 +706,12 @@ export type KeycloakAdapterService = {
   >;
   readonly listAdminOperators: () => Effect.Effect<
     ReadonlyArray<AdminOperatorIdentity>,
+    KeycloakAdapterRequestError | KeycloakAdminCredentialsUnavailableError
+  >;
+  readonly readRealmRoleById: (input: {
+    readonly roleId: string;
+  }) => Effect.Effect<
+    Option.Option<KeycloakRoleDetail>,
     KeycloakAdapterRequestError | KeycloakAdminCredentialsUnavailableError
   >;
   readonly provisionAdminOperator: (
@@ -1280,6 +1333,25 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
         return url.toString();
       };
 
+      const buildAdminRoleByIdUrl = (roleId: string) =>
+        `${adminRealmUrl}/roles-by-id/${roleId}`;
+
+      const buildAdminRoleCompositesUrl = (roleId: string) =>
+        `${adminRealmUrl}/roles-by-id/${roleId}/composites`;
+
+      const buildAdminRoleMembersUrl = (input: {
+        readonly roleId: string;
+        readonly first: number;
+        readonly max: number;
+      }) => {
+        const url = new URL(
+          `${adminRealmUrl}/roles-by-id/${input.roleId}/users`,
+        );
+        url.searchParams.set("first", String(input.first));
+        url.searchParams.set("max", String(input.max));
+        return url.toString();
+      };
+
       const readAdminUserById = (input: {
         readonly accessToken: string;
         readonly actorId: string;
@@ -1349,6 +1421,122 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
               : listAllAdminUsers(accessToken, first + max, max).pipe(
                   Effect.map((rest) => [...page, ...rest]),
                 ),
+          ),
+        );
+
+      const readAdminRoleById = (input: {
+        readonly accessToken: string;
+        readonly roleId: string;
+      }) =>
+        Effect.tryPromise({
+          try: async () => {
+            const response = await fetchImplementation(
+              buildAdminRoleByIdUrl(input.roleId),
+              {
+                headers: createAdminHeaders(input.accessToken),
+              },
+            );
+            const responseText = await response.text();
+
+            return {
+              status: response.status,
+              statusText: response.statusText,
+              responseText,
+            } as const;
+          },
+          catch: (cause) =>
+            buildKeycloakRequestError("readAdminRole", {
+              cause,
+            }),
+        }).pipe(
+          Effect.flatMap(({ status, statusText, responseText }) => {
+            if (status === 404) {
+              return Effect.succeed(
+                Option.none<KeycloakAdminRoleRepresentation>(),
+              );
+            }
+
+            if (status < 200 || status >= 300) {
+              return Effect.fail(
+                buildKeycloakRequestError("readAdminRole", {
+                  cause: statusText,
+                  status,
+                  body: responseText,
+                }),
+              );
+            }
+
+            return parseKeycloakJsonResponse({
+              operation: "readAdminRole",
+              responseText,
+            }).pipe(
+              Effect.flatMap(decodeKeycloakAdminRoleRepresentation),
+              Effect.mapError((error) =>
+                error._tag === "ParseError"
+                  ? buildKeycloakRequestError("readAdminRole", {
+                      cause: error,
+                    })
+                  : error,
+              ),
+              Effect.map(Option.some),
+            );
+          }),
+        );
+
+      const listAdminRoleComposites = (input: {
+        readonly accessToken: string;
+        readonly roleId: string;
+      }) =>
+        createKeycloakRequest({
+          operation: "listAdminRoleComposites",
+          url: buildAdminRoleCompositesUrl(input.roleId),
+          init: {
+            headers: createAdminHeaders(input.accessToken),
+          },
+          decode: decodeKeycloakAdminRoleRepresentationList,
+          fetchImplementation,
+        });
+
+      const listAdminRoleMembersPage = (input: {
+        readonly accessToken: string;
+        readonly roleId: string;
+        readonly first: number;
+        readonly max: number;
+      }) =>
+        createKeycloakRequest({
+          operation: "listAdminRoleMembers",
+          url: buildAdminRoleMembersUrl(input),
+          init: {
+            headers: createAdminHeaders(input.accessToken),
+          },
+          decode: decodeKeycloakAdminUserRepresentationList,
+          fetchImplementation,
+        });
+
+      const listAllAdminRoleMembers = (
+        accessToken: string,
+        roleId: string,
+        first = 0,
+        max = 100,
+      ): Effect.Effect<
+        ReadonlyArray<KeycloakAdminUserRepresentation>,
+        KeycloakAdapterRequestError
+      > =>
+        listAdminRoleMembersPage({
+          accessToken,
+          roleId,
+          first,
+          max,
+        }).pipe(
+          Effect.flatMap((page) =>
+            page.length < max
+              ? Effect.succeed(page)
+              : listAllAdminRoleMembers(
+                  accessToken,
+                  roleId,
+                  first + max,
+                  max,
+                ).pipe(Effect.map((rest) => [...page, ...rest])),
           ),
         );
 
@@ -1501,6 +1689,48 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
                   sensitivity: "base",
                 }),
               ),
+          ),
+        );
+
+      const readRealmRoleById = (input: { readonly roleId: string }) =>
+        issueAdminAccessToken().pipe(
+          Effect.flatMap((accessToken) =>
+            readAdminRoleById({
+              accessToken,
+              roleId: input.roleId,
+            }).pipe(
+              Effect.flatMap((roleOption) =>
+                Option.isNone(roleOption)
+                  ? Effect.succeed(Option.none<KeycloakRoleDetail>())
+                  : Effect.all({
+                      compositeRoles: listAdminRoleComposites({
+                        accessToken,
+                        roleId: input.roleId,
+                      }),
+                      members: listAllAdminRoleMembers(
+                        accessToken,
+                        input.roleId,
+                      ),
+                    }).pipe(
+                      Effect.map(({ compositeRoles, members }) =>
+                        Option.some<KeycloakRoleDetail>({
+                          roleId: roleOption.value.id,
+                          roleName: roleOption.value.name,
+                          ...(roleOption.value.description !== undefined
+                            ? { description: roleOption.value.description }
+                            : {}),
+                          composite: roleOption.value.composite ?? false,
+                          clientRole: roleOption.value.clientRole ?? false,
+                          realm: options.realm,
+                          compositeRoles: compositeRoles.map(
+                            mapKeycloakRoleToCompositeSummary,
+                          ),
+                          members: members.map(mapKeycloakUserToRoleMember),
+                        }),
+                      ),
+                    ),
+              ),
+            ),
           ),
         );
 
@@ -1667,6 +1897,7 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
         revokeSession,
         readAdminOperator,
         listAdminOperators,
+        readRealmRoleById,
         provisionAdminOperator,
       };
     }),

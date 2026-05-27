@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SupportOperationsRouteImport } from './routes/support-operations'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RepairOperationsRouteImport } from './routes/repair-operations'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as DeskRouteImport } from './routes/desk'
@@ -23,6 +24,7 @@ import { Route as RWebhookRouteImport } from './routes/r/webhook'
 import { Route as RVendorsRouteImport } from './routes/r/vendors'
 import { Route as RTenantsRouteImport } from './routes/r/tenants'
 import { Route as RSupportRouteImport } from './routes/r/support'
+import { Route as RSearchRouteImport } from './routes/r/search'
 import { Route as RRunsRouteImport } from './routes/r/runs'
 import { Route as RRetentionRouteImport } from './routes/r/retention'
 import { Route as RNotifyRouteImport } from './routes/r/notify'
@@ -51,15 +53,19 @@ import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as RVendorServiceRouteImport } from './routes/r/vendor/$service'
 import { Route as RTenantTenantIdRouteImport } from './routes/r/tenant/$tenantId'
 import { Route as RRunIdRouteImport } from './routes/r/run/$id'
+import { Route as ROperatorIdRouteImport } from './routes/r/operator/$id'
 import { Route as RNotifyIdRouteImport } from './routes/r/notify/$id'
 import { Route as RMeterMeterIdRouteImport } from './routes/r/meter/$meterId'
 import { Route as RLegalHoldHoldIdRouteImport } from './routes/r/legal-hold/$holdId'
+import { Route as RKcUserIdRouteImport } from './routes/r/kc-user/$id'
+import { Route as RKcRoleIdRouteImport } from './routes/r/kc-role/$id'
 import { Route as RInvoiceInvoiceIdRouteImport } from './routes/r/invoice/$invoiceId'
 import { Route as RIncidentIncidentIdRouteImport } from './routes/r/incident/$incidentId'
 import { Route as RFlagFlagKeyRouteImport } from './routes/r/flag/$flagKey'
 import { Route as RDomainHostnameRouteImport } from './routes/r/domain/$hostname'
 import { Route as RDeliveryDeliveryIdRouteImport } from './routes/r/delivery/$deliveryId'
 import { Route as RApiKeyKeyIdRouteImport } from './routes/r/api-key/$keyId'
+import { Route as RAdminMemberIdRouteImport } from './routes/r/admin-member/$id'
 import { Route as RConfigModuleIdConfigKeyRouteImport } from './routes/r/config/$moduleId/$configKey'
 
 const TenantsRoute = TenantsRouteImport.update({
@@ -70,6 +76,11 @@ const TenantsRoute = TenantsRouteImport.update({
 const SupportOperationsRoute = SupportOperationsRouteImport.update({
   id: '/support-operations',
   path: '/support-operations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RepairOperationsRoute = RepairOperationsRouteImport.update({
@@ -130,6 +141,11 @@ const RTenantsRoute = RTenantsRouteImport.update({
 const RSupportRoute = RSupportRouteImport.update({
   id: '/r/support',
   path: '/r/support',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RSearchRoute = RSearchRouteImport.update({
+  id: '/r/search',
+  path: '/r/search',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RRunsRoute = RRunsRouteImport.update({
@@ -273,6 +289,11 @@ const RRunIdRoute = RRunIdRouteImport.update({
   path: '/r/run/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ROperatorIdRoute = ROperatorIdRouteImport.update({
+  id: '/r/operator/$id',
+  path: '/r/operator/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RNotifyIdRoute = RNotifyIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -286,6 +307,16 @@ const RMeterMeterIdRoute = RMeterMeterIdRouteImport.update({
 const RLegalHoldHoldIdRoute = RLegalHoldHoldIdRouteImport.update({
   id: '/r/legal-hold/$holdId',
   path: '/r/legal-hold/$holdId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RKcUserIdRoute = RKcUserIdRouteImport.update({
+  id: '/r/kc-user/$id',
+  path: '/r/kc-user/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RKcRoleIdRoute = RKcRoleIdRouteImport.update({
+  id: '/r/kc-role/$id',
+  path: '/r/kc-role/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RInvoiceInvoiceIdRoute = RInvoiceInvoiceIdRouteImport.update({
@@ -318,6 +349,11 @@ const RApiKeyKeyIdRoute = RApiKeyKeyIdRouteImport.update({
   path: '/r/api-key/$keyId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RAdminMemberIdRoute = RAdminMemberIdRouteImport.update({
+  id: '/r/admin-member/$id',
+  path: '/r/admin-member/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RConfigModuleIdConfigKeyRoute =
   RConfigModuleIdConfigKeyRouteImport.update({
     id: '/$moduleId/$configKey',
@@ -333,6 +369,7 @@ export interface FileRoutesByFullPath {
   '/desk': typeof DeskRoute
   '/profile': typeof ProfileRoute
   '/repair-operations': typeof RepairOperationsRoute
+  '/sign-in': typeof SignInRoute
   '/support-operations': typeof SupportOperationsRoute
   '/tenants': typeof TenantsRouteWithChildren
   '/admin/audit': typeof AdminAuditRoute
@@ -360,20 +397,25 @@ export interface FileRoutesByFullPath {
   '/r/notify': typeof RNotifyRouteWithChildren
   '/r/retention': typeof RRetentionRoute
   '/r/runs': typeof RRunsRoute
+  '/r/search': typeof RSearchRoute
   '/r/support': typeof RSupportRoute
   '/r/tenants': typeof RTenantsRoute
   '/r/vendors': typeof RVendorsRoute
   '/r/webhook': typeof RWebhookRoute
   '/tenants/': typeof TenantsIndexRoute
+  '/r/admin-member/$id': typeof RAdminMemberIdRoute
   '/r/api-key/$keyId': typeof RApiKeyKeyIdRoute
   '/r/delivery/$deliveryId': typeof RDeliveryDeliveryIdRoute
   '/r/domain/$hostname': typeof RDomainHostnameRoute
   '/r/flag/$flagKey': typeof RFlagFlagKeyRoute
   '/r/incident/$incidentId': typeof RIncidentIncidentIdRoute
   '/r/invoice/$invoiceId': typeof RInvoiceInvoiceIdRoute
+  '/r/kc-role/$id': typeof RKcRoleIdRoute
+  '/r/kc-user/$id': typeof RKcUserIdRoute
   '/r/legal-hold/$holdId': typeof RLegalHoldHoldIdRoute
   '/r/meter/$meterId': typeof RMeterMeterIdRoute
   '/r/notify/$id': typeof RNotifyIdRoute
+  '/r/operator/$id': typeof ROperatorIdRoute
   '/r/run/$id': typeof RRunIdRoute
   '/r/tenant/$tenantId': typeof RTenantTenantIdRoute
   '/r/vendor/$service': typeof RVendorServiceRoute
@@ -387,6 +429,7 @@ export interface FileRoutesByTo {
   '/desk': typeof DeskRoute
   '/profile': typeof ProfileRoute
   '/repair-operations': typeof RepairOperationsRoute
+  '/sign-in': typeof SignInRoute
   '/support-operations': typeof SupportOperationsRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/members': typeof AdminMembersRoute
@@ -413,20 +456,25 @@ export interface FileRoutesByTo {
   '/r/notify': typeof RNotifyRouteWithChildren
   '/r/retention': typeof RRetentionRoute
   '/r/runs': typeof RRunsRoute
+  '/r/search': typeof RSearchRoute
   '/r/support': typeof RSupportRoute
   '/r/tenants': typeof RTenantsRoute
   '/r/vendors': typeof RVendorsRoute
   '/r/webhook': typeof RWebhookRoute
   '/tenants': typeof TenantsIndexRoute
+  '/r/admin-member/$id': typeof RAdminMemberIdRoute
   '/r/api-key/$keyId': typeof RApiKeyKeyIdRoute
   '/r/delivery/$deliveryId': typeof RDeliveryDeliveryIdRoute
   '/r/domain/$hostname': typeof RDomainHostnameRoute
   '/r/flag/$flagKey': typeof RFlagFlagKeyRoute
   '/r/incident/$incidentId': typeof RIncidentIncidentIdRoute
   '/r/invoice/$invoiceId': typeof RInvoiceInvoiceIdRoute
+  '/r/kc-role/$id': typeof RKcRoleIdRoute
+  '/r/kc-user/$id': typeof RKcUserIdRoute
   '/r/legal-hold/$holdId': typeof RLegalHoldHoldIdRoute
   '/r/meter/$meterId': typeof RMeterMeterIdRoute
   '/r/notify/$id': typeof RNotifyIdRoute
+  '/r/operator/$id': typeof ROperatorIdRoute
   '/r/run/$id': typeof RRunIdRoute
   '/r/tenant/$tenantId': typeof RTenantTenantIdRoute
   '/r/vendor/$service': typeof RVendorServiceRoute
@@ -441,6 +489,7 @@ export interface FileRoutesById {
   '/desk': typeof DeskRoute
   '/profile': typeof ProfileRoute
   '/repair-operations': typeof RepairOperationsRoute
+  '/sign-in': typeof SignInRoute
   '/support-operations': typeof SupportOperationsRoute
   '/tenants': typeof TenantsRouteWithChildren
   '/admin/audit': typeof AdminAuditRoute
@@ -468,20 +517,25 @@ export interface FileRoutesById {
   '/r/notify': typeof RNotifyRouteWithChildren
   '/r/retention': typeof RRetentionRoute
   '/r/runs': typeof RRunsRoute
+  '/r/search': typeof RSearchRoute
   '/r/support': typeof RSupportRoute
   '/r/tenants': typeof RTenantsRoute
   '/r/vendors': typeof RVendorsRoute
   '/r/webhook': typeof RWebhookRoute
   '/tenants/': typeof TenantsIndexRoute
+  '/r/admin-member/$id': typeof RAdminMemberIdRoute
   '/r/api-key/$keyId': typeof RApiKeyKeyIdRoute
   '/r/delivery/$deliveryId': typeof RDeliveryDeliveryIdRoute
   '/r/domain/$hostname': typeof RDomainHostnameRoute
   '/r/flag/$flagKey': typeof RFlagFlagKeyRoute
   '/r/incident/$incidentId': typeof RIncidentIncidentIdRoute
   '/r/invoice/$invoiceId': typeof RInvoiceInvoiceIdRoute
+  '/r/kc-role/$id': typeof RKcRoleIdRoute
+  '/r/kc-user/$id': typeof RKcUserIdRoute
   '/r/legal-hold/$holdId': typeof RLegalHoldHoldIdRoute
   '/r/meter/$meterId': typeof RMeterMeterIdRoute
   '/r/notify/$id': typeof RNotifyIdRoute
+  '/r/operator/$id': typeof ROperatorIdRoute
   '/r/run/$id': typeof RRunIdRoute
   '/r/tenant/$tenantId': typeof RTenantTenantIdRoute
   '/r/vendor/$service': typeof RVendorServiceRoute
@@ -497,6 +551,7 @@ export interface FileRouteTypes {
     | '/desk'
     | '/profile'
     | '/repair-operations'
+    | '/sign-in'
     | '/support-operations'
     | '/tenants'
     | '/admin/audit'
@@ -524,20 +579,25 @@ export interface FileRouteTypes {
     | '/r/notify'
     | '/r/retention'
     | '/r/runs'
+    | '/r/search'
     | '/r/support'
     | '/r/tenants'
     | '/r/vendors'
     | '/r/webhook'
     | '/tenants/'
+    | '/r/admin-member/$id'
     | '/r/api-key/$keyId'
     | '/r/delivery/$deliveryId'
     | '/r/domain/$hostname'
     | '/r/flag/$flagKey'
     | '/r/incident/$incidentId'
     | '/r/invoice/$invoiceId'
+    | '/r/kc-role/$id'
+    | '/r/kc-user/$id'
     | '/r/legal-hold/$holdId'
     | '/r/meter/$meterId'
     | '/r/notify/$id'
+    | '/r/operator/$id'
     | '/r/run/$id'
     | '/r/tenant/$tenantId'
     | '/r/vendor/$service'
@@ -551,6 +611,7 @@ export interface FileRouteTypes {
     | '/desk'
     | '/profile'
     | '/repair-operations'
+    | '/sign-in'
     | '/support-operations'
     | '/admin/audit'
     | '/admin/members'
@@ -577,20 +638,25 @@ export interface FileRouteTypes {
     | '/r/notify'
     | '/r/retention'
     | '/r/runs'
+    | '/r/search'
     | '/r/support'
     | '/r/tenants'
     | '/r/vendors'
     | '/r/webhook'
     | '/tenants'
+    | '/r/admin-member/$id'
     | '/r/api-key/$keyId'
     | '/r/delivery/$deliveryId'
     | '/r/domain/$hostname'
     | '/r/flag/$flagKey'
     | '/r/incident/$incidentId'
     | '/r/invoice/$invoiceId'
+    | '/r/kc-role/$id'
+    | '/r/kc-user/$id'
     | '/r/legal-hold/$holdId'
     | '/r/meter/$meterId'
     | '/r/notify/$id'
+    | '/r/operator/$id'
     | '/r/run/$id'
     | '/r/tenant/$tenantId'
     | '/r/vendor/$service'
@@ -604,6 +670,7 @@ export interface FileRouteTypes {
     | '/desk'
     | '/profile'
     | '/repair-operations'
+    | '/sign-in'
     | '/support-operations'
     | '/tenants'
     | '/admin/audit'
@@ -631,20 +698,25 @@ export interface FileRouteTypes {
     | '/r/notify'
     | '/r/retention'
     | '/r/runs'
+    | '/r/search'
     | '/r/support'
     | '/r/tenants'
     | '/r/vendors'
     | '/r/webhook'
     | '/tenants/'
+    | '/r/admin-member/$id'
     | '/r/api-key/$keyId'
     | '/r/delivery/$deliveryId'
     | '/r/domain/$hostname'
     | '/r/flag/$flagKey'
     | '/r/incident/$incidentId'
     | '/r/invoice/$invoiceId'
+    | '/r/kc-role/$id'
+    | '/r/kc-user/$id'
     | '/r/legal-hold/$holdId'
     | '/r/meter/$meterId'
     | '/r/notify/$id'
+    | '/r/operator/$id'
     | '/r/run/$id'
     | '/r/tenant/$tenantId'
     | '/r/vendor/$service'
@@ -659,6 +731,7 @@ export interface RootRouteChildren {
   DeskRoute: typeof DeskRoute
   ProfileRoute: typeof ProfileRoute
   RepairOperationsRoute: typeof RepairOperationsRoute
+  SignInRoute: typeof SignInRoute
   SupportOperationsRoute: typeof SupportOperationsRoute
   TenantsRoute: typeof TenantsRouteWithChildren
   AdminAuditRoute: typeof AdminAuditRoute
@@ -686,17 +759,22 @@ export interface RootRouteChildren {
   RNotifyRoute: typeof RNotifyRouteWithChildren
   RRetentionRoute: typeof RRetentionRoute
   RRunsRoute: typeof RRunsRoute
+  RSearchRoute: typeof RSearchRoute
   RSupportRoute: typeof RSupportRoute
   RTenantsRoute: typeof RTenantsRoute
   RVendorsRoute: typeof RVendorsRoute
   RWebhookRoute: typeof RWebhookRoute
+  RAdminMemberIdRoute: typeof RAdminMemberIdRoute
   RApiKeyKeyIdRoute: typeof RApiKeyKeyIdRoute
   RDeliveryDeliveryIdRoute: typeof RDeliveryDeliveryIdRoute
   RDomainHostnameRoute: typeof RDomainHostnameRoute
   RIncidentIncidentIdRoute: typeof RIncidentIncidentIdRoute
   RInvoiceInvoiceIdRoute: typeof RInvoiceInvoiceIdRoute
+  RKcRoleIdRoute: typeof RKcRoleIdRoute
+  RKcUserIdRoute: typeof RKcUserIdRoute
   RLegalHoldHoldIdRoute: typeof RLegalHoldHoldIdRoute
   RMeterMeterIdRoute: typeof RMeterMeterIdRoute
+  ROperatorIdRoute: typeof ROperatorIdRoute
   RRunIdRoute: typeof RRunIdRoute
   RTenantTenantIdRoute: typeof RTenantTenantIdRoute
   RVendorServiceRoute: typeof RVendorServiceRoute
@@ -716,6 +794,13 @@ declare module '@tanstack/react-router' {
       path: '/support-operations'
       fullPath: '/support-operations'
       preLoaderRoute: typeof SupportOperationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/repair-operations': {
@@ -800,6 +885,13 @@ declare module '@tanstack/react-router' {
       path: '/r/support'
       fullPath: '/r/support'
       preLoaderRoute: typeof RSupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/search': {
+      id: '/r/search'
+      path: '/r/search'
+      fullPath: '/r/search'
+      preLoaderRoute: typeof RSearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/r/runs': {
@@ -998,6 +1090,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/r/operator/$id': {
+      id: '/r/operator/$id'
+      path: '/r/operator/$id'
+      fullPath: '/r/operator/$id'
+      preLoaderRoute: typeof ROperatorIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/r/notify/$id': {
       id: '/r/notify/$id'
       path: '/$id'
@@ -1017,6 +1116,20 @@ declare module '@tanstack/react-router' {
       path: '/r/legal-hold/$holdId'
       fullPath: '/r/legal-hold/$holdId'
       preLoaderRoute: typeof RLegalHoldHoldIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/kc-user/$id': {
+      id: '/r/kc-user/$id'
+      path: '/r/kc-user/$id'
+      fullPath: '/r/kc-user/$id'
+      preLoaderRoute: typeof RKcUserIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/kc-role/$id': {
+      id: '/r/kc-role/$id'
+      path: '/r/kc-role/$id'
+      fullPath: '/r/kc-role/$id'
+      preLoaderRoute: typeof RKcRoleIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/r/invoice/$invoiceId': {
@@ -1059,6 +1172,13 @@ declare module '@tanstack/react-router' {
       path: '/r/api-key/$keyId'
       fullPath: '/r/api-key/$keyId'
       preLoaderRoute: typeof RApiKeyKeyIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/admin-member/$id': {
+      id: '/r/admin-member/$id'
+      path: '/r/admin-member/$id'
+      fullPath: '/r/admin-member/$id'
+      preLoaderRoute: typeof RAdminMemberIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/r/config/$moduleId/$configKey': {
@@ -1122,6 +1242,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeskRoute: DeskRoute,
   ProfileRoute: ProfileRoute,
   RepairOperationsRoute: RepairOperationsRoute,
+  SignInRoute: SignInRoute,
   SupportOperationsRoute: SupportOperationsRoute,
   TenantsRoute: TenantsRouteWithChildren,
   AdminAuditRoute: AdminAuditRoute,
@@ -1149,17 +1270,22 @@ const rootRouteChildren: RootRouteChildren = {
   RNotifyRoute: RNotifyRouteWithChildren,
   RRetentionRoute: RRetentionRoute,
   RRunsRoute: RRunsRoute,
+  RSearchRoute: RSearchRoute,
   RSupportRoute: RSupportRoute,
   RTenantsRoute: RTenantsRoute,
   RVendorsRoute: RVendorsRoute,
   RWebhookRoute: RWebhookRoute,
+  RAdminMemberIdRoute: RAdminMemberIdRoute,
   RApiKeyKeyIdRoute: RApiKeyKeyIdRoute,
   RDeliveryDeliveryIdRoute: RDeliveryDeliveryIdRoute,
   RDomainHostnameRoute: RDomainHostnameRoute,
   RIncidentIncidentIdRoute: RIncidentIncidentIdRoute,
   RInvoiceInvoiceIdRoute: RInvoiceInvoiceIdRoute,
+  RKcRoleIdRoute: RKcRoleIdRoute,
+  RKcUserIdRoute: RKcUserIdRoute,
   RLegalHoldHoldIdRoute: RLegalHoldHoldIdRoute,
   RMeterMeterIdRoute: RMeterMeterIdRoute,
+  ROperatorIdRoute: ROperatorIdRoute,
   RRunIdRoute: RRunIdRoute,
   RTenantTenantIdRoute: RTenantTenantIdRoute,
   RVendorServiceRoute: RVendorServiceRoute,

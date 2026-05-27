@@ -9,6 +9,7 @@ export * from "./import-export-http";
 export * from "./observability";
 export * from "./open-meter-usage-query-service";
 export * from "./operations-home-service";
+export * from "./keycloak-role-read-service";
 export * from "./keycloak-user-read-service";
 export * from "./open-meter-meter-read-service";
 export * from "./novu-deliveries-read-service";
