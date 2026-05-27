@@ -543,6 +543,35 @@ const authorizeWorkflowJobAccess = (input: {
         });
   });
 
+const decodeBillingWorkflowJobRecord = (input: unknown) =>
+  Schema.decodeUnknown(BillingReconciliationWorkflowJobRecordSchema)(input);
+
+const createBillingWorkflowJobsCompatibilityRepository = (
+  workflowJobs: WorkflowJobsPostgresRepository["Type"],
+): WorkflowJobsServiceOptions["workflowJobs"] => ({
+  persistWorkflowJob: (input) =>
+    decodeBillingWorkflowJobRecord(input).pipe(
+      Effect.flatMap((record) => workflowJobs.persistWorkflowJob(record)),
+    ),
+  getWorkflowJob: (input) => workflowJobs.getWorkflowJob(input),
+  claimScheduledWorkflowJob: (input) =>
+    workflowJobs.claimScheduledWorkflowJob(input),
+  restoreWorkflowJobIfUpdatedAtMatches: (input) =>
+    decodeBillingWorkflowJobRecord(input.record).pipe(
+      Effect.flatMap((record) =>
+        workflowJobs.restoreWorkflowJobIfUpdatedAtMatches({
+          ...input,
+          record,
+        }),
+      ),
+    ),
+  cancelWorkflowJobIfUpdatedAtMatches: (input) =>
+    workflowJobs.cancelWorkflowJobIfUpdatedAtMatches(input),
+  listDueWorkflowJobs: (input) => workflowJobs.listDueWorkflowJobs(input),
+  listRepairGapWorkflowJobs: (input) =>
+    workflowJobs.listRepairGapWorkflowJobs(input),
+});
+
 export const makeAdminBillingService = (
   options: AdminBillingServiceOptions = {},
 ) =>
@@ -562,7 +591,7 @@ export const makeAdminBillingService = (
     const workflowJobs = yield* WorkflowJobsPostgresRepository;
     const workflowJobsCompatibilityRepository =
       options.workflowJobsCompatibilityRepository ??
-      (workflowJobs as unknown as WorkflowJobsServiceOptions["workflowJobs"]);
+      createBillingWorkflowJobsCompatibilityRepository(workflowJobs);
     const validateWorkflowExecutionIdentity =
       createWorkflowExecutionIdentityValidator(keycloak);
     const authorization = yield* authorizationModuleFactory({

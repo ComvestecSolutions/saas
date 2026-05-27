@@ -1190,6 +1190,7 @@ const createSubscriberJourneyHarness = async (options?: {
     readonly currentPeriodEnd?: Date | string | null;
   };
   readonly workflowExecutionClient?: Partial<AuthenticatedConvexWorkflowClient>;
+  readonly useImplicitWorkflowJobsCompatibilityRepository?: boolean;
 }) => {
   const database = createSubscriberJourneyTestDatabase();
   const convexAdapterOptions =
@@ -1709,19 +1710,22 @@ const createSubscriberJourneyHarness = async (options?: {
     ...defaultWorkflowExecutionClient,
     ...options?.workflowExecutionClient,
   };
-  const workflowJobsCompatibilityQueryable =
-    database.workflowJobsQueryable as WorkflowJobsPostgresQueryableForRecord<WorkflowJobRecord>;
-  const workflowJobsCompatibilityRepository: NonNullable<
-    NonNullable<
-      Parameters<typeof makeAdminBillingService>[0]
-    >["workflowJobsCompatibilityRepository"]
-  > = await Effect.runPromise(
-    makeWorkflowJobsPostgresRepositoryForRecordSchema(
-      database.writeDatabase,
-      workflowJobsCompatibilityQueryable,
-      WorkflowJobRecordSchema,
-    ),
-  );
+  const workflowJobsCompatibilityRepository:
+    | NonNullable<
+        NonNullable<
+          Parameters<typeof makeAdminBillingService>[0]
+        >["workflowJobsCompatibilityRepository"]
+      >
+    | undefined =
+    options?.useImplicitWorkflowJobsCompatibilityRepository === true
+      ? undefined
+      : await Effect.runPromise(
+          makeWorkflowJobsPostgresRepositoryForRecordSchema(
+            database.writeDatabase,
+            database.workflowJobsQueryable as WorkflowJobsPostgresQueryableForRecord<WorkflowJobRecord>,
+            WorkflowJobRecordSchema,
+          ),
+        );
   const adminBilling = await Effect.runPromise(
     makeAdminBillingService({
       ...(options?.authorizationModuleFactory !== undefined
@@ -1731,7 +1735,9 @@ const createSubscriberJourneyHarness = async (options?: {
         : {}),
       workflowExecutionClient,
       manualReconciliationBootstrapper,
-      workflowJobsCompatibilityRepository,
+      ...(workflowJobsCompatibilityRepository === undefined
+        ? {}
+        : { workflowJobsCompatibilityRepository }),
     }).pipe(
       Effect.provideService(AuditLogModule, auditLog),
       Effect.provideService(
@@ -5412,6 +5418,74 @@ describe("platform subscriber journey", () => {
     );
     expect(repairGaps.jobs[0]).not.toHaveProperty("lastError");
     expect([...database.auditLogEvents.values()]).toEqual([]);
+  });
+
+  it("lists repair gaps through the implicit admin-billing workflow adapter", async () => {
+    const { adminBilling, database, valkey } =
+      await createSubscriberJourneyHarness({
+        useImplicitWorkflowJobsCompatibilityRepository: true,
+      });
+
+    await Effect.runPromise(
+      valkey.writeSession({
+        sessionId: "sess_admin_gap_list_implicit_adapter",
+        requestContext: {
+          actorType: actorType.platformOperator,
+          actorId: "usr_platform_operator",
+          sessionId: "sess_admin_gap_list_implicit_adapter",
+          correlationId: "corr_admin_gap_list_implicit_adapter",
+          tenant: {
+            scope: platformScope.platform,
+            scopeId: platformScope.platform,
+          },
+        },
+      }),
+    );
+
+    database.workflowJobs.set(
+      "workflow-jobs:billing-repair:org_gap_implicit_adapter",
+      {
+        jobId: "workflow-jobs:billing-repair:org_gap_implicit_adapter",
+        runtime: workflowJobRuntime.convex,
+        sourceModuleId: platformModuleId.billingAndMetering,
+        kind: workflowJobKind.reconciliationDeadline,
+        trigger: workflowJobTrigger.checkoutCreated,
+        status: workflowJobStatus.scheduled,
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_gap_implicit_adapter",
+        attempts: 1,
+        scheduledAt: new Date(),
+        gapReason: workflowJobGapReason.missingCustomerAccount,
+        payload: {
+          sourceModuleId: platformModuleId.billingAndMetering,
+          tenantScope: platformScope.organization,
+          tenantScopeId: "org_gap_implicit_adapter",
+          provider: platformAdapterServiceName.polar,
+          correlationId: "corr_gap_implicit_adapter",
+          trigger: workflowJobTrigger.checkoutCreated,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    );
+
+    await expect(
+      Effect.runPromise(
+        adminBilling.listBillingRepairGaps({
+          sessionId: "sess_admin_gap_list_implicit_adapter",
+        }),
+      ),
+    ).resolves.toEqual({
+      jobs: [
+        expect.objectContaining({
+          jobId: "workflow-jobs:billing-repair:org_gap_implicit_adapter",
+          tenantScope: platformScope.organization,
+          tenantScopeId: "org_gap_implicit_adapter",
+          status: workflowJobStatus.scheduled,
+          gapReason: workflowJobGapReason.missingCustomerAccount,
+        }),
+      ],
+    });
   });
 
   it("lists scheduled retry, blocked, and stale running repair gaps", async () => {

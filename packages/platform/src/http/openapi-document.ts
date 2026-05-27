@@ -273,12 +273,24 @@ type DocumentSchemaSource = {
   readonly schema: Schema.Schema.AnyNoContext;
 };
 
+const isJsonSchemaRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const makeJsonSchema = (
   schema: Schema.Schema.AnyNoContext,
-): Record<string, unknown> =>
-  JSONSchema.make(schema, {
+): Record<string, unknown> => {
+  const jsonSchema = JSONSchema.make(schema, {
     target: "openApi3.1",
-  }) as unknown as Record<string, unknown>;
+  });
+
+  if (!isJsonSchemaRecord(jsonSchema)) {
+    throw new TypeError(
+      "JSONSchema.make must return an object when generating the OpenAPI document.",
+    );
+  }
+
+  return jsonSchema;
+};
 
 export const backendApiOpenApiPath = "/api/openapi.json";
 
