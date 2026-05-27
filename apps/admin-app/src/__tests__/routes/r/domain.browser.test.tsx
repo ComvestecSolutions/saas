@@ -118,7 +118,11 @@ describe("/r/domain/$hostname Custom-domain lifecycle v2 route", () => {
     const cta = rendered.container.querySelector(
       "[data-testid='domain-detail-verify-cta']",
     ) as HTMLButtonElement | null;
-    cta?.click();
+    if (!(cta instanceof HTMLButtonElement)) {
+      throw new TypeError("Expected verify CTA button.");
+    }
+
+    await click(cta);
 
     await waitFor(
       () => document.querySelector("[data-testid='high-risk-body']") !== null,
@@ -214,7 +218,11 @@ describe("/r/domain/$hostname Custom-domain lifecycle v2 route", () => {
     const copyButton = rendered.container.querySelector(
       "[data-testid='domain-detail-dns-copy']",
     ) as HTMLButtonElement | null;
-    copyButton?.click();
+    if (!(copyButton instanceof HTMLButtonElement)) {
+      throw new TypeError("Expected DNS copy button.");
+    }
+
+    await click(copyButton);
 
     await waitFor(
       () => copyButton?.getAttribute("data-copied") === "true",

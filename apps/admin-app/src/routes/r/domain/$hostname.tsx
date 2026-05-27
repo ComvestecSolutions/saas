@@ -211,14 +211,15 @@ function DomainDetailRoute() {
   };
 
   const handleCopy = async (key: string, value: string) => {
+    setCopiedRecord(key);
+
     if (typeof navigator !== "undefined" && navigator.clipboard !== undefined) {
       try {
         await navigator.clipboard.writeText(value);
       } catch {
-        // best-effort copy; visual confirmation still fires below
+        // Best-effort clipboard write; the UI confirmation is already shown.
       }
     }
-    setCopiedRecord(key);
   };
 
   return (

@@ -114,6 +114,7 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
 
     await act(async () => {
       setNativeInputValue(input, "acme");
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
     });
 
     await waitFor(
@@ -139,10 +140,12 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
       );
     });
 
-    await waitFor(
-      () => window.location.pathname === "/r/tenant/ten_acme",
-      `Expected omnibar selection to navigate to /r/tenant/ten_acme (was ${window.location.pathname}).`,
-    );
+    await act(async () => {
+      await waitFor(
+        () => window.location.pathname === "/r/tenant/ten_acme",
+        `Expected omnibar selection to navigate to /r/tenant/ten_acme (was ${window.location.pathname}).`,
+      );
+    });
 
     expect(input.value).toBe("");
 
@@ -150,14 +153,16 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
     // its async mocked module imports resolve before the harness
     // teardown — otherwise pending router-load promises race the
     // vitest mocker shutdown and surface as an Unhandled Rejection.
-    await waitFor(
-      () =>
-        rendered?.container.querySelector(
-          "[data-testid='tenant-workspace-v2-actor-card']",
-        ) !== null ||
-        rendered?.container.textContent?.includes("ten_acme") === true,
-      "Expected tenant workspace v2 route to settle after omnibar navigation.",
-    );
+    await act(async () => {
+      await waitFor(
+        () =>
+          rendered?.container.querySelector(
+            "[data-testid='tenant-workspace-v2-actor-card']",
+          ) !== null ||
+          rendered?.container.textContent?.includes("ten_acme") === true,
+        "Expected tenant workspace v2 route to settle after omnibar navigation.",
+      );
+    });
   });
 
   it("routes a tenant prefix submission immediately on Enter", async () => {
@@ -199,21 +204,25 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
       );
     });
 
-    await waitFor(
-      () => window.location.pathname === "/r/tenant/ten_omnibar_fixture",
-      `Expected omnibar Enter submit to navigate to /r/tenant/ten_omnibar_fixture (was ${window.location.pathname}).`,
-    );
+    await act(async () => {
+      await waitFor(
+        () => window.location.pathname === "/r/tenant/ten_omnibar_fixture",
+        `Expected omnibar Enter submit to navigate to /r/tenant/ten_omnibar_fixture (was ${window.location.pathname}).`,
+      );
+    });
 
     expect(input.value).toBe("");
 
-    await waitFor(
-      () =>
-        rendered?.container.querySelector(
-          "[data-testid='tenant-workspace-v2-actor-card']",
-        ) !== null ||
-        rendered?.container.textContent?.includes("ten_omnibar_fixture") ===
-          true,
-      "Expected tenant workspace v2 route to settle after omnibar Enter navigation.",
-    );
+    await act(async () => {
+      await waitFor(
+        () =>
+          rendered?.container.querySelector(
+            "[data-testid='tenant-workspace-v2-actor-card']",
+          ) !== null ||
+          rendered?.container.textContent?.includes("ten_omnibar_fixture") ===
+            true,
+        "Expected tenant workspace v2 route to settle after omnibar Enter navigation.",
+      );
+    });
   });
 });
