@@ -4,10 +4,11 @@
 
 1. Treat this repository as a reusable SaaS foundation, not a one-off app.
 2. Keep changes grouped by one related area of work per commit.
-3. Do not mix unrelated package, app, spec, and tooling changes into one commit.
-4. Update docs, instructions, specs, and tests in the same change when behavior or governance changes.
-5. Open pull requests to `dev`. Leave `main` untouched until a later promotion.
-6. Prefer Bun for repo-owned commands, hooks, automation, CI workflow commands, and documentation examples. Keep direct Node runtime usage only when an upstream platform explicitly requires it, such as Convex action files that must declare `"use node"`.
+3. Prefer the smallest related commit batch that still leaves the repository coherent, reviewable, and green.
+4. Do not mix unrelated package, app, spec, and tooling changes into one commit.
+5. Update docs, instructions, specs, and tests in the same change when behavior or governance changes.
+6. Open pull requests to `dev`. Leave `main` untouched until a later promotion.
+7. Prefer Bun for repo-owned commands, hooks, automation, CI workflow commands, and documentation examples. Keep direct Node runtime usage only when an upstream platform explicitly requires it, such as Convex action files that must declare `"use node"`.
 
 ## Local Setup
 
@@ -108,9 +109,11 @@ Examples:
 ## Grouped Commit Policy
 
 1. Each commit should have one primary change area.
-2. Companion updates in `tests/`, `specs/`, docs, or repo tooling are allowed when they directly support that same primary area.
-3. If a change touches more than one primary area, split it into separate commits.
-4. Repo-wide meta changes such as hook setup, GitHub templates, dependency policy, formatter rules, or commit-policy automation belong in `repo`, `ci`, `deps`, or `tooling` scoped commits.
+2. Prefer the smallest related batch that still leaves the repository in a coherent, reviewable, green state.
+3. Companion updates in `tests/`, `specs/`, docs, or repo tooling are allowed when they directly support that same primary area.
+4. If you cannot describe the staged diff truthfully with one Conventional Commit subject, split it before committing.
+5. If a change touches more than one primary area, split it into separate commits.
+6. Repo-wide meta changes such as hook setup, GitHub templates, dependency policy, formatter rules, or commit-policy automation belong in `repo`, `ci`, `deps`, or `tooling` scoped commits.
 
 ## Pull Requests
 
