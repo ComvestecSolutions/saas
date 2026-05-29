@@ -58,10 +58,12 @@ describeLocalBackendE2e("backend e2e universal-search transport", () => {
     }>(
       `import { Effect } from 'effect';
 import {
+  adminMemberRole,
   actorType,
   platformModuleId,
   platformScope,
   reasonCatalogId,
+  runtimeConfigAuditAction,
 } from '@comvestec/contracts';
 import {
   makePostgresAdapter,
@@ -142,7 +144,7 @@ await postgres.database.insert(adminMembersTable).values({
   keycloakSubjectId: 'kc_backend_e2e_universal_search_' + runId,
   email: 'acme.operator+' + runId + '@example.com',
   displayName: 'Acme Operator ' + runId,
-  role: 'platform-operator',
+  role: adminMemberRole.adminOperator,
   status: 'active',
   invitedAt: now,
   acceptedAt: now,
@@ -167,7 +169,7 @@ await postgres.database.insert(tenantOnboardingRunsTable).values({
 await postgres.database.insert(auditLogEventsTable).values({
   eventId: auditEventId,
   moduleId: platformModuleId.runtimeConfig,
-  action: 'override-changed',
+  action: runtimeConfigAuditAction.overrideChanged,
   target: tenantScopeId + ':feature-toggle',
   actorId,
   tenantScope: platformScope.platform,

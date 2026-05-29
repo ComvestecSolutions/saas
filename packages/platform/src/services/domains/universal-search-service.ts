@@ -1208,6 +1208,8 @@ type ResultCache = {
   readonly size: () => number;
 };
 
+export type UniversalSearchResultCache = ResultCache;
+
 const createResultCache = (maxSize: number): ResultCache => {
   const store = new Map<string, CacheEntry>();
   return {
@@ -1228,6 +1230,21 @@ const createResultCache = (maxSize: number): ResultCache => {
     },
     size: () => store.size,
   };
+};
+
+const sharedResultCaches = new Map<number, ResultCache>();
+
+const getSharedResultCache = (maxSize: number): ResultCache => {
+  const normalizedMaxSize = Math.max(1, maxSize);
+  const existingCache = sharedResultCaches.get(normalizedMaxSize);
+
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const createdCache = createResultCache(normalizedMaxSize);
+  sharedResultCaches.set(normalizedMaxSize, createdCache);
+  return createdCache;
 };
 
 const buildCacheKey = (input: {
@@ -1298,6 +1315,7 @@ export type UniversalSearchServiceDependencies = {
   readonly meilisearchAdminClient: MeilisearchAdminClientService;
   readonly fieldSecurityPort: UniversalSearchFieldSecurityPortService;
   readonly bounds: UniversalSearchRuntimeBounds;
+  readonly resultCache?: UniversalSearchResultCache;
   readonly now?: () => Date;
   readonly generateCorrelationId?: () => string;
 };
@@ -1325,7 +1343,8 @@ export const makeUniversalSearchService = (
   const { auditLog, meilisearchAdminClient, fieldSecurityPort, bounds } = deps;
   const nowFn = deps.now ?? (() => new Date());
   const correlationIdFn = deps.generateCorrelationId ?? defaultCorrelationId;
-  const cache = createResultCache(Math.max(1, bounds.cacheMaxSize));
+  const cache =
+    deps.resultCache ?? createResultCache(Math.max(1, bounds.cacheMaxSize));
 
   const clampLimit = (explicit: number | undefined): number => {
     const ceiling = Math.max(1, Math.trunc(bounds.perFacetLimitMax));
@@ -1539,11 +1558,13 @@ export const makeUniversalSearchServiceLayer = (
       const auditLog = yield* AuditLogModule;
       const meilisearchAdminClient = yield* MeilisearchAdminClient;
       const fieldSecurityPort = yield* UniversalSearchFieldSecurityPort;
+      const resultCache = getSharedResultCache(deps.bounds.cacheMaxSize);
       return makeUniversalSearchService({
         auditLog,
         meilisearchAdminClient,
         fieldSecurityPort,
         bounds: deps.bounds,
+        resultCache,
       });
     }),
   );

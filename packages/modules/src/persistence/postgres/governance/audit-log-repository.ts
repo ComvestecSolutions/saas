@@ -3,6 +3,8 @@ import {
   AuditEventSchema,
   type AuditEvent,
   type PlatformModuleId,
+  platformModuleId,
+  runtimeConfigAuditAction,
 } from "@comvestec/contracts";
 import { auditLogEventsTable } from "./audit-log";
 import type { PostgresDatabase } from "../database";
@@ -77,6 +79,20 @@ const toIsoString = (value: Date | string | null | undefined) =>
       ? value.toISOString()
       : value;
 
+const normalizeStoredAuditAction = (input: {
+  readonly moduleId: string;
+  readonly action: string;
+}) => {
+  if (
+    input.moduleId === platformModuleId.runtimeConfig &&
+    input.action === "override-changed"
+  ) {
+    return runtimeConfigAuditAction.overrideChanged;
+  }
+
+  return input.action;
+};
+
 const buildAuditEventRecord =
   (operation: AuditLogPostgresRepositoryPersistenceError["operation"]) =>
   (row: AuditLogEventRow) =>
@@ -87,7 +103,10 @@ const buildAuditEventRecord =
       tenantScope: row.tenantScope,
       tenantScopeId: row.tenantScopeId,
       moduleId: row.moduleId,
-      action: row.action,
+      action: normalizeStoredAuditAction({
+        moduleId: row.moduleId,
+        action: row.action,
+      }),
       target: row.target,
       ...(row.reason != null ? { reason: row.reason } : {}),
       ...(row.correlationId != null

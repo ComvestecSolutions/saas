@@ -81,23 +81,31 @@ describeLocalBackendE2e("backend e2e file storage transport", () => {
         readonly error: string;
       };
     }>(
-      `import { Effect } from 'effect';
+      `import { fileStorageFeatureFlag } from '@comvestec/config';
+import { Effect } from 'effect';
+import { waitForOryKetoTuple } from './tests/platform/backend-e2e/_shared/wait-for-ory-keto-tuple.ts';
 import {
   actorType,
   authorizationNamespace,
   authorizationRelation,
   dataClassification,
   managedFileUsage,
+  platformModuleId,
   platformScope,
 } from '@comvestec/contracts';
 import {
   fileStorageApiPath,
   makeOryKetoAdapter,
+  makePostgresAdapter,
   makeValkeyAdapter,
   subscriberJourneySessionCookieName,
   subscriberJourneySessionHeaderName,
 } from '@comvestec/platform';
 import { createBackendApiRequestHandler } from '@comvestec/platform/http';
+import {
+  makeRuntimeConfigModule,
+  makeRuntimeConfigPostgresRepository,
+} from '@comvestec/modules';
 
 const runStep = async (label, operation, timeoutMs = 15000) => {
   let timeoutHandle;
@@ -195,12 +203,53 @@ await Effect.runPromise(
     subject: actorId,
   }),
 );
+await waitForOryKetoTuple({
+  oryKeto,
+  tuple: {
+    namespace: authorizationNamespace.file,
+    object: fileAuthorizationObject,
+    relation: authorizationRelation.editor,
+    subject: actorId,
+  },
+});
 await Effect.runPromise(
   oryKeto.writeTuple({
     namespace: authorizationNamespace.file,
     object: fileAuthorizationObject,
     relation: authorizationRelation.viewer,
     subject: actorId,
+  }),
+);
+await waitForOryKetoTuple({
+  oryKeto,
+  tuple: {
+    namespace: authorizationNamespace.file,
+    object: fileAuthorizationObject,
+    relation: authorizationRelation.viewer,
+    subject: actorId,
+  },
+});
+const postgres = await Effect.runPromise(
+  makePostgresAdapter({
+    connectionString: process.env.POSTGRES_URL,
+  }),
+);
+const runtimeConfigRepository = await Effect.runPromise(
+  makeRuntimeConfigPostgresRepository(postgres.database),
+);
+const runtimeConfig = await Effect.runPromise(
+  makeRuntimeConfigModule(runtimeConfigRepository),
+);
+await Effect.runPromise(
+  runtimeConfig.upsertOverride({
+    moduleId: platformModuleId.fileStorage,
+    key: fileStorageFeatureFlag.enabled,
+    scope: platformScope.platform,
+    scopeId: platformScope.platform,
+    value: true,
+    source: 'runtime-override',
+    changedBy: actorId,
+    changedAt: new Date().toISOString(),
   }),
 );
 
@@ -380,6 +429,7 @@ try {
   }));
 } finally {
   server.stop(true);
+  await Effect.runPromise(Effect.ignore(postgres.close));
 }`,
       {
         env: {

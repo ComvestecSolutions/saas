@@ -74,8 +74,9 @@ describeLocalBackendE2e("backend e2e admin tenant branding transport", () => {
         readonly error: string;
       };
     }>(
-      `import { tenantBrandingFeatureFlag } from '@comvestec/config';
+      `import { fileStorageFeatureFlag, tenantBrandingFeatureFlag } from '@comvestec/config';
 import { Effect } from 'effect';
+import { waitForOryKetoTuple } from './tests/platform/backend-e2e/_shared/wait-for-ory-keto-tuple.ts';
 import {
   actorType,
   authorizationNamespace,
@@ -87,7 +88,11 @@ import {
   platformScope,
   tenantBrandingAssetKind,
 } from '@comvestec/contracts';
-import { billingEntitlementsTable } from '@comvestec/modules';
+import {
+  billingEntitlementsTable,
+  makeRuntimeConfigModule,
+  makeRuntimeConfigPostgresRepository,
+} from '@comvestec/modules';
 import {
   adminTenantBrandingApiPath,
   fileStorageApiPath,
@@ -184,6 +189,15 @@ await Effect.runPromise(
     subject: actorId,
   }),
 );
+await waitForOryKetoTuple({
+  oryKeto,
+  tuple: {
+    namespace: authorizationNamespace.brandingProfile,
+    object: brandingAuthorizationObject,
+    relation: authorizationRelation.admin,
+    subject: actorId,
+  },
+});
 await Effect.runPromise(
   oryKeto.writeTuple({
     namespace: authorizationNamespace.file,
@@ -192,6 +206,15 @@ await Effect.runPromise(
     subject: actorId,
   }),
 );
+await waitForOryKetoTuple({
+  oryKeto,
+  tuple: {
+    namespace: authorizationNamespace.file,
+    object: fileAuthorizationObject,
+    relation: authorizationRelation.editor,
+    subject: actorId,
+  },
+});
 await Effect.runPromise(
   oryKeto.writeTuple({
     namespace: authorizationNamespace.file,
@@ -200,6 +223,15 @@ await Effect.runPromise(
     subject: actorId,
   }),
 );
+await waitForOryKetoTuple({
+  oryKeto,
+  tuple: {
+    namespace: authorizationNamespace.file,
+    object: fileAuthorizationObject,
+    relation: authorizationRelation.viewer,
+    subject: actorId,
+  },
+});
 
 const postgres = await Effect.runPromise(
   makePostgresAdapter({
@@ -228,6 +260,49 @@ await postgres.database.insert(billingEntitlementsTable).values([
     grantedAt: new Date(),
   },
 ]);
+const runtimeConfigRepository = await Effect.runPromise(
+  makeRuntimeConfigPostgresRepository(postgres.database),
+);
+const runtimeConfig = await Effect.runPromise(
+  makeRuntimeConfigModule(runtimeConfigRepository),
+);
+const runtimeConfigChangedAt = new Date().toISOString();
+await Effect.runPromise(
+  runtimeConfig.upsertOverride({
+    moduleId: platformModuleId.fileStorage,
+    key: fileStorageFeatureFlag.enabled,
+    scope: platformScope.platform,
+    scopeId: platformScope.platform,
+    value: true,
+    source: 'runtime-override',
+    changedBy: actorId,
+    changedAt: runtimeConfigChangedAt,
+  }),
+);
+await Effect.runPromise(
+  runtimeConfig.upsertOverride({
+    moduleId: platformModuleId.tenantBranding,
+    key: tenantBrandingFeatureFlag.enabled,
+    scope: platformScope.organization,
+    scopeId: homeTenantScopeId,
+    value: true,
+    source: 'runtime-override',
+    changedBy: actorId,
+    changedAt: runtimeConfigChangedAt,
+  }),
+);
+await Effect.runPromise(
+  runtimeConfig.upsertOverride({
+    moduleId: platformModuleId.tenantBranding,
+    key: tenantBrandingFeatureFlag.customDomain,
+    scope: platformScope.organization,
+    scopeId: homeTenantScopeId,
+    value: true,
+    source: 'runtime-override',
+    changedBy: actorId,
+    changedAt: runtimeConfigChangedAt,
+  }),
+);
 
 const server = Bun.serve({
   port: 0,

@@ -120,7 +120,8 @@ describeLocalBackendE2e("backend e2e search transport", () => {
         readonly deletedAt: string;
       };
     }>(
-      `import { Effect } from 'effect';
+      `import { fileStorageFeatureFlag, searchFeatureFlag } from '@comvestec/config';
+import { Effect } from 'effect';
 import { waitForOryKetoTuple } from './tests/platform/backend-e2e/_shared/wait-for-ory-keto-tuple.ts';
 import {
   actorType,
@@ -140,6 +141,10 @@ import {
   subscriberJourneySessionHeaderName,
 } from '@comvestec/platform';
 import { createBackendApiRequestHandler } from '@comvestec/platform/http';
+import {
+  makeRuntimeConfigModule,
+  makeRuntimeConfigPostgresRepository,
+} from '@comvestec/modules';
 import { searchTenantIndexesTable } from './packages/modules/src/persistence/postgres/domains/search/schema.ts';
 import { workflowJobsTable } from './packages/modules/src/persistence/postgres/domains/workflow-jobs.ts';
 import { supportOperationsCasesTable } from './packages/modules/src/persistence/postgres/governance/support-operations.ts';
@@ -259,6 +264,37 @@ await postgres.database.insert(supportOperationsCasesTable).values({
   startedAt: new Date('2026-05-12T08:00:00.000Z'),
   lastUpdatedAt: new Date('2026-05-12T08:05:00.000Z'),
 });
+const runtimeConfigRepository = await Effect.runPromise(
+  makeRuntimeConfigPostgresRepository(postgres.database),
+);
+const runtimeConfig = await Effect.runPromise(
+  makeRuntimeConfigModule(runtimeConfigRepository),
+);
+const runtimeConfigChangedAt = new Date().toISOString();
+await Effect.runPromise(
+  runtimeConfig.upsertOverride({
+    moduleId: platformModuleId.search,
+    key: searchFeatureFlag.enabled,
+    scope: platformScope.platform,
+    scopeId: platformScope.platform,
+    value: true,
+    source: 'runtime-override',
+    changedBy: operatorActorId,
+    changedAt: runtimeConfigChangedAt,
+  }),
+);
+await Effect.runPromise(
+  runtimeConfig.upsertOverride({
+    moduleId: platformModuleId.fileStorage,
+    key: fileStorageFeatureFlag.enabled,
+    scope: platformScope.platform,
+    scopeId: platformScope.platform,
+    value: true,
+    source: 'runtime-override',
+    changedBy: operatorActorId,
+    changedAt: runtimeConfigChangedAt,
+  }),
+);
 
 const server = Bun.serve({
   port: 0,

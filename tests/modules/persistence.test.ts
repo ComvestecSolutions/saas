@@ -1052,6 +1052,40 @@ describe("modules persistence", () => {
         repository.getWorkflowJob({ jobId: "workflow-job-search-1" }),
       ),
     ).resolves.toEqual(created);
+
+    await Effect.runPromise(
+      repository.persistWorkflowJob({
+        ...created,
+        status: workflowJobStatus.failed,
+        attempts: 2,
+        completedAt: "2026-05-02T09:05:00.000Z",
+        lastError: "Search indexing failed.",
+        gapReason: workflowJobGapReason.repairFailed,
+        updatedAt: "2026-05-02T09:05:00.000Z",
+      }),
+    );
+
+    await Effect.runPromise(
+      repository.persistWorkflowJob({
+        ...created,
+        status: workflowJobStatus.scheduled,
+        attempts: 2,
+        scheduledAt: "2026-05-02T09:10:00.000Z",
+        completedAt: undefined,
+        lastError: undefined,
+        gapReason: undefined,
+        updatedAt: "2026-05-02T09:10:00.000Z",
+      }),
+    );
+
+    expect(workflowJobs.get(created.jobId)).toMatchObject({
+      status: workflowJobStatus.scheduled,
+      attempts: 2,
+      scheduledAt: new Date("2026-05-02T09:10:00.000Z"),
+      completedAt: null,
+      lastError: null,
+      gapReason: null,
+    });
   });
 
   it("lists repair-gap workflow jobs through tenant-filtered repository queries", async () => {
@@ -1694,6 +1728,42 @@ describe("modules persistence", () => {
     expect(targetEvents.map((event) => event.eventId)).toEqual(
       expect.arrayContaining(["support-wrapper-1", "support-wrapper-2"]),
     );
+  });
+
+  it("normalizes legacy stored audit action aliases on read", async () => {
+    const database = createPersistenceTestDatabase();
+    const repository = await Effect.runPromise(
+      makeAuditLogPostgresRepository(database.database),
+    );
+
+    database.auditLogEvents.set("legacy-runtime-audit-row", {
+      eventId: "legacy-runtime-audit-row",
+      moduleId: platformModuleId.runtimeConfig,
+      action: "override-changed",
+      target: "tenantBranding.companyName",
+      actorId: "usr_admin_legacy",
+      tenantScope: platformScope.organization,
+      tenantScopeId: "org_1",
+      reason: "Legacy runtime config alias",
+      correlationId: "corr_legacy_runtime_audit_row",
+      requestContext: {},
+      recordedAt: new Date("2026-04-26T10:00:00.000Z"),
+    });
+
+    const tenantEvents = await Effect.runPromise(
+      repository.queryByTenant({
+        tenantScope: platformScope.organization,
+        tenantScopeId: "org_1",
+      }),
+    );
+
+    expect(tenantEvents).toEqual([
+      expect.objectContaining({
+        eventId: "legacy-runtime-audit-row",
+        moduleId: platformModuleId.runtimeConfig,
+        action: runtimeConfigAuditAction.overrideChanged,
+      }),
+    ]);
   });
 
   it("treats malformed stored audit rows as persistence errors", async () => {

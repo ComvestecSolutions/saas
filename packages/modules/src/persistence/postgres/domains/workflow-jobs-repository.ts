@@ -264,9 +264,12 @@ export const makeWorkflowJobsPostgresRepositoryForRecordSchema = <
                     tenantScopeId: record.tenantScopeId,
                     attempts: record.attempts,
                     scheduledAt: new Date(record.scheduledAt),
-                    completedAt: parseTimestamp(record.completedAt),
-                    lastError: record.lastError,
-                    gapReason: record.gapReason,
+                    completedAt:
+                      record.completedAt === undefined
+                        ? null
+                        : new Date(record.completedAt),
+                    lastError: record.lastError ?? null,
+                    gapReason: record.gapReason ?? null,
                     payload: record.payload,
                     updatedAt: new Date(record.updatedAt),
                   },

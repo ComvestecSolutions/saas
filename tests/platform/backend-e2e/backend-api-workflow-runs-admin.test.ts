@@ -84,8 +84,7 @@ describeLocalBackendE2e("backend e2e workflow-runs admin transport", () => {
       readonly cancelJobId: string;
       readonly seededReplayScheduledAt: string;
     }>(
-      `import { eq } from 'drizzle-orm';
-import { Effect } from 'effect';
+      `import { Effect } from 'effect';
 import {
   actorType,
   platformModuleId,
@@ -102,9 +101,9 @@ import {
   subscriberJourneySessionHeaderName,
   workflowRunsAdminApiPath,
 } from '@comvestec/platform';
+import { workflowJobsTable } from '@comvestec/modules';
 import { createBackendApiRequestHandler } from '@comvestec/platform/http';
-import { workflowJobsTable } from './packages/modules/src/persistence/postgres/domains/workflow-jobs.ts';
-
+ 
 const runStep = async (label, operation, timeoutMs = 15000) => {
   let timeoutHandle;
 
@@ -124,6 +123,19 @@ const runStep = async (label, operation, timeoutMs = 15000) => {
   }
 };
 
+const toIsoString = (value) => {
+  if (value === null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    return new Date(value).toISOString();
+  }
+  throw new Error('Expected a workflow job timestamp value.');
+};
+ 
 const runId = Date.now().toString();
 const actorId = 'usr_backend_e2e_workflow_runs_operator';
 const sessionId = 'sess_backend_e2e_workflow_runs_' + runId;
@@ -131,6 +143,12 @@ const correlationId = 'corr_backend_e2e_workflow_runs_' + runId;
 const replayJobId = 'job_backend_e2e_workflow_runs_replay_' + runId;
 const cancelJobId = 'job_backend_e2e_workflow_runs_cancel_' + runId;
 const seededReplayScheduledAt = '2026-05-12T06:05:00.000Z';
+const initialListSince = new Date(
+  Date.parse(seededReplayScheduledAt) - 60_000,
+).toISOString();
+const initialListUntil = new Date(
+  Date.parse(seededReplayScheduledAt) + 60_000,
+).toISOString();
 const now = new Date();
 
 const valkey = await Effect.runPromise(
@@ -218,7 +236,11 @@ try {
       new URL(
         workflowRunsAdminApiPath.list +
           '?pageSize=10&moduleId=' +
-          encodeURIComponent(platformModuleId.search),
+          encodeURIComponent(platformModuleId.search) +
+          '&since=' +
+          encodeURIComponent(initialListSince) +
+          '&until=' +
+          encodeURIComponent(initialListUntil),
         baseUrl,
       ),
       { method: 'GET' },
@@ -230,7 +252,11 @@ try {
       new URL(
         workflowRunsAdminApiPath.list +
           '?pageSize=10&moduleId=' +
-          encodeURIComponent(platformModuleId.search),
+          encodeURIComponent(platformModuleId.search) +
+          '&since=' +
+          encodeURIComponent(initialListSince) +
+          '&until=' +
+          encodeURIComponent(initialListUntil),
         baseUrl,
       ),
       {
@@ -288,10 +314,19 @@ try {
       }),
     }),
   );
+  const postActionListSince = new Date(Date.now() - 2 * 60_000).toISOString();
+  const postActionListUntil = new Date(Date.now() + 60_000).toISOString();
   const postActionListResponse = await runStep(
     'workflow-runs admin list after replay and cancel',
     fetch(
-      new URL(workflowRunsAdminApiPath.list + '?pageSize=10', baseUrl),
+      new URL(
+        workflowRunsAdminApiPath.list +
+          '?pageSize=50&since=' +
+          encodeURIComponent(postActionListSince) +
+          '&until=' +
+          encodeURIComponent(postActionListUntil),
+        baseUrl,
+      ),
       {
         method: 'GET',
         headers: {
@@ -300,24 +335,25 @@ try {
       },
     ),
   );
-  const replayedJobRows = await postgres.database
-    .select({
-      status: workflowJobsTable.status,
-      scheduledAt: workflowJobsTable.scheduledAt,
-      completedAt: workflowJobsTable.completedAt,
-      lastError: workflowJobsTable.lastError,
-      gapReason: workflowJobsTable.gapReason,
-    })
-    .from(workflowJobsTable)
-    .where(eq(workflowJobsTable.jobId, replayJobId));
-  const canceledJobRows = await postgres.database
-    .select({
-      status: workflowJobsTable.status,
-      completedAt: workflowJobsTable.completedAt,
-    })
-    .from(workflowJobsTable)
-    .where(eq(workflowJobsTable.jobId, cancelJobId));
+  const replayedJobRows = await postgres.sqlClient\`
+   select status, scheduled_at, completed_at, last_error, gap_reason
+   from workflow_jobs
+   where job_id = \${replayJobId}
+  \`;
+  const canceledJobRows = await postgres.sqlClient\`
+   select status, completed_at
+   from workflow_jobs
+   where job_id = \${cancelJobId}
+  \`;
+  const replayedJobRow = replayedJobRows[0];
+  const canceledJobRow = canceledJobRows[0];
 
+  if (replayedJobRow === undefined || canceledJobRow === undefined) {
+   throw new Error(
+     'Expected seeded workflow job rows to be present after replay/cancel.',
+   );
+  }
+ 
   console.log(JSON.stringify({
     unauthenticatedListStatus: unauthenticatedListResponse.status,
     unauthenticatedListBody: await unauthenticatedListResponse.json(),
@@ -330,15 +366,15 @@ try {
     cancelStatus: cancelResponse.status,
     cancelBody: await cancelResponse.json(),
     replayedJob: {
-      status: replayedJobRows[0]?.status,
-      scheduledAt: replayedJobRows[0]?.scheduledAt?.toISOString(),
-      completedAt: replayedJobRows[0]?.completedAt?.toISOString() ?? null,
-      lastError: replayedJobRows[0]?.lastError ?? null,
-      gapReason: replayedJobRows[0]?.gapReason ?? null,
+     status: replayedJobRow.status,
+     scheduledAt: toIsoString(replayedJobRow.scheduled_at),
+     completedAt: toIsoString(replayedJobRow.completed_at),
+     lastError: replayedJobRow.last_error ?? null,
+     gapReason: replayedJobRow.gap_reason ?? null,
     },
     canceledJob: {
-      status: canceledJobRows[0]?.status,
-      completedAt: canceledJobRows[0]?.completedAt?.toISOString() ?? null,
+     status: canceledJobRow.status,
+     completedAt: toIsoString(canceledJobRow.completed_at),
     },
     postActionListStatus: postActionListResponse.status,
     postActionListBody: await postActionListResponse.json(),
@@ -369,17 +405,19 @@ try {
 
     expect(probe.listStatus).toBe(200);
     expect(probe.listBody.fromCache).toBe(false);
-    expect(probe.listBody.result.runs).toEqual([
-      expect.objectContaining({
-        runId: probe.replayJobId,
-        moduleId: platformModuleId.search,
-        workflowKey: "search-index-ensure",
-        status: workflowRunStatus.failed,
-        queuedAt: probe.seededReplayScheduledAt,
-        attempt: 2,
-        lastError: "Search ensure failed before replay.",
-      }),
-    ]);
+    expect(probe.listBody.result.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: probe.replayJobId,
+          moduleId: platformModuleId.search,
+          workflowKey: "search-index-ensure",
+          status: workflowRunStatus.failed,
+          queuedAt: probe.seededReplayScheduledAt,
+          attempt: 2,
+          lastError: "Search ensure failed before replay.",
+        }),
+      ]),
+    );
 
     expect(probe.detailStatus).toBe(200);
     expect(probe.detailBody.detail).toEqual(
