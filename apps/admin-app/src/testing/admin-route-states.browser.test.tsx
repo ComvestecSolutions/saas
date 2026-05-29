@@ -340,7 +340,7 @@ const sessionRequiredRouteCases: ReadonlyArray<{
     name: "tenant workspace discovery",
     path: adminRoutePath.tenantWorkspaceDiscovery,
     expectedDescription:
-      "Sign in with a platform-operator or support-operator session to inspect the tenant directory.",
+      "Sign in with a platform-operator session to inspect the tenant directory.",
     apply: (fixture) => ({
       ...fixture,
       loadTenantsDirectory: async () => ({ kind: "shell" }),

@@ -130,7 +130,7 @@ describe("admin-app billing-list loader", () => {
     expect(result.posture.aggregateArrMinorUnits).toBe(250_00 * 12);
     expect(result.posture.currency).toBe("USD");
     expect(result.rows[0]?.customerCount).toBe(1);
-    expect(result.rows[0]?.displayName).toBe("Acme Co.");
+    expect(result.rows[0]?.displayName).toBe("Org Demo");
   });
 
   it("returns ready with empty rows when no tenants are supplied", async () => {

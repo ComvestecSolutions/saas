@@ -26,6 +26,9 @@ const createAdminTenantManagementServiceDouble = (
   issueTenantInvitation:
     overrides.issueTenantInvitation ??
     (() => unexpectedAdminTenantManagementServiceEffect()),
+  listTenantDirectory:
+    overrides.listTenantDirectory ??
+    (() => unexpectedAdminTenantManagementServiceEffect()),
   listTenantInvitations:
     overrides.listTenantInvitations ??
     (() => unexpectedAdminTenantManagementServiceEffect()),

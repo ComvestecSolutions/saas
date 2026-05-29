@@ -2874,7 +2874,6 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
             key: row.key,
             displayName: row.displayName,
             target: row.target,
-            environment: row.environment,
             status: row.status,
             approvalsOpen: row.approvalsOpen,
           }),

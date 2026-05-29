@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import type {
+  AdminTenantDirectoryQueryBySessionRequest,
   AdminTenantInvitationIssueBySessionRequest,
   AdminTenantInvitationQueryBySessionRequest,
   AdminTenantInvitationRevokeBySessionRequest,
@@ -20,6 +21,18 @@ export const reviewTenantOnboardingFromEnvironment = (
     Effect.flatMap(({ runAdminTenantManagementFromEnvironment }) =>
       runAdminTenantManagementFromEnvironment(environment, (service) =>
         service.reviewTenantOnboarding(input),
+      ),
+    ),
+  );
+
+export const listTenantDirectoryFromEnvironment = (
+  environment: unknown,
+  input: AdminTenantDirectoryQueryBySessionRequest,
+) =>
+  loadAdminTenantManagementRuntime().pipe(
+    Effect.flatMap(({ runAdminTenantManagementFromEnvironment }) =>
+      runAdminTenantManagementFromEnvironment(environment, (service) =>
+        service.listTenantDirectory(input),
       ),
     ),
   );
@@ -88,6 +101,10 @@ type ReviewTenantOnboarding = (
   input: AdminTenantOnboardingReviewBySessionRequest,
 ) => ReturnType<typeof reviewTenantOnboardingFromEnvironment>;
 
+type ListTenantDirectory = (
+  input: AdminTenantDirectoryQueryBySessionRequest,
+) => ReturnType<typeof listTenantDirectoryFromEnvironment>;
+
 type ListTenantMemberships = (
   input: AdminTenantMembershipQueryBySessionRequest,
 ) => ReturnType<typeof listTenantMembershipsFromEnvironment>;
@@ -114,6 +131,13 @@ export const reviewTenantOnboardingFromSessionId = (
   reviewTenantOnboarding: ReviewTenantOnboarding = (requestInput) =>
     reviewTenantOnboardingFromEnvironment(environment, requestInput),
 ) => reviewTenantOnboarding(input);
+
+export const listTenantDirectoryFromSessionId = (
+  environment: unknown,
+  input: AdminTenantDirectoryQueryBySessionRequest,
+  listTenantDirectory: ListTenantDirectory = (requestInput) =>
+    listTenantDirectoryFromEnvironment(environment, requestInput),
+) => listTenantDirectory(input);
 
 export const listTenantMembershipsFromSessionId = (
   environment: unknown,

@@ -1,11 +1,15 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Cause, Effect, ParseResult, Schema } from "effect";
 import {
+  configDefaultValue,
   workflowJobsRetryMaxAttempts,
   workflowJobsRunningClaimTimeoutSeconds,
 } from "@comvestec/config";
 import {
   AbsoluteRedirectUriSchema,
+  adminTenantDirectoryStatus,
+  type AdminTenantDirectoryQueryResult,
+  AdminTenantDirectoryQueryResultSchema,
   type AdminTenantInvitationIssueResult,
   AdminTenantInvitationIssueRequestSchema,
   AdminTenantInvitationIssueResultSchema,
@@ -31,10 +35,12 @@ import {
   permissionScope,
   platformModuleId,
   platformScope,
+  tenantBrandingConfigKey,
   tenantInvitationEmailDeliveryStatus,
   tenantInvitationStatus,
   tenantMembershipMutationAction,
   tenantManagementConfigKey,
+  tenantOnboardingRunStatus,
   type TenantMembershipRelation,
   TenantInvitationEmailDeliveryOutcomeSchema,
   tenantMembershipRelations,
@@ -51,6 +57,7 @@ import {
 import {
   auditLogEventsTable,
   AuditLogModule,
+  billingSubscriptionsTable,
   type AuditLogModuleError,
   type AuditLogPostgresQueryable,
   type AuthorizationDelegatedCheckError,
@@ -93,8 +100,11 @@ import {
   type TenantOnboardingPostgresRepositoryError,
   TenantManagementModule,
   tenantMembershipInvitationsTable,
+  tenantOnboardingRunsTable,
   tenantInvitationPersistedStatus,
   TenantOnboardingPostgresRepository,
+  tenantProvisioningReceiptsTable,
+  tenantProvisioningStatus,
   TenantProvisioningPostgresRepository,
   type UnknownConfigKeyError,
   type WorkflowJobsPostgresRepositoryError,
@@ -220,6 +230,14 @@ export type AdminTenantInvitationRevokeBySessionRequest = Schema.Schema.Type<
   typeof AdminTenantInvitationRevokeBySessionRequestSchema
 >;
 
+export const AdminTenantDirectoryQueryBySessionRequestSchema = Schema.Struct({
+  sessionId: Schema.NonEmptyString,
+});
+
+export type AdminTenantDirectoryQueryBySessionRequest = Schema.Schema.Type<
+  typeof AdminTenantDirectoryQueryBySessionRequestSchema
+>;
+
 export const RunTenantInvitationReminderWorkflowJobRequestSchema =
   Schema.Struct({
     jobId: Schema.NonEmptyString,
@@ -325,8 +343,14 @@ export type AdminTenantManagementWorkflowUnavailableError = {
   readonly reason: string;
 };
 
+export type AdminTenantManagementDirectoryUnavailableError = {
+  readonly _tag: "AdminTenantManagementDirectoryUnavailableError";
+  readonly reason: string;
+};
+
 export type AdminTenantManagementServiceError =
   | AdminTenantManagementAccessDeniedError
+  | AdminTenantManagementDirectoryUnavailableError
   | AdminTenantManagementInvitationNotFoundError
   | AdminTenantManagementWorkflowUnavailableError
   | AuditLogModuleError
@@ -351,6 +375,12 @@ export type AdminTenantManagementService = {
     input: AdminTenantOnboardingReviewBySessionRequest,
   ) => Effect.Effect<
     AdminTenantOnboardingReviewResult,
+    AdminTenantManagementServiceError
+  >;
+  readonly listTenantDirectory: (
+    input: AdminTenantDirectoryQueryBySessionRequest,
+  ) => Effect.Effect<
+    AdminTenantDirectoryQueryResult,
     AdminTenantManagementServiceError
   >;
   readonly listTenantMemberships: (
@@ -412,6 +442,7 @@ type AdminTenantManagementServiceOptions = {
   readonly convexWorkflowClient?: TenantInvitationWorkflowSchedulerClient;
   readonly emailDelivery?: Pick<EmailDeliveryService, "sendTransactionalEmail">;
   readonly invitationRepository?: TenantInvitationPostgresRepository["Type"];
+  readonly loadTenantDirectorySources?: LoadAdminTenantDirectorySources;
   readonly persistIssuedInvitation?: PersistIssuedTenantInvitation;
   readonly persistRevokedInvitation?: PersistRevokedTenantInvitation;
   readonly runtimeConfig?: RuntimeConfigModule["Type"];
@@ -617,6 +648,285 @@ const buildTenantMembershipAuditTarget = (
 const buildTenantInvitationAuditTarget = (
   tenant: AdminTenantInvitationQueryBySessionRequest["tenant"],
 ) => [tenant.scope, tenant.scopeId, "invitations"].join(":");
+
+type AdminTenantDirectoryTarget =
+  AdminTenantDirectoryQueryResult["rows"][number]["target"];
+
+type AdminTenantDirectoryProvisioningSourceRow = Pick<
+  typeof tenantProvisioningReceiptsTable.$inferSelect,
+  "tenantScope" | "tenantScopeId" | "status" | "updatedAt"
+>;
+
+type AdminTenantDirectoryOnboardingSourceRow = Pick<
+  typeof tenantOnboardingRunsTable.$inferSelect,
+  "tenantScope" | "tenantScopeId" | "status" | "startedAt"
+>;
+
+type AdminTenantDirectoryInvitationSourceRow = Pick<
+  typeof tenantMembershipInvitationsTable.$inferSelect,
+  "tenantScope" | "tenantScopeId" | "status" | "issuedAt"
+>;
+
+type AdminTenantDirectoryBrandingSourceRow = Pick<
+  typeof runtimeConfigOverridesTable.$inferSelect,
+  "scope" | "scopeId" | "value" | "changedAt"
+>;
+
+type AdminTenantDirectoryProposalSourceRow = Pick<
+  typeof runtimeConfigOverrideProposalsTable.$inferSelect,
+  "scope" | "scopeId" | "status" | "changedAt"
+>;
+
+type AdminTenantDirectorySubscriptionSourceRow = Pick<
+  typeof billingSubscriptionsTable.$inferSelect,
+  "scope" | "scopeId" | "status" | "updatedAt"
+>;
+
+type AdminTenantDirectorySources = {
+  readonly provisioningRows: readonly AdminTenantDirectoryProvisioningSourceRow[];
+  readonly onboardingRows: readonly AdminTenantDirectoryOnboardingSourceRow[];
+  readonly invitationRows: readonly AdminTenantDirectoryInvitationSourceRow[];
+  readonly brandingRows: readonly AdminTenantDirectoryBrandingSourceRow[];
+  readonly proposalRows: readonly AdminTenantDirectoryProposalSourceRow[];
+  readonly subscriptionRows: readonly AdminTenantDirectorySubscriptionSourceRow[];
+};
+
+type LoadAdminTenantDirectorySources = () => Effect.Effect<
+  AdminTenantDirectorySources,
+  AdminTenantManagementDirectoryUnavailableError
+>;
+
+const buildAdminTenantDirectoryKey = (target: {
+  readonly scope: string;
+  readonly scopeId: string;
+}) => [target.scope, target.scopeId].join(":");
+
+const isAdminTenantDirectoryTargetScope = (
+  scope: string,
+): scope is AdminTenantDirectoryTarget["scope"] =>
+  scope === platformScope.enterprise ||
+  scope === platformScope.organization ||
+  scope === platformScope.individual;
+
+const normalizeAdminTenantDirectoryDisplayName = (
+  value: unknown,
+): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0 || trimmed === configDefaultValue.inherit) {
+    return undefined;
+  }
+
+  return trimmed;
+};
+
+const formatAdminTenantDirectoryDisplayName = (scopeId: string): string =>
+  scopeId
+    .split(/[_-]/g)
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+
+const selectLatestAdminTenantDirectoryRow = <
+  TRow extends {
+    readonly updatedAt?: Date | null;
+    readonly startedAt?: Date | null;
+    readonly changedAt?: Date | null;
+    readonly issuedAt?: Date | null;
+  },
+>(
+  current: TRow | undefined,
+  candidate: TRow,
+): TRow => {
+  if (current === undefined) {
+    return candidate;
+  }
+
+  const currentTimestamp =
+    current.updatedAt?.getTime() ??
+    current.startedAt?.getTime() ??
+    current.changedAt?.getTime() ??
+    current.issuedAt?.getTime() ??
+    0;
+  const candidateTimestamp =
+    candidate.updatedAt?.getTime() ??
+    candidate.startedAt?.getTime() ??
+    candidate.changedAt?.getTime() ??
+    candidate.issuedAt?.getTime() ??
+    0;
+
+  return candidateTimestamp >= currentTimestamp ? candidate : current;
+};
+
+const resolveAdminTenantDirectoryStatus = (input: {
+  readonly provisioning: AdminTenantDirectoryProvisioningSourceRow | undefined;
+  readonly onboarding: AdminTenantDirectoryOnboardingSourceRow | undefined;
+  readonly pendingInvitationCount: number;
+}) => {
+  if (
+    input.provisioning?.status === tenantProvisioningStatus.failed ||
+    input.onboarding?.status === tenantOnboardingRunStatus.failed
+  ) {
+    return adminTenantDirectoryStatus.blocked;
+  }
+
+  if (
+    input.provisioning?.status === tenantProvisioningStatus.pending ||
+    input.onboarding?.status === tenantOnboardingRunStatus.pending ||
+    input.onboarding?.status === tenantOnboardingRunStatus.inProgress ||
+    input.pendingInvitationCount > 0
+  ) {
+    return adminTenantDirectoryStatus.pending;
+  }
+
+  return adminTenantDirectoryStatus.active;
+};
+
+const buildAdminTenantDirectoryResult = (
+  sources: AdminTenantDirectorySources,
+) => {
+  const targets = new Map<string, AdminTenantDirectoryTarget>();
+  const latestProvisioningByTarget = new Map<
+    string,
+    AdminTenantDirectoryProvisioningSourceRow
+  >();
+  const latestOnboardingByTarget = new Map<
+    string,
+    AdminTenantDirectoryOnboardingSourceRow
+  >();
+  const latestBrandingByTarget = new Map<
+    string,
+    AdminTenantDirectoryBrandingSourceRow
+  >();
+  const pendingInvitationsByTarget = new Map<string, number>();
+  const pendingApprovalsByTarget = new Map<string, number>();
+
+  const addTarget = (target: {
+    readonly scope: string;
+    readonly scopeId: string;
+  }) => {
+    if (!isAdminTenantDirectoryTargetScope(target.scope)) {
+      return;
+    }
+
+    const normalizedTarget = {
+      scope: target.scope,
+      scopeId: target.scopeId,
+    } satisfies AdminTenantDirectoryTarget;
+    targets.set(
+      buildAdminTenantDirectoryKey(normalizedTarget),
+      normalizedTarget,
+    );
+  };
+
+  for (const row of sources.provisioningRows) {
+    addTarget({ scope: row.tenantScope, scopeId: row.tenantScopeId });
+    const key = buildAdminTenantDirectoryKey({
+      scope: row.tenantScope,
+      scopeId: row.tenantScopeId,
+    });
+    latestProvisioningByTarget.set(
+      key,
+      selectLatestAdminTenantDirectoryRow(
+        latestProvisioningByTarget.get(key),
+        row,
+      ),
+    );
+  }
+
+  for (const row of sources.onboardingRows) {
+    addTarget({ scope: row.tenantScope, scopeId: row.tenantScopeId });
+    const key = buildAdminTenantDirectoryKey({
+      scope: row.tenantScope,
+      scopeId: row.tenantScopeId,
+    });
+    latestOnboardingByTarget.set(
+      key,
+      selectLatestAdminTenantDirectoryRow(
+        latestOnboardingByTarget.get(key),
+        row,
+      ),
+    );
+  }
+
+  for (const row of sources.invitationRows) {
+    addTarget({ scope: row.tenantScope, scopeId: row.tenantScopeId });
+    if (row.status === tenantInvitationPersistedStatus.pending) {
+      const key = buildAdminTenantDirectoryKey({
+        scope: row.tenantScope,
+        scopeId: row.tenantScopeId,
+      });
+      pendingInvitationsByTarget.set(
+        key,
+        (pendingInvitationsByTarget.get(key) ?? 0) + 1,
+      );
+    }
+  }
+
+  for (const row of sources.brandingRows) {
+    addTarget({ scope: row.scope, scopeId: row.scopeId });
+    const key = buildAdminTenantDirectoryKey({
+      scope: row.scope,
+      scopeId: row.scopeId,
+    });
+    latestBrandingByTarget.set(
+      key,
+      selectLatestAdminTenantDirectoryRow(latestBrandingByTarget.get(key), row),
+    );
+  }
+
+  for (const row of sources.proposalRows) {
+    addTarget({ scope: row.scope, scopeId: row.scopeId });
+    if (row.status === "pending") {
+      const key = buildAdminTenantDirectoryKey({
+        scope: row.scope,
+        scopeId: row.scopeId,
+      });
+      pendingApprovalsByTarget.set(
+        key,
+        (pendingApprovalsByTarget.get(key) ?? 0) + 1,
+      );
+    }
+  }
+
+  for (const row of sources.subscriptionRows) {
+    addTarget({ scope: row.scope, scopeId: row.scopeId });
+  }
+
+  const rows = [...targets.values()]
+    .map((target) => {
+      const key = buildAdminTenantDirectoryKey(target);
+
+      return {
+        key,
+        displayName:
+          normalizeAdminTenantDirectoryDisplayName(
+            latestBrandingByTarget.get(key)?.value,
+          ) ?? formatAdminTenantDirectoryDisplayName(target.scopeId),
+        target,
+        status: resolveAdminTenantDirectoryStatus({
+          provisioning: latestProvisioningByTarget.get(key),
+          onboarding: latestOnboardingByTarget.get(key),
+          pendingInvitationCount: pendingInvitationsByTarget.get(key) ?? 0,
+        }),
+        approvalsOpen: pendingApprovalsByTarget.get(key) ?? 0,
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.displayName.localeCompare(right.displayName) ||
+        left.target.scope.localeCompare(right.target.scope) ||
+        left.target.scopeId.localeCompare(right.target.scopeId),
+    );
+
+  return Schema.decodeUnknown(AdminTenantDirectoryQueryResultSchema)({
+    rows,
+  });
+};
 
 const buildTenantInvitationMutationAuditTarget = (input: {
   readonly tenant:
@@ -1456,6 +1766,13 @@ export const makeAdminTenantManagementService = (
     const convexWorkflowClient = options.convexWorkflowClient;
     const emailDelivery = options.emailDelivery;
     const appBaseUrl = options.appBaseUrl;
+    const loadTenantDirectorySources =
+      options.loadTenantDirectorySources ??
+      (() =>
+        Effect.fail({
+          _tag: "AdminTenantManagementDirectoryUnavailableError",
+          reason: "The tenant directory source loader was not configured.",
+        } satisfies AdminTenantManagementDirectoryUnavailableError));
 
     const requireWorkflowJobs = () =>
       workflowJobs === undefined
@@ -1858,6 +2175,27 @@ export const makeAdminTenantManagementService = (
                 tenant: request.tenant,
                 ...(run === undefined ? {} : { run }),
               });
+            }),
+          ),
+        ),
+      listTenantDirectory: (input: AdminTenantDirectoryQueryBySessionRequest) =>
+        Schema.decodeUnknown(AdminTenantDirectoryQueryBySessionRequestSchema)(
+          input,
+        ).pipe(
+          Effect.flatMap((request) =>
+            Effect.gen(function* () {
+              const requestContext =
+                yield* identitySession.resolveRequestContext({
+                  sessionId: request.sessionId,
+                });
+
+              yield* validatePlatformOperatorContext({
+                requestContext,
+              });
+
+              const sources = yield* loadTenantDirectorySources();
+
+              return yield* buildAdminTenantDirectoryResult(sources);
             }),
           ),
         ),
@@ -2501,6 +2839,102 @@ const makeAdminTenantManagementRuntime = (
     );
     const service = yield* makeAdminTenantManagementService({
       invitationRepository,
+      loadTenantDirectorySources: () =>
+        Effect.tryPromise({
+          try: async () => {
+            const [
+              provisioningRows,
+              onboardingRows,
+              invitationRows,
+              brandingRows,
+              proposalRows,
+              subscriptionRows,
+            ] = await Promise.all([
+              postgres.database
+                .select({
+                  tenantScope: tenantProvisioningReceiptsTable.tenantScope,
+                  tenantScopeId: tenantProvisioningReceiptsTable.tenantScopeId,
+                  status: tenantProvisioningReceiptsTable.status,
+                  updatedAt: tenantProvisioningReceiptsTable.updatedAt,
+                })
+                .from(tenantProvisioningReceiptsTable),
+              postgres.database
+                .select({
+                  tenantScope: tenantOnboardingRunsTable.tenantScope,
+                  tenantScopeId: tenantOnboardingRunsTable.tenantScopeId,
+                  status: tenantOnboardingRunsTable.status,
+                  startedAt: tenantOnboardingRunsTable.startedAt,
+                })
+                .from(tenantOnboardingRunsTable)
+                .orderBy(desc(tenantOnboardingRunsTable.startedAt)),
+              postgres.database
+                .select({
+                  tenantScope: tenantMembershipInvitationsTable.tenantScope,
+                  tenantScopeId: tenantMembershipInvitationsTable.tenantScopeId,
+                  status: tenantMembershipInvitationsTable.status,
+                  issuedAt: tenantMembershipInvitationsTable.issuedAt,
+                })
+                .from(tenantMembershipInvitationsTable)
+                .orderBy(desc(tenantMembershipInvitationsTable.issuedAt)),
+              postgres.database
+                .select({
+                  scope: runtimeConfigOverridesTable.scope,
+                  scopeId: runtimeConfigOverridesTable.scopeId,
+                  value: runtimeConfigOverridesTable.value,
+                  changedAt: runtimeConfigOverridesTable.changedAt,
+                })
+                .from(runtimeConfigOverridesTable)
+                .where(
+                  and(
+                    eq(
+                      runtimeConfigOverridesTable.moduleId,
+                      platformModuleId.tenantBranding,
+                    ),
+                    eq(
+                      runtimeConfigOverridesTable.key,
+                      tenantBrandingConfigKey.companyName,
+                    ),
+                  ),
+                )
+                .orderBy(desc(runtimeConfigOverridesTable.changedAt)),
+              postgres.database
+                .select({
+                  scope: runtimeConfigOverrideProposalsTable.scope,
+                  scopeId: runtimeConfigOverrideProposalsTable.scopeId,
+                  status: runtimeConfigOverrideProposalsTable.status,
+                  changedAt: runtimeConfigOverrideProposalsTable.changedAt,
+                })
+                .from(runtimeConfigOverrideProposalsTable)
+                .orderBy(desc(runtimeConfigOverrideProposalsTable.changedAt)),
+              postgres.database
+                .select({
+                  scope: billingSubscriptionsTable.scope,
+                  scopeId: billingSubscriptionsTable.scopeId,
+                  status: billingSubscriptionsTable.status,
+                  updatedAt: billingSubscriptionsTable.updatedAt,
+                })
+                .from(billingSubscriptionsTable)
+                .orderBy(desc(billingSubscriptionsTable.updatedAt)),
+            ]);
+
+            return {
+              provisioningRows,
+              onboardingRows,
+              invitationRows,
+              brandingRows,
+              proposalRows,
+              subscriptionRows,
+            };
+          },
+          catch: (cause) =>
+            ({
+              _tag: "AdminTenantManagementDirectoryUnavailableError",
+              reason:
+                cause instanceof Error && cause.message.length > 0
+                  ? cause.message
+                  : "The tenant directory aggregate could not be loaded from PostgreSQL.",
+            }) satisfies AdminTenantManagementDirectoryUnavailableError,
+        }),
       persistIssuedInvitation:
         createPersistIssuedTenantInvitation(writeDatabase),
       persistRevokedInvitation:

@@ -202,6 +202,13 @@ describe("/admin/tokens admin operator test tokens route", () => {
     expect(rendered.container.ownerDocument.body.textContent).toContain(
       "aott_00000003_plaintext",
     );
+    expect(
+      getInputByPlaceholder(
+        rendered.container,
+        "Search labels, prefixes, or issuers…",
+      ).value,
+    ).toBe("Smoke harness token");
+    expect(rendered.container.textContent).toContain("Smoke harness token");
   });
 
   it("revokes a token through the high-risk guard", async () => {

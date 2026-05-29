@@ -356,6 +356,44 @@ describe("admin shell browser surface", () => {
     }
   });
 
+  it("does not restart root revalidation on rerender when using the default redirect handler", async () => {
+    const previousHarnessFlag =
+      adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+    delete adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;
+
+    try {
+      const redirectPath = buildAdminShellRedirectPath(
+        parseRouteLocation(adminRoutePath.operationsHome),
+        { kind: "shell" },
+      );
+      const invalidateBeforeRedirect = vi.fn(
+        () => new Promise<never>(() => {}),
+      );
+
+      await act(async () => {
+        root.render(
+          <AdminAuthRedirectState
+            redirectPath={redirectPath}
+            invalidateBeforeRedirect={invalidateBeforeRedirect}
+          />,
+        );
+      });
+
+      await act(async () => {
+        root.render(
+          <AdminAuthRedirectState
+            redirectPath={redirectPath}
+            invalidateBeforeRedirect={invalidateBeforeRedirect}
+          />,
+        );
+      });
+
+      expect(invalidateBeforeRedirect).toHaveBeenCalledTimes(1);
+    } finally {
+      restoreAdminBrowserHarnessFlag(previousHarnessFlag);
+    }
+  });
+
   it("prefers the browser auth URL when hydration starts from a stale router location", () => {
     expect(
       resolveAdminShellCurrentLocation(

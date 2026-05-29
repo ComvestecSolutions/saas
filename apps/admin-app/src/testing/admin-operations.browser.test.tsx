@@ -595,7 +595,7 @@ describe("admin operations browser flows", () => {
 
     const search = getInputByPlaceholder(
       rendered.container,
-      "Search tenants, environments, or scope ids…",
+      "Search tenants, scopes, or ids…",
     );
     await changeInputValue(search, knownAdminTargets.organization.scopeId);
     await waitFor(
@@ -607,7 +607,7 @@ describe("admin operations browser flows", () => {
     );
 
     await changeInputValue(search, "");
-    await click(getButtonByText(rendered.container, "Suspended"));
+    await click(getButtonByText(rendered.container, "Blocked"));
     await waitFor(
       () => rendered?.container.textContent?.includes("Umbrella") ?? false,
       "Expected canonical tenant directory tabs to narrow the roster.",

@@ -648,7 +648,7 @@ function AuditLogReadyView({
             </div>
           </Pane>
 
-          <Pane title="Focused investigation">
+          <Pane title="Focused investigation" scrollRegionFocusable>
             {focusedEvent ? (
               <div style={{ display: "grid", gap: "8px" }}>
                 <span className="ops-text-muted">
@@ -717,7 +717,7 @@ function AuditLogReadyView({
           </Pane>
 
           <div data-testid="audit-log-v2-correlation-clusters">
-            <Pane title="Correlation lanes">
+            <Pane title="Correlation lanes" scrollRegionFocusable>
               <div style={{ display: "grid", gap: "8px" }}>
                 <span className="ops-text-muted">
                   Top grouped investigations in the current slice.

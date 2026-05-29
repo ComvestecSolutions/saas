@@ -220,7 +220,7 @@ export function AdminTenantTargetForm({
                   setManualScopeId("");
                 }
               }}
-              placeholder="Search tenants by name, environment, or scope…"
+              placeholder="Search tenants by name, scope, or id…"
               autoComplete="off"
             />
           </label>

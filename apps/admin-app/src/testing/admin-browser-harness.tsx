@@ -37,15 +37,36 @@ const restoreReactActEnvironment = (
   adminBrowserHarnessGlobals.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
 };
 
-vi.mock("/src/lib/admin-shell-loader", async (importOriginal) => {
+vi.mock("/src/lib/admin-shell-loader", async () => {
   try {
-    const [actual, mockState] = await Promise.all([
-      importOriginal<typeof import("../lib/admin-shell-loader")>(),
+    const [
+      {
+        buildAdminAuthReturnTo,
+        buildAdminSignInPath,
+        buildAdminStaleSessionPath,
+      },
+      mockState,
+    ] = await Promise.all([
+      import("../auth/paths"),
       import("./admin-browser-mock-state"),
     ]);
 
     return {
-      ...actual,
+      buildAdminShellRedirectPath: (
+        location: {
+          readonly pathname: string;
+          readonly searchStr: string;
+        },
+        routeData: {
+          readonly kind: "shell" | "stale-session";
+        },
+      ) => {
+        const returnTo = buildAdminAuthReturnTo(location);
+
+        return routeData.kind === "stale-session"
+          ? buildAdminStaleSessionPath({ returnTo })
+          : buildAdminSignInPath({ returnTo });
+      },
       loadAdminShellLoaderData: mockState.mockedLoaders.shell,
     };
   } catch (error) {

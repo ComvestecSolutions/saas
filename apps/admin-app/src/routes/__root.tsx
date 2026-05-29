@@ -190,9 +190,7 @@ export function AdminAuthRedirectState({
   redirectPath,
   invalidateBeforeRedirect,
   htmlRedirectFallbackEnabled = true,
-  redirect = (path: string) => {
-    window.location.replace(path);
-  },
+  redirect = replaceAdminAuthLocation,
 }: Readonly<{
   redirectPath: string;
   invalidateBeforeRedirect?: () => Promise<unknown> | unknown;
@@ -250,6 +248,10 @@ export function AdminAuthRedirectState({
 
 export const buildAdminAuthRedirectInlineScript = (redirectPath: string) =>
   `window.location.replace(${JSON.stringify(redirectPath)});`;
+
+const replaceAdminAuthLocation = (path: string) => {
+  window.location.replace(path);
+};
 
 function isAdminBrowserHarnessEnabled() {
   return (

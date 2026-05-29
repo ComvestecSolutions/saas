@@ -1,19 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
+import { adminTenantDirectoryStatus } from "@comvestec/contracts";
 import {
   DenseDataTable,
   EmptyState,
-  HighRiskActionGuard,
   PermissionDeniedState,
   StatusChip,
-  type DenseDataTableBulkAction,
-  type DenseDataTableBulkActionConfirmRenderArgs,
   type StatusChipTone,
 } from "@comvestec/ui";
 import { AdminSessionRequiredState } from "./admin-session-required-state";
 import { FilterBar, KpiCard, ScreenHeader, Tabs } from "./ui";
-import { tenantBulkActionReasonsFixture } from "../desk/fixtures/tenants";
 import type {
   AdminTenantsDirectoryRow,
   AdminTenantsDirectoryRowStatus,
@@ -21,12 +18,18 @@ import type {
 } from "../lib/tenants-directory-route-data";
 
 const statusTone: Record<AdminTenantsDirectoryRowStatus, StatusChipTone> = {
-  active: "nominal",
-  pending: "pending",
-  suspended: "error",
+  [adminTenantDirectoryStatus.active]: "nominal",
+  [adminTenantDirectoryStatus.pending]: "pending",
+  [adminTenantDirectoryStatus.blocked]: "error",
 };
 
-type TenantFilter = "all" | "needs-review" | "active" | "pending" | "suspended";
+type TenantFilter = "all" | "needs-review" | AdminTenantsDirectoryRowStatus;
+
+const formatScopeLabel = (scope: string): string =>
+  scope
+    .split("-")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
 
 export function TenantsDirectoryScreen({
   data,
@@ -54,11 +57,11 @@ export function TenantsDirectoryScreen({
         ),
       },
       {
-        id: "environment",
-        header: "Environment",
-        accessorKey: "environment",
+        id: "scope",
+        header: "Scope",
+        accessorFn: (row) => row.target.scope,
         enableColumnFilter: true,
-        cell: (info) => info.getValue<string>(),
+        cell: ({ row }) => formatScopeLabel(row.original.target.scope),
       },
       {
         id: "status",
@@ -96,25 +99,11 @@ export function TenantsDirectoryScreen({
     [],
   );
 
-  const bulkActions = useMemo<
-    ReadonlyArray<DenseDataTableBulkAction<AdminTenantsDirectoryRow>>
-  >(
-    () => [
-      {
-        id: "freeze",
-        label: "Freeze tenants",
-        requiresConfirm: true,
-        onActivate: () => {},
-      },
-    ],
-    [],
-  );
-
   if (data.kind === "shell") {
     return (
       <AdminSessionRequiredState
         title="Operator session required"
-        description="Sign in with a platform-operator or support-operator session to inspect the tenant directory."
+        description="Sign in with a platform-operator session to inspect the tenant directory."
       />
     );
   }
@@ -143,7 +132,7 @@ export function TenantsDirectoryScreen({
       acc[row.status] += 1;
       return acc;
     },
-    { active: 0, pending: 0, suspended: 0 },
+    { active: 0, pending: 0, blocked: 0 },
   );
   const approvalsOpen = data.rows.reduce(
     (sum, row) => sum + row.approvalsOpen,
@@ -154,29 +143,27 @@ export function TenantsDirectoryScreen({
       filter === "all"
         ? true
         : filter === "needs-review"
-          ? row.approvalsOpen > 0 || row.status !== "active"
+          ? row.approvalsOpen > 0 ||
+            row.status !== adminTenantDirectoryStatus.active
           : row.status === filter;
     const loweredSearch = search.trim().toLowerCase();
     const matchesSearch =
       loweredSearch.length === 0
         ? true
-        : [
-            row.displayName,
-            row.environment,
-            row.status,
-            row.target.scope,
-            row.target.scopeId,
-          ]
+        : [row.displayName, row.status, row.target.scope, row.target.scopeId]
             .join(" ")
             .toLowerCase()
             .includes(loweredSearch);
     return matchesFilter && matchesSearch;
   });
   const needsReview = data.rows.filter(
-    (row) => row.approvalsOpen > 0 || row.status !== "active",
+    (row) =>
+      row.approvalsOpen > 0 || row.status !== adminTenantDirectoryStatus.active,
   ).length;
   const focusedTenant =
-    data.rows.find((row) => row.status === "suspended") ??
+    data.rows.find(
+      (row) => row.status === adminTenantDirectoryStatus.blocked,
+    ) ??
     [...data.rows].sort(
       (left, right) => right.approvalsOpen - left.approvalsOpen,
     )[0];
@@ -214,9 +201,9 @@ export function TenantsDirectoryScreen({
           tone={counts.pending > 0 ? "warn" : "neutral"}
         />
         <KpiCard
-          label="Suspended"
-          value={counts.suspended}
-          tone={counts.suspended > 0 ? "alert" : "neutral"}
+          label="Blocked"
+          value={counts.blocked}
+          tone={counts.blocked > 0 ? "alert" : "neutral"}
         />
         <KpiCard
           label="Open approvals"
@@ -244,9 +231,9 @@ export function TenantsDirectoryScreen({
           <p style={{ margin: 0, fontWeight: 700 }}>Review queue</p>
           <AttentionRow label="Needs review" value={needsReview} tone="warn" />
           <AttentionRow
-            label="Suspended"
-            value={counts.suspended}
-            tone={counts.suspended > 0 ? "alert" : "neutral"}
+            label="Blocked"
+            value={counts.blocked}
+            tone={counts.blocked > 0 ? "alert" : "neutral"}
           />
           <AttentionRow
             label="Pending"
@@ -306,9 +293,21 @@ export function TenantsDirectoryScreen({
         items={[
           { value: "all", label: "All", count: data.rows.length },
           { value: "needs-review", label: "Needs review", count: needsReview },
-          { value: "active", label: "Active", count: counts.active },
-          { value: "pending", label: "Pending", count: counts.pending },
-          { value: "suspended", label: "Suspended", count: counts.suspended },
+          {
+            value: adminTenantDirectoryStatus.active,
+            label: "Active",
+            count: counts.active,
+          },
+          {
+            value: adminTenantDirectoryStatus.pending,
+            label: "Pending",
+            count: counts.pending,
+          },
+          {
+            value: adminTenantDirectoryStatus.blocked,
+            label: "Blocked",
+            count: counts.blocked,
+          },
         ]}
       />
 
@@ -319,30 +318,14 @@ export function TenantsDirectoryScreen({
         <FilterBar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search tenants, environments, or scope ids…"
+          searchPlaceholder="Search tenants, scopes, or ids…"
         />
         <DenseDataTable<AdminTenantsDirectoryRow>
           columns={columns}
           data={filteredRows}
           getRowId={(row) => row.key}
-          bulkActions={bulkActions}
           ariaLabel="Tenant directory"
           emptyState="No tenants match the current filters."
-          renderBulkActionConfirm={(
-            args: DenseDataTableBulkActionConfirmRenderArgs<AdminTenantsDirectoryRow>,
-          ) => (
-            <HighRiskActionGuard
-              action={{ id: args.action.id, label: args.action.label }}
-              selection={args.selection}
-              reasons={tenantBulkActionReasonsFixture}
-              requireNote
-              onConfirm={() => args.onConfirm()}
-              onCancel={() => args.onCancel()}
-              renderSelectionSummary={(selection) =>
-                `${selection.length} tenant${selection.length === 1 ? "" : "s"} selected.`
-              }
-            />
-          )}
         />
       </section>
     </section>

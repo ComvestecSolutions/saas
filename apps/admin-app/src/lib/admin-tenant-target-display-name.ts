@@ -1,15 +1,5 @@
-import { tenantDirectoryFixture } from "../desk/fixtures/tenants";
-import {
-  serializeAdminTenantTarget,
-  type AdminTenantTargetReference,
-} from "./admin-tenant-target";
-
-const knownTargetDisplayNames = new Map(
-  tenantDirectoryFixture.map((row) => [
-    serializeAdminTenantTarget(row.target),
-    row.displayName,
-  ]),
-);
+import { platformScope } from "@comvestec/contracts";
+import { type AdminTenantTargetReference } from "./admin-tenant-target";
 
 const formatFallbackDisplayName = (scopeId: string): string =>
   scopeId
@@ -21,5 +11,6 @@ const formatFallbackDisplayName = (scopeId: string): string =>
 export const resolveAdminTenantTargetDisplayName = (
   target: Readonly<AdminTenantTargetReference>,
 ): string =>
-  knownTargetDisplayNames.get(serializeAdminTenantTarget(target)) ??
-  formatFallbackDisplayName(target.scopeId);
+  target.scope === platformScope.platform
+    ? "Platform"
+    : formatFallbackDisplayName(target.scopeId);

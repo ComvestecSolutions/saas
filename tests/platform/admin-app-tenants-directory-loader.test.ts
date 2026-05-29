@@ -8,46 +8,23 @@
  *   - `IdentitySessionRequestContextNotFoundError` → `stale-session`
  *   - boundary error → `error`
  *   - happy path → `ready` carrying the projected rows
- *
- * Escape-hatch note: no Phase-1 platform helper currently
- * exposes a tenant-directory aggregate; the loader still ships
- * the typed fixture as its row source pending the platform
- * follow-up tracked under the Admin app row of the tracker.
  */
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import {
-  actorType,
+  adminTenantDirectoryStatus,
   platformScope,
-  type RequestContext,
 } from "@comvestec/contracts";
 import {
   loadAdminTenantsDirectoryRouteDataFromRequest,
   type AdminTenantsDirectoryRow,
 } from "../../apps/admin-app/src/lib/tenants-directory-route-data";
 
-const trustedRequestContext: RequestContext = {
-  actorType: actorType.platformOperator,
-  actorId: "usr_platform_operator",
-  sessionId: "sess-admin-tenants-directory-loader",
-  correlationId: "corr-admin-tenants-directory-loader",
-  reason: "tenants-directory loader test",
-  tenant: {
-    scope: platformScope.platform,
-    scopeId: platformScope.platform,
-  },
-};
-
 const buildRequest = (sessionId: string | undefined) =>
   new Request("https://admin.local/", {
     headers:
       sessionId === undefined ? {} : { "x-comvestec-session-id": sessionId },
   });
-
-const resolveTrustedRequestContext = (
-  _environment: unknown,
-  sessionId: string,
-) => Effect.succeed({ ...trustedRequestContext, sessionId });
 
 const fixtureRows: readonly AdminTenantsDirectoryRow[] = [
   {
@@ -57,8 +34,7 @@ const fixtureRows: readonly AdminTenantsDirectoryRow[] = [
       scope: platformScope.organization,
       scopeId: "org_demo",
     },
-    environment: "production",
-    status: "active",
+    status: adminTenantDirectoryStatus.active,
     approvalsOpen: 0,
   },
   {
@@ -68,13 +44,12 @@ const fixtureRows: readonly AdminTenantsDirectoryRow[] = [
       scope: platformScope.enterprise,
       scopeId: "ent_atlas",
     },
-    environment: "production",
-    status: "active",
+    status: adminTenantDirectoryStatus.blocked,
     approvalsOpen: 1,
   },
 ];
 
-const loadRows = () => Effect.succeed(fixtureRows);
+const loadRows = (_sessionId: string) => Effect.succeed(fixtureRows);
 
 describe("admin-app tenants-directory loader", () => {
   it("returns shell when the subscriber-journey session id is missing", async () => {
@@ -82,7 +57,6 @@ describe("admin-app tenants-directory loader", () => {
       loadAdminTenantsDirectoryRouteDataFromRequest(
         buildRequest(undefined),
         {},
-        resolveTrustedRequestContext,
         () => Effect.die(new Error("row source should not run")),
       ),
     );
@@ -94,15 +68,56 @@ describe("admin-app tenants-directory loader", () => {
       loadAdminTenantsDirectoryRouteDataFromRequest(
         buildRequest("sess-stale"),
         {},
-        (_environment: unknown, sessionId: string) =>
+        (sessionId: string) =>
           Effect.fail({
             _tag: "IdentitySessionRequestContextNotFoundError",
             sessionId,
           } as const),
-        () => Effect.die(new Error("row source should not run")),
       ),
     );
     expect(result.kind).toBe("stale-session");
+  });
+
+  it("returns denied when the tenant directory backend rejects the session", async () => {
+    const result = await Effect.runPromise(
+      loadAdminTenantsDirectoryRouteDataFromRequest(
+        buildRequest("sess-denied"),
+        {},
+        () =>
+          Effect.fail({
+            _tag: "AdminTenantManagementAccessDeniedError",
+            reason:
+              "Tenant directory currently requires a platform-operator session.",
+            auditRequired: false,
+          } as const),
+      ),
+    );
+    expect(result.kind).toBe("denied");
+    if (result.kind !== "denied") return;
+    expect(result.reason).toBe(
+      "Tenant directory currently requires a platform-operator session.",
+    );
+  });
+
+  it("returns error when the tenant directory backend reports an unavailable aggregate", async () => {
+    const result = await Effect.runPromise(
+      loadAdminTenantsDirectoryRouteDataFromRequest(
+        buildRequest("sess-unavailable"),
+        {},
+        () =>
+          Effect.fail({
+            _tag: "AdminTenantManagementDirectoryUnavailableError",
+            reason:
+              "Tenant directory aggregate timed out while loading persisted sources.",
+          } as const),
+      ),
+    );
+    expect(result.kind).toBe("error");
+    if (result.kind !== "error") return;
+    expect(result.title).toBe("Tenant directory unavailable");
+    expect(result.description).toBe(
+      "Tenant directory aggregate timed out while loading persisted sources.",
+    );
   });
 
   it("returns error when the row source dies with a typed Error", async () => {
@@ -110,13 +125,8 @@ describe("admin-app tenants-directory loader", () => {
       loadAdminTenantsDirectoryRouteDataFromRequest(
         buildRequest("sess-error"),
         {},
-        resolveTrustedRequestContext,
         () =>
-          Effect.fail(
-            new Error(
-              "Upstream directory aggregate unavailable.",
-            ) as unknown as never,
-          ),
+          Effect.fail(new Error("Upstream directory aggregate unavailable.")),
       ),
     );
     expect(result.kind).toBe("error");
@@ -132,7 +142,6 @@ describe("admin-app tenants-directory loader", () => {
       loadAdminTenantsDirectoryRouteDataFromRequest(
         buildRequest("sess-ready"),
         {},
-        resolveTrustedRequestContext,
         loadRows,
       ),
     );
@@ -140,6 +149,6 @@ describe("admin-app tenants-directory loader", () => {
     if (result.kind !== "ready") return;
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]?.displayName).toBe("Acme Co.");
-    expect(result.rows[1]?.environment).toBe("production");
+    expect(result.rows[1]?.status).toBe(adminTenantDirectoryStatus.blocked);
   });
 });

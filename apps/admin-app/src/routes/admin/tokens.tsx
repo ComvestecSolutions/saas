@@ -219,6 +219,9 @@ function AdminTokensRoute() {
         plaintextToken: result.plaintextToken,
       });
       setTokenRevealed(true);
+      setStatusFilter("all");
+      tableState.setSearch(result.label);
+      tableState.setPage(1);
       await router.invalidate();
     } catch (error) {
       setIssueArmed(false);

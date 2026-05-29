@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { authorizationRelation } from "../access/authorization";
+import { platformScope } from "../access/platform-scopes";
 import { TenantContextSchema } from "../access/tenant-context";
 import { PublicBrandingProjectionSchema } from "./tenant-branding";
 import { PlatformModuleIdSchema } from "../module-registry/modules";
@@ -380,6 +381,69 @@ export const AdminTenantInvitationRevokeResultSchema = Schema.Struct({
 
 export type AdminTenantInvitationRevokeResult = Schema.Schema.Type<
   typeof AdminTenantInvitationRevokeResultSchema
+>;
+
+const AdminTenantDirectoryStatusConstantSchema = Schema.Struct({
+  active: Schema.Literal("active"),
+  pending: Schema.Literal("pending"),
+  blocked: Schema.Literal("blocked"),
+});
+
+export const adminTenantDirectoryStatus = Schema.validateSync(
+  AdminTenantDirectoryStatusConstantSchema,
+)({
+  active: "active",
+  pending: "pending",
+  blocked: "blocked",
+} satisfies Schema.Schema.Type<
+  typeof AdminTenantDirectoryStatusConstantSchema
+>);
+
+export const adminTenantDirectoryStatuses = [
+  adminTenantDirectoryStatus.active,
+  adminTenantDirectoryStatus.pending,
+  adminTenantDirectoryStatus.blocked,
+] as const;
+
+export const AdminTenantDirectoryStatusSchema = Schema.Literal(
+  ...adminTenantDirectoryStatuses,
+);
+
+export type AdminTenantDirectoryStatus = Schema.Schema.Type<
+  typeof AdminTenantDirectoryStatusSchema
+>;
+
+export const AdminTenantDirectoryTargetSchema = Schema.Struct({
+  scope: Schema.Literal(
+    platformScope.enterprise,
+    platformScope.organization,
+    platformScope.individual,
+  ),
+  scopeId: TenantContextSchema.fields.scopeId,
+});
+
+export type AdminTenantDirectoryTarget = Schema.Schema.Type<
+  typeof AdminTenantDirectoryTargetSchema
+>;
+
+export const AdminTenantDirectoryEntrySchema = Schema.Struct({
+  key: Schema.NonEmptyString,
+  displayName: Schema.NonEmptyString,
+  target: AdminTenantDirectoryTargetSchema,
+  status: AdminTenantDirectoryStatusSchema,
+  approvalsOpen: Schema.NonNegativeInt,
+});
+
+export type AdminTenantDirectoryEntry = Schema.Schema.Type<
+  typeof AdminTenantDirectoryEntrySchema
+>;
+
+export const AdminTenantDirectoryQueryResultSchema = Schema.Struct({
+  rows: Schema.Array(AdminTenantDirectoryEntrySchema),
+});
+
+export type AdminTenantDirectoryQueryResult = Schema.Schema.Type<
+  typeof AdminTenantDirectoryQueryResultSchema
 >;
 
 export const RedeemTenantInvitationRequestSchema = Schema.Struct({

@@ -35,4 +35,15 @@ describe("Pane", () => {
     click(host.querySelector("[data-pane-close]") as HTMLButtonElement);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("can make the scroll region keyboard focusable when the body is scroll-only content", () => {
+    const host = mount(
+      <Pane title="Focused investigation" scrollRegionFocusable>
+        body
+      </Pane>,
+    );
+    const body = host.querySelector("[data-pane-body]") as HTMLElement;
+    expect(body.getAttribute("tabindex")).toBe("0");
+    expect(body.getAttribute("aria-labelledby")).toBeTruthy();
+  });
 });

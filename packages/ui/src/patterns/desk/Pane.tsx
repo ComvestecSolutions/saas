@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { glassSurface } from "../../utils/glass";
 
 /**
@@ -16,6 +16,7 @@ export type PaneProps = {
   readonly children: ReactNode;
   readonly ariaLabel?: string;
   readonly onClose?: () => void;
+  readonly scrollRegionFocusable?: boolean;
 };
 
 export function Pane({
@@ -25,8 +26,21 @@ export function Pane({
   children,
   ariaLabel,
   onClose,
+  scrollRegionFocusable = false,
 }: PaneProps) {
   const surface = glassSurface({ radius: "pane" });
+  const titleId = useId();
+  const scrollRegionAccessibilityProps = scrollRegionFocusable
+    ? ariaLabel !== undefined
+      ? {
+          tabIndex: 0,
+          "aria-label": ariaLabel,
+        }
+      : {
+          tabIndex: 0,
+          "aria-labelledby": titleId,
+        }
+    : {};
   return (
     <section
       role="region"
@@ -55,6 +69,7 @@ export function Pane({
         }}
       >
         <h2
+          id={titleId}
           style={{
             margin: 0,
             fontFamily: "var(--font-condensed)",
@@ -89,6 +104,8 @@ export function Pane({
         </div>
       </header>
       <div
+        data-pane-body
+        {...scrollRegionAccessibilityProps}
         style={{
           flex: 1,
           minHeight: 0,

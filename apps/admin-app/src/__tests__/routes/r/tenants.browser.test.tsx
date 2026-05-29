@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { act } from "react";
 import { adminRoutePath } from "@comvestec/contracts";
 import {
   createAdminBrowserFixtureState,
@@ -23,7 +22,7 @@ import {
  * (`tenants-directory-loader`, `tenants-directory-route-server`)
  * is exercised end-to-end via the mocked `loadTenantsDirectory`
  * fixture builder. Asserts ready / denied / shell variants and
- * the `DenseDataTable` + `HighRiskActionGuard` render-prop seam.
+ * the table/search/filter behavior on the live route surface.
  */
 const TENANTS_PATH = adminRoutePath.tenantWorkspaceDiscovery;
 const LEGACY_TENANTS_PATH = "/tenants";
@@ -69,10 +68,10 @@ describe("/r/tenants resource route", () => {
     ).not.toBeNull();
     expect(rendered.container.querySelectorAll("[data-row-id]").length).toBe(4);
 
-    await click(getButtonByText(rendered.container, "Suspended"));
+    await click(getButtonByText(rendered.container, "Blocked"));
     await waitFor(
       () => rendered?.container.querySelectorAll("[data-row-id]").length === 1,
-      "Expected suspended tab to narrow the directory to one tenant.",
+      "Expected blocked tab to narrow the directory to one tenant.",
     );
     expect(rendered.container.textContent).toContain("Umbrella");
 
@@ -85,7 +84,7 @@ describe("/r/tenants resource route", () => {
     await changeInputValue(
       getInputByPlaceholder(
         rendered.container,
-        "Search tenants, environments, or scope ids…",
+        "Search tenants, scopes, or ids…",
       ),
       "ent_atlas",
     );
@@ -120,7 +119,7 @@ describe("/r/tenants resource route", () => {
     expect(rendered.router.state.location.pathname).toBe(TENANTS_PATH);
   });
 
-  it("opens the HighRiskActionGuard via renderBulkActionConfirm on bulk-action activation", async () => {
+  it("renders the tenant directory without dead bulk actions", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
       TENANTS_PATH,
@@ -134,34 +133,15 @@ describe("/r/tenants resource route", () => {
       "Expected tenant directory workspace to render before bulk actions.",
     );
 
-    const selectAll = rendered.container.querySelector<HTMLInputElement>(
-      '[data-testid="select-all"]',
-    );
-    expect(selectAll).not.toBeNull();
-
-    await act(async () => {
-      selectAll?.click();
-    });
-
-    const actionBar = rendered.container.querySelector(
-      "[data-bulk-action-bar]",
-    );
-    expect(actionBar).not.toBeNull();
-
-    const freezeButton = rendered.container.querySelector<HTMLButtonElement>(
-      '[data-bulk-action="freeze"]',
-    );
-    expect(freezeButton).not.toBeNull();
-
-    await act(async () => {
-      freezeButton?.click();
-    });
-
-    const guard = document.querySelector(
-      '[data-pattern="high-risk-action-guard"]',
-    );
-    expect(guard).not.toBeNull();
-    expect(guard?.getAttribute("data-action")).toBe("freeze");
+    expect(
+      rendered.container.querySelector('[data-testid="select-all"]'),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelector("[data-bulk-action-bar]"),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelector('[data-bulk-action="freeze"]'),
+    ).toBeNull();
   });
 
   it("renders the PermissionDeniedState when the loader returns denied", async () => {
