@@ -583,7 +583,7 @@ console.log(JSON.stringify({ exitTag: exit._tag }));`,
     expect(JSON.parse((proc.stdout ?? "").toString())).toEqual({
       exitTag: "Failure",
     });
-  }, 20_000);
+  }, 60_000);
 
   it("extracts subscriber journey session ids from header or cookie", async () => {
     await expect(

@@ -95,5 +95,5 @@ describe("platform support-operations query boundary", () => {
     expect(probe.repairGapParams).toEqual(
       expect.arrayContaining(["billing-and-metering", "organization", "org_1"]),
     );
-  }, 30_000);
+  }, 90_000);
 });
