@@ -26,6 +26,13 @@ Run from the repository root:
 - `bun run test:e2e` — operator journey
 - `bun run test:visual` — visual regression
 - `bun run test:a11y` — axe a11y audit
+- `bun run test:admin:local` — deploy the local admin stack,
+  provision the deterministic admin operator, then run the e2e,
+  a11y, and visual suites against the resolved localhost target
+
+Suite-specific local wrappers are also available through
+`bun run test:e2e:local`, `bun run test:a11y:local`, and
+`bun run test:visual:local`.
 
 The trusted-session fixture is env-bound. Required values live in
 `.env.example` (`ADMIN_E2E_*` block). When any value is unset the
@@ -34,6 +41,9 @@ gate is honest about whether a real platform target was available.
 
 Playwright configuration lives in `playwright.config.ts`. When
 `ADMIN_E2E_BASE_URL` is unset the config auto-starts the admin-app
-dev server at `http://127.0.0.1:3004` for local exploration; when
-`ADMIN_E2E_BASE_URL` is set (CI / staging) the webServer block is
-disabled so tests target the configured origin.
+dev server at `http://127.0.0.1:3004` for local exploration. When
+the resolved base URL still points at `localhost` / `127.0.0.1`,
+the config continues to reuse or start the repo-owned admin dev
+server so the local wrappers remain rerunnable without manual
+startup. Only non-local configured origins disable the `webServer`
+block and target the configured remote origin directly.

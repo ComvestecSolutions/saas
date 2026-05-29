@@ -1,4 +1,8 @@
 import { test as base, expect, type Page } from "@playwright/test";
+import {
+  resolveAdminTrustedSession,
+  type AdminTrustedSession,
+} from "../../admin-e2e-environment";
 
 /**
  * Trusted-session fixture for the admin-operator-journey suite.
@@ -27,95 +31,22 @@ import { test as base, expect, type Page } from "@playwright/test";
  * These keys live in `.env.example`. Operators run the suite under
  * `bun run test:e2e` after the corresponding values are populated.
  */
-export type AdminTrustedSession = {
-  readonly baseURL: string;
-  readonly tenantId: string;
-  readonly inviteEmail: string;
-  readonly tokenLabel: string;
-} & (
-  | {
-      readonly authMode: "cookie";
-      readonly cookieName: string;
-      readonly cookieValue: string;
-    }
-  | {
-      readonly authMode: "operator";
-      readonly operatorUsername: string;
-      readonly operatorPassword: string;
-    }
-);
-
-const requiredString = (key: string): string | undefined => {
-  const value = process.env[key];
-  if (value === undefined) return undefined;
-  if (value.length === 0) return undefined;
-  return value;
-};
-
 export const adminTest = base.extend<{
   readonly trustedSession: AdminTrustedSession;
   readonly signedInPage: Page;
 }>({
   trustedSession: async ({}, use, testInfo) => {
-    const baseURL = requiredString("ADMIN_E2E_BASE_URL");
-    const cookieName = requiredString("ADMIN_E2E_TRUSTED_SESSION_COOKIE_NAME");
-    const cookieValue = requiredString(
-      "ADMIN_E2E_TRUSTED_SESSION_COOKIE_VALUE",
-    );
-    const operatorUsername = requiredString("ADMIN_E2E_OPERATOR_USERNAME");
-    const operatorPassword = requiredString("ADMIN_E2E_OPERATOR_PASSWORD");
-    const tenantId = requiredString("ADMIN_E2E_TENANT_ID");
-    const inviteEmail = requiredString("ADMIN_E2E_INVITE_EMAIL");
-    const tokenLabel = requiredString("ADMIN_E2E_TOKEN_LABEL");
-    const hasTrustedCookie =
-      cookieName !== undefined && cookieValue !== undefined;
-    const hasOperatorCredentials =
-      operatorUsername !== undefined && operatorPassword !== undefined;
-    if (hasTrustedCookie && hasOperatorCredentials) {
-      throw new TypeError(
-        "Configure exactly one ADMIN_E2E auth mode: either trusted session cookie values or operator credentials, not both.",
-      );
-    }
-    if (
-      baseURL === undefined ||
-      tenantId === undefined ||
-      inviteEmail === undefined ||
-      tokenLabel === undefined ||
-      (!hasTrustedCookie && !hasOperatorCredentials)
-    ) {
+    const trustedSession = resolveAdminTrustedSession(process.env);
+
+    if (trustedSession === undefined) {
       testInfo.skip(
         true,
-        "ADMIN_E2E_* environment values are not configured; populate the entries in .env.example with either a trusted session cookie or real operator credentials before running this suite.",
+        "ADMIN_E2E_* environment values are not configured; placeholder values from .env.example count as unset until a local wrapper or real target injects either a trusted session cookie or real operator credentials.",
       );
       return;
-    }
-    if (hasOperatorCredentials) {
-      await use({
-        authMode: "operator",
-        baseURL,
-        tenantId,
-        inviteEmail,
-        tokenLabel,
-        operatorUsername,
-        operatorPassword,
-      });
-      return;
-    }
-    if (!hasTrustedCookie) {
-      throw new TypeError(
-        "Trusted session cookie values must be present when operator credentials are absent.",
-      );
     }
 
-    await use({
-      authMode: "cookie",
-      baseURL,
-      tenantId,
-      inviteEmail,
-      tokenLabel,
-      cookieName,
-      cookieValue,
-    });
+    await use(trustedSession);
   },
   signedInPage: async ({ context, page, trustedSession }, use) => {
     if (trustedSession.authMode === "cookie") {

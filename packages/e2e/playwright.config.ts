@@ -1,12 +1,15 @@
 import { defineConfig } from "@playwright/test";
+import {
+  resolveAdminE2EBaseUrl,
+  shouldUseLocalAdminWebServer,
+} from "./admin-e2e-environment";
 
 const repositoryRootDirectory = decodeURIComponent(
   new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"),
 );
 
-const explicitBaseURL = process.env["ADMIN_E2E_BASE_URL"];
-const shouldStartDevServer = explicitBaseURL === undefined;
-const baseURL = explicitBaseURL ?? "http://127.0.0.1:3004";
+const baseURL = resolveAdminE2EBaseUrl();
+const shouldStartDevServer = shouldUseLocalAdminWebServer();
 
 export default defineConfig({
   testDir: "./tests",

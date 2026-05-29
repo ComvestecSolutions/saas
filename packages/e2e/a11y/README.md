@@ -17,5 +17,12 @@ Run from the repo root:
 bun run test:a11y
 ```
 
+For the seeded localhost path, use `bun run test:a11y:local`.
+
 The trusted-session fixture skips the audit when `ADMIN_E2E_*` env
 values are absent — the gate never synthesizes local credentials.
+When the resolved target stays on `localhost` / `127.0.0.1`, the
+a11y Playwright config reuses or starts the repo-owned admin dev
+server so the local wrapper can rerun without separate manual
+startup. Remote and staging targets stay pinned to the configured
+origin and keep the `webServer` block disabled.

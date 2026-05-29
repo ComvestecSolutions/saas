@@ -1,5 +1,6 @@
 import { Effect, ParseResult, Schema } from "effect";
 import {
+  adminMemberRole,
   actorType,
   authorizationNamespace,
   authorizationRelation,
@@ -11,6 +12,7 @@ import {
 import {
   makeKeycloakAdapter,
   makeOryKetoAdapter,
+  makePostgresAdapter,
   runAdminOrganizationFromEnvironment,
 } from "@comvestec/platform";
 import {
@@ -27,6 +29,7 @@ const ProvisionAdminOperatorEnvironmentSchema = Schema.Struct({
   ADMIN_APP_BASE_URL: Schema.NonEmptyString,
   KETO_READ_URL: Schema.NonEmptyString,
   KETO_WRITE_URL: Schema.NonEmptyString,
+  POSTGRES_URL: Schema.NonEmptyString,
   KEYCLOAK_BASE_URL: Schema.NonEmptyString,
   KEYCLOAK_REALM: Schema.NonEmptyString,
   KEYCLOAK_CLIENT_ID: Schema.NonEmptyString,
@@ -214,6 +217,26 @@ const seedAdminOperatorAuthorizationTuples = (
     ),
   );
 
+const repairLegacyAdminMemberRoles = (
+  environment: ProvisionAdminOperatorEnvironment,
+) =>
+  makePostgresAdapter({
+    connectionString: environment.POSTGRES_URL,
+  }).pipe(
+    Effect.flatMap((postgres) =>
+      Effect.tryPromise({
+        try: () =>
+          postgres.sqlClient`
+            update admin_members
+            set role = ${adminMemberRole.adminOperator},
+                updated_at = now()
+            where role = ${actorType.platformOperator}
+          `,
+        catch: (cause) => cause,
+      }).pipe(Effect.ensuring(Effect.ignore(postgres.close))),
+    ),
+  );
+
 const verifyProvisionedOperator = (
   environment: ProvisionAdminOperatorEnvironment,
   input: ProvisionAdminOperatorInput,
@@ -395,6 +418,9 @@ const main = Effect.gen(function* () {
         "Failed to create or locate the requested admin operator in Keycloak.",
     } as const);
   }
+
+  console.log("Normalizing legacy admin member roles...");
+  yield* repairLegacyAdminMemberRoles(environment);
 
   console.log("Ensuring the initial admin-app owner membership exists...");
   const adminOwner = yield* runAdminOrganizationFromEnvironment(

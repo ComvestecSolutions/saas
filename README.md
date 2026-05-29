@@ -224,3 +224,9 @@ See [ops/docker/README.md](ops/docker/README.md) for the compose file split, pro
 | Vault            | `http://localhost:8200`     | default   |
 
 The backend API origin is available when `bun run backend:subscriber-journey:local` or `bun run backend:subscriber-journey:ready:local` is running. Its documentation and schema surfaces are `http://127.0.0.1:3010/api/docs` and `http://127.0.0.1:3010/api/openapi.json`.
+
+## Local Integration Validation
+
+- `bun run test:backend:e2e:local` bootstraps the subscriber-journey fixtures, refreshes the self-hosted Convex deployment with the pinned compatible CLI, and runs the backend E2E Vitest project.
+- `bun run test:admin:local` refreshes the same self-hosted Convex deployment, provisions the deterministic local admin operator, injects per-run invite/token data, and runs the admin Playwright journey, a11y, and visual suites end to end.
+- `bun run test:e2e:local`, `bun run test:a11y:local`, and `bun run test:visual:local` run the individual admin suites through that same local wrapper when you need a narrower rerun.

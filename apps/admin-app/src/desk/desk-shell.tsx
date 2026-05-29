@@ -691,6 +691,7 @@ export function DeskShell({
                 }}
               >
                 <div
+                  data-testid="context-spine-route-card"
                   style={{
                     padding: 6,
                     borderRadius: 10,
@@ -725,6 +726,7 @@ export function DeskShell({
                   </div>
                 </div>
                 <div
+                  data-testid="context-spine-capability-posture-card"
                   style={{
                     padding: 6,
                     borderRadius: 10,

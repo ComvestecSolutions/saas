@@ -6,6 +6,7 @@
     "types": ["node"]
   },
   "include": [
+    "admin-e2e-environment.ts",
     "playwright.config.ts",
     "tests/**/*.ts",
     "visual/**/*.ts",
