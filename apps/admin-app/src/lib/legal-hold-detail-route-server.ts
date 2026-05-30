@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminLegalHoldDetailInput,
   AdminLegalHoldDetailRouteData,
@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/legal-hold/$holdId`
@@ -17,63 +18,33 @@ import {
  * runs the route-data Effect on the server. No
  * Request/Response shaping lives here.
  */
-export type AdminLegalHoldDetailRawInput = {
-  readonly holdId?: unknown;
-  readonly scope?: unknown;
-  readonly scopeId?: unknown;
-};
-
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Legal hold detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const requirePlatformScope = (value: unknown): PlatformScope => {
-  if (typeof value !== "string" || !knownPlatformScopes.has(value)) {
-    throw new Error(
-      "Legal hold detail loader requires a known 'scope' platform scope.",
-    );
-  }
-  return value as PlatformScope;
-};
-
-const decodeRawInput = (
-  raw: AdminLegalHoldDetailRawInput | undefined,
-): AdminLegalHoldDetailInput => {
-  const safe = raw ?? {};
-  return {
-    holdId: requireString(safe.holdId, "holdId"),
-    scope: requirePlatformScope(safe.scope),
-    scopeId: requireString(safe.scopeId, "scopeId"),
-  };
-};
+const AdminLegalHoldDetailInputSchema = Schema.Struct({
+  holdId: Schema.NonEmptyString,
+  scope: PlatformScopeSchema,
+  scopeId: Schema.NonEmptyString,
+});
 
 const loadAdminLegalHoldDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminLegalHoldDetailRawInput | undefined,
+  input: AdminLegalHoldDetailInput,
 ): Promise<AdminLegalHoldDetailRouteData> => {
   const { loadAdminLegalHoldDetailRouteDataFromRequest } =
     await import("./legal-hold-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminLegalHoldDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminLegalHoldDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminLegalHoldDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminLegalHoldDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminLegalHoldDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminLegalHoldDetailRawInput | undefined;
+      readonly data: AdminLegalHoldDetailInput;
     }) => loadAdminLegalHoldDetailData(context.request, process.env, data),
   );

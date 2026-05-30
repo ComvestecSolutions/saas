@@ -9,12 +9,16 @@ import {
 } from "@comvestec/ui";
 import {
   platformScope,
-  platformScopes,
   webhookApiKeyStatus,
+  WebhookApiKeyTenantScopeSchema,
   type WebhookApiKeyTenantScope,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
 import {
   revokeAdminWebhookApiKey,
   rotateAdminWebhookApiKey,
@@ -83,27 +87,39 @@ const RawSearchSchema = Schema.Struct({
   scope: Schema.optional(Schema.String),
   scopeId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  scope: Schema.optional(Schema.Unknown),
+  scopeId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeTenantScope = decodeSchemaOrUndefined(
+  WebhookApiKeyTenantScopeSchema,
+);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const knownTenantScopes = new Set<string>([
-  platformScope.enterprise,
-  platformScope.organization,
-  platformScope.individual,
-]);
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const scope = decodeSearchString(search.scope);
+  const scopeId = decodeSearchString(search.scopeId);
+
+  return {
+    ...(scope === undefined ? {} : { scope }),
+    ...(scopeId === undefined ? {} : { scopeId }),
+  };
+};
 
 const decodeScope = (value: string | undefined): WebhookApiKeyTenantScope => {
-  if (value === undefined || !knownTenantScopes.has(value)) {
-    return platformScope.organization;
-  }
-  return value as WebhookApiKeyTenantScope;
+  return decodeTenantScope(value) ?? platformScope.organization;
 };
 
 const decodeScopeId = (value: string | undefined): string =>
-  value !== undefined && value.length > 0 ? value : platformScope.organization;
+  decodeNonEmptyString(value) ?? platformScope.organization;
 
 export const Route = createAdminAppFileRoute("/desk/api-key/$keyId")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const { loadAdminApiKeyDetailLoaderData } =
@@ -129,11 +145,6 @@ function ApiKeyDetailRoute() {
   const [revokeGuardArmed, setRevokeGuardArmed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-
-  // `platformScopes` is imported to keep the URL-known list in sync
-  // with the contracts; the validator already narrows to tenant
-  // scopes through `decodeScope` above.
-  void platformScopes;
 
   if (data.kind === "shell") {
     return (

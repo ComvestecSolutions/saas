@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { Schema } from "effect";
 import { RevealField, StateScreen } from "@comvestec/ui";
-import { platformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
+import { formatAdminInteger } from "../../../lib/number-format";
 import type {
   AdminInvoiceDetailInput,
   AdminInvoiceDetailRouteData,
@@ -26,48 +31,64 @@ import type {
  * detail is pending the typed Polar-invoice helper (tracked
  * under the Admin app row's Phase 4 follow-ups).
  */
-const knownPlatformScopes = Object.values(platformScope);
-
 const RawSearchSchema = Schema.Struct({
   tenantScope: Schema.optional(Schema.String),
   tenantScopeId: Schema.optional(Schema.String),
   customerId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  tenantScope: Schema.optional(Schema.Unknown),
+  tenantScopeId: Schema.optional(Schema.Unknown),
+  customerId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeTenantScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
+
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const tenantScope = decodeSearchString(search.tenantScope);
+  const tenantScopeId = decodeSearchString(search.tenantScopeId);
+  const customerId = decodeSearchString(search.customerId);
+
+  return {
+    ...(tenantScope === undefined ? {} : { tenantScope }),
+    ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
+    ...(customerId === undefined ? {} : { customerId }),
+  };
+};
 
 const decodeLoaderInput = (
   invoiceId: string,
   raw: RawSearch,
 ): AdminInvoiceDetailInput | null => {
+  const tenantScope = decodeTenantScope(raw.tenantScope);
+  const tenantScopeId = decodeNonEmptyString(raw.tenantScopeId);
+  const customerId = decodeNonEmptyString(raw.customerId);
   if (
-    raw.tenantScope === undefined ||
-    raw.tenantScopeId === undefined ||
-    raw.customerId === undefined ||
-    raw.tenantScope.length === 0 ||
-    raw.tenantScopeId.length === 0 ||
-    raw.customerId.length === 0
+    tenantScope === undefined ||
+    tenantScopeId === undefined ||
+    customerId === undefined
   ) {
-    return null;
-  }
-  if (!(knownPlatformScopes as readonly string[]).includes(raw.tenantScope)) {
     return null;
   }
   return {
     invoiceId,
     tenant: {
-      scope:
-        raw.tenantScope as (typeof platformScope)[keyof typeof platformScope],
-      scopeId: raw.tenantScopeId,
+      scope: tenantScope,
+      scopeId: tenantScopeId,
     },
-    customerId: raw.customerId,
+    customerId,
   };
 };
 
 const polarInvoiceDeepLinkBase = "https://polar.sh/dashboard/billing/invoices/";
 
 export const Route = createAdminAppFileRoute("/desk/invoice/$invoiceId")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const input = decodeLoaderInput(params.invoiceId, deps.search);
@@ -208,7 +229,7 @@ function InvoiceDetailRoute() {
         </dd>
         <dt>Total spend (minor units)</dt>
         <dd style={{ margin: 0 }}>
-          {summary.totalSpendCents.toLocaleString()}
+          {formatAdminInteger(summary.totalSpendCents)}
         </dd>
         <dt>Active subscriptions</dt>
         <dd style={{ margin: 0 }}>{summary.subscriptionCount}</dd>

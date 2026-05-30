@@ -6,6 +6,7 @@ import {
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
 import { resolveTrustedAdminRequestContextFromRequest } from "./trusted-admin-request-context-server";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 const ReleaseAdminRunAsGrantInputSchema = Schema.Struct({
   grantId: Schema.NonEmptyString,
@@ -25,18 +26,15 @@ export const releaseAdminRunAsGrant = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ReleaseAdminRunAsGrantInput) => input)
+  .inputValidator(decodeSyncBoundary(ReleaseAdminRunAsGrantInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ReleaseAdminRunAsGrantInput;
     }): Promise<ReleaseAdminRunAsGrantServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ReleaseAdminRunAsGrantInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -46,14 +44,14 @@ export const releaseAdminRunAsGrant = createServerFn({
       await Effect.runPromise(
         releaseRunAsGrantFromEnvironment(process.env, {
           requestContext,
-          grantId: decoded.grantId,
-          reason: decoded.reasonId,
-          reasonAttachmentText: decoded.reasonAttachmentText,
+          grantId: data.grantId,
+          reason: data.reasonId,
+          reasonAttachmentText: data.reasonAttachmentText,
         }),
       );
 
       return {
-        grantId: decoded.grantId,
+        grantId: data.grantId,
       };
     },
   );

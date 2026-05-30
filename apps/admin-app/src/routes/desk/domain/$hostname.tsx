@@ -10,10 +10,15 @@ import {
 } from "@comvestec/ui";
 import {
   customDomainLifecycleState,
+  PlatformScopeSchema,
   platformScope,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
 import { verifyAdminCustomDomain } from "../../../lib/domain-detail-mutations-server";
 import type {
   AdminDomainDetailInput,
@@ -41,36 +46,46 @@ import type {
  * verification through the trusted session and carries the
  * guard reason inside `approvalNotes`.
  */
-const knownPlatformScopes = Object.values(platformScope);
-
 const RawSearchSchema = Schema.Struct({
   tenantScope: Schema.optional(Schema.String),
   tenantScopeId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  tenantScope: Schema.optional(Schema.Unknown),
+  tenantScopeId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeTenantScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeTenantScopeId = decodeSchemaOrUndefined(Schema.NonEmptyString);
+
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const tenantScope = decodeSearchString(search.tenantScope);
+  const tenantScopeId = decodeSearchString(search.tenantScopeId);
+
+  return {
+    ...(tenantScope === undefined ? {} : { tenantScope }),
+    ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
+  };
+};
 
 const decodeLoaderInput = (
   hostname: string,
   raw: RawSearch,
 ): AdminDomainDetailInput | null => {
-  if (
-    raw.tenantScope === undefined ||
-    raw.tenantScopeId === undefined ||
-    raw.tenantScope.length === 0 ||
-    raw.tenantScopeId.length === 0
-  ) {
-    return null;
-  }
-  if (!(knownPlatformScopes as readonly string[]).includes(raw.tenantScope)) {
+  const tenantScope = decodeTenantScope(raw.tenantScope);
+  const tenantScopeId = decodeTenantScopeId(raw.tenantScopeId);
+  if (tenantScope === undefined || tenantScopeId === undefined) {
     return null;
   }
   return {
     hostname,
     tenant: {
-      scope:
-        raw.tenantScope as (typeof platformScope)[keyof typeof platformScope],
-      scopeId: raw.tenantScopeId,
+      scope: tenantScope,
+      scopeId: tenantScopeId,
     },
   };
 };
@@ -83,7 +98,7 @@ const verifyReasonCatalog: readonly HighRiskReason[] = [
 ];
 
 export const Route = createAdminAppFileRoute("/desk/domain/$hostname")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const input = decodeLoaderInput(params.hostname, deps.search);

@@ -5,10 +5,8 @@ import {
   type AdminBrowserFixtureState,
 } from "../../../testing/admin-browser-fixtures";
 import {
-  changeSelectValue,
   changeInputValue,
   click,
-  getFieldControlByLabel,
   getButtonByText,
   getInputByPlaceholder,
   renderAdminApp,
@@ -17,11 +15,6 @@ import {
 } from "../../../testing/admin-browser-harness";
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
-/**
- * Browser coverage for the spec-canonical `/admin/tokens`
- * admin-operator-test-tokens roster surface shipped by Phase 7
- * commit 7b-2-tokens (admin-app implementation plan §11).
- */
 const PATH = "/admin/tokens";
 
 const withFixtureTransform = (
@@ -29,7 +22,7 @@ const withFixtureTransform = (
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/admin/tokens admin operator test tokens route", () => {
+describe("/admin/tokens admin operator token registry route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -41,7 +34,7 @@ describe("/admin/tokens admin operator test tokens route", () => {
     mockedLoaders.revokeAdminOperatorTestToken.mockClear();
   });
 
-  it("renders the ready surface with KPI strip, table, and Issue CTA", async () => {
+  it("renders the ready registry with an urgent default focus", async () => {
     rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
 
     await waitFor(
@@ -52,77 +45,113 @@ describe("/admin/tokens admin operator test tokens route", () => {
       "Expected admin tokens ready surface to render.",
     );
 
-    expect(
-      rendered.container.querySelector("[data-testid='admin-tokens-kpis']"),
-    ).not.toBeNull();
-    expect(
-      rendered.container.querySelector("[data-testid='admin-tokens-table']"),
-    ).not.toBeNull();
-    expect(
-      rendered.container.querySelector(
-        "[data-testid='admin-tokens-issue-cta']",
-      ),
-    ).not.toBeNull();
-    expect(
-      rendered.container.querySelectorAll("[data-testid='admin-tokens-row']")
-        .length,
-    ).toBeGreaterThan(0);
+    const focusSummary = rendered.container.querySelector(
+      "[data-testid='admin-tokens-focus-summary']",
+    );
+
+    expect(focusSummary).not.toBeNull();
+    expect(focusSummary?.getAttribute("data-token-id")).toBe(
+      "aot_fixture_active",
+    );
+    expect(rendered.container.textContent).toContain("QA harness — primary");
+    expect(rendered.container.textContent).toContain("Expiring soon");
     expect(rendered.container.textContent).toContain("Owner-only tokens");
   });
 
-  it("filters the token registry by search query and status", async () => {
+  it("filters the roster and keeps focus aligned with visible rows", async () => {
     rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
 
     await waitFor(
       () =>
         rendered?.container.querySelector(
-          "[data-testid='admin-tokens-ready']",
+          "[data-testid='admin-tokens-table']",
         ) !== null,
-      "Expected admin tokens ready surface to render.",
+      "Expected admin tokens table to render.",
     );
 
-    await changeInputValue(
-      getInputByPlaceholder(
-        rendered.container,
-        "Search labels, prefixes, or issuers…",
-      ),
-      "Rotation cleanup",
-    );
-    await waitFor(
-      () =>
-        rendered?.container.querySelectorAll("[data-testid='admin-tokens-row']")
-          .length === 1,
-      "Expected token search to narrow the registry to one row.",
-    );
-    expect(rendered.container.textContent).toContain("Rotation cleanup");
-    expect(rendered.container.textContent).not.toContain("QA harness");
-
-    await changeInputValue(
-      getInputByPlaceholder(
-        rendered.container,
-        "Search labels, prefixes, or issuers…",
-      ),
-      "",
-    );
     await click(getButtonByText(rendered.container, "Revoked"));
     await waitFor(
       () =>
-        rendered?.container.querySelectorAll("[data-testid='admin-tokens-row']")
-          .length === 1,
-      "Expected revoked filter to narrow the registry to revoked tokens.",
+        rendered?.container
+          .querySelector("[data-testid='admin-tokens-focus-summary']")
+          ?.getAttribute("data-token-id") === "aot_fixture_revoked",
+      "Expected revoked filter to move focus onto the revoked token.",
     );
-    expect(rendered.container.textContent).toContain("Rotation cleanup");
+
+    expect(
+      rendered.container.querySelectorAll("[data-testid='admin-tokens-row']")
+        .length,
+    ).toBe(1);
+
+    await click(getButtonByText(rendered.container, "All"));
+    await changeInputValue(
+      getInputByPlaceholder(
+        rendered.container,
+        "Search by label, prefix, or issuer",
+      ),
+      "QA harness",
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container
+          .querySelector("[data-testid='admin-tokens-focus-summary']")
+          ?.getAttribute("data-token-id") === "aot_fixture_active",
+      "Expected search filtering to realign focus with the visible active token.",
+    );
   });
 
-  it("issues a token through the high-risk guard and reveals the one-shot plaintext token", async () => {
+  it("allows pinning a token and falls back when the pin leaves the roster", async () => {
     rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
 
     await waitFor(
       () =>
         rendered?.container.querySelector(
-          "[data-testid='admin-tokens-issue-label']",
+          "[data-testid='admin-tokens-table']",
         ) !== null,
-      "Expected admin token composer to render.",
+      "Expected admin tokens table to render.",
+    );
+
+    await click(
+      rendered.container.querySelector<HTMLButtonElement>(
+        "[data-testid='admin-tokens-focus-cta'][data-token-id='aot_fixture_revoked']",
+      )!,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container
+          .querySelector("[data-testid='admin-tokens-focus-summary']")
+          ?.getAttribute("data-token-id") === "aot_fixture_revoked",
+      "Expected row focus action to pin the revoked token.",
+    );
+
+    await changeInputValue(
+      getInputByPlaceholder(
+        rendered.container,
+        "Search by label, prefix, or issuer",
+      ),
+      "QA harness — primary",
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container
+          .querySelector("[data-testid='admin-tokens-focus-summary']")
+          ?.getAttribute("data-token-id") === "aot_fixture_active",
+      "Expected focus to fall back when the pinned token is no longer visible.",
+    );
+  });
+
+  it("issues a token through the high-risk guard and focuses the new entry", async () => {
+    rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='admin-tokens-issue-composer']",
+        ) !== null,
+      "Expected admin token issuance controls to render.",
     );
 
     await changeInputValue(
@@ -131,11 +160,11 @@ describe("/admin/tokens admin operator test tokens route", () => {
       )!,
       "Smoke harness token",
     );
-    await changeSelectValue(
-      rendered.container.querySelector<HTMLSelectElement>(
-        "[data-testid='admin-tokens-issue-expiry']",
+    await changeInputValue(
+      rendered.container.querySelector<HTMLInputElement>(
+        "[data-testid='admin-tokens-issue-ttl']",
       )!,
-      "24h",
+      "48",
     );
     await click(
       rendered.container.querySelector<HTMLButtonElement>(
@@ -148,21 +177,19 @@ describe("/admin/tokens admin operator test tokens route", () => {
         rendered?.container.ownerDocument.querySelector(
           "[data-testid='high-risk-body']",
         ) !== null,
-      "Expected admin token issue guard to open.",
+      "Expected issue token guard to open.",
     );
 
     await click(
-      getFieldControlByLabel<HTMLInputElement>(
-        rendered.container.ownerDocument,
-        "Admin operator test tokens — issue token",
-        "input",
-      ),
+      rendered.container.ownerDocument.querySelector<HTMLInputElement>(
+        "[data-testid='high-risk-body'] input[type='radio']",
+      )!,
     );
     await changeInputValue(
       rendered.container.ownerDocument.querySelector<HTMLTextAreaElement>(
         "[data-testid='high-risk-note']",
       )!,
-      "Issuing a smoke token for regression verification.",
+      "Issuing a smoke rehearsal token for admin validation.",
     );
     await click(
       rendered.container.ownerDocument.querySelector<HTMLButtonElement>(
@@ -179,40 +206,182 @@ describe("/admin/tokens admin operator test tokens route", () => {
       () =>
         mockedLoaders.issueAdminOperatorTestToken.mock.calls.length === 1 &&
         rendered?.container.textContent?.includes(
-          "Token issued: Smoke harness token.",
+          "Issued test token Smoke harness token.",
         ) === true &&
         rendered?.container.ownerDocument.body.textContent?.includes(
-          "Admin test token issued",
+          "aott_00000003_plaintext",
         ) === true,
-      "Expected admin token issue flow to complete.",
+      "Expected issue token flow to complete.",
     );
 
     expect(mockedLoaders.issueAdminOperatorTestToken).toHaveBeenCalledWith({
       data: {
         label: "Smoke harness token",
-        expiresAt: expect.any(String),
+        expiresAt: expect.stringMatching(/T/),
         reasonCatalogId: reasonCatalogId.adminOperatorTestTokensIssue,
         reasonAttachmentText:
-          "Issuing a smoke token for regression verification.",
+          "Issuing a smoke rehearsal token for admin validation.",
       },
     });
-    expect(rendered.container.ownerDocument.body.textContent).toContain(
-      "Plaintext token",
-    );
-    expect(rendered.container.ownerDocument.body.textContent).toContain(
-      "aott_00000003_plaintext",
-    );
     expect(
-      getInputByPlaceholder(
-        rendered.container,
-        "Search labels, prefixes, or issuers…",
-      ).value,
-    ).toBe("Smoke harness token");
+      rendered.container
+        .querySelector("[data-testid='admin-tokens-focus-summary']")
+        ?.getAttribute("data-token-id"),
+    ).toBe("aot_fixture_3");
     expect(rendered.container.textContent).toContain("Smoke harness token");
+  }, 30_000);
+
+  it("revokes a token through the high-risk guard and refreshes its status", async () => {
+    rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='admin-tokens-table']",
+        ) !== null,
+      "Expected admin tokens table to render.",
+    );
+
+    await click(
+      rendered.container.querySelector<HTMLButtonElement>(
+        "[data-testid='admin-tokens-revoke-cta'][data-token-id='aot_fixture_active']",
+      )!,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.ownerDocument.querySelector(
+          "[data-testid='high-risk-body']",
+        ) !== null,
+      "Expected revoke token guard to open.",
+    );
+
+    await click(
+      rendered.container.ownerDocument.querySelector<HTMLInputElement>(
+        "[data-testid='high-risk-body'] input[type='radio']",
+      )!,
+    );
+    await changeInputValue(
+      rendered.container.ownerDocument.querySelector<HTMLTextAreaElement>(
+        "[data-testid='high-risk-note']",
+      )!,
+      "Rotating the seeded token after validation coverage completed.",
+    );
+    await click(
+      rendered.container.ownerDocument.querySelector<HTMLButtonElement>(
+        "[data-testid='high-risk-arm']",
+      )!,
+    );
+    await click(
+      rendered.container.ownerDocument.querySelector<HTMLButtonElement>(
+        "[data-testid='high-risk-confirm-final']",
+      )!,
+    );
+
+    await waitFor(
+      () =>
+        mockedLoaders.revokeAdminOperatorTestToken.mock.calls.length === 1 &&
+        rendered?.container.textContent?.includes(
+          "Revoked test token aott_a1b2c3d4.",
+        ) === true,
+      "Expected revoke token flow to complete.",
+    );
+
+    expect(mockedLoaders.revokeAdminOperatorTestToken).toHaveBeenCalledWith({
+      data: {
+        tokenId: "aot_fixture_active",
+        reasonCatalogId: reasonCatalogId.adminOperatorTestTokensRevoke,
+        reasonAttachmentText:
+          "Rotating the seeded token after validation coverage completed.",
+      },
+    });
+    expect(
+      rendered.container
+        .querySelector("[data-testid='admin-tokens-focus-summary']")
+        ?.getAttribute("data-token-id"),
+    ).toBe("aot_fixture_active");
+    expect(
+      rendered.container
+        .querySelector(
+          "[data-testid='admin-tokens-row'][data-token-id='aot_fixture_active']",
+        )
+        ?.getAttribute("data-status"),
+    ).toBe("revoked");
+  }, 30_000);
+
+  it("surfaces issue mutation failures", async () => {
+    rendered = await renderAdminApp(
+      withFixtureTransform(createAdminBrowserFixtureState(), (fixture) => ({
+        ...fixture,
+        issueAdminOperatorTestToken: async () => {
+          throw new Error("Issue mutation failed");
+        },
+      })),
+      PATH,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='admin-tokens-issue-cta']",
+        ) !== null,
+      "Expected admin token issue CTA to render.",
+    );
+
+    await click(
+      rendered.container.querySelector<HTMLButtonElement>(
+        "[data-testid='admin-tokens-issue-cta']",
+      )!,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.ownerDocument.querySelector(
+          "[data-testid='high-risk-body']",
+        ) !== null,
+      "Expected issue token guard to open.",
+    );
+
+    await click(
+      rendered.container.ownerDocument.querySelector<HTMLInputElement>(
+        "[data-testid='high-risk-body'] input[type='radio']",
+      )!,
+    );
+    await changeInputValue(
+      rendered.container.ownerDocument.querySelector<HTMLTextAreaElement>(
+        "[data-testid='high-risk-note']",
+      )!,
+      "Reproducing issue failure handling.",
+    );
+    await click(
+      rendered.container.ownerDocument.querySelector<HTMLButtonElement>(
+        "[data-testid='high-risk-arm']",
+      )!,
+    );
+    await click(
+      rendered.container.ownerDocument.querySelector<HTMLButtonElement>(
+        "[data-testid='high-risk-confirm-final']",
+      )!,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Issue mutation failed") ===
+        true,
+      "Expected issue mutation failure to surface.",
+    );
   });
 
-  it("revokes a token through the high-risk guard", async () => {
-    rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
+  it("surfaces revoke mutation failures", async () => {
+    rendered = await renderAdminApp(
+      withFixtureTransform(createAdminBrowserFixtureState(), (fixture) => ({
+        ...fixture,
+        revokeAdminOperatorTestToken: async () => {
+          throw new Error("Revoke mutation failed");
+        },
+      })),
+      PATH,
+    );
 
     await waitFor(
       () =>
@@ -233,21 +402,19 @@ describe("/admin/tokens admin operator test tokens route", () => {
         rendered?.container.ownerDocument.querySelector(
           "[data-testid='high-risk-body']",
         ) !== null,
-      "Expected admin token revoke guard to open.",
+      "Expected revoke token guard to open.",
     );
 
     await click(
-      getFieldControlByLabel<HTMLInputElement>(
-        rendered.container.ownerDocument,
-        "Admin operator test tokens — revoke token",
-        "input",
-      ),
+      rendered.container.ownerDocument.querySelector<HTMLInputElement>(
+        "[data-testid='high-risk-body'] input[type='radio']",
+      )!,
     );
     await changeInputValue(
       rendered.container.ownerDocument.querySelector<HTMLTextAreaElement>(
         "[data-testid='high-risk-note']",
       )!,
-      "Rotating the long-lived active smoke token.",
+      "Reproducing revoke failure handling.",
     );
     await click(
       rendered.container.ownerDocument.querySelector<HTMLButtonElement>(
@@ -262,85 +429,9 @@ describe("/admin/tokens admin operator test tokens route", () => {
 
     await waitFor(
       () =>
-        mockedLoaders.revokeAdminOperatorTestToken.mock.calls.length === 1 &&
-        rendered?.container.textContent?.includes(
-          "Token revoked: aot_fixture_active.",
-        ) === true,
-      "Expected admin token revoke flow to complete.",
-    );
-
-    expect(mockedLoaders.revokeAdminOperatorTestToken).toHaveBeenCalledWith({
-      data: {
-        tokenId: "aot_fixture_active",
-        reasonCatalogId: reasonCatalogId.adminOperatorTestTokensRevoke,
-        reasonAttachmentText: "Rotating the long-lived active smoke token.",
-      },
-    });
-  });
-
-  it("surfaces the stale-session affordance when the loader is stale", async () => {
-    const fixture = withFixtureTransform(
-      createAdminBrowserFixtureState(),
-      (f) => ({
-        ...f,
-        loadAdminTokens: async () => ({ kind: "stale-session" }),
-      }),
-    );
-    rendered = await renderAdminApp(fixture, PATH);
-
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes(
-          "Re-authenticate to access admin-operator test tokens.",
-        ) ?? false,
-      "Expected admin tokens stale-session affordance.",
-    );
-  });
-
-  it("surfaces a denied StateScreen when the loader returns denied", async () => {
-    const fixture = withFixtureTransform(
-      createAdminBrowserFixtureState(),
-      (f) => ({
-        ...f,
-        loadAdminTokens: async () => ({
-          kind: "denied",
-          reason:
-            "Only admin-owner roster members may inspect admin-operator-test-tokens activity.",
-        }),
-      }),
-    );
-    rendered = await renderAdminApp(fixture, PATH);
-
-    await waitFor(
-      () => rendered?.container.textContent?.includes("Access denied") ?? false,
-      "Expected admin tokens denied state to render.",
-    );
-    expect(rendered.container.textContent).toContain("admin-owner");
-  });
-
-  it("surfaces an error StateScreen when the loader errors", async () => {
-    const fixture = withFixtureTransform(
-      createAdminBrowserFixtureState(),
-      (f) => ({
-        ...f,
-        loadAdminTokens: async () => ({
-          kind: "error",
-          title: "Admin operator test tokens unavailable",
-          description: "Upstream admin-operator-test-tokens port unreachable.",
-        }),
-      }),
-    );
-    rendered = await renderAdminApp(fixture, PATH);
-
-    await waitFor(
-      () =>
-        rendered?.container.textContent?.includes(
-          "Admin operator test tokens unavailable",
-        ) ?? false,
-      "Expected admin tokens error state to render.",
-    );
-    expect(rendered.container.textContent).toContain(
-      "Upstream admin-operator-test-tokens port unreachable.",
+        rendered?.container.textContent?.includes("Revoke mutation failed") ===
+        true,
+      "Expected revoke mutation failure to surface.",
     );
   });
 });

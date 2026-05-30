@@ -19,6 +19,7 @@ import {
   tanstackStartServerRuntime,
   type TanstackStartServerRuntime,
 } from "./tanstack-start-server-runtime";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 const AdminAccessControlTupleInputSchema = Schema.Struct({
   namespace: Schema.Literal(...authorizationNamespaces),
@@ -76,16 +77,13 @@ type ProvisionAdminOperator = (
 
 const runDeleteAdminAuthorizationTuple = async <Result>(input: {
   readonly request: Request;
-  readonly data: unknown;
+  readonly data: DeleteAdminAuthorizationTupleInput;
   readonly execute: (requestInput: {
     readonly sessionId: string;
     readonly tuple: AdminGovernanceAuthorizationTupleView;
     readonly reason: string;
   }) => Promise<Result>;
 }) => {
-  const requestData = await Effect.runPromise(
-    Schema.decodeUnknown(DeleteAdminAuthorizationTupleInputSchema)(input.data),
-  );
   const { extractRequiredSubscriberJourneySessionId } =
     await import("@comvestec/platform");
   const sessionId = await Effect.runPromise(
@@ -94,14 +92,14 @@ const runDeleteAdminAuthorizationTuple = async <Result>(input: {
 
   return input.execute({
     sessionId,
-    tuple: requestData.tuple,
-    reason: requestData.reason,
+    tuple: input.data.tuple,
+    reason: input.data.reason,
   });
 };
 
 const runProvisionAdminOperator = async <Result>(input: {
   readonly request: Request;
-  readonly data: unknown;
+  readonly data: ProvisionAdminOperatorInput;
   readonly execute: (requestInput: {
     readonly sessionId: string;
     readonly displayName: string;
@@ -113,9 +111,6 @@ const runProvisionAdminOperator = async <Result>(input: {
     readonly reason: string;
   }) => Promise<Result>;
 }) => {
-  const requestData = await Effect.runPromise(
-    Schema.decodeUnknown(ProvisionAdminOperatorInputSchema)(input.data),
-  );
   const { extractRequiredSubscriberJourneySessionId } =
     await import("@comvestec/platform");
   const sessionId = await Effect.runPromise(
@@ -124,13 +119,13 @@ const runProvisionAdminOperator = async <Result>(input: {
 
   return input.execute({
     sessionId,
-    displayName: requestData.displayName,
-    email: requestData.email,
-    ...(requestData.username === undefined
+    displayName: input.data.displayName,
+    email: input.data.email,
+    ...(input.data.username === undefined
       ? {}
-      : { username: requestData.username }),
-    actorType: requestData.actorType,
-    reason: requestData.reason,
+      : { username: input.data.username }),
+    actorType: input.data.actorType,
+    reason: input.data.reason,
   });
 };
 
@@ -144,14 +139,16 @@ export const createDeleteAdminAccessControlTuple = (
   accessControlServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(accessControlServerFn)])
-    .inputValidator((input: DeleteAdminAuthorizationTupleInput) => input)
+    .inputValidator(
+      decodeSyncBoundary(DeleteAdminAuthorizationTupleInputSchema),
+    )
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: DeleteAdminAuthorizationTupleInput;
       }) =>
         runDeleteAdminAuthorizationTuple({
           request: context.request,
@@ -178,14 +175,14 @@ export const createDeleteAdminAccessControlTuple = (
 
 export const deleteAdminAccessControlTuple = createServerFn({ method: "POST" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: DeleteAdminAuthorizationTupleInput) => input)
+  .inputValidator(decodeSyncBoundary(DeleteAdminAuthorizationTupleInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: DeleteAdminAuthorizationTupleInput;
     }) =>
       runDeleteAdminAuthorizationTuple({
         request: context.request,
@@ -212,14 +209,14 @@ export const createProvisionAdminAccessControlOperator = (
   accessControlServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(accessControlServerFn)])
-    .inputValidator((input: ProvisionAdminOperatorInput) => input)
+    .inputValidator(decodeSyncBoundary(ProvisionAdminOperatorInputSchema))
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: ProvisionAdminOperatorInput;
       }) =>
         runProvisionAdminOperator({
           request: context.request,
@@ -245,14 +242,14 @@ export const provisionAdminAccessControlOperator = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ProvisionAdminOperatorInput) => input)
+  .inputValidator(decodeSyncBoundary(ProvisionAdminOperatorInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ProvisionAdminOperatorInput;
     }) =>
       runProvisionAdminOperator({
         request: context.request,

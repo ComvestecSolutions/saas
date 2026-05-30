@@ -1,7 +1,7 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
-  platformAdapterServiceName,
+  PlatformAdapterServiceNameSchema,
   type PlatformAdapterServiceName,
 } from "@comvestec/contracts";
 import type {
@@ -12,6 +12,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/vendor/$service` (admin-app
@@ -23,51 +24,31 @@ import {
  * {@link platformAdapterServiceName} vocabulary so no raw
  * service-name literal leaks past the loader boundary.
  */
-export type AdminVendorDetailRawInput = {
-  readonly serviceName?: unknown;
-};
-
-const knownServiceNames = new Set<string>(
-  Object.values(platformAdapterServiceName),
-);
-
-const requireServiceName = (value: unknown): PlatformAdapterServiceName => {
-  if (typeof value !== "string" || !knownServiceNames.has(value)) {
-    throw new Error(
-      "Vendor detail loader requires 'serviceName' to be a known platformAdapterServiceName.",
-    );
-  }
-  return value as PlatformAdapterServiceName;
-};
-
-const decodeRawInput = (
-  raw: AdminVendorDetailRawInput | undefined,
-): AdminVendorDetailInput => ({
-  serviceName: requireServiceName(raw?.serviceName),
+const AdminVendorDetailInputSchema = Schema.Struct({
+  serviceName: PlatformAdapterServiceNameSchema,
 });
 
 const loadAdminVendorDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminVendorDetailRawInput | undefined,
+  input: AdminVendorDetailInput,
 ): Promise<AdminVendorDetailRouteData> => {
   const { loadAdminVendorDetailRouteDataFromRequest } =
     await import("./vendor-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminVendorDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminVendorDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminVendorDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminVendorDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminVendorDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminVendorDetailRawInput | undefined;
+      readonly data: AdminVendorDetailInput;
     }) => loadAdminVendorDetailData(context.request, process.env, data),
   );

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { Schema } from "effect";
 import {
   DiffApprovalDrawer,
   HighRiskActionGuard,
@@ -11,13 +12,17 @@ import {
 } from "@comvestec/ui";
 import {
   platformModuleId,
-  platformModuleIds,
+  PlatformModuleIdSchema,
   type PlatformModuleId,
 } from "@comvestec/contracts";
 import { findModuleManifest } from "@comvestec/config";
 import { createAdminAppFileRoute } from "../../../../file-route";
 import { RuntimeConfigListTable } from "../../../../components/runtime-config-list-table";
 import { ScreenHeader, ShieldIcon } from "../../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../../lib/effect-boundary";
 import type {
   AdminGovernanceConfigV2Input,
   AdminGovernanceConfigV2RouteData,
@@ -47,21 +52,21 @@ import { buildAdminRuntimeConfigPath } from "../../../../lib/admin-runtime-confi
  * are deferred to commit 2b per the prompt's authorized escape
  * hatch.
  */
-const platformModuleIdValues = platformModuleIds as readonly PlatformModuleId[];
-
-const isKnownPlatformModuleId = (value: string): value is PlatformModuleId =>
-  (platformModuleIdValues as readonly string[]).includes(value);
+const ConfigDetailParamsSchema = Schema.Struct({
+  moduleId: Schema.String,
+  configKey: Schema.NonEmptyString,
+});
+const decodeConfigDetailParams = decodeSyncBoundary(ConfigDetailParamsSchema);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
 
 const decodeParams = (params: {
   readonly moduleId: string;
   readonly configKey: string;
 }): AdminGovernanceConfigV2Input => {
-  const moduleId = isKnownPlatformModuleId(params.moduleId)
-    ? params.moduleId
-    : platformModuleId.runtimeConfig;
+  const { moduleId, configKey } = decodeConfigDetailParams(params);
   return {
-    moduleId,
-    key: params.configKey,
+    moduleId: decodeModuleId(moduleId) ?? platformModuleId.runtimeConfig,
+    key: configKey,
   };
 };
 

@@ -1,4 +1,4 @@
-import { Effect, ParseResult, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
   tenantMembershipMutationAction,
@@ -28,6 +28,7 @@ import {
   tanstackStartServerRuntime,
   type TanstackStartServerRuntime,
 } from "./tanstack-start-server-runtime";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Tenant workspace mutation server-fns (admin-app implementation
@@ -156,17 +157,13 @@ const runTenantWorkspaceMutation = async <
   TResult,
 >(input: {
   readonly request: Request;
-  readonly data: unknown;
-  readonly decode: (
-    value: unknown,
-  ) => Effect.Effect<TData, ParseResult.ParseError>;
+  readonly data: TData;
   readonly execute: (requestInput: {
     readonly sessionId: string;
     readonly tenant: ReturnType<typeof buildAdminTenantContext>;
     readonly data: TData;
   }) => Promise<TResult>;
 }) => {
-  const requestData = await Effect.runPromise(input.decode(input.data));
   const { extractRequiredSubscriberJourneySessionId } =
     await import("@comvestec/platform");
   const sessionId = await Effect.runPromise(
@@ -174,15 +171,15 @@ const runTenantWorkspaceMutation = async <
   );
   const tenant = await Effect.runPromise(
     resolveTenantContextFromInput({
-      tenantId: requestData.tenantId,
-      scope: requestData.scope,
+      tenantId: input.data.tenantId,
+      scope: input.data.scope,
     }),
   );
 
   return input.execute({
     sessionId,
     tenant,
-    data: requestData,
+    data: input.data,
   });
 };
 
@@ -194,14 +191,16 @@ export const createMutateAdminTenantMembership = (
   tenantWorkspaceServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(tenantWorkspaceServerFn)])
-    .inputValidator((input: AdminTenantMembershipMutationInput) => input)
+    .inputValidator(
+      decodeSyncBoundary(AdminTenantMembershipMutationInputSchema),
+    )
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: AdminTenantMembershipMutationInput;
       }) =>
         runTenantWorkspaceMutation<
           AdminTenantMembershipMutationInput,
@@ -209,9 +208,6 @@ export const createMutateAdminTenantMembership = (
         >({
           request: context.request,
           data,
-          decode: Schema.decodeUnknown(
-            AdminTenantMembershipMutationInputSchema,
-          ),
           execute: async ({ sessionId, tenant, data: requestData }) => {
             const requestInput = {
               sessionId,
@@ -240,14 +236,14 @@ export const createMutateAdminTenantMembership = (
 
 export const mutateAdminTenantMembership = createServerFn({ method: "POST" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminTenantMembershipMutationInput) => input)
+  .inputValidator(decodeSyncBoundary(AdminTenantMembershipMutationInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: AdminTenantMembershipMutationInput;
     }) =>
       runTenantWorkspaceMutation<
         AdminTenantMembershipMutationInput,
@@ -255,7 +251,6 @@ export const mutateAdminTenantMembership = createServerFn({ method: "POST" })
       >({
         request: context.request,
         data,
-        decode: Schema.decodeUnknown(AdminTenantMembershipMutationInputSchema),
         execute: async ({ sessionId, tenant, data: requestData }) => {
           const { mutateTenantMembershipFromSessionId } =
             await import("@comvestec/platform");
@@ -282,14 +277,14 @@ export const createIssueAdminTenantInvitation = (
   tenantWorkspaceServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(tenantWorkspaceServerFn)])
-    .inputValidator((input: AdminTenantInvitationIssueInput) => input)
+    .inputValidator(decodeSyncBoundary(AdminTenantInvitationIssueInputSchema))
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: AdminTenantInvitationIssueInput;
       }) =>
         runTenantWorkspaceMutation<
           AdminTenantInvitationIssueInput,
@@ -297,7 +292,6 @@ export const createIssueAdminTenantInvitation = (
         >({
           request: context.request,
           data,
-          decode: Schema.decodeUnknown(AdminTenantInvitationIssueInputSchema),
           execute: async ({ sessionId, tenant, data: requestData }) => {
             const requestInput = {
               sessionId,
@@ -325,14 +319,14 @@ export const createIssueAdminTenantInvitation = (
 
 export const issueAdminTenantInvitation = createServerFn({ method: "POST" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminTenantInvitationIssueInput) => input)
+  .inputValidator(decodeSyncBoundary(AdminTenantInvitationIssueInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: AdminTenantInvitationIssueInput;
     }) =>
       runTenantWorkspaceMutation<
         AdminTenantInvitationIssueInput,
@@ -340,7 +334,6 @@ export const issueAdminTenantInvitation = createServerFn({ method: "POST" })
       >({
         request: context.request,
         data,
-        decode: Schema.decodeUnknown(AdminTenantInvitationIssueInputSchema),
         execute: async ({ sessionId, tenant, data: requestData }) => {
           const { issueTenantInvitationFromSessionId } =
             await import("@comvestec/platform");
@@ -366,14 +359,14 @@ export const createRevokeAdminTenantInvitation = (
   tenantWorkspaceServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(tenantWorkspaceServerFn)])
-    .inputValidator((input: AdminTenantInvitationRevokeInput) => input)
+    .inputValidator(decodeSyncBoundary(AdminTenantInvitationRevokeInputSchema))
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: AdminTenantInvitationRevokeInput;
       }) =>
         runTenantWorkspaceMutation<
           AdminTenantInvitationRevokeInput,
@@ -381,7 +374,6 @@ export const createRevokeAdminTenantInvitation = (
         >({
           request: context.request,
           data,
-          decode: Schema.decodeUnknown(AdminTenantInvitationRevokeInputSchema),
           execute: async ({ sessionId, tenant, data: requestData }) => {
             const requestInput = {
               sessionId,
@@ -408,14 +400,14 @@ export const createRevokeAdminTenantInvitation = (
 
 export const revokeAdminTenantInvitation = createServerFn({ method: "POST" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminTenantInvitationRevokeInput) => input)
+  .inputValidator(decodeSyncBoundary(AdminTenantInvitationRevokeInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: AdminTenantInvitationRevokeInput;
     }) =>
       runTenantWorkspaceMutation<
         AdminTenantInvitationRevokeInput,
@@ -423,7 +415,6 @@ export const revokeAdminTenantInvitation = createServerFn({ method: "POST" })
       >({
         request: context.request,
         data,
-        decode: Schema.decodeUnknown(AdminTenantInvitationRevokeInputSchema),
         execute: async ({ sessionId, tenant, data: requestData }) => {
           const { revokeTenantInvitationFromSessionId } =
             await import("@comvestec/platform");

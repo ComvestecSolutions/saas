@@ -23,14 +23,16 @@ import {
  * error StateScreen.
  */
 const PATH_EMPTY = "/desk/billing";
-const PATH_WITH_TENANTS = `/desk/billing?tenants=${encodeURIComponent(
+const TENANT_TARGETS_PARAM = encodeURIComponent(
   JSON.stringify(
     JSON.stringify([
       { scope: "organization", scopeId: "org_demo" },
       { scope: "enterprise", scopeId: "ent_atlas" },
     ]),
   ),
-)}`;
+);
+const PATH_WITH_TENANTS = `/desk/billing?tenants=${TENANT_TARGETS_PARAM}`;
+const PATH_WITH_SELECTED_TENANT = `${PATH_WITH_TENANTS}&selectedTenantId=org_demo`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
@@ -71,8 +73,85 @@ describe("/desk/billing Billing Operations v2 route", () => {
       rendered.container.querySelectorAll("[data-testid='billing-list-row']")
         .length,
     ).toBe(2);
-    expect(rendered.container.textContent).toContain("Acme Co.");
-    expect(rendered.container.textContent).toContain("Globex");
+    expect(
+      rendered.container.querySelector("[data-testid='billing-list-table']")
+        ?.textContent,
+    ).toContain("Org Demo");
+    expect(
+      rendered.container.querySelector("[data-testid='billing-list-table']")
+        ?.textContent,
+    ).toContain("Ent Atlas");
+  });
+
+  it("hydrates the focused tenant summary when selectedTenantId is supplied", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      PATH_WITH_SELECTED_TENANT,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='billing-list-focus-summary']",
+        ) !== null,
+      "Expected focused billing summary to render from the URL selection.",
+    );
+
+    const focusedSummary = rendered.container.querySelector(
+      "[data-testid='billing-list-focus-summary']",
+    );
+    expect(focusedSummary?.textContent).toContain("Org Demo");
+    expect(focusedSummary?.textContent).toContain("org_demo");
+    expect(
+      rendered.container.querySelectorAll(
+        "[data-testid='billing-list-row'][data-selected='true']",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("focuses a tenant row from the billing table", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      PATH_WITH_TENANTS,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelectorAll(
+          "[data-testid='billing-list-select']",
+        ).length === 2,
+      "Expected billing row focus actions to render.",
+    );
+
+    const rowFocusButton = rendered.container
+      .querySelectorAll<HTMLButtonElement>(
+        "[data-testid='billing-list-select']",
+      )
+      .item(1);
+    if (rowFocusButton === null) {
+      throw new Error("Expected a second billing row focus button.");
+    }
+
+    await click(rowFocusButton);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='billing-list-focus-summary']",
+        ) !== null,
+      "Expected billing focus summary to update after selecting a row.",
+    );
+
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='billing-list-focus-summary']",
+      )?.textContent,
+    ).toContain("Ent Atlas");
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='billing-list-row'][data-selected='true']",
+      )?.textContent,
+    ).toContain("Ent Atlas");
   });
 
   it("renders the empty-state pivot when no tenants are supplied", async () => {
@@ -132,6 +211,56 @@ describe("/desk/billing Billing Operations v2 route", () => {
         "[data-testid='billing-list-target-chip']",
       ),
     ).toHaveLength(1);
+  });
+
+  it("removes the selected billing target and clears the focused summary", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      PATH_WITH_SELECTED_TENANT,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='billing-list-focus-summary']",
+        ) !== null,
+      "Expected selected billing summary before removing the focused target.",
+    );
+
+    const removeButton = rendered.container
+      .querySelectorAll<HTMLButtonElement>(
+        "[data-testid='billing-list-remove-target']",
+      )
+      .item(0);
+    if (removeButton === null) {
+      throw new Error("Expected a billing target remove button.");
+    }
+
+    await click(removeButton);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='billing-list-focus-empty']",
+        ) !== null,
+      "Expected the focused billing summary to clear after removing the selected target.",
+    );
+
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='billing-list-focus-summary']",
+      ),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelectorAll(
+        "[data-testid='billing-list-target-chip']",
+      ),
+    ).toHaveLength(1);
+    expect(
+      rendered.container.querySelectorAll(
+        "[data-testid='billing-list-row'][data-selected='true']",
+      ),
+    ).toHaveLength(0);
   });
 
   it("surfaces a denied StateScreen when the loader returns denied", async () => {

@@ -69,6 +69,11 @@ describe("/desk/incident/$incidentId Incident detail route", () => {
         "[data-testid='incident-detail-release-cta']",
       ),
     ).not.toBeNull();
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='incident-detail-countdown']",
+      )?.textContent,
+    ).toContain("1440 minutes remaining");
   });
 
   it("invokes the release mutations-server flow through the high-risk guard", async () => {

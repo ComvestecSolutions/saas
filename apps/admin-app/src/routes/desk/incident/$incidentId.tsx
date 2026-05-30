@@ -11,6 +11,7 @@ import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
 import { releaseAdminBreakGlassGrant } from "../../../lib/incident-detail-mutations-server";
 import type { AdminIncidentDetailRouteData } from "../../../lib/incident-detail-route-data";
+import { computeMinutesUntilReference } from "../../../lib/reference-time";
 
 /**
  * `/desk/incident/$incidentId` — spec-canonical Break-glass
@@ -45,16 +46,6 @@ const releaseReasonCatalog: readonly HighRiskReason[] = [
   },
 ];
 
-const computeExpiryCountdownMinutes = (
-  expiresAt: string,
-  now: Date,
-): number | null => {
-  const expiresAtMs = Date.parse(expiresAt);
-  if (Number.isNaN(expiresAtMs)) return null;
-  const deltaMs = expiresAtMs - now.getTime();
-  return Math.round(deltaMs / 60_000);
-};
-
 export const Route = createAdminAppFileRoute("/desk/incident/$incidentId")({
   loader: async ({ params }) => {
     const { loadAdminIncidentDetailLoaderData } =
@@ -79,7 +70,10 @@ function IncidentDetailRoute() {
 
   const expiryMinutes = useMemo(() => {
     if (data.kind !== "ready") return null;
-    return computeExpiryCountdownMinutes(data.incident.expiresAt, new Date());
+    return computeMinutesUntilReference(
+      data.incident.expiresAt,
+      data.generatedAt,
+    );
   }, [data]);
 
   if (data.kind === "shell") {

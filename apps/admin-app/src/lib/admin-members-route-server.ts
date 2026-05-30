@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { adminMemberRole, type AdminMemberRole } from "@comvestec/contracts";
+import { AdminMemberRoleSchema } from "@comvestec/contracts";
 import type {
   AdminMembersInput,
   AdminMembersRouteData,
@@ -9,47 +9,54 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical
  * `/admin/members` admin-org roster surface (admin-app
  * implementation plan §11 — Phase 7 commit 7b-1).
  */
-export type AdminMembersRawInput = {
-  readonly filter?: {
-    readonly role?: unknown;
-    readonly includeArchived?: unknown;
-  };
-};
+const AdminMembersFilterRawSchema = Schema.Struct({
+  role: Schema.optional(Schema.Unknown),
+  includeArchived: Schema.optional(Schema.Unknown),
+});
 
-const ROLE_LITERAL_SET = new Set<AdminMemberRole>(
-  Object.values(adminMemberRole),
+const AdminMembersRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    filter: Schema.optional(Schema.Unknown),
+  }),
 );
 
-const decodeRole = (raw: unknown): AdminMemberRole | undefined => {
-  if (typeof raw !== "string") {
-    return undefined;
-  }
-  return ROLE_LITERAL_SET.has(raw as AdminMemberRole)
-    ? (raw as AdminMemberRole)
-    : undefined;
-};
+type AdminMembersRawInput = Schema.Schema.Type<
+  typeof AdminMembersRawInputSchema
+>;
 
-const decodeIncludeArchived = (raw: unknown): boolean | undefined =>
-  typeof raw === "boolean" ? raw : undefined;
+const decodeAdminMembersRawInput = decodeSyncBoundary(
+  AdminMembersRawInputSchema,
+);
+const decodeAdminMembersFilter = decodeSchemaOrUndefined(
+  AdminMembersFilterRawSchema,
+);
+const decodeRole = decodeSchemaOrUndefined(AdminMemberRoleSchema);
+const decodeIncludeArchived = decodeSchemaOrUndefined(Schema.Boolean);
 
-const decodeRawInput = (
-  raw: AdminMembersRawInput | undefined,
+const normalizeAdminMembersInput = (
+  raw: AdminMembersRawInput,
 ): AdminMembersInput => {
-  const filter = raw?.filter;
+  const filter = decodeAdminMembersFilter(raw?.filter);
+
   if (filter === undefined) {
     return {};
   }
+
   const role = decodeRole(filter.role);
   const includeArchived = decodeIncludeArchived(filter.includeArchived);
+
   if (role === undefined && includeArchived === undefined) {
     return {};
   }
+
   return {
     filter: {
       ...(role !== undefined ? { role } : {}),
@@ -61,25 +68,27 @@ const decodeRawInput = (
 const loadAdminMembersData = async (
   request: Request,
   environment: unknown,
-  raw: AdminMembersRawInput | undefined,
+  input: AdminMembersInput,
 ): Promise<AdminMembersRouteData> => {
   const { loadAdminMembersRouteDataFromRequest } =
     await import("./admin-members-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminMembersRouteDataFromRequest(request, environment, decoded),
+    loadAdminMembersRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminMembersData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminMembersRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminMembersInput(decodeAdminMembersRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminMembersRawInput | undefined;
+      readonly data: AdminMembersInput;
     }) => loadAdminMembersData(context.request, process.env, data),
   );

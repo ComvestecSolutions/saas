@@ -5,6 +5,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import { resolveTrustedAdminRequestContextFromRequest } from "./trusted-admin-request-context-server";
 
 const RetryAdminWebhookDeliveryInputSchema = Schema.Struct({
@@ -24,18 +25,15 @@ export const retryAdminWebhookDelivery = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: RetryAdminWebhookDeliveryInput) => input)
+  .inputValidator(decodeSyncBoundary(RetryAdminWebhookDeliveryInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: RetryAdminWebhookDeliveryInput;
     }): Promise<RetryAdminWebhookDeliveryServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(RetryAdminWebhookDeliveryInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -46,14 +44,14 @@ export const retryAdminWebhookDelivery = createServerFn({
         retryOperatorWebhookDeliveryFromEnvironment(process.env, {
           requestContext,
           retry: {
-            id: decoded.deliveryId,
-            retryReasonCatalogId: decoded.retryReasonCatalogId,
+            id: data.deliveryId,
+            retryReasonCatalogId: data.retryReasonCatalogId,
           },
         }),
       );
 
       return {
-        deliveryId: decoded.deliveryId,
+        deliveryId: data.deliveryId,
       };
     },
   );

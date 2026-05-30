@@ -1,12 +1,9 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
-  supportOperationsBreakGlassIncidentStatus,
-  supportOperationsCaseStatus,
-  supportOperationsImpersonationSessionStatus,
-  type SupportOperationsBreakGlassIncidentStatus,
-  type SupportOperationsCaseStatus,
-  type SupportOperationsImpersonationSessionStatus,
+  SupportOperationsBreakGlassIncidentStatusSchema,
+  SupportOperationsCaseStatusSchema,
+  SupportOperationsImpersonationSessionStatusSchema,
 } from "@comvestec/contracts";
 import type {
   AdminSupportCasesInput,
@@ -16,6 +13,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical `/desk/support`
@@ -25,49 +23,36 @@ import {
  * server. No Request/Response shaping lives here — that belongs
  * in platform HTTP adapters.
  */
-export type AdminSupportCasesRawInput = {
-  readonly caseStatus?: unknown;
-  readonly incidentStatus?: unknown;
-  readonly impersonationStatus?: unknown;
-  readonly selectedIncidentId?: unknown;
-};
-
-const knownCaseStatuses = new Set<string>(
-  Object.values(supportOperationsCaseStatus),
-);
-const knownIncidentStatuses = new Set<string>(
-  Object.values(supportOperationsBreakGlassIncidentStatus),
-);
-const knownImpersonationStatuses = new Set<string>(
-  Object.values(supportOperationsImpersonationSessionStatus),
+const AdminSupportCasesRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    caseStatus: Schema.optional(Schema.Unknown),
+    incidentStatus: Schema.optional(Schema.Unknown),
+    impersonationStatus: Schema.optional(Schema.Unknown),
+    selectedIncidentId: Schema.optional(Schema.Unknown),
+  }),
 );
 
-const decodeCaseStatus = (
-  value: unknown,
-): SupportOperationsCaseStatus | undefined =>
-  typeof value === "string" && knownCaseStatuses.has(value)
-    ? (value as SupportOperationsCaseStatus)
-    : undefined;
+type AdminSupportCasesRawInput = Schema.Schema.Type<
+  typeof AdminSupportCasesRawInputSchema
+>;
 
-const decodeIncidentStatus = (
-  value: unknown,
-): SupportOperationsBreakGlassIncidentStatus | undefined =>
-  typeof value === "string" && knownIncidentStatuses.has(value)
-    ? (value as SupportOperationsBreakGlassIncidentStatus)
-    : undefined;
+const decodeAdminSupportCasesRawInput = decodeSyncBoundary(
+  AdminSupportCasesRawInputSchema,
+);
+const decodeCaseStatus = decodeSchemaOrUndefined(
+  SupportOperationsCaseStatusSchema,
+);
+const decodeIncidentStatus = decodeSchemaOrUndefined(
+  SupportOperationsBreakGlassIncidentStatusSchema,
+);
+const decodeImpersonationStatus = decodeSchemaOrUndefined(
+  SupportOperationsImpersonationSessionStatusSchema,
+);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const decodeImpersonationStatus = (
-  value: unknown,
-): SupportOperationsImpersonationSessionStatus | undefined =>
-  typeof value === "string" && knownImpersonationStatuses.has(value)
-    ? (value as SupportOperationsImpersonationSessionStatus)
-    : undefined;
-
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeRawInput = (
-  raw: AdminSupportCasesRawInput | undefined,
+const normalizeAdminSupportCasesInput = (
+  raw: AdminSupportCasesRawInput,
 ): AdminSupportCasesInput => {
   const safe = raw ?? {};
   const caseStatus = decodeCaseStatus(safe.caseStatus);
@@ -87,25 +72,27 @@ const decodeRawInput = (
 const loadAdminSupportCasesData = async (
   request: Request,
   environment: unknown,
-  raw: AdminSupportCasesRawInput | undefined,
+  input: AdminSupportCasesInput,
 ): Promise<AdminSupportCasesRouteData> => {
   const { loadAdminSupportCasesRouteDataFromRequest } =
     await import("./support-cases-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminSupportCasesRouteDataFromRequest(request, environment, decoded),
+    loadAdminSupportCasesRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminSupportCasesData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminSupportCasesRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminSupportCasesInput(decodeAdminSupportCasesRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminSupportCasesRawInput | undefined;
+      readonly data: AdminSupportCasesInput;
     }) => loadAdminSupportCasesData(context.request, process.env, data),
   );

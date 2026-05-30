@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminBillingListInput,
   AdminBillingListRouteData,
@@ -10,6 +10,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the `/desk/billing` Billing
@@ -19,49 +20,58 @@ import {
  * route-data Effect on the server. No Request/Response shaping
  * here — that belongs in platform HTTP adapters.
  */
-export type AdminBillingListRawInput = {
-  readonly tenantTargets?: unknown;
-  readonly selectedTenantId?: unknown;
-};
+const AdminBillingListTenantTargetSchema = Schema.Struct({
+  scope: PlatformScopeSchema,
+  scopeId: Schema.NonEmptyString,
+});
 
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
+const AdminBillingListRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    tenantTargets: Schema.optional(Schema.Unknown),
+    selectedTenantId: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const isPlatformScope = (value: unknown): value is PlatformScope =>
-  typeof value === "string" && knownPlatformScopes.has(value);
+type AdminBillingListRawInput = Schema.Schema.Type<
+  typeof AdminBillingListRawInputSchema
+>;
 
-const decodeTenantTarget = (
-  value: unknown,
-): AdminBillingListTenantTarget | undefined => {
-  if (typeof value !== "object" || value === null) return undefined;
-  const candidate = value as { scope?: unknown; scopeId?: unknown };
-  if (!isPlatformScope(candidate.scope)) return undefined;
-  if (typeof candidate.scopeId !== "string" || candidate.scopeId.length === 0) {
-    return undefined;
-  }
-  return { scope: candidate.scope, scopeId: candidate.scopeId };
-};
+const decodeAdminBillingListRawInput = decodeSyncBoundary(
+  AdminBillingListRawInputSchema,
+);
+const decodeTenantTarget = decodeSchemaOrUndefined(
+  AdminBillingListTenantTargetSchema,
+);
+const decodeTenantTargetEntries = decodeSchemaOrUndefined(
+  Schema.Array(Schema.Unknown),
+);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
 const decodeTenantTargets = (
   value: unknown,
 ): readonly AdminBillingListTenantTarget[] => {
-  if (!Array.isArray(value)) return [];
+  const entries = decodeTenantTargetEntries(value) ?? [];
   const decoded: AdminBillingListTenantTarget[] = [];
-  for (const entry of value) {
+
+  for (const entry of entries) {
     const target = decodeTenantTarget(entry);
-    if (target !== undefined) decoded.push(target);
+
+    if (target !== undefined) {
+      decoded.push(target);
+    }
   }
+
   return decoded;
 };
 
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeRawInput = (
-  raw: AdminBillingListRawInput | undefined,
+const normalizeAdminBillingListInput = (
+  raw: AdminBillingListRawInput,
 ): AdminBillingListInput => {
   const safe = raw ?? {};
   const tenantTargets = decodeTenantTargets(safe.tenantTargets);
   const selectedTenantId = decodeOptionalString(safe.selectedTenantId);
+
   return {
     tenantTargets,
     ...(selectedTenantId === undefined ? {} : { selectedTenantId }),
@@ -71,25 +81,27 @@ const decodeRawInput = (
 const loadAdminBillingListData = async (
   request: Request,
   environment: unknown,
-  raw: AdminBillingListRawInput | undefined,
+  input: AdminBillingListInput,
 ): Promise<AdminBillingListRouteData> => {
   const { loadAdminBillingListRouteDataFromRequest } =
     await import("./billing-list-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminBillingListRouteDataFromRequest(request, environment, decoded),
+    loadAdminBillingListRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminBillingListData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminBillingListRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminBillingListInput(decodeAdminBillingListRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminBillingListRawInput | undefined;
+      readonly data: AdminBillingListInput;
     }) => loadAdminBillingListData(context.request, process.env, data),
   );

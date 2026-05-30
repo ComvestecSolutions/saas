@@ -96,25 +96,49 @@ export function StateScreen({
       data-pattern="state-screen"
       data-variant={variant}
       style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        padding: 10,
-        minHeight: 200,
+        display: "grid",
+        justifyItems: "center",
+        alignContent: "center",
+        gap: 10,
+        width: "100%",
+        minHeight: 240,
+        padding: "clamp(18px, 3vw, 32px)",
         textAlign: "center",
-        background: tokens.background,
+        background:
+          "linear-gradient(180deg, color-mix(in oklab, white 3%, transparent), transparent 36%), " +
+          tokens.background,
         border: tokens.border,
-        borderRadius: 8,
+        borderRadius: 18,
+        boxShadow:
+          "0 28px 48px -40px rgb(0 0 0 / 0.88), inset 0 1px 0 color-mix(in oklab, white 4%, transparent)",
       }}
     >
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 84,
+          padding: "5px 10px",
+          borderRadius: 999,
+          fontFamily: "var(--font-condensed)",
+          fontSize: "0.68rem",
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--fg-muted)",
+          background: "color-mix(in oklab, white 4%, transparent)",
+          border: "1px solid color-mix(in oklab, white 6%, transparent)",
+        }}
+      >
+        {variant === "5xx" ? "System fault" : variant.replace("5", "")}
+      </span>
       {variant === "loading" ? (
         <span
           aria-hidden="true"
           style={{
-            width: 20,
-            height: 20,
+            width: 28,
+            height: 28,
             borderRadius: "50%",
             border: "2px solid color-mix(in oklab, white 12%, transparent)",
             borderTopColor: "var(--fg-default)",
@@ -127,9 +151,17 @@ export function StateScreen({
           aria-hidden="true"
           data-state-icon=""
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 52,
+            height: 52,
+            borderRadius: 16,
             fontSize: "1.25rem",
             color: tokens.iconColor,
-            fontWeight: 600,
+            fontWeight: 700,
+            background: "color-mix(in oklab, white 4%, transparent)",
+            border: "1px solid color-mix(in oklab, white 7%, transparent)",
           }}
         >
           {tokens.icon}
@@ -139,8 +171,9 @@ export function StateScreen({
         style={{
           margin: 0,
           fontWeight: 600,
-          fontSize: "0.9375rem",
+          fontSize: "clamp(1.05rem, 1.4vw, 1.25rem)",
           color: "var(--fg-default)",
+          letterSpacing: "-0.02em",
         }}
       >
         {resolvedTitle}
@@ -149,16 +182,28 @@ export function StateScreen({
         <p
           style={{
             margin: 0,
-            fontSize: "0.8125rem",
+            fontSize: "0.86rem",
             color: "var(--fg-muted)",
-            maxWidth: "44ch",
-            lineHeight: 1.6,
+            maxWidth: "56ch",
+            lineHeight: 1.7,
           }}
         >
           {description}
         </p>
       ) : null}
-      {action !== undefined ? <div>{action}</div> : null}
+      {action !== undefined ? (
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          {action}
+        </div>
+      ) : null}
       {correlationId !== undefined ? (
         <p
           data-testid="state-screen-correlation"
@@ -166,8 +211,12 @@ export function StateScreen({
             margin: 0,
             fontFamily:
               "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)",
-            fontSize: "0.6875rem",
+            fontSize: "0.72rem",
             color: "var(--fg-muted)",
+            padding: "5px 8px",
+            borderRadius: 999,
+            background: "color-mix(in oklab, white 4%, transparent)",
+            border: "1px solid color-mix(in oklab, white 6%, transparent)",
           }}
         >
           correlation: {correlationId}

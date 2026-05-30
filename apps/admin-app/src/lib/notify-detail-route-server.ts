@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import type {
   AdminNotifyDetailInput,
@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical
@@ -17,45 +18,31 @@ import {
  * runs the route-data Effect on the server. No
  * Request/Response shaping lives here.
  */
-export type AdminNotifyDetailRawInput = {
-  readonly notificationId?: unknown;
-};
-
-const requireNotificationId = (value: unknown): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error("Notification detail loader requires 'notificationId'.");
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminNotifyDetailRawInput | undefined,
-): AdminNotifyDetailInput => ({
-  notificationId: requireNotificationId(raw?.notificationId),
+const AdminNotifyDetailInputSchema = Schema.Struct({
+  notificationId: Schema.NonEmptyString,
 });
 
 const loadAdminNotifyDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminNotifyDetailRawInput | undefined,
+  input: AdminNotifyDetailInput,
 ): Promise<AdminNotifyDetailRouteData> => {
   const { loadAdminNotifyDetailRouteDataFromRequest } =
     await import("./notify-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminNotifyDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminNotifyDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminNotifyDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminNotifyDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminNotifyDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminNotifyDetailRawInput | undefined;
+      readonly data: AdminNotifyDetailInput;
     }) => loadAdminNotifyDetailData(context.request, process.env, data),
   );

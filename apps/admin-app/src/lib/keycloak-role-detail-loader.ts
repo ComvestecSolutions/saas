@@ -11,11 +11,7 @@ export const loadAdminKeycloakRoleDetailLoaderData = async (
     import("./keycloak-role-detail-route-server").then(
       ({ getAdminKeycloakRoleDetailData }) =>
         getAdminKeycloakRoleDetailData({
-          data: {
-            roleId: next.roleId,
-            tenantScope: next.tenant.scope,
-            tenantScopeId: next.tenant.scopeId,
-          },
+          data: next,
         }) as Promise<AdminKeycloakRoleDetailRouteData>,
     ),
 ): Promise<AdminKeycloakRoleDetailRouteData> => loadRouteData(input);

@@ -16,7 +16,7 @@ import {
 
 /**
  * Browser coverage for the spec-canonical `/desk/runs` Workflow Runs
- * v2 list surface shipped by Phase 6 commit 6b
+ * v4 list surface aligned to the signal-deck redesign slice
  * (admin-app implementation plan §8.14 + §11).
  */
 const PATH = "/desk/runs";
@@ -26,7 +26,7 @@ const withFixtureTransform = (
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/desk/runs Workflow Runs v2 list route", () => {
+describe("/desk/runs Workflow Runs v4 list route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -36,7 +36,7 @@ describe("/desk/runs Workflow Runs v2 list route", () => {
     }
   });
 
-  it("renders the ready runs workspace with pivots, search, and partial-failure review", async () => {
+  it("renders the ready runs workspace with focus, pivots, search, and partial-failure review", async () => {
     const readyFixture = withFixtureTransform(
       createAdminBrowserFixtureState(),
       (fixture) => ({
@@ -79,6 +79,28 @@ describe("/desk/runs Workflow Runs v2 list route", () => {
                 durationMs: undefined,
                 attempt: 3,
               },
+              {
+                runId: "wfr_browser_4",
+                moduleId: platformModuleId.supportOperations,
+                workflowKey: "platform.support.escalation.sync",
+                status: workflowRunStatus.queued,
+                queuedAt: new Date(8000).toISOString(),
+                startedAt: undefined,
+                finishedAt: undefined,
+                durationMs: undefined,
+                attempt: 1,
+              },
+              {
+                runId: "wfr_browser_5",
+                moduleId: platformModuleId.authorization,
+                workflowKey: "platform.access.sync-directory",
+                status: workflowRunStatus.running,
+                queuedAt: new Date(9000).toISOString(),
+                startedAt: new Date(10000).toISOString(),
+                finishedAt: undefined,
+                durationMs: 2000,
+                attempt: 1,
+              },
             ],
             partialFailures: [
               {
@@ -116,6 +138,25 @@ describe("/desk/runs Workflow Runs v2 list route", () => {
         "[data-testid='workflow-runs-list-partial-failures']",
       ),
     ).not.toBeNull();
+    expect(rendered.container.textContent).toContain("wfr_browser_2");
+    expect(rendered.container.textContent).toContain(
+      "Automatically escalated because the current visible roster includes a failed workflow run that needs operator review first.",
+    );
+
+    await click(getButtonByText(rendered.container, "Active"));
+    await waitFor(
+      () =>
+        rendered?.container.querySelectorAll(
+          "[data-testid='workflow-runs-list-entry-row']",
+        ).length === 2,
+      "Expected active tab to narrow the run roster to running and queued runs.",
+    );
+    expect(rendered.container.textContent).toContain(
+      "platform.support.escalation.sync",
+    );
+    expect(rendered.container.textContent).toContain(
+      "platform.access.sync-directory",
+    );
 
     await click(getButtonByText(rendered.container, "Failed"));
     await waitFor(
@@ -134,8 +175,24 @@ describe("/desk/runs Workflow Runs v2 list route", () => {
       () =>
         rendered?.container.querySelectorAll(
           "[data-testid='workflow-runs-list-entry-row']",
-        ).length === 3,
+        ).length === 5,
       "Expected all tab to restore the full run roster.",
+    );
+
+    const focusRuntimeConfigButton =
+      rendered.container.querySelector<HTMLButtonElement>(
+        "[data-run-id='wfr_browser_3'] [data-testid='workflow-runs-list-entry-focus']",
+      );
+    if (focusRuntimeConfigButton === null) {
+      throw new Error("Expected the runtime-config focus button to render.");
+    }
+    await click(focusRuntimeConfigButton);
+    await waitFor(
+      () =>
+        rendered?.container
+          .querySelector("[data-testid='workflow-runs-list-focus-summary']")
+          ?.textContent?.includes("wfr_browser_3") ?? false,
+      "Expected focusing a roster row to update the focused run rail.",
     );
 
     await changeInputValue(

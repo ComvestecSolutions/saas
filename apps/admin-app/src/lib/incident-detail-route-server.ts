@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import type {
   AdminIncidentDetailInput,
@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/incident/$incidentId`
@@ -16,48 +17,31 @@ import {
  * runs the route-data Effect on the server. No Request/Response
  * shaping lives here.
  */
-export type AdminIncidentDetailRawInput = {
-  readonly incidentId?: unknown;
-};
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Incident detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminIncidentDetailRawInput | undefined,
-): AdminIncidentDetailInput => {
-  const safe = raw ?? {};
-  return {
-    incidentId: requireString(safe.incidentId, "incidentId"),
-  };
-};
+const AdminIncidentDetailInputSchema = Schema.Struct({
+  incidentId: Schema.NonEmptyString,
+});
 
 const loadAdminIncidentDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminIncidentDetailRawInput | undefined,
+  input: AdminIncidentDetailInput,
 ): Promise<AdminIncidentDetailRouteData> => {
   const { loadAdminIncidentDetailRouteDataFromRequest } =
     await import("./incident-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminIncidentDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminIncidentDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminIncidentDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminIncidentDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminIncidentDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminIncidentDetailRawInput | undefined;
+      readonly data: AdminIncidentDetailInput;
     }) => loadAdminIncidentDetailData(context.request, process.env, data),
   );

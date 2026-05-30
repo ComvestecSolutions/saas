@@ -9,12 +9,15 @@ import {
 } from "@comvestec/ui";
 import {
   platformScope,
-  platformScopes,
+  PlatformScopeSchema,
   retentionLegalHoldStatus,
-  type PlatformScope,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
 import { releaseAdminLegalHold } from "../../../lib/legal-hold-detail-mutations-server";
 import type { AdminLegalHoldDetailRouteData } from "../../../lib/legal-hold-detail-route-data";
 
@@ -55,21 +58,36 @@ const RawSearchSchema = Schema.Struct({
   scope: Schema.optional(Schema.String),
   scopeId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  scope: Schema.optional(Schema.Unknown),
+  scopeId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeKnownScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const knownPlatformScopes = platformScopes as readonly string[];
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const scope = decodeSearchString(search.scope);
+  const scopeId = decodeSearchString(search.scopeId);
 
-const decodeScope = (value: string | undefined): PlatformScope =>
-  value !== undefined && knownPlatformScopes.includes(value)
-    ? (value as PlatformScope)
-    : platformScope.platform;
+  return {
+    ...(scope === undefined ? {} : { scope }),
+    ...(scopeId === undefined ? {} : { scopeId }),
+  };
+};
+
+const decodeScope = (value: string | undefined) =>
+  decodeKnownScope(value) ?? platformScope.platform;
 
 const decodeScopeId = (value: string | undefined): string =>
-  value !== undefined && value.length > 0 ? value : platformScope.platform;
+  decodeNonEmptyString(value) ?? platformScope.platform;
 
 export const Route = createAdminAppFileRoute("/desk/legal-hold/$holdId")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const { loadAdminLegalHoldDetailLoaderData } =

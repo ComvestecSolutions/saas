@@ -47,6 +47,7 @@ export type AdminTokensRouteData =
     }
   | {
       readonly kind: "ready";
+      readonly generatedAt: AdminOperatorTestTokenListResult["tokens"][number]["expiresAt"];
       readonly result: AdminOperatorTestTokenListResult;
       readonly filter: AdminTokensInput["filter"];
     };
@@ -97,8 +98,10 @@ export const loadAdminTokensRouteDataFromRequest = (
   environment: unknown,
   input: AdminTokensInput,
   dependencies: AdminTokensDependencies = defaultDependencies,
-): Effect.Effect<AdminTokensRouteData, never> =>
-  extractRequiredSubscriberJourneySessionId(request).pipe(
+): Effect.Effect<AdminTokensRouteData, never> => {
+  const generatedAt = new Date().toISOString();
+
+  return extractRequiredSubscriberJourneySessionId(request).pipe(
     Effect.flatMap((sessionId) =>
       retryTransientAdminSessionReadiness(() =>
         dependencies.resolveTrustedRequestContext(environment, sessionId).pipe(
@@ -112,6 +115,7 @@ export const loadAdminTokensRouteDataFromRequest = (
                 Effect.map(
                   (result): AdminTokensRouteData => ({
                     kind: "ready",
+                    generatedAt,
                     result,
                     filter: input.filter,
                   }),
@@ -139,3 +143,4 @@ export const loadAdminTokensRouteDataFromRequest = (
     ),
     Effect.catchAll((error) => Effect.succeed(buildErrorState(error))),
   );
+};

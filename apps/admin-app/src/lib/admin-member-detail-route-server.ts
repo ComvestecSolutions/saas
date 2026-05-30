@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import type {
   AdminMemberDetailInput,
@@ -8,48 +8,34 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
-export type AdminMemberDetailRawInput = {
-  readonly memberId?: unknown;
-};
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Admin member detail loader requires '${label}'.`);
-  }
-
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminMemberDetailRawInput | undefined,
-): AdminMemberDetailInput => ({
-  memberId: requireString(raw?.memberId, "memberId"),
+const AdminMemberDetailInputSchema = Schema.Struct({
+  memberId: Schema.NonEmptyString,
 });
 
 const loadAdminMemberDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminMemberDetailRawInput | undefined,
+  input: AdminMemberDetailInput,
 ): Promise<AdminMemberDetailRouteData> => {
   const { loadAdminMemberDetailRouteDataFromRequest } =
     await import("./admin-member-detail-route-data");
-  const decoded = decodeRawInput(raw);
 
   return Effect.runPromise(
-    loadAdminMemberDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminMemberDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminMemberDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminMemberDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminMemberDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminMemberDetailRawInput | undefined;
+      readonly data: AdminMemberDetailInput;
     }) => loadAdminMemberDetailData(context.request, process.env, data),
   );

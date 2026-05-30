@@ -1,10 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import {
-  adminOperatorTestTokenListStatusFilter,
-  adminOperatorTestTokenListStatusFilters,
-  type AdminOperatorTestTokenListStatusFilter,
-} from "@comvestec/contracts";
+import { AdminOperatorTestTokenListStatusFilterSchema } from "@comvestec/contracts";
 import type {
   AdminTokensInput,
   AdminTokensRouteData,
@@ -13,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical
@@ -22,43 +19,46 @@ import {
  * boundary and runs the route-data Effect on the server.
  * No Request/Response shaping lives here.
  */
-export type AdminTokensRawInput =
-  | {
-      readonly filter?: { readonly status?: unknown };
-      readonly pageSize?: unknown;
-      readonly pageToken?: unknown;
-    }
-  | undefined;
+const AdminTokensFilterRawSchema = Schema.Struct({
+  status: Schema.optional(Schema.Unknown),
+});
 
-void adminOperatorTestTokenListStatusFilter;
-
-const STATUS_LITERAL_SET = new Set<AdminOperatorTestTokenListStatusFilter>(
-  adminOperatorTestTokenListStatusFilters,
+const AdminTokensRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    filter: Schema.optional(Schema.Unknown),
+    pageSize: Schema.optional(Schema.Unknown),
+    pageToken: Schema.optional(Schema.Unknown),
+  }),
 );
 
-const decodeStatus = (
-  raw: unknown,
-): AdminOperatorTestTokenListStatusFilter | undefined => {
-  if (typeof raw !== "string") return undefined;
-  return STATUS_LITERAL_SET.has(raw as AdminOperatorTestTokenListStatusFilter)
-    ? (raw as AdminOperatorTestTokenListStatusFilter)
-    : undefined;
-};
+type AdminTokensRawInput = Schema.Schema.Type<typeof AdminTokensRawInputSchema>;
 
-const decodePageSize = (raw: unknown): number | undefined => {
-  if (typeof raw !== "number" || !Number.isInteger(raw)) return undefined;
-  if (raw < 1 || raw > 200) return undefined;
-  return raw;
-};
+const decodeAdminTokensRawInput = decodeSyncBoundary(AdminTokensRawInputSchema);
+const decodeAdminTokensFilter = decodeSchemaOrUndefined(
+  AdminTokensFilterRawSchema,
+);
+const decodeStatus = decodeSchemaOrUndefined(
+  AdminOperatorTestTokenListStatusFilterSchema,
+);
+const decodePageSize = decodeSchemaOrUndefined(
+  Schema.Int.pipe(
+    Schema.greaterThanOrEqualTo(1),
+    Schema.lessThanOrEqualTo(200),
+  ),
+);
+const decodePageToken = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const decodePageToken = (raw: unknown): string | undefined =>
-  typeof raw === "string" && raw.length > 0 ? raw : undefined;
-
-const decodeRawInput = (raw: AdminTokensRawInput): AdminTokensInput => {
+const normalizeAdminTokensInput = (
+  raw: AdminTokensRawInput,
+): AdminTokensInput => {
   if (raw === undefined) return {};
-  const status = decodeStatus(raw.filter?.status);
+
+  const filter = decodeAdminTokensFilter(raw.filter);
+  const status = decodeStatus(filter?.status);
   const pageSize = decodePageSize(raw.pageSize);
   const pageToken = decodePageToken(raw.pageToken);
+
   return {
     ...(status === undefined ? {} : { filter: { status } }),
     ...(pageSize === undefined ? {} : { pageSize }),
@@ -69,25 +69,27 @@ const decodeRawInput = (raw: AdminTokensRawInput): AdminTokensInput => {
 const loadAdminTokensData = async (
   request: Request,
   environment: unknown,
-  raw: AdminTokensRawInput,
+  input: AdminTokensInput,
 ): Promise<AdminTokensRouteData> => {
   const { loadAdminTokensRouteDataFromRequest } =
     await import("./admin-tokens-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminTokensRouteDataFromRequest(request, environment, decoded),
+    loadAdminTokensRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminTokensData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminTokensRawInput) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminTokensInput(decodeAdminTokensRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminTokensRawInput;
+      readonly data: AdminTokensInput;
     }) => loadAdminTokensData(context.request, process.env, data),
   );

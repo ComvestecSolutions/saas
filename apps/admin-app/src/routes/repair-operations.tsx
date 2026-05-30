@@ -1,4 +1,5 @@
 import { useMemo, useState, useTransition } from "react";
+import { Schema } from "effect";
 import {
   adminOperatorCapability,
   workflowJobStatus,
@@ -13,11 +14,13 @@ import {
 } from "../lib/tenant-repair-route-server";
 import {
   EmptyState,
+  HighRiskActionGuard,
   PermissionDeniedState,
   LoadingState,
   StatusChip,
   resolveStatusVariant,
   Button,
+  type HighRiskReason,
 } from "@comvestec/ui";
 import { AdminSessionRequiredState } from "../components/admin-session-required-state";
 import {
@@ -38,14 +41,32 @@ import {
   RefreshIcon,
   resolveTableAriaSort,
 } from "../components/ui";
+import { formatAdminTimestamp } from "../lib/timestamp-format";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../lib/effect-boundary";
 
 type RepairSearch = { readonly inspectionReason?: string };
 
-const parseRepairSearch = (search: Record<string, unknown>): RepairSearch => {
-  const inspectionReason =
-    typeof search.inspectionReason === "string"
-      ? search.inspectionReason.trim()
-      : undefined;
+const RepairSearchSchema = Schema.Struct({
+  inspectionReason: Schema.optional(Schema.Unknown),
+});
+const decodeRepairSearchBoundary = decodeSyncBoundary(RepairSearchSchema);
+const decodeRepairSearchString = decodeSchemaOrUndefined(Schema.String);
+
+const decodeTrimmedInspectionReason = (value: unknown): string | undefined => {
+  const inspectionReason = decodeRepairSearchString(value)?.trim();
+  return inspectionReason === undefined || inspectionReason.length === 0
+    ? undefined
+    : inspectionReason;
+};
+
+const parseRepairSearch = (search: unknown): RepairSearch => {
+  const rawSearch = decodeRepairSearchBoundary(search);
+  const inspectionReason = decodeTrimmedInspectionReason(
+    rawSearch.inspectionReason,
+  );
   return inspectionReason === undefined || inspectionReason.length === 0
     ? {}
     : { inspectionReason };
@@ -91,6 +112,53 @@ type StatusFilter =
   | "completed"
   | "canceled";
 
+type ArmedRepairAction = {
+  readonly action: "replay" | "cancel";
+  readonly job: BillingRepairGap;
+} | null;
+
+const replayReasonCatalog = [
+  {
+    id: "repair-gap.replay.transient-failure",
+    label: "Transient backend failure",
+    description:
+      "Retry after the workflow backend or vendor dependency recovers.",
+  },
+  {
+    id: "repair-gap.replay.configuration-fix",
+    label: "Configuration fix deployed",
+    description:
+      "Replay after correcting tenant, billing, or module configuration.",
+  },
+  {
+    id: "repair-gap.replay.support-escalation",
+    label: "Support escalation approved",
+    description:
+      "Customer-impacting repair work is being replayed under operator review.",
+  },
+] as const satisfies readonly HighRiskReason[];
+
+const cancelReasonCatalog = [
+  {
+    id: "repair-gap.cancel-manual-resolution",
+    label: "Manual resolution applied",
+    description:
+      "The tenant issue was resolved without replaying the workflow.",
+  },
+  {
+    id: "repair-gap.cancel-duplicate",
+    label: "Duplicate or obsolete gap",
+    description:
+      "The queued repair no longer reflects the current tenant state.",
+  },
+  {
+    id: "repair-gap.cancel-policy-block",
+    label: "Policy or risk hold",
+    description:
+      "Execution is intentionally blocked pending a separate operator decision.",
+  },
+] as const satisfies readonly HighRiskReason[];
+
 function RepairOperations() {
   const data = Route.useLoaderData();
   const search = Route.useSearch();
@@ -103,6 +171,8 @@ function RepairOperations() {
     kind: "success" | "error";
     message: string;
   } | null>(null);
+  const [armedAction, setArmedAction] = useState<ArmedRepairAction>(null);
+  const [isMutating, setIsMutating] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const tableState = useTableState<
@@ -168,6 +238,7 @@ function RepairOperations() {
 
   const applyReason = () => {
     const trimmed = reasonInput.trim();
+    setActionStatus(null);
     startTransition(() => {
       void navigate({
         search: () =>
@@ -176,39 +247,55 @@ function RepairOperations() {
     });
   };
 
-  const runAction = (action: "replay" | "cancel", jobId: string) => {
-    startTransition(() => {
-      void (async () => {
-        try {
-          const sharedInput = {
-            jobId,
-            ...(search.inspectionReason === undefined
-              ? {}
-              : { inspectionReason: search.inspectionReason }),
-          };
-          if (action === "replay") {
-            const result = await replayGap({ data: sharedInput });
-            setActionStatus({
-              kind: "success",
-              message: `Replayed repair gap for ${result.job.tenantScopeId}.`,
-            });
-          } else {
-            const result = await cancelGap({ data: sharedInput });
-            setActionStatus({
-              kind: "success",
-              message: `Cancelled repair gap for ${result.job.tenantScopeId}.`,
-            });
-          }
-          await router.invalidate({ sync: true });
-        } catch (error) {
-          setActionStatus({ kind: "error", message: formatActionError(error) });
+  const handleActionConfirm = (input: {
+    readonly reasonId: string;
+    readonly note: string;
+  }) => {
+    if (armedAction === null) {
+      return;
+    }
+
+    // The repair workflow backend currently records only the inspection
+    // reason used to reveal sensitive details, so the high-risk reason
+    // and note act as the operator approval boundary for this UI flow.
+    void input.reasonId;
+    void input.note;
+
+    const selectedAction = armedAction;
+    setArmedAction(null);
+    setIsMutating(true);
+    void (async () => {
+      try {
+        const sharedInput = {
+          jobId: selectedAction.job.jobId,
+          ...(search.inspectionReason === undefined
+            ? {}
+            : { inspectionReason: search.inspectionReason }),
+        };
+        if (selectedAction.action === "replay") {
+          const result = await replayGap({ data: sharedInput });
+          setActionStatus({
+            kind: "success",
+            message: `Replayed repair gap for ${result.job.tenantScopeId}.`,
+          });
+        } else {
+          const result = await cancelGap({ data: sharedInput });
+          setActionStatus({
+            kind: "success",
+            message: `Cancelled repair gap for ${result.job.tenantScopeId}.`,
+          });
         }
-      })();
-    });
+        await router.invalidate({ sync: true });
+      } catch (error) {
+        setActionStatus({ kind: "error", message: formatActionError(error) });
+      } finally {
+        setIsMutating(false);
+      }
+    })();
   };
 
   return (
-    <div className="ops-screen">
+    <div className="ops-screen" data-testid="repair-operations-ready">
       <ScreenHeader
         icon={<AlertIcon />}
         title="Repair Operations"
@@ -219,7 +306,7 @@ function RepairOperations() {
             type="button"
             className="ops-btn"
             onClick={() => router.invalidate({ sync: true })}
-            disabled={isPending}
+            disabled={isPending || isMutating}
           >
             <RefreshIcon size={12} /> Refresh
           </button>
@@ -278,7 +365,7 @@ function RepairOperations() {
             <Button
               variant="secondary"
               size="sm"
-              disabled={isPending}
+              disabled={isPending || isMutating}
               onClick={applyReason}
             >
               {search.inspectionReason === undefined
@@ -355,7 +442,7 @@ function RepairOperations() {
           />
         ) : (
           <div className="ops-table-wrapper">
-            <table className="ops-table">
+            <table className="ops-table" data-testid="repair-operations-table">
               <thead>
                 <tr>
                   <SortableTableHeader
@@ -394,79 +481,109 @@ function RepairOperations() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((job) => (
-                  <tr key={job.jobId}>
-                    <td className="text-strong mono">{job.tenantScopeId}</td>
-                    <td>{job.tenantScope}</td>
-                    <td>
-                      <StatusChip
-                        status={job.status}
-                        variant={resolveStatusVariant(job.status)}
-                      />
-                    </td>
-                    <td className="num">{job.attempts}</td>
-                    <td className="mono">
-                      {job.scheduledAt.slice(0, 16).replace("T", " ")}
-                    </td>
-                    {search.inspectionReason !== undefined && (
+                {visible.map((job) => {
+                  const canReplayJob =
+                    canRepair && job.actionAvailability?.replay === true;
+                  const canCancelJob =
+                    canRepair && job.actionAvailability?.cancel === true;
+                  const tenantTarget = buildAdminTenantTarget({
+                    scope: job.tenantScope,
+                    scopeId: job.tenantScopeId,
+                  });
+
+                  return (
+                    <tr
+                      key={job.jobId}
+                      data-testid="repair-operations-row"
+                      data-job-id={job.jobId}
+                    >
+                      <td className="text-strong mono">{job.tenantScopeId}</td>
+                      <td>{job.tenantScope}</td>
                       <td>
-                        {job.lastError !== undefined ? (
-                          <span
-                            style={{
-                              fontSize: "0.78rem",
-                              color: "var(--ops-status-error)",
-                              fontFamily: "var(--ops-font-mono)",
-                            }}
-                          >
-                            {job.lastError}
-                          </span>
-                        ) : (
-                          <span className="ops-redacted">redacted</span>
-                        )}
+                        <StatusChip
+                          status={job.status}
+                          variant={resolveStatusVariant(job.status)}
+                        />
                       </td>
-                    )}
-                    <td>
-                      <div className="ops-inline-actions">
-                        {(() => {
-                          const t = buildAdminTenantTarget({
-                            scope: job.tenantScope,
-                            scopeId: job.tenantScopeId,
-                          });
-                          return t === undefined ? (
+                      <td className="num">{job.attempts}</td>
+                      <td className="mono">
+                        {formatAdminTimestamp(job.scheduledAt)}
+                      </td>
+                      {search.inspectionReason !== undefined && (
+                        <td>
+                          {job.lastError !== undefined ? (
+                            <span
+                              style={{
+                                fontSize: "0.78rem",
+                                color: "var(--ops-status-error)",
+                                fontFamily: "var(--ops-font-mono)",
+                              }}
+                            >
+                              {job.lastError}
+                            </span>
+                          ) : (
+                            <span className="ops-redacted">redacted</span>
+                          )}
+                        </td>
+                      )}
+                      <td>
+                        <div className="ops-inline-actions">
+                          {!canReplayJob && !canCancelJob && canRepair ? (
+                            <span className="ops-secondary-text">
+                              Action unavailable
+                            </span>
+                          ) : null}
+                          {canReplayJob ? (
+                            <button
+                              type="button"
+                              className="ops-btn ops-btn--primary ops-btn--xs"
+                              data-testid="repair-operations-replay-cta"
+                              data-job-id={job.jobId}
+                              disabled={isPending || isMutating}
+                              onClick={() => {
+                                setActionStatus(null);
+                                setArmedAction({
+                                  action: "replay",
+                                  job,
+                                });
+                              }}
+                            >
+                              Replay
+                            </button>
+                          ) : null}
+                          {canCancelJob ? (
+                            <button
+                              type="button"
+                              className="ops-btn ops-btn--danger ops-btn--xs"
+                              data-testid="repair-operations-cancel-cta"
+                              data-job-id={job.jobId}
+                              disabled={isPending || isMutating}
+                              onClick={() => {
+                                setActionStatus(null);
+                                setArmedAction({
+                                  action: "cancel",
+                                  job,
+                                });
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                          {tenantTarget === undefined ? (
                             <span className="ops-text-muted">—</span>
                           ) : (
                             <Link
                               className="ops-btn ops-btn--xs"
-                              to={buildAdminTenantWorkspacePath(t)}
+                              to={buildAdminTenantWorkspacePath(tenantTarget)}
                             >
                               <ExternalIcon size={11} /> Open
                             </Link>
-                          );
-                        })()}
-                        {canRepair && (
-                          <>
-                            <button
-                              type="button"
-                              className="ops-btn ops-btn--primary ops-btn--xs"
-                              disabled={isPending}
-                              onClick={() => runAction("replay", job.jobId)}
-                            >
-                              Replay
-                            </button>
-                            <button
-                              type="button"
-                              className="ops-btn ops-btn--danger ops-btn--xs"
-                              disabled={isPending}
-                              onClick={() => runAction("cancel", job.jobId)}
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -480,6 +597,36 @@ function RepairOperations() {
           onPageSizeChange={tableState.setPageSize}
         />
       </div>
+
+      {armedAction !== null ? (
+        <HighRiskActionGuard
+          action={{
+            id: `repair-gap-${armedAction.action}`,
+            label:
+              armedAction.action === "replay"
+                ? "Replay repair gap"
+                : "Cancel repair gap",
+          }}
+          selection={[armedAction.job]}
+          reasons={
+            armedAction.action === "replay"
+              ? replayReasonCatalog
+              : cancelReasonCatalog
+          }
+          confirmLabel={armedAction.action === "replay" ? "Replay" : "Cancel"}
+          renderSelectionSummary={(selection) => {
+            const [job] = selection;
+
+            return job === undefined ? null : (
+              <div className="ops-secondary-text">
+                {job.tenantScopeId} · {job.jobId}
+              </div>
+            );
+          }}
+          onConfirm={handleActionConfirm}
+          onCancel={() => setArmedAction(null)}
+        />
+      ) : null}
     </div>
   );
 }

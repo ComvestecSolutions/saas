@@ -1,10 +1,8 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
-  authorizationNamespaces,
-  authorizationRelations,
-  type AuthorizationNamespace,
-  type AuthorizationRelation,
+  AuthorizationNamespaceSchema,
+  AuthorizationRelationSchema,
 } from "@comvestec/contracts";
 import type {
   AdminGovernanceAccessV2Input,
@@ -14,6 +12,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the `/desk/access` Access
@@ -25,47 +24,49 @@ import {
  * (Request/Response, HTTP encoding) is intentionally NOT done
  * here — those live in platform HTTP adapters.
  */
-export type AdminGovernanceAccessV2RawInput = {
-  readonly namespace?: unknown;
-  readonly object?: unknown;
-  readonly relation?: unknown;
-  readonly subject?: unknown;
-  readonly detailSubject?: unknown;
-  readonly page?: unknown;
-};
+const AdminGovernanceAccessV2RawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    namespace: Schema.optional(Schema.Unknown),
+    object: Schema.optional(Schema.Unknown),
+    relation: Schema.optional(Schema.Unknown),
+    subject: Schema.optional(Schema.Unknown),
+    detailSubject: Schema.optional(Schema.Unknown),
+    page: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const isAuthorizationNamespace = (
-  value: unknown,
-): value is AuthorizationNamespace =>
-  typeof value === "string" &&
-  (authorizationNamespaces as readonly string[]).includes(value);
+type AdminGovernanceAccessV2RawInput = Schema.Schema.Type<
+  typeof AdminGovernanceAccessV2RawInputSchema
+>;
 
-const isAuthorizationRelation = (
-  value: unknown,
-): value is AuthorizationRelation =>
-  typeof value === "string" &&
-  (authorizationRelations as readonly string[]).includes(value);
-
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
+const decodeAdminGovernanceAccessV2RawInput = decodeSyncBoundary(
+  AdminGovernanceAccessV2RawInputSchema,
+);
+const decodeNamespace = decodeSchemaOrUndefined(AuthorizationNamespaceSchema);
+const decodeRelation = decodeSchemaOrUndefined(AuthorizationRelationSchema);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
+const decodeFiniteNumber = decodeSchemaOrUndefined(
+  Schema.Number.pipe(Schema.finite()),
+);
 
 const decodePage = (value: unknown): number | undefined => {
-  if (typeof value !== "number") return undefined;
-  if (!Number.isFinite(value)) return undefined;
-  const truncated = Math.trunc(value);
+  const page = decodeFiniteNumber(value);
+
+  if (page === undefined) {
+    return undefined;
+  }
+
+  const truncated = Math.trunc(page);
   return truncated >= 1 ? truncated : undefined;
 };
 
-const decodeRawInput = (
-  raw: AdminGovernanceAccessV2RawInput | undefined,
+const normalizeAdminGovernanceAccessV2Input = (
+  raw: AdminGovernanceAccessV2RawInput,
 ): AdminGovernanceAccessV2Input => {
   const safe = raw ?? {};
-  const namespace = isAuthorizationNamespace(safe.namespace)
-    ? safe.namespace
-    : undefined;
-  const relation = isAuthorizationRelation(safe.relation)
-    ? safe.relation
-    : undefined;
+  const namespace = decodeNamespace(safe.namespace);
+  const relation = decodeRelation(safe.relation);
   const object = decodeOptionalString(safe.object);
   const subject = decodeOptionalString(safe.subject);
   const detailSubject = decodeOptionalString(safe.detailSubject);
@@ -83,31 +84,33 @@ const decodeRawInput = (
 const loadAdminGovernanceAccessV2Data = async (
   request: Request,
   environment: unknown,
-  raw: AdminGovernanceAccessV2RawInput | undefined,
+  input: AdminGovernanceAccessV2Input,
 ): Promise<AdminGovernanceAccessV2RouteData> => {
   const { loadAdminGovernanceAccessV2RouteDataFromRequest } =
     await import("./governance-access-route-data");
-
-  const decoded = decodeRawInput(raw);
 
   return Effect.runPromise(
     loadAdminGovernanceAccessV2RouteDataFromRequest(
       request,
       environment,
-      decoded,
+      input,
     ),
   );
 };
 
 export const getAdminGovernanceAccessV2Data = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminGovernanceAccessV2RawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminGovernanceAccessV2Input(
+      decodeAdminGovernanceAccessV2RawInput(input),
+    ),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminGovernanceAccessV2RawInput | undefined;
+      readonly data: AdminGovernanceAccessV2Input;
     }) => loadAdminGovernanceAccessV2Data(context.request, process.env, data),
   );

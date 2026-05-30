@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeEmptyInput } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical
@@ -19,18 +20,13 @@ import {
  */
 export type AdminProfileRawInput = Record<string, unknown> | undefined;
 
-const decodeRawInput = (_raw: AdminProfileRawInput): AdminProfileInput =>
-  ({}) as AdminProfileInput;
-
 const loadAdminProfileData = async (
   request: Request,
   environment: unknown,
-  raw: AdminProfileRawInput,
+  _input: AdminProfileInput,
 ): Promise<AdminProfileRouteData> => {
   const { loadAdminProfileRouteDataFromRequest } =
     await import("./admin-profile-route-data");
-  const decoded = decodeRawInput(raw);
-  void decoded;
   return Effect.runPromise(
     loadAdminProfileRouteDataFromRequest(request, environment),
   );
@@ -38,13 +34,13 @@ const loadAdminProfileData = async (
 
 export const getAdminProfileData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminProfileRawInput) => input)
+  .inputValidator(decodeEmptyInput)
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminProfileRawInput;
+      readonly data: AdminProfileInput;
     }) => loadAdminProfileData(context.request, process.env, data),
   );

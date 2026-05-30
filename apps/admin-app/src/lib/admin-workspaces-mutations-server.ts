@@ -5,6 +5,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import {
   buildAdminActionReason,
   resolveTrustedAdminRequestContextFromRequest,
@@ -45,18 +46,15 @@ export const createAdminWorkspace = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: CreateAdminWorkspaceInput) => input)
+  .inputValidator(decodeSyncBoundary(CreateAdminWorkspaceInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: CreateAdminWorkspaceInput;
     }): Promise<CreateAdminWorkspaceServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(CreateAdminWorkspaceInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -67,13 +65,13 @@ export const createAdminWorkspace = createServerFn({
           requestContext: {
             ...requestContext,
             reason: buildAdminActionReason(
-              decoded.reasonId,
-              decoded.reasonAttachmentText,
+              data.reasonId,
+              data.reasonAttachmentText,
             ),
           },
-          ownerSubjectId: decoded.ownerSubjectId,
-          name: decoded.name,
-          serializedLayout: decoded.serializedLayout,
+          ownerSubjectId: data.ownerSubjectId,
+          name: data.name,
+          serializedLayout: data.serializedLayout,
         }),
       );
 
@@ -88,18 +86,15 @@ export const deleteAdminWorkspace = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: DeleteAdminWorkspaceInput) => input)
+  .inputValidator(decodeSyncBoundary(DeleteAdminWorkspaceInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: DeleteAdminWorkspaceInput;
     }): Promise<DeleteAdminWorkspaceServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(DeleteAdminWorkspaceInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -111,17 +106,17 @@ export const deleteAdminWorkspace = createServerFn({
           requestContext: {
             ...requestContext,
             reason: buildAdminActionReason(
-              decoded.reasonId,
-              decoded.reasonAttachmentText,
+              data.reasonId,
+              data.reasonAttachmentText,
             ),
           },
-          ownerSubjectId: decoded.ownerSubjectId,
-          id: decoded.workspaceId,
+          ownerSubjectId: data.ownerSubjectId,
+          id: data.workspaceId,
         }),
       );
 
       return {
-        workspaceId: decoded.workspaceId,
+        workspaceId: data.workspaceId,
       };
     },
   );

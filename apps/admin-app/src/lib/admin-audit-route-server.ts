@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeEmptyInput } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical
@@ -19,18 +20,13 @@ import {
  */
 export type AdminAuditRawInput = Record<string, unknown> | undefined;
 
-const decodeRawInput = (_raw: AdminAuditRawInput): AdminAuditInput =>
-  ({}) as AdminAuditInput;
-
 const loadAdminAuditData = async (
   request: Request,
   environment: unknown,
-  raw: AdminAuditRawInput,
+  _input: AdminAuditInput,
 ): Promise<AdminAuditRouteData> => {
   const { loadAdminAuditRouteDataFromRequest } =
     await import("./admin-audit-route-data");
-  const decoded = decodeRawInput(raw);
-  void decoded;
   return Effect.runPromise(
     loadAdminAuditRouteDataFromRequest(request, environment),
   );
@@ -38,13 +34,13 @@ const loadAdminAuditData = async (
 
 export const getAdminAuditData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminAuditRawInput) => input)
+  .inputValidator(decodeEmptyInput)
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminAuditRawInput;
+      readonly data: AdminAuditInput;
     }) => loadAdminAuditData(context.request, process.env, data),
   );

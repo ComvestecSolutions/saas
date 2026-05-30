@@ -6,6 +6,7 @@ import {
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
 import { resolveTrustedAdminRequestContextFromRequest } from "./trusted-admin-request-context-server";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 const ReplayAdminWorkflowRunInputSchema = Schema.Struct({
   runId: Schema.NonEmptyString,
@@ -42,18 +43,15 @@ export const replayAdminWorkflowRun = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ReplayAdminWorkflowRunInput) => input)
+  .inputValidator(decodeSyncBoundary(ReplayAdminWorkflowRunInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ReplayAdminWorkflowRunInput;
     }): Promise<ReplayAdminWorkflowRunServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ReplayAdminWorkflowRunInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -62,11 +60,11 @@ export const replayAdminWorkflowRun = createServerFn({
       const result = await Effect.runPromise(
         replayWorkflowRunFromEnvironment(process.env, {
           requestContext,
-          runId: decoded.runId,
-          reason: decoded.reason,
-          ...(decoded.reasonAttachmentText === undefined
+          runId: data.runId,
+          reason: data.reason,
+          ...(data.reasonAttachmentText === undefined
             ? {}
-            : { reasonAttachmentText: decoded.reasonAttachmentText }),
+            : { reasonAttachmentText: data.reasonAttachmentText }),
         }),
       );
 
@@ -82,18 +80,15 @@ export const cancelAdminWorkflowRun = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: CancelAdminWorkflowRunInput) => input)
+  .inputValidator(decodeSyncBoundary(CancelAdminWorkflowRunInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: CancelAdminWorkflowRunInput;
     }): Promise<CancelAdminWorkflowRunServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(CancelAdminWorkflowRunInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -102,11 +97,11 @@ export const cancelAdminWorkflowRun = createServerFn({
       const result = await Effect.runPromise(
         cancelWorkflowRunFromEnvironment(process.env, {
           requestContext,
-          runId: decoded.runId,
-          reason: decoded.reason,
-          ...(decoded.reasonAttachmentText === undefined
+          runId: data.runId,
+          reason: data.reason,
+          ...(data.reasonAttachmentText === undefined
             ? {}
-            : { reasonAttachmentText: decoded.reasonAttachmentText }),
+            : { reasonAttachmentText: data.reasonAttachmentText }),
         }),
       );
 

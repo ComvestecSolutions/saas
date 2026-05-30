@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import { resolveAdminSessionIdFromRequest } from "./trusted-admin-request-context-server";
 
 const VerifyAdminCustomDomainInputSchema = Schema.Struct({
@@ -34,18 +35,15 @@ export const verifyAdminCustomDomain = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: VerifyAdminCustomDomainInput) => input)
+  .inputValidator(decodeSyncBoundary(VerifyAdminCustomDomainInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: VerifyAdminCustomDomainInput;
     }): Promise<VerifyAdminCustomDomainServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(VerifyAdminCustomDomainInputSchema)(data),
-      );
       const sessionId = await resolveAdminSessionIdFromRequest(context.request);
       const { transitionCustomDomainVerificationFromSessionId } =
         await import("@comvestec/platform");
@@ -53,15 +51,15 @@ export const verifyAdminCustomDomain = createServerFn({
       await Effect.runPromise(
         transitionCustomDomainVerificationFromSessionId(process.env, {
           sessionId,
-          scope: decoded.scope,
-          scopeId: decoded.scopeId,
+          scope: data.scope,
+          scopeId: data.scopeId,
           lifecycleState: customDomainLifecycleState.active,
-          approvalNotes: buildApprovalNotes(decoded),
+          approvalNotes: buildApprovalNotes(data),
         }),
       );
 
       return {
-        hostname: decoded.hostname,
+        hostname: data.hostname,
       };
     },
   );

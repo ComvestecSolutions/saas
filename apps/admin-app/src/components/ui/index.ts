@@ -4,6 +4,7 @@ export { KpiCard, type KpiTone } from "./kpi-card";
 export { FilterBar, FilterSelect, SegmentedTabs } from "./filter-bar";
 export { Tabs, type TabItem } from "./tabs";
 export { Pagination } from "./pagination";
+export { OpsPanel, type OpsPanelTone } from "./ops-panel";
 export {
   SortableTableHeader,
   resolveTableAriaSort,

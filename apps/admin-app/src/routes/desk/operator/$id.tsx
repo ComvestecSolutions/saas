@@ -1,22 +1,10 @@
+import type { MouseEvent } from "react";
+import { useRouter } from "@tanstack/react-router";
 import { StateScreen, StatusChip } from "@comvestec/ui";
 import { actorType } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { KpiCard, ScreenHeader } from "../../../components/ui";
 import type { AdminGovernanceAccessV2RouteData } from "../../../lib/governance-access-route-data";
-
-const detailCardStyle = {
-  display: "grid",
-  gap: 6,
-  padding: 8,
-  borderRadius: 12,
-  border: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-  background:
-    "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-} as const;
-
-const secondaryTextStyle = {
-  color: "var(--ops-text-secondary, rgba(255,255,255,0.7))",
-} as const;
 
 const operatorRoleLabel = {
   [actorType.platformOperator]: "Platform operator",
@@ -39,6 +27,7 @@ export const Route = createAdminAppFileRoute("/desk/operator/$id")({
 function OperatorDetailRoute() {
   const data: AdminGovernanceAccessV2RouteData = Route.useLoaderData();
   const { id } = Route.useParams();
+  const router = useRouter();
 
   if (data.kind === "shell") {
     return (
@@ -112,6 +101,23 @@ function OperatorDetailRoute() {
   const sourceLabel = isCurrentOperator
     ? "Current session"
     : "Directory snapshot";
+  const handleCapabilityNavigation = (
+    event: MouseEvent<HTMLAnchorElement>,
+    routePath: string,
+  ) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    void router.navigate({ href: routePath });
+  };
 
   return (
     <section
@@ -167,14 +173,8 @@ function OperatorDetailRoute() {
         />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-        }}
-      >
-        <article style={detailCardStyle}>
+      <div className="ops-insight-grid">
+        <article className="ops-insight-card">
           <div
             style={{
               display: "flex",
@@ -183,7 +183,7 @@ function OperatorDetailRoute() {
               alignItems: "center",
             }}
           >
-            <strong>Identity</strong>
+            <p className="ops-card-title">Identity</p>
             <StatusChip tone={operator.enabled ? "nominal" : "error"} size="sm">
               {operator.enabled ? "Enabled" : "Disabled"}
             </StatusChip>
@@ -201,18 +201,18 @@ function OperatorDetailRoute() {
               },
             ].map(({ label, value, mono }) => (
               <div key={label} style={{ display: "grid", gap: 2 }}>
-                <span style={secondaryTextStyle}>{label}</span>
+                <span className="ops-secondary-text">{label}</span>
                 <span className={mono ? "mono" : undefined}>{value}</span>
               </div>
             ))}
           </div>
         </article>
 
-        <article style={detailCardStyle}>
-          <strong>Posture</strong>
+        <article className="ops-insight-card">
+          <p className="ops-card-title">Posture</p>
           <div style={{ display: "grid", gap: 6 }}>
             <div style={{ display: "grid", gap: 2 }}>
-              <span style={secondaryTextStyle}>Directory access</span>
+              <span className="ops-secondary-text">Directory access</span>
               <span>
                 {canInspectDirectory
                   ? "This session can inspect the full admin operator directory."
@@ -221,18 +221,20 @@ function OperatorDetailRoute() {
             </div>
 
             <div style={{ display: "grid", gap: 2 }}>
-              <span style={secondaryTextStyle}>Detail source</span>
+              <span className="ops-secondary-text">Detail source</span>
               <span>{sourceLabel}</span>
             </div>
 
             {isCurrentOperator ? (
               <div style={{ display: "grid", gap: 2 }}>
-                <span style={secondaryTextStyle}>Session id</span>
+                <span className="ops-secondary-text">Session id</span>
                 <span className="mono">{currentOperator.sessionId}</span>
               </div>
             ) : (
               <div style={{ display: "grid", gap: 2 }}>
-                <span style={secondaryTextStyle}>Live capability snapshot</span>
+                <span className="ops-secondary-text">
+                  Live capability snapshot
+                </span>
                 <span>
                   Only the active current operator profile carries a
                   session-bound capability projection today.
@@ -283,15 +285,29 @@ function OperatorDetailRoute() {
                       <td>
                         <div style={{ display: "grid", gap: 2 }}>
                           <span>{capability.label}</span>
-                          <span style={secondaryTextStyle}>
+                          <span className="ops-secondary-text">
                             {capability.reason ?? capability.capability}
                           </span>
                         </div>
                       </td>
                       <td>
-                        <a href={capability.routePath} className="mono">
-                          {capability.routePath}
+                        <a
+                          href={capability.routePath}
+                          className="ops-link-button ops-btn--xs"
+                          data-testid="admin-operator-capability-link"
+                          data-capability={capability.capability}
+                          onClick={(event) =>
+                            handleCapabilityNavigation(
+                              event,
+                              capability.routePath,
+                            )
+                          }
+                        >
+                          Open surface
                         </a>
+                        <div className="mono ops-secondary-text">
+                          {capability.routePath}
+                        </div>
                       </td>
                       <td>
                         <StatusChip

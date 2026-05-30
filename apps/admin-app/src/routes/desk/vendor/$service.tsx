@@ -10,6 +10,7 @@ import {
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { KpiCard, ScreenHeader } from "../../../components/ui";
+import { formatAdminTimestamp } from "../../../lib/timestamp-format";
 import type { AdminVendorDetailRouteData } from "../../../lib/vendor-detail-route-data";
 
 /**
@@ -107,7 +108,7 @@ const operatorFollowUpLinksByService: Partial<
       label: "Search Keycloak resources",
       href: "/desk/search?q=keycloak",
       description:
-        "Locate Keycloak users and roles before drilling into /r/kc-user and /r/kc-role with concrete ids.",
+        "Locate Keycloak users and roles before drilling into /desk/kc-user and /desk/kc-role with concrete ids.",
     },
     {
       label: "Access control",
@@ -222,23 +223,6 @@ const kpiToneByStatus: Record<
   unavailable: "alert",
   unknown: "neutral",
 };
-
-const detailCardStyle = {
-  display: "grid",
-  gap: 4,
-  padding: 8,
-  borderRadius: 12,
-  border: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-  background:
-    "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-} as const;
-
-const secondaryTextStyle = {
-  color: "var(--ops-text-secondary, rgba(255,255,255,0.7))",
-} as const;
-
-const formatVendorTimestamp = (value: string | undefined): string =>
-  value === undefined ? "n/a" : value.slice(0, 16).replace("T", " ");
 
 export const Route = createAdminAppFileRoute("/desk/vendor/$service")({
   loader: async ({ params }) => {
@@ -394,7 +378,7 @@ function VendorDetailRoute() {
         />
         <KpiCard
           label="Last incident"
-          value={formatVendorTimestamp(entry.lastIncidentAt)}
+          value={formatAdminTimestamp(entry.lastIncidentAt)}
           tone={entry.lastIncidentAt === undefined ? "good" : "warn"}
         />
         <KpiCard
@@ -404,18 +388,13 @@ function VendorDetailRoute() {
         />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 6,
-        }}
-      >
-        <section data-testid="vendor-detail-summary" style={detailCardStyle}>
+      <div className="ops-insight-grid">
+        <section
+          data-testid="vendor-detail-summary"
+          className="ops-insight-card"
+        >
           <p className="ops-card-title">Current posture</p>
-          <div
-            style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}
-          >
+          <div className="ops-inline-cluster">
             <span className="text-strong">{entry.serviceName}</span>
             <StatusChip tone={toneByStatus[entry.status]} size="sm">
               {entry.status}
@@ -427,29 +406,34 @@ function VendorDetailRoute() {
           <span className="mono" data-testid="vendor-detail-latency">
             {entry.latencyMs} ms p95
           </span>
-          <span style={secondaryTextStyle} data-testid="vendor-detail-message">
+          <span
+            className="ops-secondary-text"
+            data-testid="vendor-detail-message"
+          >
             {entry.message ?? "No adapter message reported."}
           </span>
         </section>
 
-        <section style={detailCardStyle}>
+        <section className="ops-insight-card">
           <p className="ops-card-title">Telemetry frame</p>
           <span className="mono">
-            Last checked · {formatVendorTimestamp(entry.lastCheckedAt)}
+            Last checked · {formatAdminTimestamp(entry.lastCheckedAt)}
           </span>
           <span className="mono">
-            Last incident · {formatVendorTimestamp(entry.lastIncidentAt)}
+            Last incident · {formatAdminTimestamp(entry.lastIncidentAt)}
           </span>
-          <span className="mono">Generated · {formatVendorTimestamp(generatedAt)}</span>
+          <span className="mono">
+            Generated · {formatAdminTimestamp(generatedAt)}
+          </span>
         </section>
 
-        <section style={detailCardStyle}>
+        <section className="ops-insight-card">
           <p className="ops-card-title">Console handoff</p>
           <span className="text-strong">
             {runbookLink ??
               "Use the operator runbook surface for the matching adapter."}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Typed vendor console URLs are still pending a dedicated runtime-config
             backed metadata source, so this surface currently carries the handoff
             label and the live correlation context.
@@ -475,7 +459,9 @@ function VendorDetailRoute() {
                 </span>
                 <div className="ops-alert-detail">{item.detail}</div>
               </div>
-              <span className="mono">{formatVendorTimestamp(item.timestamp)}</span>
+              <span className="mono">
+                {formatAdminTimestamp(item.timestamp)}
+              </span>
             </div>
           ))}
         </div>
@@ -493,7 +479,7 @@ function VendorDetailRoute() {
             {runbookLink ??
               "Consult the matching adapter runbook in specs/04-ops/runbooks."}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Use the live posture above with the aggregate correlation id to bridge
             from the admin app into the vendor-specific operator recovery flow.
           </span>
@@ -504,8 +490,12 @@ function VendorDetailRoute() {
             >
               {followUpLinks.map((link) => (
                 <div key={link.href} style={{ display: "grid", gap: 2 }}>
-                  <a href={link.href}>{link.label}</a>
-                  <span style={secondaryTextStyle}>{link.description}</span>
+                  <a className="ops-link-button" href={link.href}>
+                    {link.label}
+                  </a>
+                  <span className="ops-secondary-text">
+                    {link.description}
+                  </span>
                 </div>
               ))}
             </div>
@@ -524,7 +514,7 @@ function VendorDetailRoute() {
           <div style={{ display: "grid", gap: 4, padding: 10 }}>
             <span
               data-testid="vendor-detail-partial-failure-reason"
-              style={secondaryTextStyle}
+              className="ops-secondary-text"
             >
               {partialFailure.reason}
             </span>

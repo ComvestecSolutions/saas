@@ -8,23 +8,23 @@ const items: readonly EdgeRailItem[] = [
 ];
 
 describe("EdgeRail responsive recomposition", () => {
-  it("desktop: renders 56px-wide rail with all pinned items", () => {
+  it("desktop: renders 72px-wide rail with all pinned items", () => {
     const host = mount(<EdgeRail items={items} deviceClass="desktop" />);
     const rail = host.querySelector(
       "[data-pattern='edge-rail']",
     ) as HTMLElement;
     expect(rail.dataset["deviceClass"]).toBe("desktop");
-    expect(rail.style.width).toBe("56px");
+    expect(rail.style.width).toBe("72px");
     expect(host.querySelectorAll("[data-pin]")).toHaveLength(2);
   });
 
-  it("tablet: shrinks to a 48px peek rail", () => {
+  it("tablet: shrinks to a 60px peek rail", () => {
     const host = mount(<EdgeRail items={items} deviceClass="tablet" />);
     const rail = host.querySelector(
       "[data-pattern='edge-rail']",
     ) as HTMLElement;
     expect(rail.dataset["deviceClass"]).toBe("tablet");
-    expect(rail.style.width).toBe("48px");
+    expect(rail.style.width).toBe("60px");
   });
 
   it("mobile: yields the surface entirely so the shell can summon it inside a Sheet", () => {

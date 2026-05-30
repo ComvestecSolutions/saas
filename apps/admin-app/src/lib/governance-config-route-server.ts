@@ -1,10 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import {
-  platformModuleId,
-  platformModuleIds,
-  type PlatformModuleId,
-} from "@comvestec/contracts";
+import { PlatformModuleIdSchema, platformModuleId } from "@comvestec/contracts";
 import type {
   AdminGovernanceConfigV2Input,
   AdminGovernanceConfigV2RouteData,
@@ -13,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the `/desk/config` Runtime
@@ -24,24 +21,32 @@ import {
  * (Request/Response, HTTP encoding) is intentionally NOT done
  * here — those live in platform HTTP adapters.
  */
-export type AdminGovernanceConfigV2RawInput = {
-  readonly moduleId?: unknown;
-  readonly key?: unknown;
-};
+const AdminGovernanceConfigV2RawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    moduleId: Schema.optional(Schema.Unknown),
+    key: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const isKnownPlatformModuleId = (value: unknown): value is PlatformModuleId =>
-  typeof value === "string" &&
-  (platformModuleIds as readonly string[]).includes(value);
+type AdminGovernanceConfigV2RawInput = Schema.Schema.Type<
+  typeof AdminGovernanceConfigV2RawInputSchema
+>;
 
-const decodeRawInput = (
-  raw: AdminGovernanceConfigV2RawInput | undefined,
+const decodeAdminGovernanceConfigV2RawInput = decodeSyncBoundary(
+  AdminGovernanceConfigV2RawInputSchema,
+);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
+const decodeKey = decodeSchemaOrUndefined(Schema.NonEmptyString);
+
+const normalizeAdminGovernanceConfigV2Input = (
+  raw: AdminGovernanceConfigV2RawInput,
 ): AdminGovernanceConfigV2Input => {
   const safe = raw ?? {};
-  const moduleId = isKnownPlatformModuleId(safe.moduleId)
-    ? safe.moduleId
-    : platformModuleId.runtimeConfig;
-  const key =
-    typeof safe.key === "string" && safe.key.length > 0 ? safe.key : undefined;
+  const moduleId =
+    decodeModuleId(safe.moduleId) ?? platformModuleId.runtimeConfig;
+  const key = decodeKey(safe.key);
+
   return {
     moduleId,
     ...(key === undefined ? {} : { key }),
@@ -51,31 +56,33 @@ const decodeRawInput = (
 const loadAdminGovernanceConfigV2Data = async (
   request: Request,
   environment: unknown,
-  raw: AdminGovernanceConfigV2RawInput | undefined,
+  input: AdminGovernanceConfigV2Input,
 ): Promise<AdminGovernanceConfigV2RouteData> => {
   const { loadAdminGovernanceConfigV2RouteDataFromRequest } =
     await import("./governance-config-route-data");
-
-  const decoded = decodeRawInput(raw);
 
   return Effect.runPromise(
     loadAdminGovernanceConfigV2RouteDataFromRequest(
       request,
       environment,
-      decoded,
+      input,
     ),
   );
 };
 
 export const getAdminGovernanceConfigV2Data = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminGovernanceConfigV2RawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminGovernanceConfigV2Input(
+      decodeAdminGovernanceConfigV2RawInput(input),
+    ),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminGovernanceConfigV2RawInput | undefined;
+      readonly data: AdminGovernanceConfigV2Input;
     }) => loadAdminGovernanceConfigV2Data(context.request, process.env, data),
   );

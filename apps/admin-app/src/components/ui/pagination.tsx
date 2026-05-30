@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "./icons";
+import { formatAdminInteger } from "../../lib/number-format";
 
 type PaginationProps = {
   readonly page: number;
@@ -60,8 +61,8 @@ export function Pagination({
   return (
     <div className="ops-pagination">
       <span className="ops-pagination__info">
-        {start.toLocaleString()}–{end.toLocaleString()} of{" "}
-        {total.toLocaleString()}
+        {formatAdminInteger(start)}–{formatAdminInteger(end)} of{" "}
+        {formatAdminInteger(total)}
       </span>
       <div
         style={{

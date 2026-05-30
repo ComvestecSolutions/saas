@@ -143,7 +143,7 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
     await act(async () => {
       await waitFor(
         () => window.location.pathname === "/desk/tenant/ten_acme",
-        `Expected omnibar selection to navigate to /r/tenant/ten_acme (was ${window.location.pathname}).`,
+        `Expected omnibar selection to navigate to /desk/tenant/ten_acme (was ${window.location.pathname}).`,
       );
     });
 
@@ -207,7 +207,7 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
     await act(async () => {
       await waitFor(
         () => window.location.pathname === "/desk/tenant/ten_omnibar_fixture",
-        `Expected omnibar Enter submit to navigate to /r/tenant/ten_omnibar_fixture (was ${window.location.pathname}).`,
+        `Expected omnibar Enter submit to navigate to /desk/tenant/ten_omnibar_fixture (was ${window.location.pathname}).`,
       );
     });
 

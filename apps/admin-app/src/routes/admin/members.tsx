@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -23,6 +23,7 @@ import { createAdminAppFileRoute } from "../../file-route";
 import {
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   ScreenHeader,
   SegmentedTabs,
@@ -110,22 +111,6 @@ const adminMemberRoleFilters = [
   adminMemberRole.compliance,
   adminMemberRole.viewer,
 ] as const;
-
-const buildRoleFilterButtonStyle = (active: boolean) =>
-  ({
-    padding: "4px 8px",
-    borderRadius: 999,
-    border: active
-      ? "1px solid color-mix(in oklab, var(--ops-accent, #7dd3fc) 42%, transparent)"
-      : "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-    background: active
-      ? "color-mix(in oklab, var(--ops-accent, #7dd3fc) 16%, transparent)"
-      : "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-    color: "var(--ops-text-primary, inherit)",
-    cursor: "pointer",
-    fontSize: "0.74rem",
-    fontWeight: 700,
-  }) satisfies CSSProperties;
 
 export const Route = createAdminAppFileRoute("/admin/members")({
   loader: async () => {
@@ -349,13 +334,7 @@ function AdminMembersRoute() {
         <div
           data-testid="admin-members-action-success"
           role="status"
-          style={{
-            padding: 6,
-            color: "var(--status-success-fg)",
-            background: "var(--status-success-bg)",
-            border: "1px solid var(--status-success-border)",
-            borderRadius: 4,
-          }}
+          className="ops-feedback success"
         >
           {actionSuccess}
         </div>
@@ -364,13 +343,7 @@ function AdminMembersRoute() {
         <div
           data-testid="admin-members-action-error"
           role="alert"
-          style={{
-            padding: 6,
-            color: "var(--status-error-fg)",
-            background: "var(--status-error-bg)",
-            border: "1px solid var(--status-error-border)",
-            borderRadius: 4,
-          }}
+          className="ops-feedback error"
         >
           {actionError}
         </div>
@@ -403,74 +376,76 @@ function AdminMembersRoute() {
         />
       </div>
 
-      <div
+      <OpsPanel
+        title="Invite operator"
+        description="Issue a guarded admin-organization invite with an explicit role and one-shot reveal token."
         data-testid="admin-members-invite-composer"
-        style={{
-          display: "grid",
-          gap: 6,
-          gridTemplateColumns: "minmax(220px, 1.6fr) minmax(160px, 1fr) auto",
-          alignItems: "end",
-        }}
       >
-        <label
-          style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
-          htmlFor="admin-members-invite-email"
-        >
-          <span>Email</span>
-          <input
-            id="admin-members-invite-email"
-            data-testid="admin-members-invite-email"
-            value={inviteEmail}
-            onChange={(event) => setInviteEmail(event.currentTarget.value)}
-            placeholder="operator@comvestec.com"
-          />
-        </label>
-        <label
-          style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
-          htmlFor="admin-members-invite-role"
-        >
-          <span>Role</span>
-          <select
-            id="admin-members-invite-role"
-            data-testid="admin-members-invite-role"
-            value={inviteRole}
-            onChange={(event) =>
-              setInviteRole(event.currentTarget.value as AdminMemberRole)
-            }
-          >
-            {adminMemberRoleFilters.map((role) => (
-              <option key={role} value={role}>
-                {adminMemberRoleLabel[role]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          data-testid="admin-members-invite-cta"
-          disabled={inviteEmail.trim().length === 0}
-          onClick={() => setInviteArmed(true)}
-        >
-          Invite member
-        </button>
-      </div>
-
-      {ownerCount <= 1 ? (
         <div
-          data-testid="admin-members-owner-floor"
           style={{
-            padding: 8,
-            borderRadius: 12,
-            border:
-              "1px solid var(--status-pending-border, rgba(245,158,11,0.35))",
-            background:
-              "color-mix(in oklab, var(--status-pending-bg, rgba(245,158,11,0.16)) 80%, transparent)",
-            color: "var(--ops-text-primary, inherit)",
+            display: "grid",
+            gap: 6,
+            gridTemplateColumns: "minmax(220px, 1.6fr) minmax(160px, 1fr) auto",
+            alignItems: "end",
           }}
         >
-          Only one admin owner is active. Add a second owner to reduce operator
-          lockout risk during offboarding or incident response.
+          <label
+            style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
+            htmlFor="admin-members-invite-email"
+          >
+            <span>Email</span>
+            <input
+              id="admin-members-invite-email"
+              data-testid="admin-members-invite-email"
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.currentTarget.value)}
+              placeholder="operator@comvestec.com"
+            />
+          </label>
+          <label
+            style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
+            htmlFor="admin-members-invite-role"
+          >
+            <span>Role</span>
+            <select
+              id="admin-members-invite-role"
+              data-testid="admin-members-invite-role"
+              value={inviteRole}
+              onChange={(event) =>
+                setInviteRole(event.currentTarget.value as AdminMemberRole)
+              }
+            >
+              {adminMemberRoleFilters.map((role) => (
+                <option key={role} value={role}>
+                  {adminMemberRoleLabel[role]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            data-testid="admin-members-invite-cta"
+            disabled={inviteEmail.trim().length === 0}
+            onClick={() => setInviteArmed(true)}
+            className="ops-primary-button"
+          >
+            Invite member
+          </button>
         </div>
+      </OpsPanel>
+
+      {ownerCount <= 1 ? (
+        <OpsPanel
+          data-testid="admin-members-owner-floor"
+          title="Owner floor risk"
+          tone="warn"
+          description="Only one active admin owner remains, which raises lockout and recovery risk."
+        >
+          <p className="ops-meta-value">
+            Add a second owner to reduce operator lockout risk during
+            offboarding or incident response.
+          </p>
+        </OpsPanel>
       ) : null}
 
       <div className="ops-card">
@@ -504,7 +479,7 @@ function AdminMembersRoute() {
 
         <div
           data-testid="admin-members-role-filter"
-          style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}
+          className="ops-pill-filter-row"
         >
           <button
             type="button"
@@ -512,7 +487,8 @@ function AdminMembersRoute() {
               setRoleFilter("all");
               tableState.setPage(1);
             }}
-            style={buildRoleFilterButtonStyle(roleFilter === "all")}
+            className="ops-pill-filter"
+            aria-pressed={roleFilter === "all"}
           >
             All roles
           </button>
@@ -529,10 +505,14 @@ function AdminMembersRoute() {
                   setRoleFilter(role);
                   tableState.setPage(1);
                 }}
-                style={buildRoleFilterButtonStyle(roleFilter === role)}
+                className="ops-pill-filter"
+                aria-pressed={roleFilter === role}
               >
                 {memberRoleFilterLabel[role]}
-                <span className="mono" style={{ marginLeft: 6 }}>
+                <span
+                  className="mono ops-secondary-text"
+                  style={{ marginLeft: 6 }}
+                >
                   {count}
                 </span>
               </button>
@@ -540,138 +520,122 @@ function AdminMembersRoute() {
           })}
         </div>
 
-        <table
-          data-testid="admin-members-table"
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.8125rem",
-          }}
-        >
-          <thead>
-            <tr>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "member")}
-                onToggle={() => tableState.toggleSort("member")}
-              >
-                Member
-              </SortableTableHeader>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "role")}
-                onToggle={() => tableState.toggleSort("role")}
-              >
-                Role
-              </SortableTableHeader>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "status")}
-                onToggle={() => tableState.toggleSort("status")}
-              >
-                Lifecycle
-              </SortableTableHeader>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "activity")}
-                onToggle={() => tableState.toggleSort("activity")}
-              >
-                Activity
-              </SortableTableHeader>
-              <th style={{ textAlign: "left", padding: 4 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 ? (
+        <div className="ops-table-wrapper">
+          <table data-testid="admin-members-table" className="ops-table">
+            <thead>
               <tr>
-                <td
-                  colSpan={5}
-                  data-testid="admin-members-empty"
-                  style={{ padding: 6 }}
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "member")}
+                  onToggle={() => tableState.toggleSort("member")}
                 >
-                  No admin members match the current filters.
-                </td>
+                  Member
+                </SortableTableHeader>
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "role")}
+                  onToggle={() => tableState.toggleSort("role")}
+                >
+                  Role
+                </SortableTableHeader>
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "status")}
+                  onToggle={() => tableState.toggleSort("status")}
+                >
+                  Lifecycle
+                </SortableTableHeader>
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "activity")}
+                  onToggle={() => tableState.toggleSort("activity")}
+                >
+                  Activity
+                </SortableTableHeader>
+                <th>Actions</th>
               </tr>
-            ) : (
-              visible.map((member) => (
-                <tr
-                  key={member.id}
-                  data-testid="admin-members-row"
-                  data-member-id={member.id}
-                >
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      <Link
-                        to="/desk/admin-member/$id"
-                        params={{ id: member.id }}
-                        data-testid="admin-members-detail-link"
-                        data-member-id={member.id}
-                        style={{
-                          color: "inherit",
-                          textDecoration: "none",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {member.displayName}
-                      </Link>
-                      <span
-                        className="mono"
-                        style={{ color: "var(--ops-text-secondary)" }}
-                      >
-                        {member.email}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      <span className="text-strong">
-                        {adminMemberRoleLabel[member.role]}
-                      </span>
-                      <span
-                        className="mono"
-                        style={{ color: "var(--ops-text-secondary)" }}
-                      >
-                        {member.createdBy}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <StatusChip
-                        status={member.status}
-                        variant={resolveStatusVariant(member.status)}
-                      />
-                      <span
-                        className="mono"
-                        style={{ color: "var(--ops-text-secondary)" }}
-                      >
-                        Invited {formatAdminMemberDay(member.invitedAt)}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      <span className="mono">
-                        {formatAdminMemberDay(
-                          resolveAdminMemberActivityAt(member),
-                        )}
-                      </span>
-                      <span style={{ color: "var(--ops-text-secondary)" }}>
-                        {resolveAdminMemberActivityLabel(member)}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <button
-                      type="button"
-                      data-testid="admin-members-remove-cta"
-                      data-member-id={member.id}
-                      onClick={() => setRemoveArmed(member.id)}
-                    >
-                      Remove
-                    </button>
+            </thead>
+            <tbody>
+              {visible.length === 0 ? (
+                <tr>
+                  <td colSpan={5} data-testid="admin-members-empty">
+                    No admin members match the current filters.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                visible.map((member) => (
+                  <tr
+                    key={member.id}
+                    data-testid="admin-members-row"
+                    data-member-id={member.id}
+                  >
+                    <td>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <span className="text-strong">
+                          {member.displayName}
+                        </span>
+                        <span className="mono ops-secondary-text">
+                          {member.email}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <span className="text-strong">
+                          {adminMemberRoleLabel[member.role]}
+                        </span>
+                        <span className="mono ops-secondary-text">
+                          {member.createdBy}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <StatusChip
+                          status={member.status}
+                          variant={resolveStatusVariant(member.status)}
+                        />
+                        <span className="mono ops-secondary-text">
+                          Invited {formatAdminMemberDay(member.invitedAt)}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <span className="mono">
+                          {formatAdminMemberDay(
+                            resolveAdminMemberActivityAt(member),
+                          )}
+                        </span>
+                        <span className="ops-secondary-text">
+                          {resolveAdminMemberActivityLabel(member)}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="ops-inline-cluster">
+                        <Link
+                          to="/desk/admin-member/$id"
+                          params={{ id: member.id }}
+                          data-testid="admin-members-detail-link"
+                          data-member-id={member.id}
+                          className="ops-link-button ops-btn--xs"
+                        >
+                          Open detail
+                        </Link>
+                        <button
+                          type="button"
+                          data-testid="admin-members-remove-cta"
+                          data-member-id={member.id}
+                          onClick={() => setRemoveArmed(member.id)}
+                          className="ops-btn ops-btn--danger ops-btn--xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <Pagination
           page={tableState.page}
@@ -740,6 +704,7 @@ function AdminMembersRoute() {
                   type="button"
                   data-testid="admin-members-invitation-copy"
                   onClick={handleCopyInvitationToken}
+                  className="ops-btn ops-btn--xs"
                 >
                   Copy token
                 </button>

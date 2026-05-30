@@ -1,5 +1,6 @@
 import { Effect, Option } from "effect";
 import {
+  type RequestContext,
   type PlatformScope,
   platformScope,
   reasonCatalogId,
@@ -41,11 +42,10 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  *     and renders an empty-state when none are supplied — the
  *     tenant directory surface (`/desk/tenants`) is the upstream
  *     pivot until the platform-side aggregate ships.
- *   - Per-tenant failure isolation (`partialFailures`) deferred
- *     until the typed error channel for `Effect.catchTags` is
- *     stabilized for the Polar adapter union; today any
- *     per-tenant Polar failure degrades the whole posture board
- *     to `error`, surfaced through the outer `catchAll`.
+ *   - Per-tenant billing vendor failures degrade the affected row
+ *     instead of collapsing the whole board. Authorization /
+ *     session failures still route through the outer stale /
+ *     denied states.
  */
 export type AdminBillingListTenantTarget = {
   readonly scope: PlatformScope;
@@ -57,12 +57,28 @@ export type AdminBillingListInput = {
   readonly selectedTenantId?: string;
 };
 
+export type AdminBillingListRowDegradedSource = "projection" | "customers";
+
 export type AdminBillingListRow = {
   readonly tenant: AdminBillingListTenantTarget;
   readonly displayName: string;
   readonly projection: PolarRevenueProjectionSnapshotView | null;
   readonly customerCount: number;
+  readonly degradedSources?: readonly AdminBillingListRowDegradedSource[];
 };
+
+type BillingListUnauthorizedError =
+  | { readonly _tag: "PolarRevenueProjectionUnauthorized" }
+  | { readonly _tag: "PolarCustomerReadUnauthorized" };
+
+const isBillingUnauthorizedError = (
+  error: unknown,
+): error is BillingListUnauthorizedError =>
+  typeof error === "object" &&
+  error !== null &&
+  "_tag" in error &&
+  (error._tag === "PolarRevenueProjectionUnauthorized" ||
+    error._tag === "PolarCustomerReadUnauthorized");
 
 export type AdminBillingListPosture = {
   readonly tenantCount: number;
@@ -138,6 +154,81 @@ const computePosture = (
   };
 };
 
+const loadBillingTenantRow = (
+  environment: unknown,
+  requestContext: RequestContext,
+  tenant: AdminBillingListTenantTarget,
+  dependencies: AdminBillingListDependencies,
+): Effect.Effect<AdminBillingListRow, BillingListUnauthorizedError> =>
+  Effect.all({
+    projection: dependencies
+      .getPolarRevenueProjection(environment, {
+        requestContext,
+        tenant,
+      })
+      .pipe(
+        Effect.map((projection) => ({
+          degraded: false as const,
+          value: Option.getOrNull(projection),
+        })),
+        Effect.catchTag("PolarRevenueProjectionUnauthorized", (error) =>
+          Effect.fail(error),
+        ),
+        Effect.catchAll((error) =>
+          isBillingUnauthorizedError(error)
+            ? Effect.fail(error)
+            : Effect.succeed({
+                degraded: true as const,
+                value: null,
+              }),
+        ),
+      ),
+    customers: dependencies
+      .listPolarCustomersByExternalId(environment, {
+        requestContext,
+        query: {
+          tenant,
+          externalId: tenant.scopeId,
+          reasonCatalogId: reasonCatalogId.polarCustomerRead,
+        },
+      })
+      .pipe(
+        Effect.map((customers) => ({
+          degraded: false as const,
+          value: customers.summaries.length,
+        })),
+        Effect.catchTag("PolarCustomerReadUnauthorized", (error) =>
+          Effect.fail(error),
+        ),
+        Effect.catchAll((error) =>
+          isBillingUnauthorizedError(error)
+            ? Effect.fail(error)
+            : Effect.succeed({
+                degraded: true as const,
+                value: 0,
+              }),
+        ),
+      ),
+  }).pipe(
+    Effect.map(({ projection, customers }) => {
+      const degradedSources: AdminBillingListRowDegradedSource[] = [];
+      if (projection.degraded) {
+        degradedSources.push("projection");
+      }
+      if (customers.degraded) {
+        degradedSources.push("customers");
+      }
+
+      return {
+        tenant,
+        displayName: resolveAdminTenantTargetDisplayName(tenant),
+        projection: projection.value,
+        customerCount: customers.value,
+        ...(degradedSources.length === 0 ? {} : { degradedSources }),
+      } satisfies AdminBillingListRow;
+    }),
+  );
+
 export const loadAdminBillingListRouteDataFromRequest = (
   request: Request,
   environment: unknown,
@@ -152,34 +243,11 @@ export const loadAdminBillingListRouteDataFromRequest = (
             Effect.forEach(
               input.tenantTargets,
               (tenant) =>
-                Effect.all({
-                  projection: dependencies.getPolarRevenueProjection(
-                    environment,
-                    {
-                      requestContext,
-                      tenant,
-                    },
-                  ),
-                  customers: dependencies.listPolarCustomersByExternalId(
-                    environment,
-                    {
-                      requestContext,
-                      query: {
-                        tenant,
-                        externalId: tenant.scopeId,
-                        reasonCatalogId: reasonCatalogId.polarCustomerRead,
-                      },
-                    },
-                  ),
-                }).pipe(
-                  Effect.map(
-                    ({ projection, customers }): AdminBillingListRow => ({
-                      tenant,
-                      displayName: resolveAdminTenantTargetDisplayName(tenant),
-                      projection: Option.getOrNull(projection),
-                      customerCount: customers.summaries.length,
-                    }),
-                  ),
+                loadBillingTenantRow(
+                  environment,
+                  requestContext,
+                  tenant,
+                  dependencies,
                 ),
               { concurrency: 4 },
             ).pipe(

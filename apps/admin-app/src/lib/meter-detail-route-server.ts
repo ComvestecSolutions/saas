@@ -1,19 +1,18 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
-  platformScope,
-  type OpenMeterUsageQueryGranularity,
-  type PlatformScope,
+  OpenMeterUsageQueryGranularitySchema,
+  PlatformScopeSchema,
 } from "@comvestec/contracts";
 import type {
   AdminMeterDetailInput,
   AdminMeterDetailRouteData,
-  AdminMeterDetailWindow,
 } from "./meter-detail-route-data";
 import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/meter/$meterId` (admin-app
@@ -22,92 +21,63 @@ import {
  * boundary and runs the route-data Effect on the server. No
  * Request/Response shaping here.
  */
-export type AdminMeterDetailRawInput = {
-  readonly meterSlug?: unknown;
-  readonly tenantScope?: unknown;
-  readonly tenantScopeId?: unknown;
-  readonly subject?: unknown;
-  readonly granularity?: unknown;
-  readonly windowFrom?: unknown;
-  readonly windowTo?: unknown;
-};
+const AdminMeterDetailInputSchema = Schema.Struct({
+  meterSlug: Schema.NonEmptyString,
+  tenant: Schema.Struct({
+    scope: PlatformScopeSchema,
+    scopeId: Schema.NonEmptyString,
+  }),
+  subject: Schema.optional(Schema.NonEmptyString),
+  granularity: Schema.optional(OpenMeterUsageQueryGranularitySchema),
+  window: Schema.optional(
+    Schema.Struct({
+      from: Schema.NonEmptyString,
+      to: Schema.NonEmptyString,
+    }),
+  ),
+});
 
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
-const knownGranularities = new Set<string>(["MINUTE", "HOUR", "DAY", "MONTH"]);
+type AdminMeterDetailInputValue = Schema.Schema.Type<
+  typeof AdminMeterDetailInputSchema
+>;
 
-const isPlatformScope = (value: unknown): value is PlatformScope =>
-  typeof value === "string" && knownPlatformScopes.has(value);
-
-const isGranularity = (
-  value: unknown,
-): value is OpenMeterUsageQueryGranularity =>
-  typeof value === "string" && knownGranularities.has(value);
-
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeWindow = (
-  rawFrom: unknown,
-  rawTo: unknown,
-): AdminMeterDetailWindow | undefined => {
-  const from = decodeOptionalString(rawFrom);
-  const to = decodeOptionalString(rawTo);
-  if (from === undefined || to === undefined) return undefined;
-  return { from, to };
-};
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Meter detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminMeterDetailRawInput | undefined,
-): AdminMeterDetailInput => {
-  const safe = raw ?? {};
-  const meterSlug = requireString(safe.meterSlug, "meterSlug");
-  if (!isPlatformScope(safe.tenantScope)) {
-    throw new Error("Meter detail loader requires a valid 'tenantScope'.");
-  }
-  const tenantScopeId = requireString(safe.tenantScopeId, "tenantScopeId");
-  const subject = decodeOptionalString(safe.subject);
-  const granularity = isGranularity(safe.granularity)
-    ? safe.granularity
-    : undefined;
-  const window = decodeWindow(safe.windowFrom, safe.windowTo);
-  return {
-    meterSlug,
-    tenant: { scope: safe.tenantScope, scopeId: tenantScopeId },
-    ...(subject === undefined ? {} : { subject }),
-    ...(granularity === undefined ? {} : { granularity }),
-    ...(window === undefined ? {} : { window }),
-  };
-};
+const normalizeAdminMeterDetailInput = (
+  input: AdminMeterDetailInputValue,
+): AdminMeterDetailInput => ({
+  meterSlug: input.meterSlug,
+  tenant: input.tenant,
+  ...(input.subject === undefined ? {} : { subject: input.subject }),
+  ...(input.granularity === undefined
+    ? {}
+    : { granularity: input.granularity }),
+  ...(input.window === undefined ? {} : { window: input.window }),
+});
 
 const loadAdminMeterDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminMeterDetailRawInput | undefined,
+  input: AdminMeterDetailInput,
 ): Promise<AdminMeterDetailRouteData> => {
   const { loadAdminMeterDetailRouteDataFromRequest } =
     await import("./meter-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminMeterDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminMeterDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminMeterDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminMeterDetailRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminMeterDetailInput(
+      decodeSyncBoundary(AdminMeterDetailInputSchema)(input),
+    ),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminMeterDetailRawInput | undefined;
+      readonly data: AdminMeterDetailInput;
     }) => loadAdminMeterDetailData(context.request, process.env, data),
   );

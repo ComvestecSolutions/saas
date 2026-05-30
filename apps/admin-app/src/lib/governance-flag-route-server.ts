@@ -1,10 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import {
-  platformModuleId,
-  platformModuleIds,
-  type PlatformModuleId,
-} from "@comvestec/contracts";
+import { PlatformModuleIdSchema, platformModuleId } from "@comvestec/contracts";
 import type {
   AdminGovernanceFlagV2Input,
   AdminGovernanceFlagV2RouteData,
@@ -13,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the `/desk/flag` Feature Flags
@@ -24,26 +21,32 @@ import {
  * (Request/Response, HTTP encoding) is intentionally NOT done
  * here — those live in platform HTTP adapters.
  */
-export type AdminGovernanceFlagV2RawInput = {
-  readonly moduleId?: unknown;
-  readonly flagKey?: unknown;
-};
+const AdminGovernanceFlagV2RawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    moduleId: Schema.optional(Schema.Unknown),
+    flagKey: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const isKnownPlatformModuleId = (value: unknown): value is PlatformModuleId =>
-  typeof value === "string" &&
-  (platformModuleIds as readonly string[]).includes(value);
+type AdminGovernanceFlagV2RawInput = Schema.Schema.Type<
+  typeof AdminGovernanceFlagV2RawInputSchema
+>;
 
-const decodeRawInput = (
-  raw: AdminGovernanceFlagV2RawInput | undefined,
+const decodeAdminGovernanceFlagV2RawInput = decodeSyncBoundary(
+  AdminGovernanceFlagV2RawInputSchema,
+);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
+const decodeFlagKey = decodeSchemaOrUndefined(Schema.NonEmptyString);
+
+const normalizeAdminGovernanceFlagV2Input = (
+  raw: AdminGovernanceFlagV2RawInput,
 ): AdminGovernanceFlagV2Input => {
   const safe = raw ?? {};
-  const moduleId = isKnownPlatformModuleId(safe.moduleId)
-    ? safe.moduleId
-    : platformModuleId.featureFlags;
-  const flagKey =
-    typeof safe.flagKey === "string" && safe.flagKey.length > 0
-      ? safe.flagKey
-      : undefined;
+  const moduleId =
+    decodeModuleId(safe.moduleId) ?? platformModuleId.featureFlags;
+  const flagKey = decodeFlagKey(safe.flagKey);
+
   return {
     moduleId,
     ...(flagKey === undefined ? {} : { flagKey }),
@@ -53,31 +56,29 @@ const decodeRawInput = (
 const loadAdminGovernanceFlagV2Data = async (
   request: Request,
   environment: unknown,
-  raw: AdminGovernanceFlagV2RawInput | undefined,
+  input: AdminGovernanceFlagV2Input,
 ): Promise<AdminGovernanceFlagV2RouteData> => {
   const { loadAdminGovernanceFlagV2RouteDataFromRequest } =
     await import("./governance-flag-route-data");
 
-  const decoded = decodeRawInput(raw);
-
   return Effect.runPromise(
-    loadAdminGovernanceFlagV2RouteDataFromRequest(
-      request,
-      environment,
-      decoded,
-    ),
+    loadAdminGovernanceFlagV2RouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminGovernanceFlagV2Data = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminGovernanceFlagV2RawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminGovernanceFlagV2Input(
+      decodeAdminGovernanceFlagV2RawInput(input),
+    ),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminGovernanceFlagV2RawInput | undefined;
+      readonly data: AdminGovernanceFlagV2Input;
     }) => loadAdminGovernanceFlagV2Data(context.request, process.env, data),
   );

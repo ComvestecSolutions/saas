@@ -6,6 +6,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import { resolveAdminSessionIdFromRequest } from "./trusted-admin-request-context-server";
 
 const WebhookApiKeyScopeSchema = Schema.Literal(
@@ -28,27 +29,23 @@ export type AdminWebhookApiKeyMutationServerResult = {
   readonly apiKeyId: string;
 };
 
-const decodeMutationInput = Schema.decodeUnknown(
-  AdminWebhookApiKeyMutationInputSchema,
-);
-
 const resolveApiKeyMutationInput = async (
   request: Request,
-  data: unknown,
+  input: AdminWebhookApiKeyMutationInput,
 ): Promise<
   Readonly<{
     sessionId: string;
     input: AdminWebhookApiKeyMutationInput;
   }>
 > => {
-  const [sessionId, input] = await Promise.all([
+  const [sessionId, resolvedInput] = await Promise.all([
     resolveAdminSessionIdFromRequest(request),
-    Effect.runPromise(decodeMutationInput(data)),
+    Promise.resolve(input),
   ]);
 
   return {
     sessionId,
-    input,
+    input: resolvedInput,
   };
 };
 
@@ -56,14 +53,14 @@ export const rotateAdminWebhookApiKey = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminWebhookApiKeyMutationInput) => input)
+  .inputValidator(decodeSyncBoundary(AdminWebhookApiKeyMutationInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: AdminWebhookApiKeyMutationInput;
     }): Promise<AdminWebhookApiKeyMutationServerResult> => {
       const { rotateWebhookApiKeyFromSessionId } =
         await import("@comvestec/platform");
@@ -91,14 +88,14 @@ export const revokeAdminWebhookApiKey = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminWebhookApiKeyMutationInput) => input)
+  .inputValidator(decodeSyncBoundary(AdminWebhookApiKeyMutationInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: AdminWebhookApiKeyMutationInput;
     }): Promise<AdminWebhookApiKeyMutationServerResult> => {
       const { revokeWebhookApiKeyFromSessionId } =
         await import("@comvestec/platform");

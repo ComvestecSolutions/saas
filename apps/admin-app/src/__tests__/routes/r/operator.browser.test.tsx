@@ -5,6 +5,7 @@ import {
   type AdminBrowserFixtureState,
 } from "../../../testing/admin-browser-fixtures";
 import {
+  click,
   renderAdminApp,
   waitFor,
   type RenderedAdminApp,
@@ -51,6 +52,41 @@ describe("/desk/operator/$id operator detail route", () => {
       ),
     ).not.toBeNull();
   }, 30_000);
+
+  it("navigates to a capability surface from the live operator envelope", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      CURRENT_OPERATOR_PATH,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='admin-operator-capability-link']",
+        ) !== null,
+      "Expected operator capability link to render.",
+    );
+
+    const capabilityLink = Array.from(
+      rendered.container.querySelectorAll<HTMLAnchorElement>(
+        "[data-testid='admin-operator-capability-link']",
+      ),
+    ).find((link) => new URL(link.href).pathname === "/desk");
+
+    expect(capabilityLink).not.toBeNull();
+
+    await click(capabilityLink!);
+
+    await waitFor(
+      () =>
+        rendered?.container.ownerDocument.defaultView?.location.pathname ===
+          "/desk" &&
+        rendered?.container.querySelector(
+          "[data-testid='desk-center-cache-pill']",
+        ) !== null,
+      "Expected capability link to navigate to the mission-control surface.",
+    );
+  });
 
   it("renders a directory-backed detail surface for another operator", async () => {
     rendered = await renderAdminApp(

@@ -6,6 +6,7 @@ import {
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
 import { resolveTrustedAdminRequestContextFromRequest } from "./trusted-admin-request-context-server";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 const ResendAdminNotificationInputSchema = Schema.Struct({
   notificationId: Schema.NonEmptyString,
@@ -27,18 +28,15 @@ export const resendAdminNotification = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ResendAdminNotificationInput) => input)
+  .inputValidator(decodeSyncBoundary(ResendAdminNotificationInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ResendAdminNotificationInput;
     }): Promise<ResendAdminNotificationServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ResendAdminNotificationInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -47,11 +45,11 @@ export const resendAdminNotification = createServerFn({
       const result = await Effect.runPromise(
         resendNotificationFromEnvironment(process.env, {
           requestContext,
-          notificationId: decoded.notificationId,
-          reason: decoded.reason,
-          ...(decoded.reasonAttachmentText === undefined
+          notificationId: data.notificationId,
+          reason: data.reason,
+          ...(data.reasonAttachmentText === undefined
             ? {}
-            : { reasonAttachmentText: decoded.reasonAttachmentText }),
+            : { reasonAttachmentText: data.reasonAttachmentText }),
         }),
       );
 

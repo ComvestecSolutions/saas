@@ -8,7 +8,7 @@ import {
   StatusChip,
   resolveStatusVariant,
 } from "@comvestec/ui";
-import { platformScopes, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../file-route";
 import { AdminTenantTargetForm } from "../../components/admin-tenant-target-form";
 import {
@@ -21,6 +21,7 @@ import {
   ExternalIcon,
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   ScreenHeader,
   SortableTableHeader,
@@ -33,6 +34,10 @@ import type {
   AdminRetentionListInput,
   AdminRetentionListRouteData,
 } from "../../lib/retention-list-route-data";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
 
 /**
  * `/desk/retention` — canonical retention operations surface.
@@ -48,6 +53,11 @@ const RawSearchSchema = Schema.Struct({
   scopeId: Schema.optional(Schema.String),
   selectedHoldId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  scope: Schema.optional(Schema.Unknown),
+  scopeId: Schema.optional(Schema.Unknown),
+  selectedHoldId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type ReadyData = Extract<
@@ -55,22 +65,28 @@ type ReadyData = Extract<
   { readonly kind: "ready" }
 >;
 type Tab = "policies" | "holds" | "schedule";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const knownPlatformScopes = platformScopes as readonly string[];
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const scope = decodeSearchString(search.scope);
+  const scopeId = decodeSearchString(search.scopeId);
+  const selectedHoldId = decodeSearchString(search.selectedHoldId);
+
+  return {
+    ...(scope === undefined ? {} : { scope }),
+    ...(scopeId === undefined ? {} : { scopeId }),
+    ...(selectedHoldId === undefined ? {} : { selectedHoldId }),
+  };
+};
 
 const decodeLoaderInput = (raw: RawSearch): AdminRetentionListInput => {
-  const scope: AdminRetentionListInput["scope"] =
-    raw.scope !== undefined && knownPlatformScopes.includes(raw.scope)
-      ? (raw.scope as PlatformScope)
-      : undefined;
-  const scopeId =
-    raw.scopeId !== undefined && raw.scopeId.length > 0
-      ? raw.scopeId
-      : undefined;
-  const selectedHoldId =
-    raw.selectedHoldId !== undefined && raw.selectedHoldId.length > 0
-      ? raw.selectedHoldId
-      : undefined;
+  const scope = decodeScope(raw.scope);
+  const scopeId = decodeNonEmptyString(raw.scopeId);
+  const selectedHoldId = decodeNonEmptyString(raw.selectedHoldId);
 
   return {
     ...(scope === undefined ? {} : { scope }),
@@ -83,7 +99,7 @@ const formatDate = (value: string | undefined): string =>
   value === undefined ? "—" : value.slice(0, 16).replace("T", " ");
 
 export const Route = createAdminAppFileRoute("/desk/retention")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/retention-list-loader").then(
@@ -294,10 +310,16 @@ function RetentionReadyRoute({ data }: { readonly data: ReadyData }) {
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             }}
           >
-            <section className="ops-card">
-              <div className="ops-card-head">
-                <p className="ops-card-head__title">Attention queue</p>
-              </div>
+            <OpsPanel
+              title="Attention queue"
+              tone={
+                activeHolds > 0
+                  ? "alert"
+                  : policiesWithHolds > 0
+                    ? "warn"
+                    : "neutral"
+              }
+            >
               <div style={{ display: "grid", gap: 6 }}>
                 <AttentionRow
                   label="Active holds requiring release governance"
@@ -315,23 +337,26 @@ function RetentionReadyRoute({ data }: { readonly data: ReadyData }) {
                   tone={releasedHolds > 0 ? "neutral" : "neutral"}
                 />
               </div>
-            </section>
+            </OpsPanel>
 
             {selectedHold === undefined ? (
-              <section className="ops-card">
-                <div className="ops-card-head">
-                  <p className="ops-card-head__title">Focused hold</p>
-                </div>
+              <OpsPanel title="Focused hold">
                 <p className="ops-text-muted">
                   Open a legal hold from the roster to keep evidence, target,
                   and lifecycle state in reach.
                 </p>
-              </section>
+              </OpsPanel>
             ) : (
-              <section className="ops-card">
-                <div className="ops-card-head">
-                  <p className="ops-card-head__title">Focused hold</p>
-                </div>
+              <OpsPanel
+                title="Focused hold"
+                tone={
+                  resolveStatusVariant(selectedHold.status) === "error"
+                    ? "alert"
+                    : resolveStatusVariant(selectedHold.status) === "pending"
+                      ? "warn"
+                      : "neutral"
+                }
+              >
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <span className="mono">{selectedHold.legalHoldId}</span>
@@ -371,7 +396,7 @@ function RetentionReadyRoute({ data }: { readonly data: ReadyData }) {
                     </Link>
                   </div>
                 </div>
-              </section>
+              </OpsPanel>
             )}
           </div>
 

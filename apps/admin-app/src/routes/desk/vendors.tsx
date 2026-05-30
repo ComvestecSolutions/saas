@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { StateScreen, StatusChip, type StatusChipTone } from "@comvestec/ui";
 import {
@@ -18,6 +18,7 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import { formatAdminTimestamp } from "../../lib/timestamp-format";
 import type { AdminVendorListRouteData } from "../../lib/vendor-list-route-data";
 
 /**
@@ -57,23 +58,6 @@ const kpiToneByStatus: Record<
   unavailable: "alert",
   unknown: "neutral",
 };
-
-const insightCardStyle = {
-  display: "grid",
-  gap: 4,
-  padding: 8,
-  borderRadius: 12,
-  border: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-  background:
-    "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-} satisfies CSSProperties;
-
-const secondaryTextStyle = {
-  color: "var(--ops-text-secondary, rgba(255,255,255,0.7))",
-} satisfies CSSProperties;
-
-const formatVendorTimestamp = (value: string | undefined): string =>
-  value === undefined ? "n/a" : value.slice(0, 16).replace("T", " ");
 
 export const Route = createAdminAppFileRoute("/desk/vendors")({
   loader: () =>
@@ -200,7 +184,9 @@ function VendorListRoute() {
           <>
             {aggregate.entries.length} adapters reported · correlation{" "}
             <span className="mono">{aggregate.correlationId}</span> · generated{" "}
-            <span className="mono">{aggregate.generatedAt}</span>
+            <span className="mono">
+              {formatAdminTimestamp(aggregate.generatedAt)}
+            </span>
           </>
         }
       />
@@ -238,42 +224,35 @@ function VendorListRoute() {
         />
       </div>
 
-      <div
-        data-testid="vendor-list-watch"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 6,
-        }}
-      >
-        <div style={insightCardStyle}>
+      <div data-testid="vendor-list-watch" className="ops-insight-grid">
+        <div className="ops-insight-card">
           <p className="ops-card-title">Attention vendor</p>
           <span className="text-strong">
             {attentionVendor?.serviceName ?? "All nominal"}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {attentionVendor === undefined
               ? "No vendor entries reported."
               : `${attentionVendor.status} · ${attentionVendor.message ?? "No adapter message reported."}`}
           </span>
         </div>
-        <div style={insightCardStyle}>
+        <div className="ops-insight-card">
           <p className="ops-card-title">Slowest adapter</p>
           <span className="text-strong">
             {slowestVendor?.serviceName ?? "No latency data"}
           </span>
-          <span className="mono" style={secondaryTextStyle}>
+          <span className="mono ops-secondary-text">
             {slowestVendor === undefined
               ? "n/a"
               : `${slowestVendor.latencyMs} ms p95`}
           </span>
         </div>
-        <div style={insightCardStyle}>
+        <div className="ops-insight-card">
           <p className="ops-card-title">Partial failure lane</p>
           <span className="text-strong">
             {partialFailureLead?.serviceName ?? "None"}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {partialFailureLead?.reason ??
               "No aggregate partial failures reported."}
           </span>
@@ -369,7 +348,7 @@ function VendorListRoute() {
                           <span className="text-strong">
                             {entry.serviceName}
                           </span>
-                          <span style={secondaryTextStyle}>
+                          <span className="ops-secondary-text">
                             {entry.message ?? "No adapter message reported."}
                           </span>
                         </div>
@@ -382,7 +361,7 @@ function VendorListRoute() {
                           >
                             {entry.status}
                           </StatusChip>
-                          <span style={secondaryTextStyle}>
+                          <span className="ops-secondary-text">
                             {partialFailureReason ??
                               "Aggregate clean for this service."}
                           </span>
@@ -393,7 +372,7 @@ function VendorListRoute() {
                           <span className="mono">
                             {entry.version ?? "version n/a"}
                           </span>
-                          <span className="mono" style={secondaryTextStyle}>
+                          <span className="mono ops-secondary-text">
                             {entry.latencyMs} ms p95
                           </span>
                         </div>
@@ -401,16 +380,17 @@ function VendorListRoute() {
                       <td style={{ padding: 4 }}>
                         <div style={{ display: "grid", gap: 2 }}>
                           <span className="mono">
-                            {formatVendorTimestamp(entry.lastCheckedAt)}
+                            {formatAdminTimestamp(entry.lastCheckedAt)}
                           </span>
-                          <span className="mono" style={secondaryTextStyle}>
+                          <span className="mono ops-secondary-text">
                             Incident{" "}
-                            {formatVendorTimestamp(entry.lastIncidentAt)}
+                            {formatAdminTimestamp(entry.lastIncidentAt)}
                           </span>
                         </div>
                       </td>
                       <td style={{ padding: 4 }}>
                         <Link
+                          className="ops-link-button"
                           to="/desk/vendor/$service"
                           params={{
                             service:

@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminRetentionListInput,
   AdminRetentionListRouteData,
@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical
@@ -18,24 +19,27 @@ import {
  * route-data Effect on the server. No Request/Response shaping
  * lives here — that belongs in platform HTTP adapters.
  */
-export type AdminRetentionListRawInput = {
-  readonly scope?: unknown;
-  readonly scopeId?: unknown;
-  readonly selectedHoldId?: unknown;
-};
+const AdminRetentionListRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    scope: Schema.optional(Schema.Unknown),
+    scopeId: Schema.optional(Schema.Unknown),
+    selectedHoldId: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
+type AdminRetentionListRawInput = Schema.Schema.Type<
+  typeof AdminRetentionListRawInputSchema
+>;
 
-const decodePlatformScope = (value: unknown): PlatformScope | undefined =>
-  typeof value === "string" && knownPlatformScopes.has(value)
-    ? (value as PlatformScope)
-    : undefined;
+const decodeAdminRetentionListRawInput = decodeSyncBoundary(
+  AdminRetentionListRawInputSchema,
+);
+const decodePlatformScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeRawInput = (
-  raw: AdminRetentionListRawInput | undefined,
+const normalizeAdminRetentionListInput = (
+  raw: AdminRetentionListRawInput,
 ): AdminRetentionListInput => {
   const safe = raw ?? {};
   const scope = decodePlatformScope(safe.scope);
@@ -51,25 +55,27 @@ const decodeRawInput = (
 const loadAdminRetentionListData = async (
   request: Request,
   environment: unknown,
-  raw: AdminRetentionListRawInput | undefined,
+  input: AdminRetentionListInput,
 ): Promise<AdminRetentionListRouteData> => {
   const { loadAdminRetentionListRouteDataFromRequest } =
     await import("./retention-list-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminRetentionListRouteDataFromRequest(request, environment, decoded),
+    loadAdminRetentionListRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminRetentionListData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminRetentionListRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminRetentionListInput(decodeAdminRetentionListRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminRetentionListRawInput | undefined;
+      readonly data: AdminRetentionListInput;
     }) => loadAdminRetentionListData(context.request, process.env, data),
   );

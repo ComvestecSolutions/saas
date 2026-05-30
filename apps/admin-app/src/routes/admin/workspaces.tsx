@@ -10,6 +10,7 @@ import { createAdminAppFileRoute } from "../../file-route";
 import {
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   ScreenHeader,
   SortableTableHeader,
@@ -17,6 +18,7 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import { formatAdminDate } from "../../lib/timestamp-format";
 import {
   createAdminWorkspace,
   deleteAdminWorkspace,
@@ -300,13 +302,7 @@ function AdminWorkspacesRoute() {
         <div
           data-testid="admin-workspaces-action-success"
           role="status"
-          style={{
-            padding: 6,
-            color: "var(--status-success-fg)",
-            background: "var(--status-success-bg)",
-            border: "1px solid var(--status-success-border)",
-            borderRadius: 4,
-          }}
+          className="ops-feedback success"
         >
           {actionSuccess}
         </div>
@@ -315,13 +311,7 @@ function AdminWorkspacesRoute() {
         <div
           data-testid="admin-workspaces-action-error"
           role="alert"
-          style={{
-            padding: 6,
-            color: "var(--status-error-fg)",
-            background: "var(--status-error-bg)",
-            border: "1px solid var(--status-error-border)",
-            borderRadius: 4,
-          }}
+          className="ops-feedback error"
         >
           {actionError}
         </div>
@@ -348,60 +338,66 @@ function AdminWorkspacesRoute() {
         />
       </div>
 
-      <div
+      <OpsPanel
+        title="Create workspace"
+        description="Start from a typed layout template so new operator workspaces open with the right surfaces already staged."
         data-testid="admin-workspaces-create-composer"
-        style={{
-          display: "grid",
-          gap: 6,
-          gridTemplateColumns: "minmax(220px, 1.6fr) minmax(180px, 1fr) auto",
-          alignItems: "end",
-        }}
       >
-        <label
-          style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
-          htmlFor="admin-workspaces-create-name"
+        <div
+          style={{
+            display: "grid",
+            gap: 6,
+            gridTemplateColumns: "minmax(220px, 1.6fr) minmax(180px, 1fr) auto",
+            alignItems: "end",
+          }}
         >
-          <span>Workspace name</span>
-          <input
-            id="admin-workspaces-create-name"
-            data-testid="admin-workspaces-create-name"
-            value={workspaceName}
-            onChange={(event) => setWorkspaceName(event.currentTarget.value)}
-            placeholder="Vendor watchboard"
-          />
-        </label>
-        <label
-          style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
-          htmlFor="admin-workspaces-create-template"
-        >
-          <span>Template</span>
-          <select
-            id="admin-workspaces-create-template"
-            data-testid="admin-workspaces-create-template"
-            value={workspaceTemplateId}
-            onChange={(event) =>
-              setWorkspaceTemplateId(
-                event.currentTarget
-                  .value as (typeof workspaceTemplates)[number]["id"],
-              )
-            }
+          <label
+            style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
+            htmlFor="admin-workspaces-create-name"
           >
-            {workspaceTemplates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          data-testid="admin-workspaces-create-cta"
-          disabled={workspaceName.trim().length === 0}
-          onClick={() => setCreateArmed(true)}
-        >
-          Create workspace
-        </button>
-      </div>
+            <span>Workspace name</span>
+            <input
+              id="admin-workspaces-create-name"
+              data-testid="admin-workspaces-create-name"
+              value={workspaceName}
+              onChange={(event) => setWorkspaceName(event.currentTarget.value)}
+              placeholder="Vendor watchboard"
+            />
+          </label>
+          <label
+            style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}
+            htmlFor="admin-workspaces-create-template"
+          >
+            <span>Template</span>
+            <select
+              id="admin-workspaces-create-template"
+              data-testid="admin-workspaces-create-template"
+              value={workspaceTemplateId}
+              onChange={(event) =>
+                setWorkspaceTemplateId(
+                  event.currentTarget
+                    .value as (typeof workspaceTemplates)[number]["id"],
+                )
+              }
+            >
+              {workspaceTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            data-testid="admin-workspaces-create-cta"
+            disabled={workspaceName.trim().length === 0}
+            onClick={() => setCreateArmed(true)}
+            className="ops-primary-button"
+          >
+            Create workspace
+          </button>
+        </div>
+      </OpsPanel>
 
       <div className="ops-card">
         <div className="ops-card-head">
@@ -417,111 +413,100 @@ function AdminWorkspacesRoute() {
           searchPlaceholder="Search workspace names or ids…"
         />
 
-        <table
-          data-testid="admin-workspaces-table"
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.8125rem",
-          }}
-        >
-          <thead>
-            <tr>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "workspace")}
-                onToggle={() => tableState.toggleSort("workspace")}
-              >
-                Workspace
-              </SortableTableHeader>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "position")}
-                onToggle={() => tableState.toggleSort("position")}
-              >
-                Position
-              </SortableTableHeader>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "layout")}
-                onToggle={() => tableState.toggleSort("layout")}
-              >
-                Layout
-              </SortableTableHeader>
-              <SortableTableHeader
-                ariaSort={resolveTableAriaSort(tableState, "updated")}
-                onToggle={() => tableState.toggleSort("updated")}
-              >
-                Updated
-              </SortableTableHeader>
-              <th style={{ textAlign: "left", padding: 4 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 ? (
+        <div className="ops-table-wrapper">
+          <table data-testid="admin-workspaces-table" className="ops-table">
+            <thead>
               <tr>
-                <td
-                  colSpan={5}
-                  data-testid="admin-workspaces-empty"
-                  style={{ padding: 6 }}
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "workspace")}
+                  onToggle={() => tableState.toggleSort("workspace")}
                 >
-                  No operator workspaces match the current view.
-                </td>
+                  Workspace
+                </SortableTableHeader>
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "position")}
+                  onToggle={() => tableState.toggleSort("position")}
+                >
+                  Position
+                </SortableTableHeader>
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "layout")}
+                  onToggle={() => tableState.toggleSort("layout")}
+                >
+                  Layout
+                </SortableTableHeader>
+                <SortableTableHeader
+                  ariaSort={resolveTableAriaSort(tableState, "updated")}
+                  onToggle={() => tableState.toggleSort("updated")}
+                >
+                  Updated
+                </SortableTableHeader>
+                <th>Actions</th>
               </tr>
-            ) : (
-              visible.map((workspace) => (
-                <tr
-                  key={workspace.id}
-                  data-testid="admin-workspaces-row"
-                  data-workspace-id={workspace.id}
-                >
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      <span className="text-strong">{workspace.name}</span>
-                      <span
-                        className="mono"
-                        style={{ color: "var(--ops-text-secondary)" }}
-                      >
-                        {workspace.id}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {workspace.position}
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      <span className="text-strong">
-                        {resolveWorkspacePaneCount(workspace.serializedLayout)}{" "}
-                        panes
-                      </span>
-                      <span style={{ color: "var(--ops-text-secondary)" }}>
-                        Owned by current operator
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <div style={{ display: "grid", gap: 2 }}>
-                      <span className="mono">
-                        {workspace.updatedAt.slice(0, 10)}
-                      </span>
-                      <span style={{ color: "var(--ops-text-secondary)" }}>
-                        Last saved layout revision
-                      </span>
-                    </div>
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <button
-                      type="button"
-                      data-testid="admin-workspaces-delete-cta"
-                      data-workspace-id={workspace.id}
-                      onClick={() => setDeleteArmed(workspace.id)}
-                    >
-                      Delete
-                    </button>
+            </thead>
+            <tbody>
+              {visible.length === 0 ? (
+                <tr>
+                  <td colSpan={5} data-testid="admin-workspaces-empty">
+                    No operator workspaces match the current view.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                visible.map((workspace) => (
+                  <tr
+                    key={workspace.id}
+                    data-testid="admin-workspaces-row"
+                    data-workspace-id={workspace.id}
+                  >
+                    <td>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <span className="text-strong">{workspace.name}</span>
+                        <span className="mono ops-secondary-text">
+                          {workspace.id}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="mono">{workspace.position}</td>
+                    <td>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <span className="text-strong">
+                          {resolveWorkspacePaneCount(
+                            workspace.serializedLayout,
+                          )}{" "}
+                          panes
+                        </span>
+                        <span className="ops-secondary-text">
+                          Owned by current operator
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <span className="mono">
+                          {formatAdminDate(workspace.updatedAt)}
+                        </span>
+                        <span className="ops-secondary-text">
+                          Last saved layout revision
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        data-testid="admin-workspaces-delete-cta"
+                        data-workspace-id={workspace.id}
+                        onClick={() => setDeleteArmed(workspace.id)}
+                        className="ops-btn ops-btn--danger ops-btn--xs"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <Pagination
           page={tableState.page}

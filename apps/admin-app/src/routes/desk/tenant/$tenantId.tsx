@@ -1,6 +1,7 @@
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { Schema } from "effect";
 import {
   EmptyState,
   ErrorState,
@@ -27,6 +28,7 @@ import {
   ScreenHeader,
 } from "../../../components/ui";
 import {
+  adminTenantTargetScopes,
   buildAdminTenantTarget,
   sanitizeAdminTenantTargetScope,
   type AdminTenantTarget,
@@ -44,10 +46,24 @@ import {
   mutateAdminTenantMembership,
   revokeAdminTenantInvitation,
 } from "../../../lib/tenant-workspace-mutations-server";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
+import { formatAdminTimestamp as formatTimestamp } from "../../../lib/timestamp-format";
 
 type TenantWorkspaceV2Search = {
   readonly scope?: ReturnType<typeof sanitizeAdminTenantTargetScope>;
 };
+const TenantWorkspaceV2SearchSchema = Schema.Struct({
+  scope: Schema.optional(Schema.Unknown),
+});
+const decodeTenantWorkspaceV2SearchBoundary = decodeSyncBoundary(
+  TenantWorkspaceV2SearchSchema,
+);
+const decodeTenantWorkspaceScope = decodeSchemaOrUndefined(
+  Schema.Literal(...adminTenantTargetScopes),
+);
 
 type TenantWorkspaceTab =
   | "overview"
@@ -104,16 +120,11 @@ const canonicalAdminRoute = {
   access: "/desk/access",
 } as const;
 
-const paneGridStyle = {
-  display: "grid",
-  gap: 8,
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-} as const;
-
 const parseTenantWorkspaceV2Search = (
-  search: Record<string, unknown>,
+  search: unknown,
 ): TenantWorkspaceV2Search => {
-  const scope = sanitizeAdminTenantTargetScope(search.scope);
+  const rawSearch = decodeTenantWorkspaceV2SearchBoundary(search);
+  const scope = decodeTenantWorkspaceScope(rawSearch.scope);
   return scope === undefined ? {} : { scope };
 };
 
@@ -133,9 +144,6 @@ const formatActionError = (error: unknown): string => {
 
   return "The tenant management action did not complete successfully.";
 };
-
-const formatTimestamp = (value: string | undefined): string =>
-  value === undefined ? "—" : value.slice(0, 19).replace("T", " ");
 
 const formatTtl = (ttlSeconds: number): string => {
   if (ttlSeconds >= 86_400) {
@@ -696,10 +704,9 @@ function TenantWorkspaceV2Route() {
 
   return (
     <div
-      className="ops-screen"
+      className="ops-screen ops-screen--tight"
       data-route="tenant-workspace-v3"
       data-testid="tenant-workspace-v2-ready"
-      style={{ display: "flex", flexDirection: "column", gap: 8 }}
     >
       <ScreenHeader
         title={snapshot.tenantOverview?.displayName ?? tenant.scopeId}
@@ -709,7 +716,7 @@ function TenantWorkspaceV2Route() {
           { label: tenant.scopeId },
         ]}
         subtitle={
-          <>
+          <span data-testid="tenant-workspace-v2-snapshot-meta">
             <span className="mono">
               {tenant.scope}:{tenant.scopeId}
             </span>{" "}
@@ -718,7 +725,7 @@ function TenantWorkspaceV2Route() {
             <span className="mono">
               {formatTimestamp(snapshot.generatedAt)}
             </span>
-          </>
+          </span>
         }
         actions={
           <>
@@ -750,7 +757,7 @@ function TenantWorkspaceV2Route() {
         </div>
       ) : null}
 
-      <div className="ops-bento">
+      <div className="ops-bento" data-testid="tenant-workspace-v2-kpis">
         <KpiCard
           label="Members"
           value={memberCount}
@@ -786,7 +793,7 @@ function TenantWorkspaceV2Route() {
         />
       </div>
 
-      <div style={paneGridStyle}>
+      <div className="ops-pane-grid">
         <Pane title="Tenant posture" ariaLabel="Tenant posture">
           {snapshot.tenantOverview === null ? (
             <EmptyState
@@ -794,8 +801,14 @@ function TenantWorkspaceV2Route() {
               description="The snapshot did not return a current tenant overview record."
             />
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div
+              className="ops-stack-md"
+              data-testid="tenant-workspace-v2-posture"
+            >
+              <div
+                className="ops-inline-cluster"
+                data-testid="tenant-workspace-v2-posture-signals"
+              >
                 <SignalBadge tone="accent">
                   plan {snapshot.tenantOverview.planTier}
                 </SignalBadge>
@@ -826,7 +839,10 @@ function TenantWorkspaceV2Route() {
                   billing {formatBillingStatus(billingStatus)}
                 </SignalBadge>
               </div>
-              <div className="ops-meta-grid">
+              <div
+                className="ops-meta-grid"
+                data-testid="tenant-workspace-v2-posture-meta"
+              >
                 <MetaRow
                   label="Display name"
                   value={snapshot.tenantOverview.displayName}
@@ -864,40 +880,19 @@ function TenantWorkspaceV2Route() {
         >
           <div
             data-testid="tenant-workspace-v2-launchpad"
-            style={{ display: "grid", gap: 6 }}
+            className="ops-link-grid"
           >
             {launchpadLinks.map((link) => (
-              <Link
-                key={link.label}
-                className="ops-card-button"
-                to={link.href}
-                style={{
-                  display: "grid",
-                  gap: 2,
-                  padding: 8,
-                  borderRadius: 8,
-                  border: "1px solid var(--bg-2)",
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
-                <span style={{ fontWeight: 700 }}>{link.label}</span>
-                <span
-                  className="ops-text-muted"
-                  style={{ fontSize: "0.75rem" }}
-                >
-                  {link.hint}
-                </span>
+              <Link key={link.label} className="ops-link-card" to={link.href}>
+                <span className="ops-link-card__title">{link.label}</span>
+                <span className="ops-link-card__hint">{link.hint}</span>
               </Link>
             ))}
           </div>
         </Pane>
 
         <Pane title="Focused watch" ariaLabel="Focused watch">
-          <div
-            data-testid="tenant-workspace-v2-focus"
-            style={{ display: "grid", gap: 8 }}
-          >
+          <div data-testid="tenant-workspace-v2-focus" className="ops-stack-md">
             {focusKind.kind === "approval" ? (
               focusedApproval !== undefined ? (
                 <>
@@ -906,13 +901,11 @@ function TenantWorkspaceV2Route() {
                   >
                     Approval needs a decision
                   </SignalBadge>
-                  <p style={{ margin: 0, fontWeight: 700 }}>
+                  <p className="ops-copy-row ops-copy-row--strong">
                     {focusedApproval.kind}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
-                    {focusedApproval.target}
-                  </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">{focusedApproval.target}</p>
+                  <p className="ops-note">
                     Requested by {focusedApproval.requestedBy} ·{" "}
                     {formatTtl(focusedApproval.ttlSeconds)} left
                   </p>
@@ -925,13 +918,11 @@ function TenantWorkspaceV2Route() {
                     status={focusedIncident.severity}
                     variant={resolveStatusVariant(focusedIncident.severity)}
                   />
-                  <p style={{ margin: 0, fontWeight: 700 }}>
+                  <p className="ops-copy-row ops-copy-row--strong">
                     {focusedIncident.title}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
-                    {focusedIncident.summary}
-                  </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">{focusedIncident.summary}</p>
+                  <p className="ops-note">
                     {focusedIncident.vendor} ·{" "}
                     {formatTimestamp(focusedIncident.openedAt)}
                   </p>
@@ -943,28 +934,26 @@ function TenantWorkspaceV2Route() {
                   <SignalBadge tone={resolveUsageTone(focusedSpotlight.tone)}>
                     Usage spotlight
                   </SignalBadge>
-                  <p style={{ margin: 0, fontWeight: 700 }}>
+                  <p className="ops-copy-row ops-copy-row--strong">
                     {focusedSpotlight.label}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">
                     {focusedSpotlight.value} {focusedSpotlight.unit}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
-                    {formatTrend(focusedSpotlight)}
-                  </p>
+                  <p className="ops-note">{formatTrend(focusedSpotlight)}</p>
                 </>
               ) : null
             ) : focusKind.kind === "activity" ? (
               focusedActivity !== undefined ? (
                 <>
                   <SignalBadge tone="accent">Latest activity</SignalBadge>
-                  <p style={{ margin: 0, fontWeight: 700 }}>
+                  <p className="ops-copy-row ops-copy-row--strong">
                     {focusedActivity.actor}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">
                     {focusedActivity.action} → {focusedActivity.target}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">
                     {formatTimestamp(focusedActivity.occurredAt)}
                   </p>
                 </>
@@ -975,14 +964,14 @@ function TenantWorkspaceV2Route() {
                   <SignalBadge tone={resolveRoleTone(focusedMember.role)}>
                     Member coverage
                   </SignalBadge>
-                  <p style={{ margin: 0, fontWeight: 700 }}>
+                  <p className="ops-copy-row ops-copy-row--strong">
                     {focusedMember.displayName}
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">
                     {focusedMember.role} ·{" "}
                     <span className="mono">{focusedMember.subjectId}</span>
                   </p>
-                  <p style={{ margin: 0 }} className="ops-text-muted">
+                  <p className="ops-note">
                     Last seen {formatTimestamp(focusedMember.lastSeenAt)}
                   </p>
                 </>
@@ -1000,6 +989,7 @@ function TenantWorkspaceV2Route() {
       <Tabs<TenantWorkspaceTab>
         value={tab}
         onChange={setTab}
+        ariaLabel="Tenant workspace sections"
         items={tenantWorkspaceTabs.map((value) => ({
           value,
           label: tenantWorkspaceTabLabel[value],
@@ -1011,7 +1001,7 @@ function TenantWorkspaceV2Route() {
       />
 
       {tab === "overview" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane title="Tenant overview" ariaLabel="Tenant overview">
             {snapshot.tenantOverview === null ? (
               <EmptyState
@@ -1019,8 +1009,11 @@ function TenantWorkspaceV2Route() {
                 description="The current snapshot does not include tenant overview data."
               />
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
-                <div className="ops-bento">
+              <div className="ops-stack-md">
+                <div
+                  className="ops-bento"
+                  data-testid="tenant-workspace-v2-overview-kpis"
+                >
                   <KpiCard
                     label="Plan tier"
                     value={snapshot.tenantOverview.planTier}
@@ -1056,7 +1049,10 @@ function TenantWorkspaceV2Route() {
                     }
                   />
                 </div>
-                <div className="ops-meta-grid">
+                <div
+                  className="ops-meta-grid"
+                  data-testid="tenant-workspace-v2-overview-meta"
+                >
                   <MetaRow
                     label="Tenant"
                     value={snapshot.tenantOverview.displayName}
@@ -1091,6 +1087,7 @@ function TenantWorkspaceV2Route() {
           <Pane
             title="Approval queue"
             ariaLabel="Approval queue"
+            scrollRegionFocusable
             toolbar={
               <Link className="ops-btn ops-btn--xs" to={auditWorkspacePath}>
                 Open audit
@@ -1098,6 +1095,7 @@ function TenantWorkspaceV2Route() {
             }
           >
             <ApprovalTable
+              data-testid="tenant-workspace-v2-overview-approvals"
               approvals={snapshot.pendingTenantApprovals}
               emptyTitle="No tenant approvals"
               emptyDescription="No approvals are waiting on this tenant at the moment."
@@ -1107,6 +1105,7 @@ function TenantWorkspaceV2Route() {
           <Pane
             title="Recent tenant activity"
             ariaLabel="Recent tenant activity"
+            scrollRegionFocusable
             toolbar={
               <Link className="ops-btn ops-btn--xs" to={auditWorkspacePath}>
                 Full audit
@@ -1114,6 +1113,7 @@ function TenantWorkspaceV2Route() {
             }
           >
             <RecentActivityList
+              data-testid="tenant-workspace-v2-overview-activity"
               entries={snapshot.recentActivity}
               emptyTitle="No recent tenant activity"
               emptyDescription="No tenant-scoped activity entries were returned for the current snapshot window."
@@ -1123,18 +1123,25 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "members" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="Members & invitations"
             ariaLabel="Members and invitations"
+            scrollRegionFocusable
             toolbar={
               <SignalBadge tone={memberCount > 0 ? "accent" : "neutral"}>
                 {filteredMembers.length} shown
               </SignalBadge>
             }
           >
-            <div style={{ display: "grid", gap: 8 }}>
-              <div className="ops-bento">
+            <div
+              className="ops-stack-md"
+              data-testid="tenant-workspace-v2-members-pane"
+            >
+              <div
+                className="ops-bento"
+                data-testid="tenant-workspace-v2-members-kpis"
+              >
                 <KpiCard label="Owners" value={roleCounts.owner} tone="good" />
                 <KpiCard
                   label="Admins"
@@ -1157,94 +1164,97 @@ function TenantWorkspaceV2Route() {
                   tone={dormantMembers > 0 ? "warn" : "neutral"}
                 />
               </div>
-              {memberCount > 0 ? (
-                <>
-                  <Tabs<MemberFilter>
-                    value={memberFilter}
-                    onChange={setMemberFilter}
-                    items={[
-                      { value: "all", label: "All", count: memberCount },
-                      {
-                        value: "owners",
-                        label: "Owners",
-                        count: roleCounts.owner,
-                      },
-                      {
-                        value: "admins",
-                        label: "Admins",
-                        count: roleCounts.admin,
-                      },
-                      {
-                        value: "members",
-                        label: "Members",
-                        count: roleCounts.member,
-                      },
-                      {
-                        value: "viewers",
-                        label: "Viewers",
-                        count: roleCounts.viewer,
-                      },
-                      {
-                        value: "dormant",
-                        label: "Dormant",
-                        count: dormantMembers,
-                      },
-                    ]}
-                  />
-                  <FilterBar
-                    searchValue={memberSearch}
-                    onSearchChange={setMemberSearch}
-                    searchPlaceholder="Search members, roles, or subject ids…"
-                  />
-                  {filteredMembers.length === 0 ? (
-                    <EmptyState
-                      title="No members match"
-                      description="Adjust the current member search or role pivot to restore the roster."
+              <div data-testid="tenant-workspace-v2-members-list-region">
+                {memberCount > 0 ? (
+                  <>
+                    <Tabs<MemberFilter>
+                      value={memberFilter}
+                      onChange={setMemberFilter}
+                      ariaLabel="Member role filters"
+                      items={[
+                        { value: "all", label: "All", count: memberCount },
+                        {
+                          value: "owners",
+                          label: "Owners",
+                          count: roleCounts.owner,
+                        },
+                        {
+                          value: "admins",
+                          label: "Admins",
+                          count: roleCounts.admin,
+                        },
+                        {
+                          value: "members",
+                          label: "Members",
+                          count: roleCounts.member,
+                        },
+                        {
+                          value: "viewers",
+                          label: "Viewers",
+                          count: roleCounts.viewer,
+                        },
+                        {
+                          value: "dormant",
+                          label: "Dormant",
+                          count: dormantMembers,
+                        },
+                      ]}
                     />
-                  ) : (
-                    <div className="ops-table-wrapper">
-                      <table
-                        className="ops-table"
-                        data-testid="tenant-workspace-v2-members-table"
-                      >
-                        <thead>
-                          <tr>
-                            <th>Display name</th>
-                            <th>Role</th>
-                            <th>Subject</th>
-                            <th>Last seen</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredMembers.map((member) => (
-                            <tr key={member.subjectId}>
-                              <td>{member.displayName}</td>
-                              <td>
-                                <SignalBadge
-                                  tone={resolveRoleTone(member.role)}
-                                >
-                                  {member.role}
-                                </SignalBadge>
-                              </td>
-                              <td className="mono ops-redacted">
-                                {member.subjectId}
-                              </td>
-                              <td className="mono">
-                                {formatTimestamp(member.lastSeenAt)}
-                              </td>
+                    <FilterBar
+                      searchValue={memberSearch}
+                      onSearchChange={setMemberSearch}
+                      searchPlaceholder="Search members, roles, or subject ids…"
+                    />
+                    {filteredMembers.length === 0 ? (
+                      <EmptyState
+                        title="No members match"
+                        description="Adjust the current member search or role pivot to restore the roster."
+                      />
+                    ) : (
+                      <div className="ops-table-wrapper">
+                        <table
+                          className="ops-table"
+                          data-testid="tenant-workspace-v2-members-table"
+                        >
+                          <thead>
+                            <tr>
+                              <th>Display name</th>
+                              <th>Role</th>
+                              <th>Subject</th>
+                              <th>Last seen</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <EmptyState
-                  title="No members"
-                  description="This tenant has no projected members in the current snapshot."
-                />
-              )}
+                          </thead>
+                          <tbody>
+                            {filteredMembers.map((member) => (
+                              <tr key={member.subjectId}>
+                                <td>{member.displayName}</td>
+                                <td>
+                                  <SignalBadge
+                                    tone={resolveRoleTone(member.role)}
+                                  >
+                                    {member.role}
+                                  </SignalBadge>
+                                </td>
+                                <td className="mono ops-redacted">
+                                  {member.subjectId}
+                                </td>
+                                <td className="mono">
+                                  {formatTimestamp(member.lastSeenAt)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <EmptyState
+                    title="No members"
+                    description="This tenant has no projected members in the current snapshot."
+                  />
+                )}
+              </div>
             </div>
           </Pane>
 
@@ -1257,9 +1267,9 @@ function TenantWorkspaceV2Route() {
                 {membershipStatus.message}
               </div>
             ) : null}
-            <div style={{ display: "grid", gap: 8 }}>
-              <div className="ops-toolbar" style={{ flexWrap: "wrap" }}>
-                <label className="ops-field" style={{ minWidth: 220, flex: 1 }}>
+            <div className="ops-stack-md">
+              <div className="ops-toolbar">
+                <label className="ops-field ops-field--grow">
                   <span className="ops-field-label">Subject</span>
                   <input
                     className="ops-search__input"
@@ -1272,7 +1282,7 @@ function TenantWorkspaceV2Route() {
                     autoComplete="off"
                   />
                 </label>
-                <label className="ops-field" style={{ minWidth: 170 }}>
+                <label className="ops-field ops-field--regular">
                   <span className="ops-field-label">Relation</span>
                   <select
                     className="ops-select"
@@ -1291,7 +1301,7 @@ function TenantWorkspaceV2Route() {
                     ))}
                   </select>
                 </label>
-                <label className="ops-field" style={{ minWidth: 150 }}>
+                <label className="ops-field ops-field--compact">
                   <span className="ops-field-label">Action</span>
                   <select
                     className="ops-select"
@@ -1312,10 +1322,7 @@ function TenantWorkspaceV2Route() {
                     </option>
                   </select>
                 </label>
-                <label
-                  className="ops-field"
-                  style={{ minWidth: 260, flex: 1.2 }}
-                >
+                <label className="ops-field ops-field--wide">
                   <span className="ops-field-label">Reason</span>
                   <input
                     className="ops-search__input"
@@ -1337,7 +1344,7 @@ function TenantWorkspaceV2Route() {
                   Apply membership change
                 </button>
               </div>
-              <p className="ops-text-muted" style={{ margin: 0 }}>
+              <p className="ops-note">
                 Use this to align owner, admin, member, and viewer access
                 without leaving the tenant cockpit.
               </p>
@@ -1353,9 +1360,9 @@ function TenantWorkspaceV2Route() {
                 {invitationStatus.message}
               </div>
             ) : null}
-            <div style={{ display: "grid", gap: 8 }}>
-              <div className="ops-toolbar" style={{ flexWrap: "wrap" }}>
-                <label className="ops-field" style={{ minWidth: 220, flex: 1 }}>
+            <div className="ops-stack-md">
+              <div className="ops-toolbar">
+                <label className="ops-field ops-field--grow">
                   <span className="ops-field-label">Recipient email</span>
                   <input
                     className="ops-search__input"
@@ -1366,7 +1373,7 @@ function TenantWorkspaceV2Route() {
                     autoComplete="off"
                   />
                 </label>
-                <label className="ops-field" style={{ minWidth: 170 }}>
+                <label className="ops-field ops-field--regular">
                   <span className="ops-field-label">Relation</span>
                   <select
                     className="ops-select"
@@ -1385,10 +1392,7 @@ function TenantWorkspaceV2Route() {
                     ))}
                   </select>
                 </label>
-                <label
-                  className="ops-field"
-                  style={{ minWidth: 280, flex: 1.2 }}
-                >
+                <label className="ops-field ops-field--wide">
                   <span className="ops-field-label">Issue reason</span>
                   <input
                     className="ops-search__input"
@@ -1410,8 +1414,8 @@ function TenantWorkspaceV2Route() {
                   Issue invitation
                 </button>
               </div>
-              <div className="ops-toolbar" style={{ flexWrap: "wrap" }}>
-                <label className="ops-field" style={{ minWidth: 220, flex: 1 }}>
+              <div className="ops-toolbar">
+                <label className="ops-field ops-field--grow">
                   <span className="ops-field-label">Invitation ID</span>
                   <input
                     className="ops-search__input"
@@ -1422,10 +1426,7 @@ function TenantWorkspaceV2Route() {
                     autoComplete="off"
                   />
                 </label>
-                <label
-                  className="ops-field"
-                  style={{ minWidth: 260, flex: 1.2 }}
-                >
+                <label className="ops-field ops-field--wide">
                   <span className="ops-field-label">Revocation reason</span>
                   <input
                     className="ops-search__input"
@@ -1447,7 +1448,7 @@ function TenantWorkspaceV2Route() {
                   Revoke invitation
                 </button>
               </div>
-              <p className="ops-text-muted" style={{ margin: 0 }}>
+              <p className="ops-note">
                 Invitation issuance and revocation stay available even before a
                 dedicated invitation registry is projected into this snapshot.
               </p>
@@ -1457,7 +1458,7 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "billing" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="Revenue & approvals posture"
             ariaLabel="Revenue and approvals posture"
@@ -1475,7 +1476,7 @@ function TenantWorkspaceV2Route() {
             ) : (
               <div
                 data-testid="tenant-workspace-v2-billing-pane"
-                style={{ display: "grid", gap: 8 }}
+                className="ops-stack-md"
               >
                 <div className="ops-bento">
                   <KpiCard
@@ -1499,7 +1500,7 @@ function TenantWorkspaceV2Route() {
                     tone={pendingApprovalCount > 0 ? "warn" : "neutral"}
                   />
                 </div>
-                <p className="ops-text-muted" style={{ margin: 0 }}>
+                <p className="ops-note">
                   This pane keeps the billing conversation grounded in tenant
                   context before you pivot into the full revenue workspace.
                 </p>
@@ -1521,7 +1522,7 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Billing handoff" ariaLabel="Billing handoff">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="ops-link-stack">
               <Link className="ops-btn" to={billingWorkspacePath}>
                 Open tenant billing workspace
               </Link>
@@ -1531,7 +1532,7 @@ function TenantWorkspaceV2Route() {
               <Link className="ops-btn ops-btn--xs" to={auditWorkspacePath}>
                 Open audit trail
               </Link>
-              <p className="ops-text-muted" style={{ margin: 0 }}>
+              <p className="ops-note">
                 Use the scoped billing route for invoice detail, metering, and
                 anomalies. Keep audit and retention close when approvals or
                 holds could affect revenue operations.
@@ -1542,7 +1543,7 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "branding" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="Brand publication"
             ariaLabel="Brand publication"
@@ -1560,7 +1561,7 @@ function TenantWorkspaceV2Route() {
             ) : (
               <div
                 data-testid="tenant-workspace-v2-branding-pane"
-                style={{ display: "grid", gap: 8 }}
+                className="ops-stack-md"
               >
                 <div className="ops-bento">
                   <KpiCard
@@ -1598,7 +1599,7 @@ function TenantWorkspaceV2Route() {
                     tone={pendingApprovalCount > 0 ? "warn" : "neutral"}
                   />
                 </div>
-                <p className="ops-text-muted" style={{ margin: 0 }}>
+                <p className="ops-note">
                   Publication review, domain activation, and sender identity
                   flows stay in the branding workspace, but this cockpit keeps
                   the brand posture visible in tenant context.
@@ -1608,7 +1609,7 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Publication checklist" ariaLabel="Publication checklist">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="ops-checklist">
               <ChecklistRow
                 label="Branding state known"
                 done={snapshot.tenantOverview !== null}
@@ -1629,7 +1630,7 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Cross-surface pivots" ariaLabel="Cross-surface pivots">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="ops-link-stack">
               <Link className="ops-btn" to={brandingWorkspacePath}>
                 Open branding workspace
               </Link>
@@ -1648,10 +1649,11 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "audit" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="Tenant audit explorer"
             ariaLabel="Tenant audit explorer"
+            scrollRegionFocusable
             toolbar={
               <Link className="ops-btn ops-btn--xs" to={auditWorkspacePath}>
                 Full audit
@@ -1660,7 +1662,7 @@ function TenantWorkspaceV2Route() {
           >
             <div
               data-testid="tenant-workspace-v2-audit-pane"
-              style={{ display: "grid", gap: 8 }}
+              className="ops-stack-md"
             >
               <div className="ops-bento">
                 <KpiCard
@@ -1693,8 +1695,12 @@ function TenantWorkspaceV2Route() {
             </div>
           </Pane>
 
-          <Pane title="Pending approvals" ariaLabel="Pending approvals">
-            <div style={{ display: "grid", gap: 8 }}>
+          <Pane
+            title="Pending approvals"
+            ariaLabel="Pending approvals"
+            scrollRegionFocusable
+          >
+            <div className="ops-stack-md">
               <FilterBar
                 searchValue={approvalSearch}
                 onSearchChange={setApprovalSearch}
@@ -1712,7 +1718,7 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "repair" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="Repair & automation handoff"
             ariaLabel="Repair and automation handoff"
@@ -1727,7 +1733,7 @@ function TenantWorkspaceV2Route() {
           >
             <div
               data-testid="tenant-workspace-v2-repair-pane"
-              style={{ display: "grid", gap: 8 }}
+              className="ops-stack-md"
             >
               <div className="ops-bento">
                 <KpiCard
@@ -1751,12 +1757,12 @@ function TenantWorkspaceV2Route() {
                   tone={partialFailureCount > 0 ? "alert" : "good"}
                 />
               </div>
-              <p className="ops-text-muted" style={{ margin: 0 }}>
+              <p className="ops-note">
                 Repair is still owned by the dedicated repair and workflow
                 routes, but this pane keeps the surrounding tenant context
                 visible before you hand off into those tools.
               </p>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="ops-inline-cluster">
                 <Link className="ops-btn" to={canonicalAdminRoute.repair}>
                   Open repair operations
                 </Link>
@@ -1782,7 +1788,7 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Operator notes" ariaLabel="Operator notes">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="ops-checklist">
               <ChecklistRow
                 label="Review current approvals before replaying automation"
                 done={pendingApprovalCount === 0}
@@ -1801,10 +1807,11 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "support" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="Incident posture"
             ariaLabel="Incident posture"
+            scrollRegionFocusable
             toolbar={
               <Link
                 className="ops-btn ops-btn--xs"
@@ -1816,9 +1823,12 @@ function TenantWorkspaceV2Route() {
           >
             <div
               data-testid="tenant-workspace-v2-support-pane"
-              style={{ display: "grid", gap: 8 }}
+              className="ops-stack-md"
             >
-              <div className="ops-bento">
+              <div
+                className="ops-bento"
+                data-testid="tenant-workspace-v2-support-kpis"
+              >
                 <KpiCard
                   label="Critical"
                   value={
@@ -1864,6 +1874,7 @@ function TenantWorkspaceV2Route() {
               <Tabs<IncidentFilter>
                 value={incidentFilter}
                 onChange={setIncidentFilter}
+                ariaLabel="Incident severity filters"
                 items={[
                   { value: "all", label: "All", count: incidentCount },
                   {
@@ -1925,9 +1936,11 @@ function TenantWorkspaceV2Route() {
                       {filteredIncidents.map((incident) => (
                         <tr key={incident.id}>
                           <td>
-                            <div style={{ display: "grid", gap: 2 }}>
-                              <span>{incident.title}</span>
-                              <span className="ops-text-muted">
+                            <div className="ops-cell-stack">
+                              <span className="ops-cell-stack__title">
+                                {incident.title}
+                              </span>
+                              <span className="ops-cell-stack__meta">
                                 {incident.summary}
                               </span>
                             </div>
@@ -1952,7 +1965,7 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Response launchpad" ariaLabel="Response launchpad">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="ops-link-stack">
               <Link className="ops-btn" to={canonicalAdminRoute.support}>
                 Open support workspace
               </Link>
@@ -1962,7 +1975,7 @@ function TenantWorkspaceV2Route() {
               <Link className="ops-btn ops-btn--xs" to={auditWorkspacePath}>
                 Review tenant audit
               </Link>
-              <p className="ops-text-muted" style={{ margin: 0 }}>
+              <p className="ops-note">
                 Keep support, audit, and delivery context together whenever the
                 tenant is in an active vendor incident.
               </p>
@@ -1972,7 +1985,7 @@ function TenantWorkspaceV2Route() {
       ) : null}
 
       {tab === "danger-zone" ? (
-        <div style={paneGridStyle}>
+        <div className="ops-pane-grid">
           <Pane
             title="High-risk controls"
             ariaLabel="High-risk controls"
@@ -1984,19 +1997,19 @@ function TenantWorkspaceV2Route() {
           >
             <div
               data-testid="tenant-workspace-v2-danger-pane"
-              style={{ display: "grid", gap: 8 }}
+              className="ops-stack-md"
             >
               <div className="ops-feedback warn">
                 Suspend, freeze, and delete controls remain intentionally locked
                 until durable backend ownership and break-glass auditing land
                 for the tenant danger zone.
               </div>
-              <p className="ops-text-muted" style={{ margin: 0 }}>
+              <p className="ops-note">
                 This pane is still useful today: it surfaces the blockers and
                 surrounding context you need before escalating into a governed
                 high-risk action.
               </p>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="ops-inline-cluster">
                 <Link className="ops-btn" to={canonicalAdminRoute.access}>
                   Review access posture
                 </Link>
@@ -2017,7 +2030,10 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Current blockers" ariaLabel="Current blockers">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div
+              className="ops-checklist"
+              data-testid="tenant-workspace-v2-danger-checklist"
+            >
               <ChecklistRow
                 label="No past-due subscription"
                 done={billingStatus !== billingSubscriptionStatus.pastDue}
@@ -2042,7 +2058,7 @@ function TenantWorkspaceV2Route() {
           </Pane>
 
           <Pane title="Escalation routes" ariaLabel="Escalation routes">
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="ops-link-stack">
               <Link className="ops-btn" to={auditWorkspacePath}>
                 Open tenant audit
               </Link>
@@ -2084,10 +2100,7 @@ function MetaRow({
   return (
     <div>
       <p className="ops-meta-label">{label}</p>
-      <p
-        className={`ops-meta-value${mono ? " ops-meta-value--mono" : ""}`}
-        style={{ margin: 0 }}
-      >
+      <p className={`ops-meta-value${mono ? " ops-meta-value--mono" : ""}`}>
         {value}
       </p>
     </div>
@@ -2101,45 +2114,11 @@ function SignalBadge({
   readonly children: ReactNode;
   readonly tone: KpiTone;
 }) {
-  const palette =
-    tone === "good"
-      ? {
-          border: "1px solid rgba(108, 218, 160, 0.35)",
-          background: "rgba(28, 92, 63, 0.2)",
-        }
-      : tone === "warn"
-        ? {
-            border: "1px solid rgba(255, 203, 107, 0.35)",
-            background: "rgba(98, 70, 18, 0.2)",
-          }
-        : tone === "alert"
-          ? {
-              border: "1px solid rgba(255, 122, 122, 0.35)",
-              background: "rgba(96, 24, 24, 0.24)",
-            }
-          : tone === "accent"
-            ? {
-                border: "1px solid rgba(96, 176, 255, 0.35)",
-                background: "rgba(28, 54, 98, 0.22)",
-              }
-            : {
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.04)",
-              };
-
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "2px 6px",
-        borderRadius: 999,
-        fontSize: "0.6875rem",
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        ...palette,
-      }}
+      className={`ops-signal-badge${
+        tone === "neutral" ? "" : ` ops-signal-badge--${tone}`
+      }`}
     >
       {children}
     </span>
@@ -2154,17 +2133,7 @@ function ChecklistRow({
   readonly done: boolean;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 6,
-        padding: 6,
-        borderRadius: 8,
-        border: "1px solid var(--bg-2)",
-      }}
-    >
+    <div className="ops-checklist-row">
       <span>{label}</span>
       <SignalBadge tone={done ? "good" : "warn"}>
         {done ? "ready" : "review"}
@@ -2195,14 +2164,7 @@ function UsageSpotlightGrid({
   }
 
   return (
-    <div
-      data-testid={emptyCopy["data-testid"]}
-      style={{
-        display: "grid",
-        gap: 8,
-        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-      }}
-    >
+    <div data-testid={emptyCopy["data-testid"]} className="ops-insight-grid">
       {spotlights.map((spotlight) => (
         <KpiCard
           key={spotlight.id}
@@ -2246,9 +2208,9 @@ function ApprovalTable({
           {approvals.map((approval) => (
             <tr key={approval.id}>
               <td>
-                <div style={{ display: "grid", gap: 2 }}>
-                  <span>{approval.kind}</span>
-                  <span className="ops-text-muted">
+                <div className="ops-cell-stack">
+                  <span className="ops-cell-stack__title">{approval.kind}</span>
+                  <span className="ops-cell-stack__meta">
                     {approval.reasonPreview}
                   </span>
                 </div>

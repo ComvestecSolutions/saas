@@ -8,10 +8,9 @@ import {
   resolveStatusVariant,
 } from "@comvestec/ui";
 import {
-  platformModuleIds,
+  PlatformModuleIdSchema,
+  WorkflowRunStatusSchema,
   workflowRunStatus,
-  workflowRunStatuses,
-  type PlatformModuleId,
   type WorkflowRunsListFilters,
   type WorkflowRunStatus,
 } from "@comvestec/contracts";
@@ -27,6 +26,11 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
+import { formatAdminNumber } from "../../lib/number-format";
 import type {
   AdminWorkflowRunsListInput,
   AdminWorkflowRunsListRouteData,
@@ -50,37 +54,67 @@ const RawSearchSchema = Schema.Struct({
   pageSize: Schema.optional(Schema.String),
   pageToken: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  moduleId: Schema.optional(Schema.Unknown),
+  status: Schema.optional(Schema.Unknown),
+  since: Schema.optional(Schema.Unknown),
+  until: Schema.optional(Schema.Unknown),
+  pageSize: Schema.optional(Schema.Unknown),
+  pageToken: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type RunsFilter = "all" | "active" | "failed" | "stale" | "succeeded";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const PositiveSearchNumberSchema = Schema.Union(
+  Schema.Int.pipe(Schema.positive()),
+  Schema.NumberFromString.pipe(Schema.int(), Schema.positive()),
+);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
+const decodeStatus = decodeSchemaOrUndefined(WorkflowRunStatusSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
+const decodePageSize = decodeSchemaOrUndefined(PositiveSearchNumberSchema);
 
-const knownModuleIds = new Set<string>(platformModuleIds);
-const knownStatuses = new Set<string>(workflowRunStatuses);
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const moduleId = decodeSearchString(search.moduleId);
+  const status = decodeSearchString(search.status);
+  const since = decodeSearchString(search.since);
+  const until = decodeSearchString(search.until);
+  const pageSize = decodeSearchString(search.pageSize);
+  const pageToken = decodeSearchString(search.pageToken);
+
+  return {
+    ...(moduleId === undefined ? {} : { moduleId }),
+    ...(status === undefined ? {} : { status }),
+    ...(since === undefined ? {} : { since }),
+    ...(until === undefined ? {} : { until }),
+    ...(pageSize === undefined ? {} : { pageSize }),
+    ...(pageToken === undefined ? {} : { pageToken }),
+  };
+};
 
 const decodeLoaderInput = (raw: RawSearch): AdminWorkflowRunsListInput => {
   const filters: WorkflowRunsListFilters = {};
-  if (raw.moduleId !== undefined && knownModuleIds.has(raw.moduleId)) {
-    Object.assign(filters, { moduleId: raw.moduleId as PlatformModuleId });
+  const moduleId = decodeModuleId(raw.moduleId);
+  if (moduleId !== undefined) {
+    Object.assign(filters, { moduleId });
   }
-  if (raw.status !== undefined && knownStatuses.has(raw.status)) {
-    Object.assign(filters, { status: raw.status as WorkflowRunStatus });
+  const status = decodeStatus(raw.status);
+  if (status !== undefined) {
+    Object.assign(filters, { status });
   }
-  if (raw.since !== undefined && raw.since.length > 0) {
-    Object.assign(filters, { since: raw.since });
+  const since = decodeNonEmptyString(raw.since);
+  if (since !== undefined) {
+    Object.assign(filters, { since });
   }
-  if (raw.until !== undefined && raw.until.length > 0) {
-    Object.assign(filters, { until: raw.until });
+  const until = decodeNonEmptyString(raw.until);
+  if (until !== undefined) {
+    Object.assign(filters, { until });
   }
-  const parsedPageSize =
-    raw.pageSize !== undefined ? Number.parseInt(raw.pageSize, 10) : NaN;
-  const pageSize =
-    Number.isInteger(parsedPageSize) && parsedPageSize > 0
-      ? Math.min(parsedPageSize, 500)
-      : 50;
-  const pageToken =
-    raw.pageToken !== undefined && raw.pageToken.length > 0
-      ? raw.pageToken
-      : undefined;
+  const pageSize = Math.min(decodePageSize(raw.pageSize) ?? 50, 500);
+  const pageToken = decodeNonEmptyString(raw.pageToken);
   return {
     filters,
     pageSize,
@@ -113,7 +147,7 @@ const resolveRunsFilter = (
 };
 
 export const Route = createAdminAppFileRoute("/desk/runs")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/workflow-runs-list-loader").then(
@@ -129,8 +163,9 @@ export const Route = createAdminAppFileRoute("/desk/runs")({
 function WorkflowRunsListRoute() {
   const data: AdminWorkflowRunsListRouteData = Route.useLoaderData();
   const [filter, setFilter] = useState<RunsFilter>("all");
+  const [selectedRunId, setSelectedRunId] = useState<string | undefined>();
   const tableState = useTableState<
-    "run" | "module" | "workflow" | "status" | "queued" | "duration"
+    "run" | "module" | "workflow" | "status" | "attempt" | "queued" | "duration"
   >({
     initialPageSize: 25,
     initialSortKey: "queued",
@@ -183,10 +218,22 @@ function WorkflowRunsListRoute() {
     {} as Record<WorkflowRunStatus, number>,
   );
   const partialFailures = result.partialFailures ?? [];
+  const failedCount = counts[workflowRunStatus.failed] ?? 0;
+  const queuedCount = counts[workflowRunStatus.queued] ?? 0;
+  const runningCount = counts[workflowRunStatus.running] ?? 0;
+  const staleCount = counts[workflowRunStatus.stale] ?? 0;
   const succeededCount = counts[workflowRunStatus.succeeded] ?? 0;
+  const activeCount = queuedCount + runningCount;
+  const hasServerFilters =
+    filters.moduleId !== undefined ||
+    filters.status !== undefined ||
+    filters.since !== undefined ||
+    filters.until !== undefined;
   const filteredRuns = result.runs.filter((run) =>
     resolveRunsFilter(run.status, filter),
   );
+  const hasClientFilters =
+    filter !== "all" || tableState.search.trim().length > 0;
   const tableView = applyTableState(filteredRuns, tableState, {
     searchOn: (run) =>
       `${run.runId} ${run.moduleId} ${run.workflowKey} ${run.status}`,
@@ -195,15 +242,20 @@ function WorkflowRunsListRoute() {
       module: (run) => run.moduleId,
       workflow: (run) => run.workflowKey,
       status: (run) => run.status,
+      attempt: (run) => run.attempt,
       queued: (run) => run.queuedAt,
       duration: (run) => run.durationMs ?? -1,
     },
   });
+  const rosterRuns = tableView.visible;
   const focusedRun =
-    result.runs.find((run) => run.status === workflowRunStatus.failed) ??
-    result.runs.find((run) => run.status === workflowRunStatus.stale) ??
-    result.runs[0];
-  const slowestRun = result.runs.reduce<
+    rosterRuns.find((run) => run.runId === selectedRunId) ??
+    rosterRuns.find((run) => run.status === workflowRunStatus.failed) ??
+    rosterRuns.find((run) => run.status === workflowRunStatus.stale) ??
+    rosterRuns[0];
+  const focusedRunPinned =
+    selectedRunId !== undefined && focusedRun?.runId === selectedRunId;
+  const slowestRun = rosterRuns.reduce<
     (typeof result.runs)[number] | undefined
   >(
     (current, run) =>
@@ -213,436 +265,537 @@ function WorkflowRunsListRoute() {
         : current,
     undefined,
   );
+  const partialFailureBadgeClassName =
+    partialFailures.length > 0
+      ? "ops-signal-badge ops-signal-badge--warn"
+      : "ops-signal-badge ops-signal-badge--good";
+  const rosterCountLabel =
+    tableView.total === result.runs.length
+      ? `${formatAdminNumber(result.runs.length)} loaded`
+      : `${formatAdminNumber(tableView.total)} matching / ${formatAdminNumber(result.runs.length)} loaded`;
 
   return (
     <section
       data-testid="workflow-runs-list-ready"
-      data-pattern="workflow-runs-list-v3"
-      style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}
+      data-pattern="workflow-runs-list-v4"
+      className="ops-screen ops-screen--tight ops-stack-md"
     >
       <ScreenHeader
         title="Workflow Runs"
         breadcrumbs={[{ label: "Resources" }, { label: "Workflow runs" }]}
         subtitle={
           <>
-            {result.runs.length} runs · module{" "}
+            {formatAdminNumber(result.runs.length)} runs loaded · module{" "}
             <span className="mono">{filters.moduleId ?? "all"}</span> · status{" "}
             <span className="mono">{filters.status ?? "all"}</span>
           </>
         }
+        actions={
+          <>
+            <Link className="ops-btn ops-btn--ghost" to="/desk/notify">
+              Notification control
+            </Link>
+            <Link className="ops-btn ops-btn--ghost" to="/desk/vendors">
+              Vendor health
+            </Link>
+          </>
+        }
       />
-
-      <div
-        data-testid="workflow-runs-list-posture"
-        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-      >
-        <KpiCard
-          label="Succeeded"
-          value={(counts[workflowRunStatus.succeeded] ?? 0).toString()}
-          tone="good"
-        />
-        <KpiCard
-          label="Running"
-          value={(counts[workflowRunStatus.running] ?? 0).toString()}
-          tone="accent"
-        />
-        <KpiCard
-          label="Queued"
-          value={(counts[workflowRunStatus.queued] ?? 0).toString()}
-          tone="neutral"
-        />
-        <KpiCard
-          label="Failed"
-          value={(counts[workflowRunStatus.failed] ?? 0).toString()}
-          tone={
-            (counts[workflowRunStatus.failed] ?? 0) > 0 ? "alert" : "neutral"
-          }
-        />
-        <KpiCard
-          label="Stale"
-          value={(counts[workflowRunStatus.stale] ?? 0).toString()}
-          tone={(counts[workflowRunStatus.stale] ?? 0) > 0 ? "warn" : "neutral"}
-        />
+      <div className="ops-stack-sm">
+        <div className="ops-inline-cluster">
+          <span className="ops-signal-badge ops-signal-badge--accent">
+            {focusedRun === undefined
+              ? "Roster overview"
+              : focusedRunPinned
+                ? "Pinned run"
+                : "Focused run"}
+          </span>
+          <span className={partialFailureBadgeClassName}>
+            {partialFailures.length === 0
+              ? "No partial failures"
+              : `${partialFailures.length} partial failure bucket${partialFailures.length === 1 ? "" : "s"}`}
+          </span>
+          {hasServerFilters ? (
+            <span className="ops-signal-badge ops-signal-badge--accent">
+              Server scope applied
+            </span>
+          ) : null}
+          {hasClientFilters ? (
+            <span className="ops-signal-badge ops-signal-badge--accent">
+              Client filters active
+            </span>
+          ) : null}
+          {succeededCount === 0 ? (
+            <span className="ops-signal-badge ops-signal-badge--warn">
+              Readiness incomplete
+            </span>
+          ) : null}
+        </div>
+        <div className="ops-pane-grid" data-testid="workflow-runs-list-posture">
+          <KpiCard
+            label="Runs loaded"
+            value={formatAdminNumber(result.runs.length)}
+          />
+          <KpiCard
+            label="Active"
+            value={formatAdminNumber(activeCount)}
+            tone={activeCount > 0 ? "accent" : "neutral"}
+          />
+          <KpiCard
+            label="Failed"
+            value={formatAdminNumber(failedCount)}
+            tone={failedCount > 0 ? "alert" : "neutral"}
+          />
+          <KpiCard
+            label="Succeeded"
+            value={formatAdminNumber(succeededCount)}
+            tone={succeededCount > 0 ? "good" : "warn"}
+          />
+          <KpiCard
+            label="Stale"
+            value={formatAdminNumber(staleCount)}
+            tone={staleCount > 0 ? "warn" : "neutral"}
+          />
+          <KpiCard
+            label="Slowest visible"
+            value={formatRunDuration(slowestRun?.durationMs)}
+            tone={
+              slowestRun?.durationMs === undefined
+                ? "neutral"
+                : slowestRun.durationMs > 0
+                  ? "warn"
+                  : "good"
+            }
+          />
+        </div>
       </div>
 
       <div
-        style={{
-          display: "grid",
-          gap: 8,
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-        }}
+        className="ops-pane-grid"
+        data-testid="workflow-runs-list-focus-grid"
       >
-        <section
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid var(--bg-2)",
-            borderRadius: 8,
-          }}
-        >
-          <p style={{ margin: 0, fontWeight: 700 }}>Attention queue</p>
-          <div style={{ display: "grid", gap: 6 }}>
-            <AttentionRow
-              label="Succeeded runs"
-              value={`${succeededCount}`}
-              tone={succeededCount > 0 ? "neutral" : "warn"}
-            />
-            <AttentionRow
-              label="Failed runs"
-              value={`${counts[workflowRunStatus.failed] ?? 0}`}
-              tone={
-                (counts[workflowRunStatus.failed] ?? 0) > 0
-                  ? "alert"
-                  : "neutral"
-              }
-            />
-            <AttentionRow
-              label="Stale runs"
-              value={`${counts[workflowRunStatus.stale] ?? 0}`}
-              tone={
-                (counts[workflowRunStatus.stale] ?? 0) > 0 ? "warn" : "neutral"
-              }
-            />
-            <AttentionRow
-              label="Partial failure buckets"
-              value={`${partialFailures.length}`}
-              tone={partialFailures.length > 0 ? "warn" : "neutral"}
-            />
+        <section className="ops-card" data-testid="workflow-runs-list-focus">
+          <div className="ops-card-head">
+            <p className="ops-card-head__title">Focused run</p>
+            <span className="ops-card-head__count">
+              {focusedRun === undefined
+                ? "No visible runs"
+                : `Attempt ${focusedRun.attempt}`}
+            </span>
           </div>
-        </section>
-
-        <section
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid var(--bg-2)",
-            borderRadius: 8,
-          }}
-        >
-          <p style={{ margin: 0, fontWeight: 700 }}>Focused run</p>
           {focusedRun === undefined ? (
-            <p className="ops-text-muted" style={{ margin: 0 }}>
-              No workflow runs are currently available.
-            </p>
+            <div
+              className="ops-stack-sm"
+              data-testid="workflow-runs-list-focus-empty"
+            >
+              <p className="ops-note">
+                Narrow the roster less aggressively or clear the current search
+                to bring a run back into focus.
+              </p>
+              <div className="ops-inline-cluster">
+                <Link
+                  className="ops-btn ops-btn--ghost ops-btn--xs"
+                  to="/desk/notify"
+                >
+                  Review notifications
+                </Link>
+                <Link
+                  className="ops-btn ops-btn--ghost ops-btn--xs"
+                  to="/desk/vendors"
+                >
+                  Check vendors
+                </Link>
+              </div>
+            </div>
           ) : (
-            <>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <span className="mono">{focusedRun.runId}</span>
+            <div
+              className="ops-stack-sm"
+              data-testid="workflow-runs-list-focus-summary"
+            >
+              <div className="ops-inline-cluster">
                 <StatusChip
                   status={focusedRun.status}
                   variant={resolveStatusVariant(focusedRun.status)}
                 />
-              </div>
-              <p style={{ margin: 0 }}>{focusedRun.workflowKey}</p>
-              <div style={{ display: "grid", gap: 4 }}>
-                <span className="ops-text-muted">
-                  Module: <span className="mono">{focusedRun.moduleId}</span>
+                <span className="ops-signal-badge ops-signal-badge--accent">
+                  {focusedRun.moduleId}
                 </span>
-                <span className="ops-text-muted">
-                  Queued:{" "}
+                {focusedRunPinned ? (
+                  <span className="ops-signal-badge ops-signal-badge--good">
+                    Pinned
+                  </span>
+                ) : null}
+              </div>
+              <div className="ops-cell-stack">
+                <span className="ops-cell-stack__title mono">
+                  {focusedRun.runId}
+                </span>
+                <span className="ops-text-muted">{focusedRun.workflowKey}</span>
+              </div>
+              <p className="ops-note">
+                {resolveFocusedRunNarrative(focusedRun, focusedRunPinned)}
+              </p>
+              <div className="ops-detail-grid">
+                <div className="ops-detail-card">
+                  <span className="ops-detail-card__label">Queued</span>
                   <span className="mono">
                     {formatDate(focusedRun.queuedAt)}
                   </span>
-                </span>
-                <span className="ops-text-muted">
-                  Attempt: <span className="mono">{focusedRun.attempt}</span>
-                </span>
+                </div>
+                <div className="ops-detail-card">
+                  <span className="ops-detail-card__label">Started</span>
+                  <span className="mono">
+                    {formatDate(focusedRun.startedAt)}
+                  </span>
+                </div>
+                <div className="ops-detail-card">
+                  <span className="ops-detail-card__label">Finished</span>
+                  <span className="mono">
+                    {formatDate(focusedRun.finishedAt)}
+                  </span>
+                </div>
+                <div className="ops-detail-card">
+                  <span className="ops-detail-card__label">Duration</span>
+                  <span className="mono">
+                    {formatRunDuration(focusedRun.durationMs)}
+                  </span>
+                </div>
               </div>
-              <div>
+              <div className="ops-inline-cluster">
                 <Link
-                  className="ops-btn ops-btn--xs"
+                  className="ops-btn ops-btn--primary ops-btn--xs"
                   to="/desk/run/$id"
                   params={{ id: focusedRun.runId }}
                 >
-                  Detail
+                  Open detail
                 </Link>
+                {focusedRunPinned ? (
+                  <button
+                    type="button"
+                    className="ops-btn ops-btn--ghost ops-btn--xs"
+                    onClick={() => setSelectedRunId(undefined)}
+                  >
+                    Clear focus
+                  </button>
+                ) : null}
               </div>
-            </>
+            </div>
           )}
         </section>
 
-        <section
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid var(--bg-2)",
-            borderRadius: 8,
-          }}
-        >
-          <p style={{ margin: 0, fontWeight: 700 }}>Slowest observed</p>
-          {slowestRun === undefined ? (
-            <p className="ops-text-muted" style={{ margin: 0 }}>
-              No duration data reported yet.
-            </p>
-          ) : (
-            <>
-              <span className="mono">{slowestRun.runId}</span>
-              <span>{slowestRun.workflowKey}</span>
-              <span className="ops-text-muted">
-                Duration:{" "}
-                <span className="mono">{slowestRun.durationMs ?? "—"} ms</span>
-              </span>
-            </>
-          )}
+        <section className="ops-card" data-testid="workflow-runs-list-review">
+          <div className="ops-card-head">
+            <p className="ops-card-head__title">Workflow review</p>
+            <span className="ops-card-head__count">{rosterCountLabel}</span>
+          </div>
+          <div className="ops-stack-sm">
+            <div className="ops-detail-grid">
+              <div className="ops-detail-card">
+                <span className="ops-detail-card__label">Failed runs</span>
+                <span className="mono">{formatAdminNumber(failedCount)}</span>
+              </div>
+              <div className="ops-detail-card">
+                <span className="ops-detail-card__label">Stale runs</span>
+                <span className="mono">{formatAdminNumber(staleCount)}</span>
+              </div>
+              <div className="ops-detail-card">
+                <span className="ops-detail-card__label">Succeeded runs</span>
+                <span className="mono">
+                  {formatAdminNumber(succeededCount)}
+                </span>
+              </div>
+              <div className="ops-detail-card">
+                <span className="ops-detail-card__label">Slowest visible</span>
+                <span className="mono">
+                  {slowestRun === undefined
+                    ? "—"
+                    : `${slowestRun.runId} · ${formatRunDuration(
+                        slowestRun.durationMs,
+                      )}`}
+                </span>
+              </div>
+            </div>
+            {succeededCount === 0 ? (
+              <div
+                className="ops-card-shell ops-card-shell--dense"
+                data-testid="workflow-runs-list-readiness"
+              >
+                <div className="ops-inline-cluster">
+                  <span className="ops-signal-badge ops-signal-badge--warn">
+                    No successful runs yet
+                  </span>
+                </div>
+                <p className="ops-note">
+                  Local end-to-end workflow validation requires the
+                  subscriber-journey readiness path to complete with valid Polar
+                  credentials. Run{" "}
+                  <span className="mono">
+                    bun run backend:subscriber-journey:ready:local
+                  </span>{" "}
+                  and then reopen this workspace.
+                </p>
+                <div className="ops-inline-cluster">
+                  <Link
+                    className="ops-btn ops-btn--ghost ops-btn--xs"
+                    to="/desk/vendors"
+                  >
+                    Review vendor posture
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+            <div
+              className="ops-stack-sm"
+              data-testid="workflow-runs-list-partial-failures"
+            >
+              <div className="ops-inline-cluster">
+                <span className={partialFailureBadgeClassName}>
+                  {partialFailures.length === 0
+                    ? "Workflow history healthy"
+                    : "Partial failures require follow-up"}
+                </span>
+              </div>
+              {partialFailures.length === 0 ? (
+                <p
+                  className="ops-note"
+                  data-testid="workflow-runs-list-partial-failures-empty"
+                >
+                  Workflow history and backlog reads are currently healthy for
+                  the loaded roster.
+                </p>
+              ) : (
+                <div
+                  className="ops-link-grid"
+                  data-testid="workflow-runs-list-review-items"
+                >
+                  {partialFailures.map((failure) => (
+                    <article
+                      key={failure.bucket}
+                      className="ops-card-shell ops-card-shell--dense"
+                      data-testid="workflow-runs-list-partial-failure-row"
+                      data-bucket={failure.bucket}
+                    >
+                      <div className="ops-inline-cluster">
+                        <span className="ops-signal-badge ops-signal-badge--warn">
+                          Partial failure
+                        </span>
+                        <span className="mono">{failure.bucket}</span>
+                      </div>
+                      <p className="ops-note">{failure.reason}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </section>
       </div>
 
-      {succeededCount === 0 ? (
-        <section
-          data-testid="workflow-runs-list-readiness"
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid rgba(255, 203, 107, 0.35)",
-            borderRadius: 8,
-            background: "rgba(98, 70, 18, 0.2)",
-          }}
-        >
-          <p style={{ margin: 0, fontWeight: 700 }}>No successful runs yet</p>
-          <p style={{ margin: 0 }}>
-            Local end-to-end workflow validation requires the subscriber-journey
-            readiness path to complete with valid Polar credentials. Run{" "}
-            <span className="mono">
-              bun run backend:subscriber-journey:ready:local
-            </span>{" "}
-            and then reopen this workspace.
-          </p>
-          <div>
-            <Link className="ops-btn ops-btn--xs" to="/desk/vendors">
-              Review vendor posture
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
-      <Tabs<RunsFilter>
-        value={filter}
-        onChange={setFilter}
-        items={[
-          { value: "all", label: "All", count: result.runs.length },
-          {
-            value: "active",
-            label: "Active",
-            count:
-              (counts[workflowRunStatus.running] ?? 0) +
-              (counts[workflowRunStatus.queued] ?? 0),
-          },
-          {
-            value: "failed",
-            label: "Failed",
-            count: counts[workflowRunStatus.failed] ?? 0,
-          },
-          {
-            value: "stale",
-            label: "Stale",
-            count: counts[workflowRunStatus.stale] ?? 0,
-          },
-          {
-            value: "succeeded",
-            label: "Succeeded",
-            count: counts[workflowRunStatus.succeeded] ?? 0,
-          },
-        ]}
-      />
-
-      <section
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          padding: 8,
-          border: "1px solid var(--bg-2)",
-          borderRadius: 8,
-        }}
-      >
-        <FilterBar
-          searchValue={tableState.search}
-          onSearchChange={tableState.setSearch}
-          searchPlaceholder="Search runs, workflow keys, or modules…"
-        />
-        {tableView.visible.length === 0 ? (
-          <EmptyState
-            title="No workflow runs match"
-            description="Adjust the current search or status pivot to restore workflow runs."
+      <section className="ops-card" data-testid="workflow-runs-list-roster">
+        <div className="ops-card-head">
+          <p className="ops-card-head__title">Run roster</p>
+          <span className="ops-card-head__count">
+            {formatAdminNumber(tableView.total)} visible
+          </span>
+        </div>
+        <div className="ops-stack-sm ops-card-shell ops-card-shell--dense">
+          <Tabs<RunsFilter>
+            value={filter}
+            onChange={setFilter}
+            items={[
+              { value: "all", label: "All", count: result.runs.length },
+              {
+                value: "active",
+                label: "Active",
+                count: activeCount,
+              },
+              {
+                value: "failed",
+                label: "Failed",
+                count: failedCount,
+              },
+              {
+                value: "stale",
+                label: "Stale",
+                count: staleCount,
+              },
+              {
+                value: "succeeded",
+                label: "Succeeded",
+                count: succeededCount,
+              },
+            ]}
           />
+          <FilterBar
+            searchValue={tableState.search}
+            onSearchChange={tableState.setSearch}
+            searchPlaceholder="Search runs, workflow keys, or modules…"
+          />
+        </div>
+        {rosterRuns.length === 0 ? (
+          <div className="ops-card-shell">
+            <EmptyState
+              title="No workflow runs match"
+              description="Adjust the current search or status pivot to restore workflow runs."
+            />
+          </div>
         ) : (
-          <table
-            data-testid="workflow-runs-list-entries-table"
-            data-pattern="dense-data-table"
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "0.8125rem",
-            }}
-          >
-            <thead>
-              <tr>
-                <SortableTableHeader
-                  ariaSort={resolveTableAriaSort(tableState, "run")}
-                  onToggle={() => tableState.toggleSort("run")}
-                >
-                  Run
-                </SortableTableHeader>
-                <SortableTableHeader
-                  ariaSort={resolveTableAriaSort(tableState, "module")}
-                  onToggle={() => tableState.toggleSort("module")}
-                >
-                  Module
-                </SortableTableHeader>
-                <SortableTableHeader
-                  ariaSort={resolveTableAriaSort(tableState, "workflow")}
-                  onToggle={() => tableState.toggleSort("workflow")}
-                >
-                  Workflow
-                </SortableTableHeader>
-                <SortableTableHeader
-                  ariaSort={resolveTableAriaSort(tableState, "status")}
-                  onToggle={() => tableState.toggleSort("status")}
-                >
-                  Status
-                </SortableTableHeader>
-                <th style={{ textAlign: "left", padding: 4 }}>Attempt</th>
-                <SortableTableHeader
-                  ariaSort={resolveTableAriaSort(tableState, "queued")}
-                  onToggle={() => tableState.toggleSort("queued")}
-                >
-                  Queued
-                </SortableTableHeader>
-                <SortableTableHeader
-                  ariaSort={resolveTableAriaSort(tableState, "duration")}
-                  onToggle={() => tableState.toggleSort("duration")}
-                >
-                  Duration (ms)
-                </SortableTableHeader>
-                <th style={{ textAlign: "left", padding: 4 }}>Open</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tableView.visible.map((run) => (
-                <tr
-                  key={run.runId}
-                  data-testid="workflow-runs-list-entry-row"
-                  data-run-id={run.runId}
-                  data-status={run.status}
-                  data-module-id={run.moduleId}
-                >
-                  <td style={{ padding: 4 }} className="mono">
-                    {run.runId}
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {run.moduleId}
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {run.workflowKey}
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <StatusChip
-                      status={run.status}
-                      variant={resolveStatusVariant(run.status)}
-                    />
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {run.attempt}
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {formatDate(run.queuedAt)}
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {run.durationMs ?? "—"}
-                  </td>
-                  <td style={{ padding: 4 }}>
-                    <Link
-                      to="/desk/run/$id"
-                      params={{ id: run.runId }}
-                      data-testid="workflow-runs-list-entry-link"
-                    >
-                      Detail
-                    </Link>
-                  </td>
+          <div className="ops-table-wrapper">
+            <table
+              className="ops-table"
+              data-testid="workflow-runs-list-entries-table"
+              aria-label="Workflow runs roster"
+            >
+              <thead>
+                <tr>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "run")}
+                    onToggle={() => tableState.toggleSort("run")}
+                  >
+                    Run
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "module")}
+                    onToggle={() => tableState.toggleSort("module")}
+                  >
+                    Module
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "workflow")}
+                    onToggle={() => tableState.toggleSort("workflow")}
+                  >
+                    Workflow
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "status")}
+                    onToggle={() => tableState.toggleSort("status")}
+                  >
+                    Status
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "attempt")}
+                    onToggle={() => tableState.toggleSort("attempt")}
+                  >
+                    Attempt
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "queued")}
+                    onToggle={() => tableState.toggleSort("queued")}
+                  >
+                    Queued
+                  </SortableTableHeader>
+                  <SortableTableHeader
+                    ariaSort={resolveTableAriaSort(tableState, "duration")}
+                    onToggle={() => tableState.toggleSort("duration")}
+                  >
+                    Duration
+                  </SortableTableHeader>
+                  <th scope="col">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <Pagination
-          page={tableState.page}
-          pageSize={tableState.pageSize}
-          total={tableView.total}
-          onPageChange={tableState.setPage}
-          onPageSizeChange={tableState.setPageSize}
-        />
-      </section>
+              </thead>
+              <tbody>
+                {rosterRuns.map((run) => {
+                  const isSelected = focusedRun?.runId === run.runId;
 
-      {partialFailures.length > 0 ? (
-        <section
-          data-testid="workflow-runs-list-partial-failures"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            padding: 6,
-            border: "1px solid var(--bg-2)",
-            borderRadius: 4,
-          }}
-        >
-          <h2 style={{ fontSize: "0.9375rem", padding: 4, margin: 0 }}>
-            Partial failures
-          </h2>
-          <ul style={{ margin: 0, padding: 4 }}>
-            {partialFailures.map((failure) => (
-              <li
-                key={failure.bucket}
-                data-testid="workflow-runs-list-partial-failure-row"
-                data-bucket={failure.bucket}
-              >
-                <span className="mono">{failure.bucket}</span>: {failure.reason}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+                  return (
+                    <tr
+                      key={run.runId}
+                      className={isSelected ? "is-selected" : undefined}
+                      data-testid="workflow-runs-list-entry-row"
+                      data-run-id={run.runId}
+                      data-status={run.status}
+                      data-module-id={run.moduleId}
+                    >
+                      <td>
+                        <div className="ops-cell-stack">
+                          <span className="ops-cell-stack__title mono">
+                            {run.runId}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="ops-signal-badge ops-signal-badge--accent">
+                          {run.moduleId}
+                        </span>
+                      </td>
+                      <td className="mono">{run.workflowKey}</td>
+                      <td>
+                        <StatusChip
+                          status={run.status}
+                          variant={resolveStatusVariant(run.status)}
+                        />
+                      </td>
+                      <td className="mono">{run.attempt}</td>
+                      <td className="mono">{formatDate(run.queuedAt)}</td>
+                      <td className="mono">
+                        {formatRunDuration(run.durationMs)}
+                      </td>
+                      <td>
+                        <div className="ops-inline-cluster">
+                          <button
+                            type="button"
+                            className={
+                              isSelected
+                                ? "ops-btn ops-btn--primary ops-btn--xs"
+                                : "ops-btn ops-btn--ghost ops-btn--xs"
+                            }
+                            data-testid="workflow-runs-list-entry-focus"
+                            onClick={() => setSelectedRunId(run.runId)}
+                          >
+                            {isSelected ? "Focused" : "Focus"}
+                          </button>
+                          <Link
+                            className="ops-btn ops-btn--ghost ops-btn--xs"
+                            to="/desk/run/$id"
+                            params={{ id: run.runId }}
+                            data-testid="workflow-runs-list-entry-link"
+                          >
+                            Detail
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="ops-card-shell ops-card-shell--dense">
+          <Pagination
+            page={tableState.page}
+            pageSize={tableState.pageSize}
+            total={tableView.total}
+            onPageChange={tableState.setPage}
+            onPageSizeChange={tableState.setPageSize}
+          />
+        </div>
+      </section>
     </section>
   );
 }
 
-function AttentionRow({
-  label,
-  value,
-  tone,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly tone: "neutral" | "warn" | "alert";
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 6,
-        padding: 6,
-        borderRadius: 8,
-        border:
-          tone === "alert"
-            ? "1px solid rgba(255, 122, 122, 0.35)"
-            : tone === "warn"
-              ? "1px solid rgba(255, 203, 107, 0.35)"
-              : "1px solid rgba(255, 255, 255, 0.08)",
-        background:
-          tone === "alert"
-            ? "rgba(96, 24, 24, 0.24)"
-            : tone === "warn"
-              ? "rgba(98, 70, 18, 0.2)"
-              : "rgba(255, 255, 255, 0.02)",
-      }}
-    >
-      <span>{label}</span>
-      <span className="mono">{value}</span>
-    </div>
-  );
+function formatRunDuration(durationMs: number | undefined): string {
+  return durationMs === undefined ? "—" : `${formatAdminNumber(durationMs)} ms`;
+}
+
+function resolveFocusedRunNarrative(
+  run: Extract<
+    AdminWorkflowRunsListRouteData,
+    { readonly kind: "ready" }
+  >["result"]["runs"][number],
+  pinned: boolean,
+): string {
+  if (pinned) {
+    return "Pinned from the visible roster so the detail signal stays stable while filters, search, and paging change around it.";
+  }
+
+  switch (run.status) {
+    case workflowRunStatus.failed:
+      return "Automatically escalated because the current visible roster includes a failed workflow run that needs operator review first.";
+    case workflowRunStatus.stale:
+      return "Automatically escalated because the current visible roster includes a stale workflow run that may need intervention.";
+    default:
+      return "Anchoring the visible roster with the first available run so detail, timing, and drill-through remain in view.";
+  }
 }

@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Access Control v2 mutation server-fns (admin-app implementation
@@ -74,23 +75,20 @@ export const revokeAdminAuthorizationTuple = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: RevokeAdminAuthorizationTupleInput) => input)
+  .inputValidator(decodeSyncBoundary(RevokeAdminAuthorizationTupleInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: RevokeAdminAuthorizationTupleInput;
     }): Promise<RevokeAdminAuthorizationTupleServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(RevokeAdminAuthorizationTupleInputSchema)(data),
-      );
       // Resolve the session id up-front so the transport contract
       // (typed envelope → trusted operator) is exercised even
       // while the platform-side wiring is still pending in 4b.
       await resolveSessionIdFromRequest(context.request);
-      void decoded;
+      void data;
       throw new AccessControlMutationsNotImplementedError();
     },
   );

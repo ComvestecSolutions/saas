@@ -62,6 +62,7 @@ export type AdminSupportCasesRouteData =
     }
   | {
       readonly kind: "ready";
+      readonly generatedAt: SupportOperationsBreakGlassIncidentSupportView["expiresAt"];
       readonly cases: readonly SupportOperationsCaseSupportView[];
       readonly incidents: readonly SupportOperationsBreakGlassIncidentSupportView[];
       readonly impersonationSessions: readonly SupportOperationsImpersonationSessionSupportView[];
@@ -107,8 +108,10 @@ export const loadAdminSupportCasesRouteDataFromRequest = (
   environment: unknown,
   input: AdminSupportCasesInput,
   dependencies: AdminSupportCasesDependencies = defaultDependencies,
-): Effect.Effect<AdminSupportCasesRouteData, never> =>
-  extractRequiredSubscriberJourneySessionId(request).pipe(
+): Effect.Effect<AdminSupportCasesRouteData, never> => {
+  const generatedAt = new Date().toISOString();
+
+  return extractRequiredSubscriberJourneySessionId(request).pipe(
     Effect.flatMap((sessionId) =>
       retryTransientAdminSessionReadiness(() =>
         dependencies.resolveTrustedRequestContext(environment, sessionId).pipe(
@@ -144,6 +147,7 @@ export const loadAdminSupportCasesRouteDataFromRequest = (
                   impersonationSessions,
                 }): AdminSupportCasesRouteData => ({
                   kind: "ready",
+                  generatedAt,
                   cases,
                   incidents,
                   impersonationSessions,
@@ -175,3 +179,4 @@ export const loadAdminSupportCasesRouteDataFromRequest = (
     ),
     Effect.catchAll((error) => Effect.succeed(buildErrorState(error))),
   );
+};

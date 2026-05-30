@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminDomainDetailInput,
   AdminDomainDetailRouteData,
@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/domain/$hostname`
@@ -17,61 +18,35 @@ import {
  * framework boundary and runs the route-data Effect on the
  * server. No Request/Response shaping lives here.
  */
-export type AdminDomainDetailRawInput = {
-  readonly hostname?: unknown;
-  readonly tenantScope?: unknown;
-  readonly tenantScopeId?: unknown;
-};
-
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
-
-const isPlatformScope = (value: unknown): value is PlatformScope =>
-  typeof value === "string" && knownPlatformScopes.has(value);
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Domain detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminDomainDetailRawInput | undefined,
-): AdminDomainDetailInput => {
-  const safe = raw ?? {};
-  const hostname = requireString(safe.hostname, "hostname");
-  if (!isPlatformScope(safe.tenantScope)) {
-    throw new Error("Domain detail loader requires a valid 'tenantScope'.");
-  }
-  const tenantScopeId = requireString(safe.tenantScopeId, "tenantScopeId");
-  return {
-    hostname,
-    tenant: { scope: safe.tenantScope, scopeId: tenantScopeId },
-  };
-};
+const AdminDomainDetailInputSchema = Schema.Struct({
+  hostname: Schema.NonEmptyString,
+  tenant: Schema.Struct({
+    scope: PlatformScopeSchema,
+    scopeId: Schema.NonEmptyString,
+  }),
+});
 
 const loadAdminDomainDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminDomainDetailRawInput | undefined,
+  input: AdminDomainDetailInput,
 ): Promise<AdminDomainDetailRouteData> => {
   const { loadAdminDomainDetailRouteDataFromRequest } =
     await import("./domain-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminDomainDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminDomainDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminDomainDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminDomainDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminDomainDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminDomainDetailRawInput | undefined;
+      readonly data: AdminDomainDetailInput;
     }) => loadAdminDomainDetailData(context.request, process.env, data),
   );

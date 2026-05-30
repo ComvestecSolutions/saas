@@ -5,6 +5,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import {
   buildAdminActionReason,
   resolveTrustedAdminRequestContextFromRequest,
@@ -45,18 +46,15 @@ export const issueAdminOperatorTestToken = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: IssueAdminOperatorTestTokenInput) => input)
+  .inputValidator(decodeSyncBoundary(IssueAdminOperatorTestTokenInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: IssueAdminOperatorTestTokenInput;
     }): Promise<IssueAdminOperatorTestTokenServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(IssueAdminOperatorTestTokenInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -67,14 +65,14 @@ export const issueAdminOperatorTestToken = createServerFn({
           requestContext: {
             ...requestContext,
             reason: buildAdminActionReason(
-              decoded.reasonCatalogId,
-              decoded.reasonAttachmentText,
+              data.reasonCatalogId,
+              data.reasonAttachmentText,
             ),
           },
-          label: decoded.label,
-          expiresAt: decoded.expiresAt,
-          reasonCatalogId: decoded.reasonCatalogId,
-          reasonAttachmentText: decoded.reasonAttachmentText,
+          label: data.label,
+          expiresAt: data.expiresAt,
+          reasonCatalogId: data.reasonCatalogId,
+          reasonAttachmentText: data.reasonAttachmentText,
         }),
       );
 
@@ -91,18 +89,15 @@ export const revokeAdminOperatorTestToken = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: RevokeAdminOperatorTestTokenInput) => input)
+  .inputValidator(decodeSyncBoundary(RevokeAdminOperatorTestTokenInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: RevokeAdminOperatorTestTokenInput;
     }): Promise<RevokeAdminOperatorTestTokenServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(RevokeAdminOperatorTestTokenInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -114,17 +109,17 @@ export const revokeAdminOperatorTestToken = createServerFn({
           requestContext: {
             ...requestContext,
             reason: buildAdminActionReason(
-              decoded.reasonCatalogId,
-              decoded.reasonAttachmentText,
+              data.reasonCatalogId,
+              data.reasonAttachmentText,
             ),
           },
-          id: decoded.tokenId,
-          reasonCatalogId: decoded.reasonCatalogId,
+          id: data.tokenId,
+          reasonCatalogId: data.reasonCatalogId,
         }),
       );
 
       return {
-        tokenId: decoded.tokenId,
+        tokenId: data.tokenId,
       };
     },
   );

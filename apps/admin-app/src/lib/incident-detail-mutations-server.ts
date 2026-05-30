@@ -5,6 +5,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import { resolveTrustedAdminRequestContextFromRequest } from "./trusted-admin-request-context-server";
 
 const ReleaseAdminBreakGlassGrantInputSchema = Schema.Struct({
@@ -24,18 +25,15 @@ export const releaseAdminBreakGlassGrant = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ReleaseAdminBreakGlassGrantInput) => input)
+  .inputValidator(decodeSyncBoundary(ReleaseAdminBreakGlassGrantInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ReleaseAdminBreakGlassGrantInput;
     }): Promise<ReleaseAdminBreakGlassGrantServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ReleaseAdminBreakGlassGrantInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -46,14 +44,14 @@ export const releaseAdminBreakGlassGrant = createServerFn({
         releaseBreakGlassGrantFromEnvironment(process.env, {
           requestContext,
           release: {
-            id: decoded.caseId,
-            releaseReasonCatalogId: decoded.releaseReasonCatalogId,
+            id: data.caseId,
+            releaseReasonCatalogId: data.releaseReasonCatalogId,
           },
         }),
       );
 
       return {
-        caseId: decoded.caseId,
+        caseId: data.caseId,
       };
     },
   );

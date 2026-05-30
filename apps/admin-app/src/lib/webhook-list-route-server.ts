@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminWebhookListInput,
   AdminWebhookListRouteData,
@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical `/desk/webhook`
@@ -18,29 +19,33 @@ import {
  * server. No Request/Response shaping lives here — that belongs
  * in platform HTTP adapters.
  */
-export type AdminWebhookListRawInput = {
-  readonly scope?: unknown;
-  readonly scopeId?: unknown;
-  readonly selectedDeliveryId?: unknown;
-};
+const AdminWebhookListRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    scope: Schema.optional(Schema.Unknown),
+    scopeId: Schema.optional(Schema.Unknown),
+    selectedDeliveryId: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
+type AdminWebhookListRawInput = Schema.Schema.Type<
+  typeof AdminWebhookListRawInputSchema
+>;
 
-const decodePlatformScope = (value: unknown): PlatformScope | undefined =>
-  typeof value === "string" && knownPlatformScopes.has(value)
-    ? (value as PlatformScope)
-    : undefined;
+const decodeAdminWebhookListRawInput = decodeSyncBoundary(
+  AdminWebhookListRawInputSchema,
+);
+const decodePlatformScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeRawInput = (
-  raw: AdminWebhookListRawInput | undefined,
+const normalizeAdminWebhookListInput = (
+  raw: AdminWebhookListRawInput,
 ): AdminWebhookListInput => {
   const safe = raw ?? {};
   const scope = decodePlatformScope(safe.scope);
   const scopeId = decodeOptionalString(safe.scopeId);
   const selectedDeliveryId = decodeOptionalString(safe.selectedDeliveryId);
+
   return {
     ...(scope === undefined ? {} : { scope }),
     ...(scopeId === undefined ? {} : { scopeId }),
@@ -51,25 +56,27 @@ const decodeRawInput = (
 const loadAdminWebhookListData = async (
   request: Request,
   environment: unknown,
-  raw: AdminWebhookListRawInput | undefined,
+  input: AdminWebhookListInput,
 ): Promise<AdminWebhookListRouteData> => {
   const { loadAdminWebhookListRouteDataFromRequest } =
     await import("./webhook-list-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminWebhookListRouteDataFromRequest(request, environment, decoded),
+    loadAdminWebhookListRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminWebhookListData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminWebhookListRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminWebhookListInput(decodeAdminWebhookListRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminWebhookListRawInput | undefined;
+      readonly data: AdminWebhookListInput;
     }) => loadAdminWebhookListData(context.request, process.env, data),
   );

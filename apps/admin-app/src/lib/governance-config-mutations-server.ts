@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Runtime Config v2 mutation server-fns (admin-app implementation
@@ -72,7 +73,7 @@ export const submitAdminRuntimeConfigOverrideProposal = createServerFn({
 })
   .middleware([adminRequestServerMiddleware])
   .inputValidator(
-    (input: SubmitAdminRuntimeConfigOverrideProposalInput) => input,
+    decodeSyncBoundary(SubmitAdminRuntimeConfigOverrideProposalInputSchema),
   )
   .handler(
     async ({
@@ -80,25 +81,20 @@ export const submitAdminRuntimeConfigOverrideProposal = createServerFn({
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: SubmitAdminRuntimeConfigOverrideProposalInput;
     }): Promise<SubmitAdminRuntimeConfigOverrideProposalServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(
-          SubmitAdminRuntimeConfigOverrideProposalInputSchema,
-        )(data),
-      );
       const sessionId = await resolveSessionIdFromRequest(context.request);
       const { submitAdminRuntimeConfigOverrideProposalFromSessionId } =
         await import("@comvestec/platform");
       const result = await Effect.runPromise(
         submitAdminRuntimeConfigOverrideProposalFromSessionId(process.env, {
           sessionId,
-          moduleId: decoded.moduleId,
-          key: decoded.key,
-          scope: decoded.scope,
-          scopeId: decoded.scopeId,
-          value: decoded.value,
-          approvalReason: decoded.approvalReason,
+          moduleId: data.moduleId,
+          key: data.key,
+          scope: data.scope,
+          scopeId: data.scopeId,
+          value: data.value,
+          approvalReason: data.approvalReason,
         }),
       );
       return {
@@ -113,27 +109,26 @@ export const reviewAdminRuntimeConfigProposal = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ReviewAdminRuntimeConfigProposalInput) => input)
+  .inputValidator(
+    decodeSyncBoundary(ReviewAdminRuntimeConfigProposalInputSchema),
+  )
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ReviewAdminRuntimeConfigProposalInput;
     }): Promise<ReviewAdminRuntimeConfigProposalServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ReviewAdminRuntimeConfigProposalInputSchema)(data),
-      );
       const sessionId = await resolveSessionIdFromRequest(context.request);
       const { reviewAdminRuntimeConfigProposalFromSessionId } =
         await import("@comvestec/platform");
       const result = await Effect.runPromise(
         reviewAdminRuntimeConfigProposalFromSessionId(process.env, {
           sessionId,
-          proposalId: decoded.proposalId,
-          status: decoded.status,
-          decisionReason: decoded.decisionReason,
+          proposalId: data.proposalId,
+          status: data.status,
+          decisionReason: data.decisionReason,
         }),
       );
       return {

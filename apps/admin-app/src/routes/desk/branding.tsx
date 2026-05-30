@@ -23,6 +23,10 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
 import { resolveAdminTenantTargetDisplayName } from "../../lib/admin-tenant-target-display-name";
 import {
   buildAdminTenantTarget,
@@ -31,6 +35,7 @@ import {
 } from "../../lib/admin-tenant-target";
 import {
   AdminRouteTenantTargetsSearchSchema,
+  decodeAdminRouteTenantTargetsSearch,
   decodeAdminRouteTenantTargets,
   dedupeAdminRouteTenantTargets,
   encodeAdminRouteTenantTargets,
@@ -57,6 +62,10 @@ const RawSearchSchema = Schema.Struct({
   tenants: AdminRouteTenantTargetsSearchSchema,
   selectedTenantId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  tenants: Schema.optional(Schema.Unknown),
+  selectedTenantId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type ReadyData = Extract<
@@ -64,14 +73,25 @@ type ReadyData = Extract<
   { readonly kind: "ready" }
 >;
 type BrandingFilter = "all" | "attention" | "supported" | "unsupported";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeSelectedTenantId = decodeSchemaOrUndefined(Schema.NonEmptyString);
+
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const tenants = decodeAdminRouteTenantTargetsSearch(search.tenants);
+  const selectedTenantId = decodeSearchString(search.selectedTenantId);
+
+  return {
+    ...(tenants === undefined ? {} : { tenants }),
+    ...(selectedTenantId === undefined ? {} : { selectedTenantId }),
+  };
+};
 
 const decodeLoaderInput = (raw: RawSearch): AdminBrandingListInput => {
   const tenantTargets: readonly AdminBrandingListTenantTarget[] =
     decodeAdminRouteTenantTargets(raw.tenants);
-  const selectedTenantId =
-    raw.selectedTenantId !== undefined && raw.selectedTenantId.length > 0
-      ? raw.selectedTenantId
-      : undefined;
+  const selectedTenantId = decodeSelectedTenantId(raw.selectedTenantId);
 
   return {
     tenantTargets,
@@ -94,7 +114,7 @@ const isBrandingAttentionRow = (row: AdminBrandingListRow): boolean =>
   row.unsupported || row.branding?.customDomainStatus === "verifying";
 
 export const Route = createAdminAppFileRoute("/desk/branding")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/branding-list-loader").then(

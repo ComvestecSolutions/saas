@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminKeycloakUserDetailInput,
   AdminKeycloakUserDetailRouteData,
@@ -9,72 +9,41 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
-export type AdminKeycloakUserDetailRawInput = {
-  readonly userId?: unknown;
-  readonly tenantScope?: unknown;
-  readonly tenantScopeId?: unknown;
-};
-
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
-
-const isPlatformScope = (value: unknown): value is PlatformScope =>
-  typeof value === "string" && knownPlatformScopes.has(value);
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Keycloak user detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminKeycloakUserDetailRawInput | undefined,
-): AdminKeycloakUserDetailInput => {
-  const safe = raw ?? {};
-  const userId = requireString(safe.userId, "userId");
-  if (!isPlatformScope(safe.tenantScope)) {
-    throw new Error(
-      "Keycloak user detail loader requires a valid 'tenantScope'.",
-    );
-  }
-  const tenantScopeId = requireString(safe.tenantScopeId, "tenantScopeId");
-
-  return {
-    userId,
-    tenant: {
-      scope: safe.tenantScope,
-      scopeId: tenantScopeId,
-    },
-  };
-};
+const AdminKeycloakUserDetailInputSchema = Schema.Struct({
+  userId: Schema.NonEmptyString,
+  tenant: Schema.Struct({
+    scope: PlatformScopeSchema,
+    scopeId: Schema.NonEmptyString,
+  }),
+});
 
 const loadAdminKeycloakUserDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminKeycloakUserDetailRawInput | undefined,
+  input: AdminKeycloakUserDetailInput,
 ): Promise<AdminKeycloakUserDetailRouteData> => {
   const { loadAdminKeycloakUserDetailRouteDataFromRequest } =
     await import("./keycloak-user-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
     loadAdminKeycloakUserDetailRouteDataFromRequest(
       request,
       environment,
-      decoded,
+      input,
     ),
   );
 };
 
 export const getAdminKeycloakUserDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminKeycloakUserDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminKeycloakUserDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminKeycloakUserDetailRawInput | undefined;
+      readonly data: AdminKeycloakUserDetailInput;
     }) => loadAdminKeycloakUserDetailData(context.request, process.env, data),
   );

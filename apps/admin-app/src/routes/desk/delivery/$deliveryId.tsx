@@ -9,11 +9,14 @@ import {
 } from "@comvestec/ui";
 import {
   operatorWebhookDeliveryStatus,
-  platformScopes,
-  type PlatformScope,
+  PlatformScopeSchema,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
 import { retryAdminWebhookDelivery } from "../../../lib/delivery-detail-mutations-server";
 import type { AdminDeliveryDetailRouteData } from "../../../lib/delivery-detail-route-data";
 
@@ -63,23 +66,30 @@ const RawSearchSchema = Schema.Struct({
   scope: Schema.optional(Schema.String),
   scopeId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  scope: Schema.optional(Schema.Unknown),
+  scopeId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeOptionalScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const knownPlatformScopes = platformScopes as readonly string[];
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const scope = decodeSearchString(search.scope);
+  const scopeId = decodeSearchString(search.scopeId);
 
-const decodeOptionalScope = (
-  value: string | undefined,
-): PlatformScope | undefined =>
-  value !== undefined && knownPlatformScopes.includes(value)
-    ? (value as PlatformScope)
-    : undefined;
-
-const decodeOptionalString = (value: string | undefined): string | undefined =>
-  value !== undefined && value.length > 0 ? value : undefined;
+  return {
+    ...(scope === undefined ? {} : { scope }),
+    ...(scopeId === undefined ? {} : { scopeId }),
+  };
+};
 
 export const Route = createAdminAppFileRoute("/desk/delivery/$deliveryId")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const { loadAdminDeliveryDetailLoaderData } =

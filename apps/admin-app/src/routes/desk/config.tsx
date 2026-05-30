@@ -2,11 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, Outlet } from "@tanstack/react-router";
 import { Schema } from "effect";
 import { EmptyState, StateScreen, StatusChip } from "@comvestec/ui";
-import {
-  platformModuleId,
-  platformModuleIds,
-  type PlatformModuleId,
-} from "@comvestec/contracts";
+import { platformModuleId, PlatformModuleIdSchema } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../file-route";
 import {
   FilterBar,
@@ -20,6 +16,10 @@ import {
   applyTableState,
   useTableState,
 } from "../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
 import type {
   AdminGovernanceConfigV2Input,
   AdminGovernanceConfigV2RouteData,
@@ -36,22 +36,33 @@ const RawSearchSchema = Schema.Struct({
   moduleId: Schema.optional(Schema.String),
   key: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  moduleId: Schema.optional(Schema.Unknown),
+  key: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type RuntimeConfigTab = "overrides" | "proposals";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
+const decodeConfigKey = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const platformModuleIdValues = platformModuleIds as readonly PlatformModuleId[];
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const moduleId = decodeSearchString(search.moduleId);
+  const key = decodeSearchString(search.key);
 
-const isKnownPlatformModuleId = (value: string): value is PlatformModuleId =>
-  (platformModuleIdValues as readonly string[]).includes(value);
+  return {
+    ...(moduleId === undefined ? {} : { moduleId }),
+    ...(key === undefined ? {} : { key }),
+  };
+};
 
 const decodeSearch = (search: RawSearch): AdminGovernanceConfigV2Input => {
   const moduleId =
-    search.moduleId !== undefined && isKnownPlatformModuleId(search.moduleId)
-      ? search.moduleId
-      : platformModuleId.runtimeConfig;
-  const key =
-    search.key !== undefined && search.key.length > 0 ? search.key : undefined;
+    decodeModuleId(search.moduleId) ?? platformModuleId.runtimeConfig;
+  const key = decodeConfigKey(search.key);
   return {
     moduleId,
     ...(key === undefined ? {} : { key }),
@@ -59,7 +70,7 @@ const decodeSearch = (search: RawSearch): AdminGovernanceConfigV2Input => {
 };
 
 export const Route = createAdminAppFileRoute("/desk/config")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/governance-config-loader").then(

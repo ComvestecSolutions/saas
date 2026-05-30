@@ -9,20 +9,6 @@ import {
 } from "../../../lib/admin-member-display";
 import type { AdminMemberDetailRouteData } from "../../../lib/admin-member-detail-route-data";
 
-const detailCardStyle = {
-  display: "grid",
-  gap: 4,
-  padding: 8,
-  borderRadius: 12,
-  border: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-  background:
-    "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-} as const;
-
-const secondaryTextStyle = {
-  color: "var(--ops-text-secondary, rgba(255,255,255,0.7))",
-} as const;
-
 const adminMemberRoleSummary: Record<string, string> = {
   "admin-owner":
     "Owns the admin organization floor and should remain resilient during offboarding or incident rotation.",
@@ -148,64 +134,58 @@ function AdminMemberDetailRoute() {
         />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 6,
-        }}
-      >
+      <div className="ops-insight-grid">
         <section
           data-testid="admin-member-detail-identity"
-          style={detailCardStyle}
+          className="ops-insight-card"
         >
           <p className="ops-card-title">Identity</p>
           <span className="text-strong">{member.displayName}</span>
           <span className="mono">{member.email}</span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Invited by <span className="mono">{member.createdBy}</span>
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Keycloak subject{" "}
             <span className="mono">
               {member.keycloakSubjectId ?? "Pending"}
             </span>
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Member id <span className="mono">{member.id}</span>
           </span>
         </section>
 
         <section
           data-testid="admin-member-detail-lifecycle"
-          style={detailCardStyle}
+          className="ops-insight-card"
         >
           <p className="ops-card-title">Lifecycle</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div className="ops-inline-cluster">
             <StatusChip
               status={member.status}
               variant={resolveStatusVariant(member.status)}
             />
           </div>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Invited{" "}
             <span className="mono">
               {formatAdminMemberDay(member.invitedAt)}
             </span>
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Accepted{" "}
             <span className="mono">
               {formatAdminMemberDay(member.acceptedAt)}
             </span>
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Last active{" "}
             <span className="mono">
               {formatAdminMemberDay(member.lastActiveAt)}
             </span>
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             Archived{" "}
             <span className="mono">
               {formatAdminMemberDay(member.archivedAt)}
@@ -213,13 +193,16 @@ function AdminMemberDetailRoute() {
           </span>
         </section>
 
-        <section data-testid="admin-member-detail-role" style={detailCardStyle}>
+        <section
+          data-testid="admin-member-detail-role"
+          className="ops-insight-card"
+        >
           <p className="ops-card-title">Role posture</p>
           <span className="text-strong">
             {adminMemberRoleLabel[member.role]}
           </span>
-          <span style={secondaryTextStyle}>{roleSummary}</span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">{roleSummary}</span>
+          <span className="ops-secondary-text">
             This detail surface stays pinned to the admin-organization roster
             and should be reviewed alongside the focused admin audit stream when
             a role or lifecycle change is made.

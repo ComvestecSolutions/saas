@@ -17,6 +17,7 @@ import {
 import {
   adminRoutePath,
   adminSavedViewResourceKind,
+  adminOperatorCapability,
   reasonCatalogId,
   type AdminOperatorCapabilityEntry,
   type AdminOperatorProfile,
@@ -25,6 +26,22 @@ import {
   type AdminWorkspace,
   type RunAsBannerState,
 } from "@comvestec/contracts";
+import {
+  ArchiveIcon,
+  AuditTrailIcon,
+  BoltIcon,
+  GlobeIcon,
+  LifebuoyIcon,
+  MenuGridIcon,
+  OverviewIcon,
+  PlugIcon,
+  RevenueIcon,
+  SettingsIcon,
+  ShieldIcon,
+  TenantsIcon,
+  UserBadgeIcon,
+  WrenchIcon,
+} from "../components/ui/icons";
 import { DeskShellOmnibar } from "../components/desk-shell/omnibar";
 import { navigateAdminPath } from "../lib/browser-navigation";
 import { adminPathMatchesRoute } from "../lib/admin-route-aliases";
@@ -159,23 +176,65 @@ const resolveDomainLabel = (domainId: DeskDomainId): string => {
   }
 };
 
-const resolveRouteInitials = (routePath: string): string => {
-  switch (resolveDomainId(routePath)) {
-    case "mission":
-      return "MC";
-    case "tenants":
-      return "TN";
-    case "governance":
-      return "GV";
-    case "revenue":
-      return "RV";
-    case "risk":
-      return "RK";
-    case "integrations":
-      return "IN";
-    case "admin":
-    default:
-      return "AD";
+const resolveCapabilityIcon = (
+  capability: AdminOperatorCapabilityEntry["capability"],
+) => {
+  switch (capability) {
+    case adminOperatorCapability.operationsHome:
+      return <OverviewIcon size={16} />;
+    case adminOperatorCapability.repairOperations:
+      return <WrenchIcon size={16} />;
+    case adminOperatorCapability.tenantWorkspace:
+      return <TenantsIcon size={16} />;
+    case adminOperatorCapability.runtimeConfig:
+      return <SettingsIcon size={16} />;
+    case adminOperatorCapability.featureFlags:
+      return <BoltIcon size={16} />;
+    case adminOperatorCapability.accessControl:
+      return <ShieldIcon size={16} />;
+    case adminOperatorCapability.auditLog:
+      return <AuditTrailIcon size={16} />;
+    case adminOperatorCapability.supportOperations:
+      return <LifebuoyIcon size={16} />;
+    case adminOperatorCapability.branding:
+      return <GlobeIcon size={16} />;
+    case adminOperatorCapability.billing:
+      return <RevenueIcon size={16} />;
+    case adminOperatorCapability.complianceRetention:
+      return <ArchiveIcon size={16} />;
+    case adminOperatorCapability.webhooksApiAccess:
+      return <PlugIcon size={16} />;
+  }
+};
+
+const resolveCapabilityDescription = (
+  capability: AdminOperatorCapabilityEntry["capability"],
+): string => {
+  switch (capability) {
+    case adminOperatorCapability.operationsHome:
+      return "Operational posture, vendor health, workflow pulse, and active operator focus.";
+    case adminOperatorCapability.repairOperations:
+      return "Repair queues, billing gap inspection, and reconciliation controls.";
+    case adminOperatorCapability.tenantWorkspace:
+      return "Tenant search, workspace discovery, and cross-surface customer context.";
+    case adminOperatorCapability.runtimeConfig:
+      return "Config proposals, reviews, and runtime rollout controls.";
+    case adminOperatorCapability.featureFlags:
+      return "Feature exposure, rollout posture, and operator-safe toggles.";
+    case adminOperatorCapability.accessControl:
+      return "Permissions, tuples, projection profiles, and access posture.";
+    case adminOperatorCapability.auditLog:
+      return "Investigation trails, event review, and reveal-safe operational evidence.";
+    case adminOperatorCapability.supportOperations:
+      return "Support queues, incident focus, and break-glass review workflows.";
+    case adminOperatorCapability.branding:
+      return "Domains, tenant branding, and sender identity control surfaces.";
+    case adminOperatorCapability.billing:
+      return "Revenue posture, invoices, entitlements, and subscription reconciliation.";
+    case adminOperatorCapability.complianceRetention:
+      return "Retention policies, legal holds, and compliance review surfaces.";
+    case adminOperatorCapability.webhooksApiAccess:
+      return "Webhook delivery posture, endpoints, API access, and integration health.";
   }
 };
 
@@ -256,11 +315,11 @@ const buildEdgeRailItems = (
         !capability.routePath.includes("$") &&
         capability.allowed,
     )
-    .slice(0, 8)
     .map((capability) => ({
       id: capability.capability,
       label: capability.label,
-      icon: resolveRouteInitials(capability.routePath),
+      description: resolveCapabilityDescription(capability.capability),
+      icon: resolveCapabilityIcon(capability.capability),
       current: routeMatches(currentPath, capability.routePath),
     }));
 
@@ -511,6 +570,7 @@ export function DeskShell({
   const [runAsReleaseError, setRunAsReleaseError] = useState<string | null>(
     null,
   );
+  const navigationMenuId = "desk-shell-navigation-menu";
   const operator = profile.identity;
   const currentPath = resolveCurrentPath(currentPathProp);
   const deviceClassProps: { readonly deviceClass: DeviceClass } | {} =
@@ -1003,7 +1063,9 @@ export function DeskShell({
                   >
                     <button
                       type="button"
-                      aria-label="Open navigation"
+                      aria-label="Open control surfaces"
+                      aria-expanded={navigationOpen}
+                      aria-controls={navigationMenuId}
                       onClick={() => setNavigationOpen((current) => !current)}
                       style={{
                         height: 28,
@@ -1017,7 +1079,18 @@ export function DeskShell({
                         cursor: "pointer",
                       }}
                     >
-                      Menu
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 6,
+                        }}
+                      >
+                        <MenuGridIcon size={14} />
+                      </span>
+                      Surfaces
                     </button>
                     <a
                       href={adminRoutePath.profile}
@@ -1039,10 +1112,22 @@ export function DeskShell({
                         textDecoration: "none",
                       }}
                     >
-                      My profile
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 6,
+                        }}
+                      >
+                        <UserBadgeIcon size={14} />
+                      </span>
+                      Operator profile
                     </a>
                     {navigationOpen ? (
                       <div
+                        id={navigationMenuId}
                         data-testid="desk-shell-navigation-menu"
                         style={{
                           position: "absolute",
@@ -1074,28 +1159,52 @@ export function DeskShell({
                             }}
                             style={{
                               display: "grid",
-                              gap: 2,
-                              padding: "6px 8px",
-                              borderRadius: 8,
+                              gridTemplateColumns: "28px minmax(0, 1fr)",
+                              gap: 8,
+                              alignItems: "start",
+                              padding: "8px 10px",
+                              borderRadius: 10,
                               textDecoration: "none",
                               background: routeMatches(
                                 currentPath,
                                 capability.routePath,
                               )
-                                ? "color-mix(in oklab, white 6%, transparent)"
+                                ? "color-mix(in oklab, white 7%, transparent)"
                                 : "transparent",
                               color: "var(--fg-elevated)",
                             }}
                           >
-                            <span>{capability.label}</span>
                             <span
-                              className="mono"
+                              aria-hidden="true"
                               style={{
-                                fontSize: "0.7rem",
-                                color: "var(--fg-muted)",
+                                display: "inline-flex",
+                                width: 28,
+                                height: 28,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: 8,
+                                background:
+                                  "color-mix(in oklab, white 4%, transparent)",
+                                color: "var(--fg-secondary)",
                               }}
                             >
-                              {capability.routePath}
+                              {resolveCapabilityIcon(capability.capability)}
+                            </span>
+                            <span
+                              style={{ display: "grid", gap: 2, minWidth: 0 }}
+                            >
+                              <span>{capability.label}</span>
+                              <span
+                                style={{
+                                  fontSize: "0.72rem",
+                                  lineHeight: 1.35,
+                                  color: "var(--fg-muted)",
+                                }}
+                              >
+                                {resolveCapabilityDescription(
+                                  capability.capability,
+                                )}
+                              </span>
                             </span>
                           </a>
                         ))}

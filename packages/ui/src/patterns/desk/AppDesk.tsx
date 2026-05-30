@@ -7,7 +7,7 @@ import { useDeviceClass, type DeviceClass } from "../../runtime/useDeviceClass";
  * Composes the five surfaces (admin-app spec §Shell, ADR-022, §11
  * Phase 8 responsive hardening):
  *   - PulseRibbon  (top, 32px)
- *   - EdgeRail     (left, 56px; mobile: hidden, summoned via Sheet)
+ *   - EdgeRail     (left, 72px; mobile: hidden, summoned via Sheet)
  *   - Workbench    (center; mobile: stacks single-pane)
  *   - ContextSpine (right, 320 / 56px; mobile: hidden, summoned via Drawer)
  *   - CommandStrip (bottom, 48px; mobile: reduced-density sticky omnibar)
@@ -15,8 +15,8 @@ import { useDeviceClass, type DeviceClass } from "../../runtime/useDeviceClass";
  * Layout is a CSS grid. The shell reads `useDeviceClass()` internally
  * by default and recomposes the grid template at three breakpoints:
  *
- *   desktop  → 56px rail | work | auto spine
- *   tablet   → 48px rail | work | auto spine
+ *   desktop  → 72px rail | work | auto spine
+ *   tablet   → 60px rail | work | auto spine
  *   mobile   → work only; rail + spine become summon-on-demand surfaces
  *              owned by the consuming app
  *
@@ -46,7 +46,7 @@ type GridTemplates = {
 const deviceTemplates: Record<DeviceClass, GridTemplates> = {
   desktop: {
     rows: "32px 1fr 48px",
-    columns: "56px 1fr auto",
+    columns: "72px 1fr auto",
     areas: `
       "pulse pulse pulse"
       "rail  work  spine"
@@ -55,7 +55,7 @@ const deviceTemplates: Record<DeviceClass, GridTemplates> = {
   },
   tablet: {
     rows: "32px 1fr 48px",
-    columns: "48px 1fr auto",
+    columns: "60px 1fr auto",
     areas: `
       "pulse pulse pulse"
       "rail  work  spine"
@@ -95,7 +95,7 @@ export function AppDesk({
     width: "100vw",
     height: "100vh",
     background:
-      "radial-gradient(1200px 720px at 0% -10%, color-mix(in oklab, #2b4f74 16%, transparent), transparent 58%), radial-gradient(960px 560px at 100% 0%, color-mix(in oklab, #0f7c7a 12%, transparent), transparent 60%), linear-gradient(180deg, var(--canvas-900), var(--canvas-975))",
+      "radial-gradient(980px 620px at 0% -12%, color-mix(in oklab, #6f6a2f 11%, transparent), transparent 60%), radial-gradient(1160px 720px at 100% 0%, color-mix(in oklab, #1f6d78 14%, transparent), transparent 62%), radial-gradient(640px 420px at 52% 120%, color-mix(in oklab, #143b66 18%, transparent), transparent 70%), linear-gradient(180deg, var(--canvas-900), var(--canvas-975))",
     color: "var(--fg-default)",
     position: "relative",
     overflow: "hidden",

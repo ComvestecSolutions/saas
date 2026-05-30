@@ -37,14 +37,7 @@ export function ScreenHeader({
         </nav>
       )}
       <div className="ops-screen-header__row">
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
-            minWidth: 0,
-          }}
-        >
+        <div className="ops-screen-header__lead">
           <h1 className="ops-screen-title">
             {icon !== undefined && (
               <span className="ops-screen-title__icon" aria-hidden="true">

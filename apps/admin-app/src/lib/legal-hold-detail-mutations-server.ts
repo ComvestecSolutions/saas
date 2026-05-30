@@ -5,6 +5,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import { resolveAdminSessionIdFromRequest } from "./trusted-admin-request-context-server";
 
 const ReleaseAdminLegalHoldInputSchema = Schema.Struct({
@@ -23,18 +24,15 @@ export const releaseAdminLegalHold = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ReleaseAdminLegalHoldInput) => input)
+  .inputValidator(decodeSyncBoundary(ReleaseAdminLegalHoldInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ReleaseAdminLegalHoldInput;
     }): Promise<ReleaseAdminLegalHoldServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ReleaseAdminLegalHoldInputSchema)(data),
-      );
       const sessionId = await resolveAdminSessionIdFromRequest(context.request);
       const { releaseRetentionLegalHoldFromSessionId } =
         await import("@comvestec/platform");
@@ -42,12 +40,12 @@ export const releaseAdminLegalHold = createServerFn({
       await Effect.runPromise(
         releaseRetentionLegalHoldFromSessionId(process.env, {
           sessionId,
-          legalHoldId: decoded.legalHoldId,
+          legalHoldId: data.legalHoldId,
         }),
       );
 
       return {
-        legalHoldId: decoded.legalHoldId,
+        legalHoldId: data.legalHoldId,
       };
     },
   );

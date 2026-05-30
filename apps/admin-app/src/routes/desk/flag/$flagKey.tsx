@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { Schema } from "effect";
 import {
   DiffApprovalDrawer,
   HighRiskActionGuard,
@@ -18,6 +19,7 @@ import type {
   AdminGovernanceFlagV2Input,
   AdminGovernanceFlagV2RouteData,
 } from "../../../lib/governance-flag-route-data";
+import { decodeSyncBoundary } from "../../../lib/effect-boundary";
 import { submitAdminFeatureFlagProposal } from "../../../lib/governance-flag-mutations-server";
 import { buildAdminFeatureFlagPath } from "../../../lib/admin-feature-flag-path";
 
@@ -49,11 +51,16 @@ import { buildAdminFeatureFlagPath } from "../../../lib/admin-feature-flag-path"
  * lands in 3b — the mutations-server file currently surfaces a
  * typed inline error so the spine wiring is honest end to end.
  */
+const decodeFlagDetailParams = decodeSyncBoundary(
+  Schema.Struct({ flagKey: Schema.NonEmptyString }),
+);
+
 const decodeParams = (params: {
   readonly flagKey: string;
-}): AdminGovernanceFlagV2Input => ({
-  flagKey: params.flagKey,
-});
+}): AdminGovernanceFlagV2Input => {
+  const { flagKey } = decodeFlagDetailParams(params);
+  return { flagKey };
+};
 
 const submitReasonCatalog: readonly HighRiskReason[] = [
   {

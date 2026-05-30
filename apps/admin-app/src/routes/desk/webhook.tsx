@@ -9,8 +9,7 @@ import {
 } from "@comvestec/ui";
 import {
   operatorWebhookDeliveryStatus,
-  platformScopes,
-  type PlatformScope,
+  PlatformScopeSchema,
   webhookSubscriptionStatus,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../file-route";
@@ -24,6 +23,7 @@ import {
   ExternalIcon,
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   ScreenHeader,
   SortableTableHeader,
@@ -36,6 +36,10 @@ import type {
   AdminWebhookListInput,
   AdminWebhookListRouteData,
 } from "../../lib/webhook-list-route-data";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
 
 /**
  * `/desk/webhook` — canonical webhook operations surface.
@@ -52,26 +56,37 @@ const RawSearchSchema = Schema.Struct({
   scopeId: Schema.optional(Schema.String),
   selectedDeliveryId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  scope: Schema.optional(Schema.Unknown),
+  scopeId: Schema.optional(Schema.Unknown),
+  selectedDeliveryId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type ReadyData = Extract<AdminWebhookListRouteData, { readonly kind: "ready" }>;
 type Tab = "subscriptions" | "deliveries";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const knownPlatformScopes = platformScopes as readonly string[];
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const scope = decodeSearchString(search.scope);
+  const scopeId = decodeSearchString(search.scopeId);
+  const selectedDeliveryId = decodeSearchString(search.selectedDeliveryId);
+
+  return {
+    ...(scope === undefined ? {} : { scope }),
+    ...(scopeId === undefined ? {} : { scopeId }),
+    ...(selectedDeliveryId === undefined ? {} : { selectedDeliveryId }),
+  };
+};
 
 const decodeLoaderInput = (raw: RawSearch): AdminWebhookListInput => {
-  const scope: AdminWebhookListInput["scope"] =
-    raw.scope !== undefined && knownPlatformScopes.includes(raw.scope)
-      ? (raw.scope as PlatformScope)
-      : undefined;
-  const scopeId =
-    raw.scopeId !== undefined && raw.scopeId.length > 0
-      ? raw.scopeId
-      : undefined;
-  const selectedDeliveryId =
-    raw.selectedDeliveryId !== undefined && raw.selectedDeliveryId.length > 0
-      ? raw.selectedDeliveryId
-      : undefined;
+  const scope = decodeScope(raw.scope);
+  const scopeId = decodeNonEmptyString(raw.scopeId);
+  const selectedDeliveryId = decodeNonEmptyString(raw.selectedDeliveryId);
 
   return {
     ...(scope === undefined ? {} : { scope }),
@@ -100,7 +115,7 @@ const computeFailureRatePercent = (ready: ReadyData): number => {
 };
 
 export const Route = createAdminAppFileRoute("/desk/webhook")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/webhook-list-loader").then(
@@ -329,10 +344,16 @@ function WebhookReadyRoute({ data }: { readonly data: ReadyData }) {
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             }}
           >
-            <section className="ops-card">
-              <div className="ops-card-head">
-                <p className="ops-card-head__title">Attention queue</p>
-              </div>
+            <OpsPanel
+              title="Attention queue"
+              tone={
+                failedDeliveries > 0 || exhaustedDeliveries > 0
+                  ? "alert"
+                  : inactiveEndpoints > 0
+                    ? "warn"
+                    : "neutral"
+              }
+            >
               <div style={{ display: "grid", gap: 6 }}>
                 <AttentionRow
                   label="Non-active endpoints"
@@ -350,23 +371,27 @@ function WebhookReadyRoute({ data }: { readonly data: ReadyData }) {
                   tone={exhaustedDeliveries > 0 ? "alert" : "neutral"}
                 />
               </div>
-            </section>
+            </OpsPanel>
 
             {selectedDelivery === undefined ? (
-              <section className="ops-card">
-                <div className="ops-card-head">
-                  <p className="ops-card-head__title">Focused delivery</p>
-                </div>
+              <OpsPanel title="Focused delivery">
                 <p className="ops-text-muted">
                   Open a delivery detail from the roster to keep retry posture,
                   signature timing, and payload context in reach.
                 </p>
-              </section>
+              </OpsPanel>
             ) : (
-              <section className="ops-card">
-                <div className="ops-card-head">
-                  <p className="ops-card-head__title">Focused delivery</p>
-                </div>
+              <OpsPanel
+                title="Focused delivery"
+                tone={
+                  resolveStatusVariant(selectedDelivery.status) === "error"
+                    ? "alert"
+                    : resolveStatusVariant(selectedDelivery.status) ===
+                        "pending"
+                      ? "warn"
+                      : "neutral"
+                }
+              >
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <span className="mono">{selectedDelivery.id}</span>
@@ -410,7 +435,7 @@ function WebhookReadyRoute({ data }: { readonly data: ReadyData }) {
                     </Link>
                   </div>
                 </div>
-              </section>
+              </OpsPanel>
             )}
           </div>
 

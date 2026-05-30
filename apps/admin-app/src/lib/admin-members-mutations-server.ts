@@ -6,6 +6,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import {
   buildAdminActionReason,
   resolveTrustedAdminRequestContextFromRequest,
@@ -63,18 +64,15 @@ export const inviteAdminMember = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: InviteAdminMemberInput) => input)
+  .inputValidator(decodeSyncBoundary(InviteAdminMemberInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: InviteAdminMemberInput;
     }): Promise<InviteAdminMemberServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(InviteAdminMemberInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -99,12 +97,12 @@ export const inviteAdminMember = createServerFn({
           requestContext: {
             ...requestContext,
             reason: buildAdminActionReason(
-              decoded.reasonId,
-              decoded.reasonAttachmentText,
+              data.reasonId,
+              data.reasonAttachmentText,
             ),
           },
-          email: decoded.email,
-          invitedRole: decoded.invitedRole,
+          email: data.email,
+          invitedRole: data.invitedRole,
           invitedBy: invitingMember.id,
           invitedByDisplayName: invitingMember.displayName,
         }),
@@ -123,18 +121,15 @@ export const removeAdminMember = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: RemoveAdminMemberInput) => input)
+  .inputValidator(decodeSyncBoundary(RemoveAdminMemberInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: RemoveAdminMemberInput;
     }): Promise<RemoveAdminMemberServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(RemoveAdminMemberInputSchema)(data),
-      );
       const requestContext = await resolveTrustedAdminRequestContextFromRequest(
         context.request,
       );
@@ -146,16 +141,16 @@ export const removeAdminMember = createServerFn({
           requestContext: {
             ...requestContext,
             reason: buildAdminActionReason(
-              decoded.reasonId,
-              decoded.reasonAttachmentText,
+              data.reasonId,
+              data.reasonAttachmentText,
             ),
           },
-          memberId: decoded.memberId,
+          memberId: data.memberId,
         }),
       );
 
       return {
-        memberId: decoded.memberId,
+        memberId: data.memberId,
       };
     },
   );

@@ -81,6 +81,11 @@ describe("/desk/support Support & Incident v2 route", () => {
         "[data-testid='support-cases-incident-link']",
       ),
     ).not.toBeNull();
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='support-cases-expiring-incidents-count']",
+      )?.textContent,
+    ).toBe("2");
   });
 
   it("supports tab pivots and targeted search within the support workspace", async () => {

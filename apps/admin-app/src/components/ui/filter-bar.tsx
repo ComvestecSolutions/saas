@@ -39,9 +39,7 @@ export function FilterBar({
         {children}
       </div>
       {trailing !== undefined && (
-        <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-          {trailing}
-        </div>
+        <div className="ops-toolbar__trailing">{trailing}</div>
       )}
     </div>
   );
@@ -66,23 +64,8 @@ export function FilterSelect({
   id,
 }: FilterSelectProps) {
   return (
-    <label
-      style={{ display: "inline-flex", gap: 6, alignItems: "center" }}
-      htmlFor={id}
-    >
-      {label !== undefined && (
-        <span
-          style={{
-            fontSize: "0.7rem",
-            fontWeight: 700,
-            letterSpacing: "0.07em",
-            textTransform: "uppercase",
-            color: "var(--ops-text-muted)",
-          }}
-        >
-          {label}
-        </span>
-      )}
+    <label className="ops-field" htmlFor={id}>
+      {label !== undefined && <span className="ops-field__label">{label}</span>}
       <select
         id={id}
         className="ops-select"

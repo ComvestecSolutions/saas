@@ -102,6 +102,70 @@ const buildPulseProfile = (): AdminOperatorProfile =>
     ),
   ]);
 
+const buildFullProfile = (): AdminOperatorProfile =>
+  buildProfile([
+    buildCapability(
+      adminOperatorCapability.operationsHome,
+      adminRoutePath.operationsHome,
+      "Operations Home",
+    ),
+    buildCapability(
+      adminOperatorCapability.repairOperations,
+      adminRoutePath.repairOperations,
+      "Repair Operations",
+    ),
+    buildCapability(
+      adminOperatorCapability.tenantWorkspace,
+      adminRoutePath.tenantWorkspaceDiscovery,
+      "Tenants",
+    ),
+    buildCapability(
+      adminOperatorCapability.runtimeConfig,
+      adminRoutePath.runtimeConfig,
+      "Runtime Config",
+    ),
+    buildCapability(
+      adminOperatorCapability.featureFlags,
+      adminRoutePath.featureFlags,
+      "Feature Flags",
+    ),
+    buildCapability(
+      adminOperatorCapability.accessControl,
+      adminRoutePath.accessControl,
+      "Access Control",
+    ),
+    buildCapability(
+      adminOperatorCapability.auditLog,
+      adminRoutePath.auditLog,
+      "Audit Log",
+    ),
+    buildCapability(
+      adminOperatorCapability.supportOperations,
+      adminRoutePath.supportOperations,
+      "Support",
+    ),
+    buildCapability(
+      adminOperatorCapability.branding,
+      adminRoutePath.branding,
+      "Branding",
+    ),
+    buildCapability(
+      adminOperatorCapability.billing,
+      adminRoutePath.billing,
+      "Billing",
+    ),
+    buildCapability(
+      adminOperatorCapability.complianceRetention,
+      adminRoutePath.complianceRetention,
+      "Retention",
+    ),
+    buildCapability(
+      adminOperatorCapability.webhooksApiAccess,
+      adminRoutePath.webhooksApiAccess,
+      "Webhooks",
+    ),
+  ]);
+
 const buildWorkspaces = () =>
   [
     {
@@ -270,6 +334,66 @@ describe("Operator Desk shell route", () => {
     } finally {
       setTimeoutSpy.mockRestore();
     }
+  });
+
+  it("renders the full rail without truncating capabilities", async () => {
+    await act(async () => {
+      root.render(
+        <DeskShell
+          profile={buildFullProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          currentPath={adminRoutePath.operationsHome}
+          deviceClass="desktop"
+        >
+          <span />
+        </DeskShell>,
+      );
+    });
+
+    const pins = await waitForSelector("[data-pin='webhooks-api-access']");
+    expect(pins).not.toBeNull();
+    expect(container.querySelectorAll("[data-pin]")).toHaveLength(12);
+    expect(
+      (
+        container.querySelector(
+          "[data-pin='webhooks-api-access']",
+        ) as HTMLButtonElement | null
+      )?.getAttribute("aria-label"),
+    ).toBe("Webhooks");
+  });
+
+  it("opens the surfaces menu with descriptive navigation content", async () => {
+    await act(async () => {
+      root.render(
+        <DeskShell
+          profile={buildFullProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          currentPath={adminRoutePath.operationsHome}
+          deviceClass="desktop"
+        >
+          <span />
+        </DeskShell>,
+      );
+    });
+
+    const menuButton = await waitForSelector(
+      'button[aria-label="Open control surfaces"]',
+    );
+    expect(menuButton).not.toBeNull();
+
+    await act(async () => {
+      menuButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(document.body.textContent).toContain("Repair Operations");
+    expect(document.body.textContent).toContain(
+      "Repair queues, billing gap inspection",
+    );
+    expect(document.body.textContent).toContain("Webhook delivery posture");
   });
 
   it("renders an Omnibar that opens via the ⌘K shortcut handler", async () => {

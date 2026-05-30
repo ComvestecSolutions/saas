@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminDeliveryDetailInput,
   AdminDeliveryDetailRouteData,
@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/delivery/$deliveryId`
@@ -17,65 +18,49 @@ import {
  * runs the route-data Effect on the server. No
  * Request/Response shaping lives here.
  */
-export type AdminDeliveryDetailRawInput = {
-  readonly deliveryId?: unknown;
-  readonly scope?: unknown;
-  readonly scopeId?: unknown;
-};
+const AdminDeliveryDetailInputSchema = Schema.Struct({
+  deliveryId: Schema.NonEmptyString,
+  scope: Schema.optional(PlatformScopeSchema),
+  scopeId: Schema.optional(Schema.NonEmptyString),
+});
 
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
+type AdminDeliveryDetailInputValue = Schema.Schema.Type<
+  typeof AdminDeliveryDetailInputSchema
+>;
 
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Delivery detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const decodePlatformScope = (value: unknown): PlatformScope | undefined =>
-  typeof value === "string" && knownPlatformScopes.has(value)
-    ? (value as PlatformScope)
-    : undefined;
-
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeRawInput = (
-  raw: AdminDeliveryDetailRawInput | undefined,
-): AdminDeliveryDetailInput => {
-  const safe = raw ?? {};
-  const deliveryId = requireString(safe.deliveryId, "deliveryId");
-  const scope = decodePlatformScope(safe.scope);
-  const scopeId = decodeOptionalString(safe.scopeId);
-  return {
-    deliveryId,
-    ...(scope === undefined ? {} : { scope }),
-    ...(scopeId === undefined ? {} : { scopeId }),
-  };
-};
+const normalizeAdminDeliveryDetailInput = (
+  input: AdminDeliveryDetailInputValue,
+): AdminDeliveryDetailInput => ({
+  deliveryId: input.deliveryId,
+  ...(input.scope === undefined ? {} : { scope: input.scope }),
+  ...(input.scopeId === undefined ? {} : { scopeId: input.scopeId }),
+});
 
 const loadAdminDeliveryDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminDeliveryDetailRawInput | undefined,
+  input: AdminDeliveryDetailInput,
 ): Promise<AdminDeliveryDetailRouteData> => {
   const { loadAdminDeliveryDetailRouteDataFromRequest } =
     await import("./delivery-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminDeliveryDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminDeliveryDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminDeliveryDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminDeliveryDetailRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminDeliveryDetailInput(
+      decodeSyncBoundary(AdminDeliveryDetailInputSchema)(input),
+    ),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminDeliveryDetailRawInput | undefined;
+      readonly data: AdminDeliveryDetailInput;
     }) => loadAdminDeliveryDetailData(context.request, process.env, data),
   );

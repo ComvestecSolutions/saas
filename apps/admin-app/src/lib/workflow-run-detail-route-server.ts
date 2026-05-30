@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import type {
   AdminWorkflowRunDetailInput,
@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical `/desk/run/$id`
@@ -16,49 +17,31 @@ import {
  * the framework boundary and runs the route-data Effect on the
  * server. No Request/Response shaping lives here.
  */
-export type AdminWorkflowRunDetailRawInput = {
-  readonly runId?: unknown;
-};
-
-const requireRunId = (value: unknown): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error("Workflow run detail loader requires 'runId'.");
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminWorkflowRunDetailRawInput | undefined,
-): AdminWorkflowRunDetailInput => ({
-  runId: requireRunId(raw?.runId),
+const AdminWorkflowRunDetailInputSchema = Schema.Struct({
+  runId: Schema.NonEmptyString,
 });
 
 const loadAdminWorkflowRunDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminWorkflowRunDetailRawInput | undefined,
+  input: AdminWorkflowRunDetailInput,
 ): Promise<AdminWorkflowRunDetailRouteData> => {
   const { loadAdminWorkflowRunDetailRouteDataFromRequest } =
     await import("./workflow-run-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminWorkflowRunDetailRouteDataFromRequest(
-      request,
-      environment,
-      decoded,
-    ),
+    loadAdminWorkflowRunDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminWorkflowRunDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminWorkflowRunDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminWorkflowRunDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminWorkflowRunDetailRawInput | undefined;
+      readonly data: AdminWorkflowRunDetailInput;
     }) => loadAdminWorkflowRunDetailData(context.request, process.env, data),
   );

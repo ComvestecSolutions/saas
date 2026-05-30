@@ -1,6 +1,10 @@
 import { Schema } from "effect";
-import { platformScopes, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema, type PlatformScope } from "@comvestec/contracts";
 import { serializeAdminTenantTarget } from "./admin-tenant-target";
+import {
+  decodeJsonOrUndefined,
+  decodeSchemaOrUndefined,
+} from "./effect-boundary";
 
 export type AdminRouteTenantTarget = {
   readonly scope: PlatformScope;
@@ -12,18 +16,41 @@ const AdminRouteTenantTargetSearchEntrySchema = Schema.Struct({
   scopeId: Schema.String,
 });
 
+export const AdminRouteTenantTargetSchema = Schema.Struct({
+  scope: PlatformScopeSchema,
+  scopeId: Schema.String,
+});
+
+const decodeJsonTenantTargets = decodeJsonOrUndefined(
+  Schema.Array(AdminRouteTenantTargetSearchEntrySchema),
+);
+
+const decodeTenantTarget = decodeSchemaOrUndefined(
+  AdminRouteTenantTargetSchema,
+);
+
 export const AdminRouteTenantTargetsSearchSchema = Schema.optional(
   Schema.Union(
     Schema.String,
     Schema.Array(AdminRouteTenantTargetSearchEntrySchema),
   ),
 );
+const AdminRouteTenantTargetsSearchValueSchema = Schema.Union(
+  Schema.String,
+  Schema.Array(AdminRouteTenantTargetSearchEntrySchema),
+);
 
 export type AdminRouteTenantTargetsSearchValue = Schema.Schema.Type<
   typeof AdminRouteTenantTargetsSearchSchema
 >;
 
-const knownPlatformScopes = new Set<string>(platformScopes);
+const decodeTenantTargetsSearchValue = decodeSchemaOrUndefined(
+  AdminRouteTenantTargetsSearchValueSchema,
+);
+
+export const decodeAdminRouteTenantTargetsSearch = (
+  input: unknown,
+): AdminRouteTenantTargetsSearchValue => decodeTenantTargetsSearchValue(input);
 
 export const decodeAdminRouteTenantTargets = (
   raw: AdminRouteTenantTargetsSearchValue,
@@ -32,19 +59,15 @@ export const decodeAdminRouteTenantTargets = (
     return [];
   }
 
-  const parsed: unknown =
+  const parsed:
+    | readonly Schema.Schema.Type<
+        typeof AdminRouteTenantTargetSearchEntrySchema
+      >[]
+    | undefined =
     typeof raw === "string"
-      ? (() => {
-          if (raw.length === 0) {
-            return undefined;
-          }
-
-          try {
-            return JSON.parse(raw);
-          } catch {
-            return undefined;
-          }
-        })()
+      ? raw.length === 0
+        ? undefined
+        : decodeJsonTenantTargets(raw)
       : raw;
 
   if (!Array.isArray(parsed)) {
@@ -54,25 +77,20 @@ export const decodeAdminRouteTenantTargets = (
   const decoded: AdminRouteTenantTarget[] = [];
 
   for (const entry of parsed) {
-    if (typeof entry !== "object" || entry === null) {
+    const target = decodeTenantTarget(entry);
+
+    if (target === undefined) {
       continue;
     }
 
-    const candidate = entry as { scope?: unknown; scopeId?: unknown };
-    const scope =
-      typeof candidate.scope === "string" &&
-      knownPlatformScopes.has(candidate.scope)
-        ? (candidate.scope as PlatformScope)
-        : undefined;
-    const scopeId =
-      typeof candidate.scopeId === "string" ? candidate.scopeId.trim() : "";
+    const scopeId = target.scopeId.trim();
 
-    if (scope === undefined || scopeId.length === 0) {
+    if (scopeId.length === 0) {
       continue;
     }
 
     decoded.push({
-      scope,
+      scope: target.scope,
       scopeId,
     });
   }

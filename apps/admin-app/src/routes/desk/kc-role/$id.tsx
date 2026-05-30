@@ -1,45 +1,59 @@
 import { Schema } from "effect";
 import { Link } from "@tanstack/react-router";
 import { StateScreen, StatusChip } from "@comvestec/ui";
-import { platformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { KpiCard, ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
 import type {
   AdminKeycloakRoleDetailInput,
   AdminKeycloakRoleDetailRouteData,
 } from "../../../lib/keycloak-role-detail-route-data";
 
-const knownPlatformScopes = Object.values(platformScope);
-
 const RawSearchSchema = Schema.Struct({
   tenantScope: Schema.optional(Schema.String),
   tenantScopeId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  tenantScope: Schema.optional(Schema.Unknown),
+  tenantScopeId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeTenantScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeTenantScopeId = decodeSchemaOrUndefined(Schema.NonEmptyString);
+
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const tenantScope = decodeSearchString(search.tenantScope);
+  const tenantScopeId = decodeSearchString(search.tenantScopeId);
+
+  return {
+    ...(tenantScope === undefined ? {} : { tenantScope }),
+    ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
+  };
+};
 
 const decodeLoaderInput = (
   roleId: string,
   raw: RawSearch,
 ): AdminKeycloakRoleDetailInput | null => {
-  if (
-    raw.tenantScope === undefined ||
-    raw.tenantScopeId === undefined ||
-    raw.tenantScope.length === 0 ||
-    raw.tenantScopeId.length === 0
-  ) {
-    return null;
-  }
-  if (!(knownPlatformScopes as readonly string[]).includes(raw.tenantScope)) {
+  const tenantScope = decodeTenantScope(raw.tenantScope);
+  const tenantScopeId = decodeTenantScopeId(raw.tenantScopeId);
+  if (tenantScope === undefined || tenantScopeId === undefined) {
     return null;
   }
 
   return {
     roleId,
     tenant: {
-      scope:
-        raw.tenantScope as (typeof platformScope)[keyof typeof platformScope],
-      scopeId: raw.tenantScopeId,
+      scope: tenantScope,
+      scopeId: tenantScopeId,
     },
   };
 };
@@ -58,7 +72,7 @@ const buildKeycloakUserPath = (
   `/desk/kc-user/${encodeURIComponent(userId)}?tenantScope=${encodeURIComponent(tenantScope)}&tenantScopeId=${encodeURIComponent(tenantScopeId)}`;
 
 export const Route = createAdminAppFileRoute("/desk/kc-role/$id")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const input = decodeLoaderInput(params.id, deps.search);

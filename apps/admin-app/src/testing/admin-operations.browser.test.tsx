@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { adminRoutePath, workflowJobStatus } from "@comvestec/contracts";
+import {
+  adminOperatorCapability,
+  adminRoutePath,
+  workflowJobStatus,
+} from "@comvestec/contracts";
 import {
   changeInputValue,
   changeSelectValue,
@@ -71,6 +75,64 @@ const selectTenantTargetOption = async (
     `Expected tenant target option ${label} to render.`,
   );
   await click(getButtonByText(container, label));
+};
+
+const getRepairRow = (container: ParentNode, jobId: string) => {
+  const row = container.querySelector(
+    `[data-testid='repair-operations-row'][data-job-id='${jobId}']`,
+  );
+
+  if (!(row instanceof HTMLTableRowElement)) {
+    throw new TypeError(`Expected repair row ${jobId} to render.`);
+  }
+
+  return row;
+};
+
+const confirmHighRiskAction = async (ownerDocument: Document) => {
+  await waitFor(
+    () =>
+      ownerDocument.querySelector("[data-testid='high-risk-body']") !== null,
+    "Expected HighRiskActionGuard to open for the repair action.",
+  );
+
+  const guardBody = ownerDocument.querySelector(
+    "[data-testid='high-risk-body']",
+  );
+  if (!(guardBody instanceof HTMLElement)) {
+    throw new TypeError("Expected a repair HighRiskActionGuard body.");
+  }
+
+  const firstReason = guardBody.querySelector(
+    "input[type='radio']",
+  ) as HTMLInputElement | null;
+  if (!(firstReason instanceof HTMLInputElement)) {
+    throw new TypeError("Expected a repair high-risk reason option.");
+  }
+  await click(firstReason);
+
+  const arm = ownerDocument.querySelector(
+    "[data-testid='high-risk-arm']",
+  ) as HTMLButtonElement | null;
+  if (!(arm instanceof HTMLButtonElement)) {
+    throw new TypeError("Expected a repair high-risk continue button.");
+  }
+  await click(arm);
+
+  await waitFor(
+    () =>
+      ownerDocument.querySelector("[data-testid='high-risk-confirm-final']") !==
+      null,
+    "Expected the repair high-risk final confirmation button to render.",
+  );
+
+  const confirm = ownerDocument.querySelector(
+    "[data-testid='high-risk-confirm-final']",
+  ) as HTMLButtonElement | null;
+  if (!(confirm instanceof HTMLButtonElement)) {
+    throw new TypeError("Expected a repair high-risk final confirmation.");
+  }
+  await click(confirm);
 };
 
 const operationsHomeCapabilityRoutes = [
@@ -183,12 +245,12 @@ describe("admin operations browser flows", () => {
     );
 
     const openNavigationButton = rendered.container.querySelector(
-      'button[aria-label="Open navigation"]',
+      'button[aria-label="Open control surfaces"]',
     );
 
     if (!(openNavigationButton instanceof HTMLButtonElement)) {
       throw new TypeError(
-        "Expected the mobile shell navigation toggle to render on billing.",
+        "Expected the shell control-surfaces toggle to render on billing.",
       );
     }
 
@@ -245,16 +307,23 @@ describe("admin operations browser flows", () => {
 
     await followLink(
       rendered.router,
-      getLinkByText(rendered.container, "My profile"),
+      getLinkByText(rendered.container, "Operator profile"),
     );
     await waitFor(
-      () => rendered?.container.textContent?.includes("My profile") ?? false,
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='admin-profile-ready']",
+        ) !== null,
       "Expected the operator profile route to render from the shell header.",
     );
 
     expect(rendered.router.state.location.pathname).toBe(
       adminRoutePath.profile,
     );
+    expect(
+      rendered.container.querySelector("[data-testid='admin-profile-ready']"),
+    ).not.toBeNull();
+    expect(rendered.container.textContent).toContain("Admin operator profile");
     expect(rendered.container.textContent).toContain(
       "Comvestec Platform Operator",
     );
@@ -298,6 +367,27 @@ describe("admin operations browser flows", () => {
       repairContainer,
       "Search by tenant id, scope, or job id…",
     );
+    await changeInputValue(search, "job_ind_solo_05");
+    await waitFor(
+      () =>
+        repairContainer.querySelectorAll("tbody tr").length === 1 &&
+        (repairContainer.textContent?.includes("ind_solo") ?? false),
+      "Expected repair search to isolate the completed workflow.",
+    );
+
+    const completedRow = getRepairRow(repairContainer, "job_ind_solo_05");
+    expect(
+      completedRow.querySelector(
+        "[data-testid='repair-operations-replay-cta']",
+      ),
+    ).toBeNull();
+    expect(
+      completedRow.querySelector(
+        "[data-testid='repair-operations-cancel-cta']",
+      ),
+    ).toBeNull();
+    expect(completedRow.textContent).toContain("Action unavailable");
+
     await changeInputValue(search, "job_org_demo_01");
     await waitFor(
       () =>
@@ -309,7 +399,17 @@ describe("admin operations browser flows", () => {
     expect(repairContainer.textContent).toContain(
       "Repair actions automatically inherit the signed-in operator identity",
     );
-    await click(getButtonByText(repairContainer, "Replay"));
+    const replayCta = getRepairRow(
+      repairContainer,
+      "job_org_demo_01",
+    ).querySelector(
+      "[data-testid='repair-operations-replay-cta']",
+    ) as HTMLButtonElement | null;
+    if (!(replayCta instanceof HTMLButtonElement)) {
+      throw new TypeError("Expected repair replay CTA to render.");
+    }
+    await click(replayCta);
+    await confirmHighRiskAction(repairContainer.ownerDocument);
     await waitFor(
       () =>
         repairContainer.textContent?.includes(
@@ -318,18 +418,33 @@ describe("admin operations browser flows", () => {
       "Expected repair replay success feedback to render without a manual workflow token.",
     );
     await waitFor(
-      () => repairContainer.textContent?.includes("running") ?? false,
-      "Expected replayed repair gap to refresh into the running state.",
+      () =>
+        getRepairRow(repairContainer, "job_org_demo_01").textContent?.includes(
+          "scheduled",
+        ) ?? false,
+      "Expected replayed repair gap to refresh into the scheduled state.",
     );
 
     await waitFor(
       () =>
-        !getButtonByExactText(repairContainer, "Cancel").hasAttribute(
-          "disabled",
-        ),
+        !(
+          getRepairRow(repairContainer, "job_org_demo_01").querySelector(
+            "[data-testid='repair-operations-cancel-cta']",
+          ) as HTMLButtonElement
+        ).disabled,
       "Expected repair cancel action to be enabled after the replay refresh completes.",
     );
-    await click(getButtonByExactText(repairContainer, "Cancel"));
+    const cancelCta = getRepairRow(
+      repairContainer,
+      "job_org_demo_01",
+    ).querySelector(
+      "[data-testid='repair-operations-cancel-cta']",
+    ) as HTMLButtonElement | null;
+    if (!(cancelCta instanceof HTMLButtonElement)) {
+      throw new TypeError("Expected repair cancel CTA to render.");
+    }
+    await click(cancelCta);
+    await confirmHighRiskAction(repairContainer.ownerDocument);
     await waitFor(
       () =>
         repairContainer.textContent?.includes(
@@ -338,9 +453,25 @@ describe("admin operations browser flows", () => {
       "Expected repair cancel success feedback to render.",
     );
     await waitFor(
-      () => repairContainer.textContent?.includes("canceled") ?? false,
+      () =>
+        getRepairRow(repairContainer, "job_org_demo_01").textContent?.includes(
+          "canceled",
+        ) ?? false,
       "Expected cancelled repair gap to refresh into the canceled state.",
     );
+    expect(
+      getRepairRow(repairContainer, "job_org_demo_01").querySelector(
+        "[data-testid='repair-operations-replay-cta']",
+      ),
+    ).toBeNull();
+    expect(
+      getRepairRow(repairContainer, "job_org_demo_01").querySelector(
+        "[data-testid='repair-operations-cancel-cta']",
+      ),
+    ).toBeNull();
+    expect(
+      getRepairRow(repairContainer, "job_org_demo_01").textContent,
+    ).toContain("Action unavailable");
 
     await changeInputValue(search, "");
     await waitFor(
@@ -374,6 +505,123 @@ describe("admin operations browser flows", () => {
     );
   });
 
+  it("renders a ready but read-only repair surface when repair capability is withheld", async () => {
+    const fixture = createAdminBrowserFixtureState();
+    const readOnlyFixture: AdminBrowserFixtureState = {
+      ...fixture,
+      loadRepair: async (input) => {
+        const result = await fixture.loadRepair(input);
+
+        if (result.kind !== "ready") {
+          return result;
+        }
+
+        return {
+          ...result,
+          summary: {
+            ...result.summary,
+            capabilities: {
+              ...result.summary.capabilities,
+              capabilities: result.summary.capabilities.capabilities.map(
+                (capability) =>
+                  capability.capability ===
+                  adminOperatorCapability.repairOperations
+                    ? {
+                        ...capability,
+                        allowed: false,
+                        reason:
+                          "Repair workflow execution is disabled for this operator session.",
+                      }
+                    : capability,
+              ),
+            },
+          },
+          jobs: [],
+        };
+      },
+    };
+
+    rendered = await renderAdminApp(
+      readOnlyFixture,
+      adminRoutePath.repairOperations,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Repair Operations") ?? false,
+      "Expected repair-operations route to render for the read-only workflow posture.",
+    );
+
+    expect(rendered.container.textContent).toContain(
+      "Repair workflow execution is disabled for this operator session.",
+    );
+    expect(rendered.container.textContent).toContain("No repair gaps match");
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='repair-operations-replay-cta']",
+      ),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='repair-operations-cancel-cta']",
+      ),
+    ).toBeNull();
+  });
+
+  it("surfaces repair workflow mutation errors through the guarded action flow", async () => {
+    const fixture = createAdminBrowserFixtureState();
+    const failingFixture: AdminBrowserFixtureState = {
+      ...fixture,
+      replayRepairGap: async () => {
+        throw new Error("Repair replay failed in the shared backend workflow.");
+      },
+    };
+
+    rendered = await renderAdminApp(
+      failingFixture,
+      adminRoutePath.repairOperations,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Repair Operations") ?? false,
+      "Expected repair-operations route to render before replay failure coverage.",
+    );
+
+    const search = getInputByPlaceholder(
+      rendered.container,
+      "Search by tenant id, scope, or job id…",
+    );
+    await changeInputValue(search, "job_org_demo_01");
+    await waitFor(
+      () =>
+        rendered?.container.querySelectorAll("tbody tr").length === 1 &&
+        (rendered?.container.textContent?.includes("org_demo") ?? false),
+      "Expected repair search to isolate the replay failure target.",
+    );
+
+    const replayCta = getRepairRow(
+      rendered.container,
+      "job_org_demo_01",
+    ).querySelector(
+      "[data-testid='repair-operations-replay-cta']",
+    ) as HTMLButtonElement | null;
+    if (!(replayCta instanceof HTMLButtonElement)) {
+      throw new TypeError("Expected repair replay CTA for the failure path.");
+    }
+
+    await click(replayCta);
+    await confirmHighRiskAction(rendered.container.ownerDocument);
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes(
+          "Repair replay failed in the shared backend workflow.",
+        ) ?? false,
+      "Expected the repair mutation error banner to render.",
+    );
+  });
+
   it("refreshes repair operations when the operator clicks the explicit reload action", async () => {
     const fixture = createAdminBrowserFixtureState();
     let repairLoadCount = 0;
@@ -399,6 +647,10 @@ describe("admin operations browser flows", () => {
                     repairLoadCount > 1
                       ? workflowJobStatus.completed
                       : workflowJobStatus.blocked,
+                  actionAvailability: {
+                    replay: repairLoadCount <= 1,
+                    cancel: repairLoadCount <= 1,
+                  },
                   lastError: repairLoadCount > 1 ? undefined : job.lastError,
                 }
               : job,

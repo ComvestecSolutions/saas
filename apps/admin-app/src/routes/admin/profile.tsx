@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { StateScreen, StatusChip, type StatusChipTone } from "@comvestec/ui";
 import { createAdminAppFileRoute } from "../../file-route";
 import {
@@ -56,20 +56,6 @@ type AdminProfileCapabilityFilter =
   | "constrained"
   | "hidden";
 type AdminProfileSortKey = "capability" | "route" | "access" | "policies";
-
-const profileInsightCardStyle = {
-  display: "grid",
-  gap: 4,
-  padding: 8,
-  borderRadius: 12,
-  border: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-  background:
-    "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-} satisfies CSSProperties;
-
-const secondaryTextStyle = {
-  color: "var(--ops-text-secondary, rgba(255,255,255,0.7))",
-} satisfies CSSProperties;
 
 const buildVisibilityTone = (
   capability: AdminProfileCapability,
@@ -222,16 +208,10 @@ function AdminProfileRoute() {
         />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 6,
-        }}
-      >
+      <div className="ops-insight-grid">
         <section
           data-testid="admin-profile-identity"
-          style={profileInsightCardStyle}
+          className="ops-insight-card"
         >
           <p className="ops-card-title">Operator identity</p>
           <span
@@ -244,15 +224,17 @@ function AdminProfileRoute() {
           <span className="mono" data-testid="admin-profile-actor-id">
             {profile.identity.actorId}
           </span>
-          <span style={secondaryTextStyle}>{profile.identity.username}</span>
+          <span className="ops-secondary-text">
+            {profile.identity.username}
+          </span>
         </section>
 
         <section
           data-testid="admin-profile-session"
-          style={profileInsightCardStyle}
+          className="ops-insight-card"
         >
           <p className="ops-card-title">Session posture</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div className="ops-inline-cluster">
             <StatusChip
               tone={profile.identity.enabled ? "success" : "error"}
               size="sm"
@@ -264,7 +246,7 @@ function AdminProfileRoute() {
             </StatusChip>
           </div>
           <span className="mono">{profile.sessionId}</span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {visibleCapabilities.length} visible surface
             {visibleCapabilities.length === 1 ? "" : "s"} and{" "}
             {hiddenCapabilities.length} hidden entrypoint
@@ -272,20 +254,17 @@ function AdminProfileRoute() {
           </span>
         </section>
 
-        <section
-          data-testid="admin-profile-focus"
-          style={profileInsightCardStyle}
-        >
+        <section data-testid="admin-profile-focus" className="ops-insight-card">
           <p className="ops-card-title">Capability focus</p>
           <span className="text-strong">
             {firstAllowedCapability === undefined
               ? "No allowed capability runway"
               : firstAllowedCapability.label}
           </span>
-          <span className="mono" style={secondaryTextStyle}>
+          <span className="mono ops-secondary-text">
             {firstAllowedCapability?.routePath ?? "No route available"}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {firstConstrainedCapability === undefined
               ? "All declared capabilities are currently allowed."
               : (firstConstrainedCapability.reason ??
@@ -377,7 +356,7 @@ function AdminProfileRoute() {
                     <td style={{ padding: 4 }}>
                       <div style={{ display: "grid", gap: 2 }}>
                         <span className="text-strong">{capability.label}</span>
-                        <span className="mono" style={secondaryTextStyle}>
+                        <span className="mono ops-secondary-text">
                           {capability.capability}
                         </span>
                       </div>
@@ -385,7 +364,7 @@ function AdminProfileRoute() {
                     <td style={{ padding: 4 }}>
                       <div style={{ display: "grid", gap: 2 }}>
                         <span className="mono">{capability.routePath}</span>
-                        <span style={secondaryTextStyle}>
+                        <span className="ops-secondary-text">
                           {capability.visible
                             ? "Visible in admin navigation"
                             : "Hidden entrypoint"}
@@ -415,7 +394,7 @@ function AdminProfileRoute() {
                             {capability.visible ? "Visible" : "Hidden"}
                           </StatusChip>
                         </div>
-                        <span style={secondaryTextStyle}>
+                        <span className="ops-secondary-text">
                           {capability.reason ??
                             "No explicit access friction recorded."}
                         </span>
@@ -427,7 +406,7 @@ function AdminProfileRoute() {
                           {capability.actionPolicyIds.length} guardrail
                           {capability.actionPolicyIds.length === 1 ? "" : "s"}
                         </span>
-                        <span className="mono" style={secondaryTextStyle}>
+                        <span className="mono ops-secondary-text">
                           {capability.actionPolicyIds.length === 0
                             ? "No action policy gates"
                             : capability.actionPolicyIds.join(", ")}

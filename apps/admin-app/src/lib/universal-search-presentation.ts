@@ -15,6 +15,7 @@ const facetFallbackPath: Record<UniversalSearchFacet, string> = {
   [universalSearchFacet.webhooks]: adminRoutePath.webhooksApiAccess,
   [universalSearchFacet.customDomains]: adminRoutePath.branding,
 };
+const externalPermalinkPattern = /^[a-z][a-z\d+\-.]*:/i;
 
 export const resolveUniversalSearchEntryPermalink = (
   entry: UniversalSearchEntry,
@@ -25,6 +26,16 @@ export const resolveUniversalSearchEntryPermalink = (
   }
   const fallback = facetFallbackPath[entry.facet];
   return fallback === undefined ? `/desk/${entry.facet}/${entry.id}` : fallback;
+};
+
+export const resolveUniversalSearchEntryDestination = (
+  entry: UniversalSearchEntry,
+) => {
+  const href = resolveUniversalSearchEntryPermalink(entry);
+  return {
+    href,
+    external: externalPermalinkPattern.test(href),
+  } as const;
 };
 
 export const universalSearchFacetLabel = (

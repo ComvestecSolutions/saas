@@ -5,8 +5,7 @@ import { EmptyState, StateScreen, StatusChip } from "@comvestec/ui";
 import {
   featureFlagLifecycle,
   platformModuleId,
-  platformModuleIds,
-  type PlatformModuleId,
+  PlatformModuleIdSchema,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../file-route";
 import {
@@ -21,6 +20,10 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
 import type {
   AdminGovernanceFlagV2Input,
   AdminGovernanceFlagV2RouteData,
@@ -36,24 +39,33 @@ const RawSearchSchema = Schema.Struct({
   moduleId: Schema.optional(Schema.String),
   flagKey: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  moduleId: Schema.optional(Schema.Unknown),
+  flagKey: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type StateFilter = "all" | "enabled" | "disabled";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
+const decodeFlagKey = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const platformModuleIdValues = platformModuleIds as readonly PlatformModuleId[];
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const moduleId = decodeSearchString(search.moduleId);
+  const flagKey = decodeSearchString(search.flagKey);
 
-const isKnownPlatformModuleId = (value: string): value is PlatformModuleId =>
-  (platformModuleIdValues as readonly string[]).includes(value);
+  return {
+    ...(moduleId === undefined ? {} : { moduleId }),
+    ...(flagKey === undefined ? {} : { flagKey }),
+  };
+};
 
 const decodeSearch = (search: RawSearch): AdminGovernanceFlagV2Input => {
   const moduleId =
-    search.moduleId !== undefined && isKnownPlatformModuleId(search.moduleId)
-      ? search.moduleId
-      : platformModuleId.featureFlags;
-  const flagKey =
-    search.flagKey !== undefined && search.flagKey.length > 0
-      ? search.flagKey
-      : undefined;
+    decodeModuleId(search.moduleId) ?? platformModuleId.featureFlags;
+  const flagKey = decodeFlagKey(search.flagKey);
   return {
     moduleId,
     ...(flagKey === undefined ? {} : { flagKey }),
@@ -76,7 +88,7 @@ const lifecycleTone = (
 };
 
 export const Route = createAdminAppFileRoute("/desk/flag")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/governance-flag-loader").then(

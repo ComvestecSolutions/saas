@@ -1,9 +1,10 @@
+import { Schema } from "effect";
 import {
   platformModuleId,
-  platformScope,
-  type PlatformModuleId,
-  type PlatformScope,
+  PlatformModuleIdSchema,
+  PlatformScopeSchema,
 } from "@comvestec/contracts";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 import type {
   AdminAuditLogV2Filters,
   AdminAuditLogV2TimeWindowPreset,
@@ -36,111 +37,111 @@ export type AdminAuditLogV2RawSearch = {
   readonly tail?: string;
 };
 
-const platformModuleIdValues = new Set<PlatformModuleId>(
-  Object.values(platformModuleId) as PlatformModuleId[],
-);
-
-const platformScopeValues = new Set<PlatformScope>(
-  Object.values(platformScope) as PlatformScope[],
-);
-
-const timeWindowPresets = new Set<AdminAuditLogV2TimeWindowPreset>([
+const AdminAuditLogV2RawSearchBoundarySchema = Schema.Struct({
+  module: Schema.optional(Schema.Unknown),
+  actor: Schema.optional(Schema.Unknown),
+  target: Schema.optional(Schema.Unknown),
+  tenantScope: Schema.optional(Schema.Unknown),
+  tenantScopeId: Schema.optional(Schema.Unknown),
+  action: Schema.optional(Schema.Unknown),
+  classification: Schema.optional(Schema.Unknown),
+  correlation: Schema.optional(Schema.Unknown),
+  ip: Schema.optional(Schema.Unknown),
+  window: Schema.optional(Schema.Unknown),
+  customFrom: Schema.optional(Schema.Unknown),
+  customTo: Schema.optional(Schema.Unknown),
+  tail: Schema.optional(Schema.Unknown),
+});
+const AuditLogTimeWindowPresetSchema = Schema.Literal(
   "1h",
   "6h",
   "24h",
   "7d",
   "custom",
-]);
+);
+const decodeRawAuditLogSearch = decodeSyncBoundary(
+  AdminAuditLogV2RawSearchBoundarySchema,
+);
+const decodeModuleId = decodeSchemaOrUndefined(PlatformModuleIdSchema);
+const decodeScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeWindowPreset = decodeSchemaOrUndefined(
+  AuditLogTimeWindowPresetSchema,
+);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
 
-const sanitizeString = (value: string | undefined): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? undefined : trimmed;
+const decodeTrimmedSearchString = (value: unknown): string | undefined => {
+  const decoded = decodeSearchString(value)?.trim();
+  return decoded === undefined || decoded.length === 0 ? undefined : decoded;
 };
 
-const sanitizeModuleId = (
-  value: string | undefined,
-): PlatformModuleId | undefined => {
-  const sanitized = sanitizeString(value);
-  if (sanitized === undefined) {
-    return undefined;
-  }
-  return platformModuleIdValues.has(sanitized as PlatformModuleId)
-    ? (sanitized as PlatformModuleId)
-    : undefined;
-};
+const sanitizeLiveTail = (value: string | undefined): boolean =>
+  value === "1" || value === "true";
 
-const sanitizeScope = (
-  value: string | undefined,
-): PlatformScope | undefined => {
-  const sanitized = sanitizeString(value);
-  if (sanitized === undefined) {
-    return undefined;
-  }
-  return platformScopeValues.has(sanitized as PlatformScope)
-    ? (sanitized as PlatformScope)
-    : undefined;
-};
+export const normalizeAdminAuditLogV2RawSearch = (
+  input: unknown,
+): AdminAuditLogV2RawSearch => {
+  const raw = decodeRawAuditLogSearch(input);
+  const module = decodeModuleId(decodeTrimmedSearchString(raw.module));
+  const actor = decodeTrimmedSearchString(raw.actor);
+  const target = decodeTrimmedSearchString(raw.target);
+  const tenantScope = decodeScope(decodeTrimmedSearchString(raw.tenantScope));
+  const tenantScopeId = decodeTrimmedSearchString(raw.tenantScopeId);
+  const action = decodeTrimmedSearchString(raw.action);
+  const classification = decodeTrimmedSearchString(raw.classification);
+  const correlation = decodeTrimmedSearchString(raw.correlation);
+  const ip = decodeTrimmedSearchString(raw.ip);
+  const window = decodeWindowPreset(decodeTrimmedSearchString(raw.window));
+  const customFrom = decodeTrimmedSearchString(raw.customFrom);
+  const customTo = decodeTrimmedSearchString(raw.customTo);
+  const tail = decodeTrimmedSearchString(raw.tail);
 
-const sanitizeWindow = (
-  value: string | undefined,
-): AdminAuditLogV2TimeWindowPreset => {
-  const sanitized = sanitizeString(value);
-  if (sanitized === undefined) {
-    return "24h";
-  }
-  return timeWindowPresets.has(sanitized as AdminAuditLogV2TimeWindowPreset)
-    ? (sanitized as AdminAuditLogV2TimeWindowPreset)
-    : "24h";
-};
-
-const sanitizeLiveTail = (value: string | undefined): boolean => {
-  const sanitized = sanitizeString(value);
-  if (sanitized === undefined) {
-    return false;
-  }
-  return sanitized === "1" || sanitized === "true";
+  return {
+    ...(module === undefined ? {} : { module }),
+    ...(actor === undefined ? {} : { actor }),
+    ...(target === undefined ? {} : { target }),
+    ...(tenantScope === undefined ? {} : { tenantScope }),
+    ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
+    ...(action === undefined ? {} : { action }),
+    ...(classification === undefined ? {} : { classification }),
+    ...(correlation === undefined ? {} : { correlation }),
+    ...(ip === undefined ? {} : { ip }),
+    ...(window === undefined ? {} : { window }),
+    ...(customFrom === undefined ? {} : { customFrom }),
+    ...(customTo === undefined ? {} : { customTo }),
+    ...(tail === undefined ? {} : { tail }),
+  };
 };
 
 export const decodeAuditLogV2Search = (
   raw: AdminAuditLogV2RawSearch,
 ): AdminAuditLogV2Filters => {
-  const module = sanitizeModuleId(raw.module) ?? platformModuleId.auditLog;
-  const window = sanitizeWindow(raw.window);
-  const tenantScope = sanitizeScope(raw.tenantScope);
-  const tenantScopeId = sanitizeString(raw.tenantScopeId);
+  const search = normalizeAdminAuditLogV2RawSearch(raw);
+  const module = decodeModuleId(search.module) ?? platformModuleId.auditLog;
+  const window = decodeWindowPreset(search.window) ?? "24h";
+  const tenantScope = decodeScope(search.tenantScope);
+  const tenantScopeId = search.tenantScopeId;
 
   return {
     module,
     window,
-    liveTail: sanitizeLiveTail(raw.tail),
-    ...(sanitizeString(raw.actor) === undefined
-      ? {}
-      : { actor: sanitizeString(raw.actor) as string }),
-    ...(sanitizeString(raw.target) === undefined
-      ? {}
-      : { target: sanitizeString(raw.target) as string }),
+    liveTail: sanitizeLiveTail(search.tail),
+    ...(search.actor === undefined ? {} : { actor: search.actor }),
+    ...(search.target === undefined ? {} : { target: search.target }),
     ...(tenantScope === undefined ? {} : { tenantScope }),
     ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
-    ...(sanitizeString(raw.action) === undefined
+    ...(search.action === undefined ? {} : { action: search.action }),
+    ...(search.classification === undefined
       ? {}
-      : { action: sanitizeString(raw.action) as string }),
-    ...(sanitizeString(raw.classification) === undefined
+      : { classification: search.classification }),
+    ...(search.correlation === undefined
       ? {}
-      : { classification: sanitizeString(raw.classification) as string }),
-    ...(sanitizeString(raw.correlation) === undefined
-      ? {}
-      : { correlation: sanitizeString(raw.correlation) as string }),
-    ...(sanitizeString(raw.ip) === undefined
-      ? {}
-      : { ip: sanitizeString(raw.ip) as string }),
-    ...(window === "custom" && sanitizeString(raw.customFrom) !== undefined
-      ? { customFrom: sanitizeString(raw.customFrom) as string }
+      : { correlation: search.correlation }),
+    ...(search.ip === undefined ? {} : { ip: search.ip }),
+    ...(window === "custom" && search.customFrom !== undefined
+      ? { customFrom: search.customFrom }
       : {}),
-    ...(window === "custom" && sanitizeString(raw.customTo) !== undefined
-      ? { customTo: sanitizeString(raw.customTo) as string }
+    ...(window === "custom" && search.customTo !== undefined
+      ? { customTo: search.customTo }
       : {}),
   };
 };

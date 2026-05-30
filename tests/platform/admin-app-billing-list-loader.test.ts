@@ -8,7 +8,8 @@
  *   - `SubscriberJourneySessionIdMissingError` → `shell`
  *   - `IdentitySessionRequestContextNotFoundError` → `stale-session`
  *   - `PolarRevenueProjectionUnauthorized` → `denied`
- *   - boundary error → `error`
+ *   - non-auth per-tenant Polar read failures → degraded `ready`
+ *   - request-context boundary error → `error`
  *   - happy path → `ready` carrying rows + aggregated posture
  *
  * Mirrors `tests/platform/admin-app-governance-config-loader.test.ts`.
@@ -93,11 +94,29 @@ const failingProjection = (tag: string): AdminBillingListDependencies =>
     listPolarCustomersByExternalId: () => Effect.succeed(sampleCustomers),
   }) as unknown as AdminBillingListDependencies;
 
-const throwingDependencies = (error: unknown): AdminBillingListDependencies =>
+const failingCustomers = (tag: string): AdminBillingListDependencies =>
   ({
     resolveTrustedRequestContext: () => Effect.succeed(fakeRequestContext),
-    getPolarRevenueProjection: () => Effect.fail(error),
-    listPolarCustomersByExternalId: () => Effect.fail(error),
+    getPolarRevenueProjection: () =>
+      Effect.succeed(Option.some(sampleProjection)),
+    listPolarCustomersByExternalId: () => Effect.fail({ _tag: tag } as const),
+  }) as unknown as AdminBillingListDependencies;
+
+const degradedDependencies = (): AdminBillingListDependencies =>
+  ({
+    resolveTrustedRequestContext: () => Effect.succeed(fakeRequestContext),
+    getPolarRevenueProjection: () =>
+      Effect.fail({ _tag: "PolarRevenueProjectionQueryError" } as const),
+    listPolarCustomersByExternalId: () =>
+      Effect.fail({ _tag: "PolarCustomerReadAdapterClientError" } as const),
+  }) as unknown as AdminBillingListDependencies;
+
+const throwingResolveContext = (error: unknown): AdminBillingListDependencies =>
+  ({
+    resolveTrustedRequestContext: () => Effect.fail(error),
+    getPolarRevenueProjection: () =>
+      Effect.succeed(Option.some(sampleProjection)),
+    listPolarCustomersByExternalId: () => Effect.succeed(sampleCustomers),
   }) as unknown as AdminBillingListDependencies;
 
 describe("admin-app billing-list loader", () => {
@@ -173,19 +192,55 @@ describe("admin-app billing-list loader", () => {
     expect(result.kind).toBe("denied");
   });
 
-  it("returns error when the platform helper raises an untagged Error", async () => {
+  it("returns denied when the Polar customer read helper raises unauthorized", async () => {
     const result = await Effect.runPromise(
       loadAdminBillingListRouteDataFromRequest(
         buildRequest("sess-boom"),
         {},
         baseInput,
-        throwingDependencies(new Error("Upstream Polar adapter unreachable.")),
+        failingCustomers("PolarCustomerReadUnauthorized"),
+      ),
+    );
+    expect(result.kind).toBe("denied");
+  });
+
+  it("returns ready with degraded row signals when non-auth Polar reads fail", async () => {
+    const result = await Effect.runPromise(
+      loadAdminBillingListRouteDataFromRequest(
+        buildRequest("sess-degraded"),
+        {},
+        baseInput,
+        degradedDependencies(),
+      ),
+    );
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") return;
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.projection).toBeNull();
+    expect(result.rows[0]?.customerCount).toBe(0);
+    expect(result.rows[0]?.degradedSources).toEqual([
+      "projection",
+      "customers",
+    ]);
+    expect(result.posture.aggregateMrrMinorUnits).toBe(0);
+    expect(result.posture.aggregateArrMinorUnits).toBe(0);
+  });
+
+  it("returns error when request-context resolution raises an untagged Error", async () => {
+    const result = await Effect.runPromise(
+      loadAdminBillingListRouteDataFromRequest(
+        buildRequest("sess-boom"),
+        {},
+        baseInput,
+        throwingResolveContext(
+          new Error("Upstream request context unavailable."),
+        ),
       ),
     );
     expect(result.kind).toBe("error");
     if (result.kind !== "error") return;
     expect(result.title).toBe("Billing posture unavailable");
-    expect(result.description).toBe("Upstream Polar adapter unreachable.");
+    expect(result.description).toBe("Upstream request context unavailable.");
   });
 
   it("preserves selectedTenantId in the ready payload", async () => {

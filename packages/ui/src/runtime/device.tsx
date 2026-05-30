@@ -60,9 +60,11 @@ export type DeviceProviderProps = {
   readonly children: ReactNode;
 };
 
+const ssrDeviceWidth = 1280;
+
 export function DeviceProvider({ children }: DeviceProviderProps) {
   const [state, setState] = useState<DeviceState>(() =>
-    buildDeviceState(typeof window === "undefined" ? 1280 : window.innerWidth),
+    buildDeviceState(ssrDeviceWidth),
   );
 
   useEffect(() => {

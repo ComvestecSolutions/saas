@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminInvoiceDetailInput,
   AdminInvoiceDetailRouteData,
@@ -9,6 +9,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/invoice/$invoiceId`
@@ -17,64 +18,36 @@ import {
  * framework boundary and runs the route-data Effect on the
  * server. No Request/Response shaping here.
  */
-export type AdminInvoiceDetailRawInput = {
-  readonly invoiceId?: unknown;
-  readonly tenantScope?: unknown;
-  readonly tenantScopeId?: unknown;
-  readonly customerId?: unknown;
-};
-
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
-
-const isPlatformScope = (value: unknown): value is PlatformScope =>
-  typeof value === "string" && knownPlatformScopes.has(value);
-
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Invoice detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const decodeRawInput = (
-  raw: AdminInvoiceDetailRawInput | undefined,
-): AdminInvoiceDetailInput => {
-  const safe = raw ?? {};
-  const invoiceId = requireString(safe.invoiceId, "invoiceId");
-  if (!isPlatformScope(safe.tenantScope)) {
-    throw new Error("Invoice detail loader requires a valid 'tenantScope'.");
-  }
-  const tenantScopeId = requireString(safe.tenantScopeId, "tenantScopeId");
-  const customerId = requireString(safe.customerId, "customerId");
-  return {
-    invoiceId,
-    tenant: { scope: safe.tenantScope, scopeId: tenantScopeId },
-    customerId,
-  };
-};
+const AdminInvoiceDetailInputSchema = Schema.Struct({
+  invoiceId: Schema.NonEmptyString,
+  tenant: Schema.Struct({
+    scope: PlatformScopeSchema,
+    scopeId: Schema.NonEmptyString,
+  }),
+  customerId: Schema.NonEmptyString,
+});
 
 const loadAdminInvoiceDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminInvoiceDetailRawInput | undefined,
+  input: AdminInvoiceDetailInput,
 ): Promise<AdminInvoiceDetailRouteData> => {
   const { loadAdminInvoiceDetailRouteDataFromRequest } =
     await import("./invoice-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminInvoiceDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminInvoiceDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminInvoiceDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminInvoiceDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminInvoiceDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminInvoiceDetailRawInput | undefined;
+      readonly data: AdminInvoiceDetailInput;
     }) => loadAdminInvoiceDetailData(context.request, process.env, data),
   );

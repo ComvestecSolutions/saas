@@ -1,8 +1,9 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
-  notificationChannel,
-  notificationDeliveryStatus,
+  IsoTimestampSchema,
+  NotificationChannelSchema,
+  NotificationDeliveryStatusSchema,
   type NotificationChannel,
   type NotificationCenterAdminListFilters,
   type NotificationDeliveryStatus,
@@ -15,6 +16,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical `/desk/notify`
@@ -29,54 +31,59 @@ import {
  * boundary; bad values are dropped to undefined rather than
  * thrown so the page renders an unfiltered list.
  */
-export type AdminNotifyListRawInput = {
-  readonly channel?: unknown;
-  readonly status?: unknown;
-  readonly recipientHash?: unknown;
-  readonly since?: unknown;
-  readonly until?: unknown;
-  readonly pageSize?: unknown;
-  readonly pageToken?: unknown;
-};
-
-const knownChannels = new Set<string>(Object.values(notificationChannel));
-const knownStatuses = new Set<string>(
-  Object.values(notificationDeliveryStatus),
+const AdminNotifyListRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    channel: Schema.optional(Schema.Unknown),
+    status: Schema.optional(Schema.Unknown),
+    recipientHash: Schema.optional(Schema.Unknown),
+    since: Schema.optional(Schema.Unknown),
+    until: Schema.optional(Schema.Unknown),
+    pageSize: Schema.optional(Schema.Unknown),
+    pageToken: Schema.optional(Schema.Unknown),
+  }),
 );
 
-const decodeChannel = (value: unknown): NotificationChannel | undefined =>
-  typeof value === "string" && knownChannels.has(value)
-    ? (value as NotificationChannel)
-    : undefined;
+type AdminNotifyListRawInput = Schema.Schema.Type<
+  typeof AdminNotifyListRawInputSchema
+>;
 
-const decodeStatus = (
-  value: unknown,
-): NotificationDeliveryStatus | undefined =>
-  typeof value === "string" && knownStatuses.has(value)
-    ? (value as NotificationDeliveryStatus)
-    : undefined;
-
-const decodeNonEmptyString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
+const decodeAdminNotifyListRawInput = decodeSyncBoundary(
+  AdminNotifyListRawInputSchema,
+);
+const decodeChannel = decodeSchemaOrUndefined(NotificationChannelSchema);
+const decodeStatus = decodeSchemaOrUndefined(NotificationDeliveryStatusSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
+const decodeIsoTimestamp = decodeSchemaOrUndefined(IsoTimestampSchema);
+const decodePositiveInt = decodeSchemaOrUndefined(
+  Schema.Int.pipe(Schema.greaterThanOrEqualTo(1)),
+);
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
 
 const decodePageSize = (value: unknown): number => {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return Math.min(value, MAX_PAGE_SIZE);
+  const numericPageSize = decodePositiveInt(value);
+
+  if (numericPageSize !== undefined) {
+    return Math.min(numericPageSize, MAX_PAGE_SIZE);
   }
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
+
+  const stringPageSize = decodeNonEmptyString(value);
+
+  if (stringPageSize !== undefined) {
+    const parsed = Number.parseInt(stringPageSize, 10);
+
     if (Number.isInteger(parsed) && parsed > 0) {
       return Math.min(parsed, MAX_PAGE_SIZE);
     }
   }
+
   return DEFAULT_PAGE_SIZE;
 };
 
-const decodeRawInput = (
-  raw: AdminNotifyListRawInput | undefined,
+const normalizeAdminNotifyListInput = (
+  raw: AdminNotifyListRawInput,
 ): AdminNotifyListInput => {
   const safe = raw ?? {};
   const filters: NotificationCenterAdminListFilters = {};
@@ -92,11 +99,11 @@ const decodeRawInput = (
   if (recipientHash !== undefined) {
     Object.assign(filters, { recipientHash });
   }
-  const since = decodeNonEmptyString(safe.since);
+  const since = decodeIsoTimestamp(safe.since);
   if (since !== undefined) {
     Object.assign(filters, { since });
   }
-  const until = decodeNonEmptyString(safe.until);
+  const until = decodeIsoTimestamp(safe.until);
   if (until !== undefined) {
     Object.assign(filters, { until });
   }
@@ -111,25 +118,27 @@ const decodeRawInput = (
 const loadAdminNotifyListData = async (
   request: Request,
   environment: unknown,
-  raw: AdminNotifyListRawInput | undefined,
+  input: AdminNotifyListInput,
 ): Promise<AdminNotifyListRouteData> => {
   const { loadAdminNotifyListRouteDataFromRequest } =
     await import("./notify-list-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminNotifyListRouteDataFromRequest(request, environment, decoded),
+    loadAdminNotifyListRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminNotifyListData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminNotifyListRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminNotifyListInput(decodeAdminNotifyListRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminNotifyListRawInput | undefined;
+      readonly data: AdminNotifyListInput;
     }) => loadAdminNotifyListData(context.request, process.env, data),
   );

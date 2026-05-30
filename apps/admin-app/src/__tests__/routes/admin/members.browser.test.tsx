@@ -75,6 +75,32 @@ describe("/admin/members admin organization roster route", () => {
     expect(rendered.container.textContent).toContain("Active");
   }, 30_000);
 
+  it("navigates to the member detail surface from the row action", async () => {
+    rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='admin-members-detail-link'][data-member-id='adm_member_fixture_1']",
+        ) !== null,
+      "Expected member detail action to render.",
+    );
+
+    const detailLink = rendered.container.querySelector<HTMLAnchorElement>(
+      "[data-testid='admin-members-detail-link'][data-member-id='adm_member_fixture_1']",
+    );
+
+    expect(detailLink).not.toBeNull();
+    await click(detailLink!);
+
+    await waitFor(
+      () =>
+        rendered?.container.ownerDocument.defaultView?.location.pathname ===
+        "/desk/admin-member/adm_member_fixture_1",
+      "Expected member detail action to navigate to the admin-member route.",
+    );
+  });
+
   it("filters the roster by search query and role coverage", async () => {
     rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
 

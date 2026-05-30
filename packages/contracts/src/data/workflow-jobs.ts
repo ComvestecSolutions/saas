@@ -375,6 +375,15 @@ export type WorkflowJobRepairGapCancelResult = Schema.Schema.Type<
   typeof WorkflowJobRepairGapCancelResultSchema
 >;
 
+export const BillingRepairGapActionAvailabilitySchema = Schema.Struct({
+  replay: Schema.Boolean,
+  cancel: Schema.Boolean,
+});
+
+export type BillingRepairGapActionAvailability = Schema.Schema.Type<
+  typeof BillingRepairGapActionAvailabilitySchema
+>;
+
 export const BillingRepairGapSchema = Schema.Struct({
   jobId: Schema.NonEmptyString,
   tenantScope: PlatformScopeSchema,
@@ -384,6 +393,7 @@ export const BillingRepairGapSchema = Schema.Struct({
   scheduledAt: IsoTimestampSchema,
   completedAt: Schema.optional(IsoTimestampSchema),
   gapReason: Schema.optional(WorkflowJobGapReasonSchema),
+  actionAvailability: Schema.optional(BillingRepairGapActionAvailabilitySchema),
   lastError: Schema.optional(Schema.NonEmptyString),
 });
 

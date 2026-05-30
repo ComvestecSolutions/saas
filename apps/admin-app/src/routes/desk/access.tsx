@@ -1,13 +1,16 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { Schema } from "effect";
 import { Badge, EmptyState, StateScreen } from "@comvestec/ui";
 import {
   actorType,
   adminGovernanceActionPolicyId,
   authorizationNamespace,
+  AuthorizationNamespaceSchema,
   authorizationNamespaces,
   authorizationRelation,
+  AuthorizationRelationSchema,
   authorizationRelations,
   type AuthorizationNamespace,
   type AuthorizationRelation,
@@ -24,8 +27,13 @@ import type {
   AdminGovernanceAccessV2Input,
   AdminGovernanceAccessV2RouteData,
 } from "../../lib/governance-access-route-data";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
 import { revokeAdminAuthorizationTuple } from "../../lib/governance-access-mutations-server";
 import { provisionAdminAccessControlOperator } from "../../lib/access-control-route-server";
+import { formatAdminInteger } from "../../lib/number-format";
 
 /**
  * `/desk/access` — canonical Access Control surface.
@@ -54,6 +62,35 @@ const accessControlTabs = [
 ] as const;
 
 type AccessControlTab = (typeof accessControlTabs)[number];
+const AccessControlSearchBoundarySchema = Schema.Struct({
+  tab: Schema.optional(Schema.Unknown),
+  namespace: Schema.optional(Schema.Unknown),
+  object: Schema.optional(Schema.Unknown),
+  relation: Schema.optional(Schema.Unknown),
+  subject: Schema.optional(Schema.Unknown),
+  detailSubject: Schema.optional(Schema.Unknown),
+  page: Schema.optional(Schema.Unknown),
+});
+const AccessControlPageSchema = Schema.Union(
+  Schema.Int.pipe(Schema.greaterThanOrEqualTo(1)),
+  Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThanOrEqualTo(1)),
+);
+const decodeAccessControlSearchBoundary = decodeSyncBoundary(
+  AccessControlSearchBoundarySchema,
+);
+const decodeAccessControlTab = decodeSchemaOrUndefined(
+  Schema.Literal(...accessControlTabs),
+);
+const decodeAccessControlNamespace = decodeSchemaOrUndefined(
+  AuthorizationNamespaceSchema,
+);
+const decodeAccessControlRelation = decodeSchemaOrUndefined(
+  AuthorizationRelationSchema,
+);
+const decodeAccessControlPage = decodeSchemaOrUndefined(
+  AccessControlPageSchema,
+);
+const decodeAccessControlSearchString = decodeSchemaOrUndefined(Schema.String);
 
 type AccessControlSearch = {
   readonly tab?: AccessControlTab;
@@ -76,46 +113,22 @@ type TupleItem = NonNullable<ReadyData["tupleQuery"]>["items"][number];
 type TupleDetail = NonNullable<ReadyData["tupleQuery"]>["detail"];
 type ActionPolicy = ReadyData["actionPolicies"][number];
 
-const isAccessControlTab = (value: unknown): value is AccessControlTab =>
-  typeof value === "string" &&
-  (accessControlTabs as readonly string[]).includes(value);
-
-const parseOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-
-const parseOptionalPage = (value: unknown): number | undefined => {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : undefined;
-
-  return parsed !== undefined && Number.isInteger(parsed) && parsed >= 1
-    ? parsed
-    : undefined;
+const decodeTrimmedAccessControlString = (
+  value: unknown,
+): string | undefined => {
+  const decoded = decodeAccessControlSearchString(value)?.trim();
+  return decoded === undefined || decoded.length === 0 ? undefined : decoded;
 };
 
-const parseAccessControlSearch = (
-  raw: Record<string, unknown>,
-): AccessControlSearch => {
-  const tab = isAccessControlTab(raw.tab) ? raw.tab : undefined;
-  const namespace =
-    typeof raw.namespace === "string" &&
-    authorizationNamespaces.includes(raw.namespace as AuthorizationNamespace)
-      ? (raw.namespace as AuthorizationNamespace)
-      : undefined;
-  const relation =
-    typeof raw.relation === "string" &&
-    authorizationRelations.includes(raw.relation as AuthorizationRelation)
-      ? (raw.relation as AuthorizationRelation)
-      : undefined;
-  const object = parseOptionalString(raw.object);
-  const subject = parseOptionalString(raw.subject);
-  const detailSubject = parseOptionalString(raw.detailSubject);
-  const page = parseOptionalPage(raw.page);
+const parseAccessControlSearch = (raw: unknown): AccessControlSearch => {
+  const search = decodeAccessControlSearchBoundary(raw);
+  const tab = decodeAccessControlTab(search.tab);
+  const namespace = decodeAccessControlNamespace(search.namespace);
+  const relation = decodeAccessControlRelation(search.relation);
+  const object = decodeTrimmedAccessControlString(search.object);
+  const subject = decodeTrimmedAccessControlString(search.subject);
+  const detailSubject = decodeTrimmedAccessControlString(search.detailSubject);
+  const page = decodeAccessControlPage(search.page);
 
   return {
     ...(tab === undefined ? {} : { tab }),
@@ -994,7 +1007,7 @@ function AccessControlRoute() {
                     <div className="ops-pagination">
                       <span className="ops-pagination__info">
                         Page {currentPage} of {totalPages} ·{" "}
-                        {totalItems.toLocaleString()} tuples
+                        {formatAdminInteger(totalItems)} tuples
                       </span>
                       <div
                         className="ops-pagination__nav"

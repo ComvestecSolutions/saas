@@ -10,7 +10,7 @@ import {
   type StatusChipTone,
 } from "@comvestec/ui";
 import { AdminSessionRequiredState } from "./admin-session-required-state";
-import { FilterBar, KpiCard, ScreenHeader, Tabs } from "./ui";
+import { FilterBar, KpiCard, OpsPanel, ScreenHeader, Tabs } from "./ui";
 import type {
   AdminTenantsDirectoryRow,
   AdminTenantsDirectoryRowStatus,
@@ -219,16 +219,10 @@ export function TenantsDirectoryScreen({
           gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
         }}
       >
-        <section
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid var(--bg-2)",
-            borderRadius: 8,
-          }}
+        <OpsPanel
+          title="Review queue"
+          tone={needsReview > 0 || counts.blocked > 0 ? "warn" : "neutral"}
         >
-          <p style={{ margin: 0, fontWeight: 700 }}>Review queue</p>
           <AttentionRow label="Needs review" value={needsReview} tone="warn" />
           <AttentionRow
             label="Blocked"
@@ -240,19 +234,20 @@ export function TenantsDirectoryScreen({
             value={counts.pending}
             tone={counts.pending > 0 ? "warn" : "neutral"}
           />
-        </section>
+        </OpsPanel>
 
-        <section
+        <OpsPanel
           data-testid="tenants-directory-focus"
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid var(--bg-2)",
-            borderRadius: 8,
-          }}
+          title="Focused tenant"
+          tone={
+            focusedTenant?.status === adminTenantDirectoryStatus.blocked
+              ? "alert"
+              : focusedTenant?.approvalsOpen !== undefined &&
+                  focusedTenant.approvalsOpen > 0
+                ? "warn"
+                : "neutral"
+          }
         >
-          <p style={{ margin: 0, fontWeight: 700 }}>Focused tenant</p>
           {focusedTenant === undefined ? (
             <p className="ops-text-muted" style={{ margin: 0 }}>
               No tenant records are currently available.
@@ -284,7 +279,7 @@ export function TenantsDirectoryScreen({
               </div>
             </>
           )}
-        </section>
+        </OpsPanel>
       </div>
 
       <Tabs<TenantFilter>

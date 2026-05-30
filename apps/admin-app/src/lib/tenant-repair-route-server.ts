@@ -26,6 +26,7 @@ import {
   tanstackStartServerRuntime,
   type TanstackStartServerRuntime,
 } from "./tanstack-start-server-runtime";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 type LoadAdminTenantRepairRouteData =
   typeof loadAdminTenantRepairRouteDataFromRequest;
@@ -192,7 +193,7 @@ const normalizeTenantRepairRouteLoaderInput = (
 const runTenantRepairWorkflowAction = async <Result>(input: {
   readonly request: Request;
   readonly environment: unknown;
-  readonly data: unknown;
+  readonly data: TenantRepairWorkflowActionInput;
   readonly resolveWorkflowExecutionContext: ResolveTenantRepairWorkflowExecutionContext;
   readonly execute: (requestInput: {
     readonly sessionId: string;
@@ -201,9 +202,6 @@ const runTenantRepairWorkflowAction = async <Result>(input: {
     readonly inspectionReason?: string;
   }) => Promise<Result>;
 }) => {
-  const requestData = await Effect.runPromise(
-    Schema.decodeUnknown(TenantRepairWorkflowActionInputSchema)(input.data),
-  );
   const { extractRequiredSubscriberJourneySessionId } =
     await import("@comvestec/platform");
   const sessionId = await Effect.runPromise(
@@ -218,10 +216,10 @@ const runTenantRepairWorkflowAction = async <Result>(input: {
   return input.execute({
     sessionId,
     convexAuthToken: workflowExecutionContext.convexAuthToken,
-    jobId: requestData.jobId,
-    ...(requestData.inspectionReason === undefined
+    jobId: input.data.jobId,
+    ...(input.data.inspectionReason === undefined
       ? {}
-      : { inspectionReason: requestData.inspectionReason }),
+      : { inspectionReason: input.data.inspectionReason }),
   });
 };
 
@@ -266,14 +264,14 @@ export const createReplayAdminTenantRepairGap = (
   tenantRepairServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(tenantRepairServerFn)])
-    .inputValidator((input: TenantRepairWorkflowActionInput) => input)
+    .inputValidator(decodeSyncBoundary(TenantRepairWorkflowActionInputSchema))
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: TenantRepairWorkflowActionInput;
       }) =>
         runTenantRepairWorkflowAction({
           request: context.request,
@@ -309,14 +307,14 @@ export const createCancelAdminTenantRepairGap = (
   tenantRepairServerFn
     .createServerFn({ method: "POST" })
     .middleware([createAdminRequestMiddleware(tenantRepairServerFn)])
-    .inputValidator((input: TenantRepairWorkflowActionInput) => input)
+    .inputValidator(decodeSyncBoundary(TenantRepairWorkflowActionInputSchema))
     .handler(
       ({
         context,
         data,
       }: {
         readonly context: AdminRequestContext;
-        readonly data: unknown;
+        readonly data: TenantRepairWorkflowActionInput;
       }) =>
         runTenantRepairWorkflowAction({
           request: context.request,
@@ -357,14 +355,14 @@ export const getAdminTenantRepairData = createServerFn({ method: "GET" })
 
 export const replayAdminTenantRepairGap = createServerFn({ method: "POST" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: TenantRepairWorkflowActionInput) => input)
+  .inputValidator(decodeSyncBoundary(TenantRepairWorkflowActionInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: TenantRepairWorkflowActionInput;
     }) =>
       runTenantRepairWorkflowAction({
         request: context.request,
@@ -388,14 +386,14 @@ export const replayAdminTenantRepairGap = createServerFn({ method: "POST" })
 
 export const cancelAdminTenantRepairGap = createServerFn({ method: "POST" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: TenantRepairWorkflowActionInput) => input)
+  .inputValidator(decodeSyncBoundary(TenantRepairWorkflowActionInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: TenantRepairWorkflowActionInput;
     }) =>
       runTenantRepairWorkflowAction({
         request: context.request,

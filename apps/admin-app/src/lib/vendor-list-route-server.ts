@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeEmptyInput } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the spec-canonical `/desk/vendors`
@@ -16,34 +17,28 @@ import {
  * input at the framework boundary and runs the route-data
  * Effect on the server. No Request/Response shaping lives here.
  */
-export type AdminVendorListRawInput = Record<string, never>;
-
-const decodeRawInput = (
-  _raw: AdminVendorListRawInput | undefined,
-): AdminVendorListInput => ({});
-
 const loadAdminVendorListData = async (
   request: Request,
   environment: unknown,
-  raw: AdminVendorListRawInput | undefined,
+  input: AdminVendorListInput,
 ): Promise<AdminVendorListRouteData> => {
   const { loadAdminVendorListRouteDataFromRequest } =
     await import("./vendor-list-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminVendorListRouteDataFromRequest(request, environment, decoded),
+    loadAdminVendorListRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminVendorListData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminVendorListRawInput | undefined) => input)
+  .inputValidator(decodeEmptyInput)
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminVendorListRawInput | undefined;
+      readonly data: AdminVendorListInput;
     }) => loadAdminVendorListData(context.request, process.env, data),
   );

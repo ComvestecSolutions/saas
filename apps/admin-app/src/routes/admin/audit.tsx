@@ -1,10 +1,11 @@
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { StateScreen, StatusChip, type StatusChipTone } from "@comvestec/ui";
 import { adminOrganizationAuditAction } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../file-route";
 import {
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   ScreenHeader,
   SegmentedTabs,
@@ -14,6 +15,7 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import { formatAdminTimestamp } from "../../lib/timestamp-format";
 import type { AdminAuditRouteData } from "../../lib/admin-audit-route-data";
 
 /**
@@ -63,36 +65,6 @@ type AdminAuditSortKey =
   | "correlation";
 type AdminAuditActionFilter = "all" | AdminAuditEvent["action"];
 
-const buildAuditFilterButtonStyle = (active: boolean) =>
-  ({
-    padding: "4px 8px",
-    borderRadius: 999,
-    border: active
-      ? "1px solid color-mix(in oklab, var(--ops-accent, #7dd3fc) 42%, transparent)"
-      : "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-    background: active
-      ? "color-mix(in oklab, var(--ops-accent, #7dd3fc) 16%, transparent)"
-      : "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-    color: "var(--ops-text-primary, inherit)",
-    cursor: "pointer",
-    fontSize: "0.74rem",
-    fontWeight: 700,
-  }) satisfies CSSProperties;
-
-const auditInsightCardStyle = {
-  display: "grid",
-  gap: 4,
-  padding: 8,
-  borderRadius: 12,
-  border: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-  background:
-    "color-mix(in oklab, var(--ops-surface-2, rgba(255,255,255,0.03)) 88%, transparent)",
-} satisfies CSSProperties;
-
-const secondaryTextStyle = {
-  color: "var(--ops-text-secondary, rgba(255,255,255,0.7))",
-} satisfies CSSProperties;
-
 const capitalizeWord = (value: string): string =>
   value.length === 0 ? value : value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -102,9 +74,6 @@ const humanizeToken = (value: string): string =>
     .filter((part) => part.length > 0)
     .map((part) => capitalizeWord(part))
     .join(" ");
-
-const formatAuditTimestamp = (value: string): string =>
-  value.slice(0, 16).replace("T", " ");
 
 const pluralize = (
   count: number,
@@ -353,89 +322,84 @@ function AdminAuditRoute() {
       </div>
 
       {missingCorrelationCount > 0 || missingReasonCount > 0 ? (
-        <div
+        <OpsPanel
+          title="Data quality"
+          tone="warn"
+          description="Missing metadata slows correlation and review, even when the audit stream still loads."
           data-testid="admin-audit-quality-alert"
-          style={{
-            padding: 8,
-            borderRadius: 12,
-            border:
-              "1px solid var(--status-pending-border, rgba(245,158,11,0.35))",
-            background:
-              "color-mix(in oklab, var(--status-pending-bg, rgba(245,158,11,0.16)) 80%, transparent)",
-            color: "var(--ops-text-primary, inherit)",
-          }}
         >
-          {missingCorrelationCount > 0 ? (
-            <>
-              {missingCorrelationCount}{" "}
-              {pluralize(missingCorrelationCount, "event")} missing a
-              correlation id.
-            </>
-          ) : null}{" "}
-          {missingReasonCount > 0 ? (
-            <>
-              {missingReasonCount} {pluralize(missingReasonCount, "event")}
-              missing a reason attachment.
-            </>
-          ) : null}
-        </div>
+          <div className="ops-meta-grid">
+            {missingCorrelationCount > 0 ? (
+              <div>
+                <p className="ops-meta-label">Missing correlation</p>
+                <p className="ops-meta-value">
+                  {missingCorrelationCount}{" "}
+                  {pluralize(missingCorrelationCount, "event")} missing a
+                  correlation id.
+                </p>
+              </div>
+            ) : null}
+            {missingReasonCount > 0 ? (
+              <div>
+                <p className="ops-meta-label">Missing reason</p>
+                <p className="ops-meta-value">
+                  {missingReasonCount} {pluralize(missingReasonCount, "event")}{" "}
+                  missing a reason attachment.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </OpsPanel>
       ) : null}
 
-      <div
-        data-testid="admin-audit-focus"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 6,
-        }}
-      >
-        <div style={auditInsightCardStyle}>
+      <div data-testid="admin-audit-focus" className="ops-insight-grid">
+        <div className="ops-insight-card">
           <p className="ops-card-title">Latest event</p>
           <span className="text-strong">
             {latestEvent === undefined
               ? "No admin events"
               : resolveAuditActionLabel(latestEvent.action)}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {latestEvent === undefined
               ? "Audit stream is currently empty."
               : latestEvent.target}
           </span>
           {latestEvent !== undefined ? (
-            <span className="mono" style={secondaryTextStyle}>
-              {formatAuditTimestamp(latestEvent.timestamp)}
+            <span className="mono ops-secondary-text">
+              {formatAdminTimestamp(latestEvent.timestamp)}
             </span>
           ) : null}
         </div>
 
-        <div style={auditInsightCardStyle}>
+        <div className="ops-insight-card">
           <p className="ops-card-title">Primary actor</p>
           <span className="text-strong">
             {busiestActor === undefined
               ? "No actor activity"
               : busiestActor.actorId}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {busiestActor === undefined
               ? "No actors recorded yet."
               : `${busiestActor.count} ${pluralize(busiestActor.count, "event")} authored`}
           </span>
         </div>
 
-        <div style={auditInsightCardStyle}>
+        <div className="ops-insight-card">
           <p className="ops-card-title">Hot target</p>
           <span className="text-strong">
             {hottestTarget === undefined
               ? "No targets touched"
               : hottestTarget.target}
           </span>
-          <span style={secondaryTextStyle}>
+          <span className="ops-secondary-text">
             {hottestTarget === undefined
               ? "No admin member target activity yet."
               : `${resolveAuditScopeLabel(hottestTarget.tenantScope)} / ${hottestTarget.tenantScopeId}`}
           </span>
           {hottestTarget !== undefined ? (
-            <span className="mono" style={secondaryTextStyle}>
+            <span className="mono ops-secondary-text">
               {hottestTarget.count} {pluralize(hottestTarget.count, "event")}
             </span>
           ) : null}
@@ -473,13 +437,7 @@ function AdminAuditRoute() {
 
         <div
           data-testid="admin-audit-action-filter"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 6,
-            padding: "8px 10px",
-            borderTop: "1px solid var(--ops-border, rgba(255,255,255,0.12))",
-          }}
+          className="ops-pill-filter-row"
         >
           <button
             type="button"
@@ -487,7 +445,8 @@ function AdminAuditRoute() {
               setActionFilter("all");
               tableState.setPage(1);
             }}
-            style={buildAuditFilterButtonStyle(actionFilter === "all")}
+            className="ops-pill-filter"
+            aria-pressed={actionFilter === "all"}
           >
             All actions
           </button>
@@ -499,7 +458,8 @@ function AdminAuditRoute() {
                 setActionFilter(action);
                 tableState.setPage(1);
               }}
-              style={buildAuditFilterButtonStyle(actionFilter === action)}
+              className="ops-pill-filter"
+              aria-pressed={actionFilter === action}
             >
               {resolveAuditActionLabel(action)}
             </button>
@@ -564,9 +524,9 @@ function AdminAuditRoute() {
                     <td style={{ padding: 4 }}>
                       <div style={{ display: "grid", gap: 2 }}>
                         <span className="mono">
-                          {formatAuditTimestamp(event.timestamp)}
+                          {formatAdminTimestamp(event.timestamp)}
                         </span>
-                        <span style={secondaryTextStyle}>
+                        <span className="ops-secondary-text">
                           {event.reason ?? "Reason capture missing."}
                         </span>
                       </div>
@@ -591,7 +551,7 @@ function AdminAuditRoute() {
                             {resolveAuditScopeLabel(event.tenantScope)}
                           </StatusChip>
                         </div>
-                        <span className="mono" style={secondaryTextStyle}>
+                        <span className="mono ops-secondary-text">
                           {event.action}
                         </span>
                       </div>
@@ -599,7 +559,7 @@ function AdminAuditRoute() {
                     <td style={{ padding: 4 }}>
                       <div style={{ display: "grid", gap: 2 }}>
                         <span className="text-strong">{event.target}</span>
-                        <span style={secondaryTextStyle}>
+                        <span className="ops-secondary-text">
                           {resolveAuditScopeLabel(event.tenantScope)} /{" "}
                           <span className="mono">{event.tenantScopeId}</span>
                         </span>
@@ -608,7 +568,7 @@ function AdminAuditRoute() {
                     <td style={{ padding: 4 }}>
                       <div style={{ display: "grid", gap: 2 }}>
                         <span className="mono">{event.actorId}</span>
-                        <span style={secondaryTextStyle}>
+                        <span className="ops-secondary-text">
                           Admin organization actor
                         </span>
                       </div>
@@ -627,7 +587,7 @@ function AdminAuditRoute() {
                             ? "Standalone"
                             : "Correlated"}
                         </StatusChip>
-                        <span className="mono" style={secondaryTextStyle}>
+                        <span className="mono ops-secondary-text">
                           {event.correlationId ?? event.eventId}
                         </span>
                       </div>

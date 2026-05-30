@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
   platformScope,
@@ -12,6 +12,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for `/desk/api-key/$keyId` (admin-app
@@ -26,67 +27,39 @@ import {
  * `WebhookApiKeyTenantScope` and throws if the URL carries a
  * non-tenant scope.
  */
-export type AdminApiKeyDetailRawInput = {
-  readonly keyId?: unknown;
-  readonly scope?: unknown;
-  readonly scopeId?: unknown;
-};
-
-const knownTenantScopes = new Set<string>([
+const WebhookApiKeyTenantScopeSchema = Schema.Literal(
   platformScope.enterprise,
   platformScope.organization,
   platformScope.individual,
-]);
+);
 
-const requireString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`API key detail loader requires '${label}'.`);
-  }
-  return value;
-};
-
-const requireTenantScope = (value: unknown): WebhookApiKeyTenantScope => {
-  if (typeof value !== "string" || !knownTenantScopes.has(value)) {
-    throw new Error(
-      "API key detail loader requires 'scope' to be a tenant platform scope (enterprise, organization, or individual).",
-    );
-  }
-  return value as WebhookApiKeyTenantScope;
-};
-
-const decodeRawInput = (
-  raw: AdminApiKeyDetailRawInput | undefined,
-): AdminApiKeyDetailInput => {
-  const safe = raw ?? {};
-  return {
-    keyId: requireString(safe.keyId, "keyId"),
-    scope: requireTenantScope(safe.scope),
-    scopeId: requireString(safe.scopeId, "scopeId"),
-  };
-};
+const AdminApiKeyDetailInputSchema = Schema.Struct({
+  keyId: Schema.NonEmptyString,
+  scope: WebhookApiKeyTenantScopeSchema,
+  scopeId: Schema.NonEmptyString,
+});
 
 const loadAdminApiKeyDetailData = async (
   request: Request,
   environment: unknown,
-  raw: AdminApiKeyDetailRawInput | undefined,
+  input: AdminApiKeyDetailInput,
 ): Promise<AdminApiKeyDetailRouteData> => {
   const { loadAdminApiKeyDetailRouteDataFromRequest } =
     await import("./api-key-detail-route-data");
-  const decoded = decodeRawInput(raw);
   return Effect.runPromise(
-    loadAdminApiKeyDetailRouteDataFromRequest(request, environment, decoded),
+    loadAdminApiKeyDetailRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminApiKeyDetailData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminApiKeyDetailRawInput | undefined) => input)
+  .inputValidator(decodeSyncBoundary(AdminApiKeyDetailInputSchema))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminApiKeyDetailRawInput | undefined;
+      readonly data: AdminApiKeyDetailInput;
     }) => loadAdminApiKeyDetailData(context.request, process.env, data),
   );

@@ -21,6 +21,7 @@ import {
   type BillingRepairGapCancelResult,
   BillingRepairGapCancelResultSchema,
   type BillingRepairGap,
+  type BillingRepairGapActionAvailability,
   type BillingRepairGapReplayRequest,
   BillingRepairGapReplayRequestSchema,
   type BillingRepairGapReplayResult,
@@ -374,6 +375,36 @@ const createWorkflowExecutionIdentityValidator =
 const subtractSecondsFromDate = (value: Date, seconds: number) =>
   new Date(value.getTime() - seconds * 1_000);
 
+const isStaleWorkflowJob = (input: {
+  readonly updatedAt: string;
+  readonly now: string;
+}) =>
+  new Date(input.updatedAt).getTime() <=
+  subtractSecondsFromDate(
+    new Date(input.now),
+    workflowJobsRunningClaimTimeoutSeconds,
+  ).getTime();
+
+const resolveRepairGapActionAvailability = (input: {
+  readonly job: BillingReconciliationWorkflowJobRecord;
+  readonly now: string;
+}): BillingRepairGapActionAvailability => {
+  const actionAllowed =
+    input.job.status === workflowJobStatus.running
+      ? isStaleWorkflowJob({
+          updatedAt: input.job.updatedAt,
+          now: input.now,
+        })
+      : input.job.gapReason !== undefined &&
+        (input.job.status === workflowJobStatus.scheduled ||
+          input.job.status === workflowJobStatus.blocked);
+
+  return {
+    replay: actionAllowed,
+    cancel: actionAllowed,
+  };
+};
+
 const hasProjectedFieldValue = (
   record: Record<string, unknown>,
   fieldPath: string,
@@ -676,12 +707,19 @@ export const makeAdminBillingService = (
         readonly job: BillingRepairGap;
         readonly auditedFields: readonly string[];
       };
+      readonly actionAvailability: BillingRepairGapActionAvailability;
       readonly inspectionReason?: string;
     }) =>
       input.projectedJob.auditedFields.length > 0 &&
       input.inspectionReason === undefined
-        ? redactRepairGapFailureDetails(input.projectedJob.job)
-        : input.projectedJob.job;
+        ? {
+            ...redactRepairGapFailureDetails(input.projectedJob.job),
+            actionAvailability: input.actionAvailability,
+          }
+        : {
+            ...input.projectedJob.job,
+            actionAvailability: input.actionAvailability,
+          };
 
     const appendRepairGapSensitiveReadAudit = (input: {
       readonly requestContext: RequestContext;
@@ -960,28 +998,46 @@ export const makeAdminBillingService = (
                 requestContext,
               });
 
+              const now = new Date().toISOString();
               const jobs = yield* workflowJobs.listRepairGapWorkflowJobs({
                 sourceModuleId: platformModuleId.billingAndMetering,
               });
 
               const projectedJobsWithAudit = yield* Effect.forEach(
                 jobs,
-                (job) =>
-                  projectRepairGap({
+                (job) => {
+                  const actionAvailability = resolveRepairGapActionAvailability(
+                    {
+                      job,
+                      now,
+                    },
+                  );
+
+                  return projectRepairGap({
                     job,
                     requestContext,
-                  }),
+                  }).pipe(
+                    Effect.map((projectedJob) => ({
+                      projectedJob,
+                      actionAvailability,
+                    })),
+                  );
+                },
               );
 
               if (
                 projectedJobsWithAudit.some(
-                  (projectedJob) => projectedJob.auditedFields.length > 0,
+                  ({ projectedJob }) => projectedJob.auditedFields.length > 0,
                 )
               ) {
                 if (inspectionReason === undefined) {
                   return {
-                    jobs: projectedJobsWithAudit.map((projectedJob) =>
-                      resolveProjectedRepairGapForResponse({ projectedJob }),
+                    jobs: projectedJobsWithAudit.map(
+                      ({ projectedJob, actionAvailability }) =>
+                        resolveProjectedRepairGapForResponse({
+                          projectedJob,
+                          actionAvailability,
+                        }),
                     ),
                   } satisfies BillingRepairGapListResult;
                 }
@@ -999,13 +1055,15 @@ export const makeAdminBillingService = (
               }
 
               return {
-                jobs: projectedJobsWithAudit.map((projectedJob) =>
-                  resolveProjectedRepairGapForResponse({
-                    projectedJob,
-                    ...(inspectionReason === undefined
-                      ? {}
-                      : { inspectionReason }),
-                  }),
+                jobs: projectedJobsWithAudit.map(
+                  ({ projectedJob, actionAvailability }) =>
+                    resolveProjectedRepairGapForResponse({
+                      projectedJob,
+                      actionAvailability,
+                      ...(inspectionReason === undefined
+                        ? {}
+                        : { inspectionReason }),
+                    }),
                 ),
               } satisfies BillingRepairGapListResult;
             }),

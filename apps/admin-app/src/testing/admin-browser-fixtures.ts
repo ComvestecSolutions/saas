@@ -345,6 +345,9 @@ const timestamp = (day: number, hour: number, minute: number): string =>
     "0",
   )}:${String(minute).padStart(2, "0")}:00.000Z`;
 
+const browserFixtureGeneratedAt = timestamp(17, 10, 0);
+const browserFixtureGeneratedAtMs = Date.parse(browserFixtureGeneratedAt);
+
 const runtimeConfigArtifactStatus = {
   pending: "pending",
   approved: "approved",
@@ -501,13 +504,14 @@ const buildRepairJob = (input: {
   readonly status: RepairJob["status"];
   readonly lastError?: string;
   readonly gapReason?: RepairJob["gapReason"];
-}): RepairJob => ({
+}) => ({
   jobId: `job_${input.target.scopeId}_${String(input.index).padStart(2, "0")}`,
   tenantScope: input.target.scope,
   tenantScopeId: input.target.scopeId,
   status: input.status,
   attempts: (input.index % 4) + 1,
   scheduledAt: timestamp(10 + (input.index % 10), 8 + (input.index % 8), 5),
+  actionAvailability: resolveRepairActionAvailability(input.status),
   ...(input.status === workflowJobStatus.completed
     ? {
         completedAt: timestamp(
@@ -519,6 +523,19 @@ const buildRepairJob = (input: {
     : {}),
   ...(input.gapReason === undefined ? {} : { gapReason: input.gapReason }),
   ...(input.lastError === undefined ? {} : { lastError: input.lastError }),
+});
+
+const resolveRepairActionAvailability = (
+  status: RepairJob["status"],
+): NonNullable<RepairJob["actionAvailability"]> => ({
+  replay:
+    status === workflowJobStatus.blocked ||
+    status === workflowJobStatus.scheduled ||
+    status === workflowJobStatus.running,
+  cancel:
+    status === workflowJobStatus.blocked ||
+    status === workflowJobStatus.scheduled ||
+    status === workflowJobStatus.running,
 });
 
 const createRepairJobs = (): RepairJob[] => {
@@ -2662,7 +2679,9 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       label: "QA harness — primary",
       issuedBy: "usr_platform_operator",
       issuedAt: new Date(0).toISOString(),
-      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(
+        browserFixtureGeneratedAtMs + 12 * 60 * 60 * 1000,
+      ).toISOString(),
     },
     {
       id: "aot_fixture_revoked",
@@ -2670,8 +2689,12 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       label: "Rotation cleanup",
       issuedBy: "usr_platform_operator",
       issuedAt: new Date(0).toISOString(),
-      expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-      revokedAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      expiresAt: new Date(
+        browserFixtureGeneratedAtMs + 48 * 60 * 60 * 1000,
+      ).toISOString(),
+      revokedAt: new Date(
+        browserFixtureGeneratedAtMs - 60 * 1000,
+      ).toISOString(),
     },
   ];
   const adminWorkspaces = [
@@ -2753,17 +2776,23 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
     });
 
   const computeAdminTokenTotals = () => {
-    const now = Date.now();
     const active = adminTokens.filter(
       (token) =>
         token.revokedAt === undefined &&
-        new Date(token.expiresAt).getTime() > now,
+        Date.parse(token.expiresAt) > browserFixtureGeneratedAtMs,
     ).length;
-    const expiringSoon = adminTokens.filter(
-      (token) =>
-        token.revokedAt === undefined &&
-        new Date(token.expiresAt).getTime() - now <= 24 * 60 * 60 * 1000,
-    ).length;
+    const expiringSoon = adminTokens.filter((token) => {
+      if (token.revokedAt !== undefined) {
+        return false;
+      }
+
+      const expiresAtMs = Date.parse(token.expiresAt);
+      return (
+        !Number.isNaN(expiresAtMs) &&
+        expiresAtMs > browserFixtureGeneratedAtMs &&
+        expiresAtMs - browserFixtureGeneratedAtMs <= 24 * 60 * 60 * 1000
+      );
+    }).length;
     const revoked = adminTokens.filter(
       (token) => token.revokedAt !== undefined,
     ).length;
@@ -2819,7 +2848,13 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       );
     }
 
-    const nextJob = transform(currentJob);
+    const transformedJob = transform(currentJob);
+    const nextJob = {
+      ...transformedJob,
+      actionAvailability: resolveRepairActionAvailability(
+        transformedJob.status,
+      ),
+    };
     repairJobs.splice(jobIndex, 1, nextJob);
 
     return nextJob;
@@ -2916,6 +2951,7 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
       );
       return {
         kind: "ready",
+        generatedAt: browserFixtureGeneratedAt,
         cases: filteredCases,
         incidents: filteredIncidents,
         impersonationSessions: filteredImpersonation,
@@ -2936,7 +2972,11 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
             "The requested break-glass incident could not be located. The incident id may be stale.",
         };
       }
-      return { kind: "ready", incident: match };
+      return {
+        kind: "ready",
+        generatedAt: browserFixtureGeneratedAt,
+        incident: match,
+      };
     },
     loadRetentionList: async (input) => {
       if (
@@ -3239,6 +3279,7 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
     },
     loadAdminTokens: async (input) => ({
       kind: "ready",
+      generatedAt: browserFixtureGeneratedAt,
       filter: input.filter,
       result: {
         tokens: clone(adminTokens),
@@ -3863,7 +3904,7 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
     replayRepairGap: async ({ data }) => {
       const job = replaceRepairJob(data.jobId, (currentJob) => ({
         ...currentJob,
-        status: workflowJobStatus.running,
+        status: workflowJobStatus.scheduled,
         lastError: undefined,
         attempts: currentJob.attempts + 1,
         scheduledAt: timestamp(16, 9, 0),

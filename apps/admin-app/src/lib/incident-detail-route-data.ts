@@ -44,6 +44,7 @@ export type AdminIncidentDetailRouteData =
     }
   | {
       readonly kind: "ready";
+      readonly generatedAt: SupportOperationsBreakGlassIncidentSupportView["expiresAt"];
       readonly incident: SupportOperationsBreakGlassIncidentSupportView;
     };
 
@@ -78,8 +79,10 @@ export const loadAdminIncidentDetailRouteDataFromRequest = (
   environment: unknown,
   input: AdminIncidentDetailInput,
   dependencies: AdminIncidentDetailDependencies = defaultDependencies,
-): Effect.Effect<AdminIncidentDetailRouteData, never> =>
-  extractRequiredSubscriberJourneySessionId(request).pipe(
+): Effect.Effect<AdminIncidentDetailRouteData, never> => {
+  const generatedAt = new Date().toISOString();
+
+  return extractRequiredSubscriberJourneySessionId(request).pipe(
     Effect.flatMap((sessionId) =>
       retryTransientAdminSessionReadiness(() =>
         dependencies.resolveTrustedRequestContext(environment, sessionId).pipe(
@@ -93,6 +96,7 @@ export const loadAdminIncidentDetailRouteDataFromRequest = (
                 Effect.map(
                   (incident): AdminIncidentDetailRouteData => ({
                     kind: "ready",
+                    generatedAt,
                     incident,
                   }),
                 ),
@@ -127,3 +131,4 @@ export const loadAdminIncidentDetailRouteDataFromRequest = (
     ),
     Effect.catchAll((error) => Effect.succeed(buildErrorState(error))),
   );
+};

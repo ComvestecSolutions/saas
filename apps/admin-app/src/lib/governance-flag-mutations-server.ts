@@ -8,6 +8,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Feature Flags v2 mutation server-fns (admin-app implementation
@@ -87,23 +88,20 @@ export const submitAdminFeatureFlagProposal = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: SubmitAdminFeatureFlagProposalInput) => input)
+  .inputValidator(decodeSyncBoundary(SubmitAdminFeatureFlagProposalInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: SubmitAdminFeatureFlagProposalInput;
     }): Promise<SubmitAdminFeatureFlagProposalServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(SubmitAdminFeatureFlagProposalInputSchema)(data),
-      );
       // Resolve the session id up-front so the transport contract
       // (typed envelope → trusted operator) is exercised even
       // while the platform-side helper is still pending in 3b.
       await resolveSessionIdFromRequest(context.request);
-      void decoded;
+      void data;
       throw new FeatureFlagProposalMutationsNotImplementedError();
     },
   );
@@ -112,20 +110,17 @@ export const reviewAdminFeatureFlagProposal = createServerFn({
   method: "POST",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: ReviewAdminFeatureFlagProposalInput) => input)
+  .inputValidator(decodeSyncBoundary(ReviewAdminFeatureFlagProposalInputSchema))
   .handler(
     async ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: unknown;
+      readonly data: ReviewAdminFeatureFlagProposalInput;
     }): Promise<ReviewAdminFeatureFlagProposalServerResult> => {
-      const decoded = await Effect.runPromise(
-        Schema.decodeUnknown(ReviewAdminFeatureFlagProposalInputSchema)(data),
-      );
       await resolveSessionIdFromRequest(context.request);
-      void decoded;
+      void data;
       throw new FeatureFlagProposalMutationsNotImplementedError();
     },
   );

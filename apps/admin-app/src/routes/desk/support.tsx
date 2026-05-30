@@ -9,6 +9,9 @@ import {
   resolveStatusVariant,
 } from "@comvestec/ui";
 import {
+  SupportOperationsBreakGlassIncidentStatusSchema,
+  SupportOperationsCaseStatusSchema,
+  SupportOperationsImpersonationSessionStatusSchema,
   supportOperationsBreakGlassIncidentStatus,
   supportOperationsCaseStatus,
   supportOperationsImpersonationSessionStatus,
@@ -23,6 +26,7 @@ import {
   ExternalIcon,
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   ScreenHeader,
   SortableTableHeader,
@@ -31,6 +35,11 @@ import {
   resolveTableAriaSort,
   useTableState,
 } from "../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
+import { computeMinutesUntilReference } from "../../lib/reference-time";
 import type {
   AdminSupportCasesInput,
   AdminSupportCasesRouteData,
@@ -57,6 +66,12 @@ const RawSearchSchema = Schema.Struct({
   impersonationStatus: Schema.optional(Schema.String),
   selectedIncidentId: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  caseStatus: Schema.optional(Schema.Unknown),
+  incidentStatus: Schema.optional(Schema.Unknown),
+  impersonationStatus: Schema.optional(Schema.Unknown),
+  selectedIncidentId: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
 type ReadyData = Extract<
@@ -64,40 +79,41 @@ type ReadyData = Extract<
   { readonly kind: "ready" }
 >;
 type Tab = "cases" | "incidents" | "impersonation";
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeCaseStatus = decodeSchemaOrUndefined(
+  SupportOperationsCaseStatusSchema,
+);
+const decodeIncidentStatus = decodeSchemaOrUndefined(
+  SupportOperationsBreakGlassIncidentStatusSchema,
+);
+const decodeImpersonationStatus = decodeSchemaOrUndefined(
+  SupportOperationsImpersonationSessionStatusSchema,
+);
+const decodeSelectedIncidentId = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
-const knownCaseStatuses = new Set<string>(
-  Object.values(supportOperationsCaseStatus),
-);
-const knownIncidentStatuses = new Set<string>(
-  Object.values(supportOperationsBreakGlassIncidentStatus),
-);
-const knownImpersonationStatuses = new Set<string>(
-  Object.values(supportOperationsImpersonationSessionStatus),
-);
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const caseStatus = decodeSearchString(search.caseStatus);
+  const incidentStatus = decodeSearchString(search.incidentStatus);
+  const impersonationStatus = decodeSearchString(search.impersonationStatus);
+  const selectedIncidentId = decodeSearchString(search.selectedIncidentId);
+
+  return {
+    ...(caseStatus === undefined ? {} : { caseStatus }),
+    ...(incidentStatus === undefined ? {} : { incidentStatus }),
+    ...(impersonationStatus === undefined ? {} : { impersonationStatus }),
+    ...(selectedIncidentId === undefined ? {} : { selectedIncidentId }),
+  };
+};
 
 const decodeLoaderInput = (raw: RawSearch): AdminSupportCasesInput => {
-  const caseStatus: AdminSupportCasesInput["caseStatus"] =
-    raw.caseStatus !== undefined && knownCaseStatuses.has(raw.caseStatus)
-      ? (raw.caseStatus as NonNullable<AdminSupportCasesInput["caseStatus"]>)
-      : undefined;
-  const incidentStatus: AdminSupportCasesInput["incidentStatus"] =
-    raw.incidentStatus !== undefined &&
-    knownIncidentStatuses.has(raw.incidentStatus)
-      ? (raw.incidentStatus as NonNullable<
-          AdminSupportCasesInput["incidentStatus"]
-        >)
-      : undefined;
-  const impersonationStatus: AdminSupportCasesInput["impersonationStatus"] =
-    raw.impersonationStatus !== undefined &&
-    knownImpersonationStatuses.has(raw.impersonationStatus)
-      ? (raw.impersonationStatus as NonNullable<
-          AdminSupportCasesInput["impersonationStatus"]
-        >)
-      : undefined;
-  const selectedIncidentId =
-    raw.selectedIncidentId !== undefined && raw.selectedIncidentId.length > 0
-      ? raw.selectedIncidentId
-      : undefined;
+  const caseStatus = decodeCaseStatus(raw.caseStatus);
+  const incidentStatus = decodeIncidentStatus(raw.incidentStatus);
+  const impersonationStatus = decodeImpersonationStatus(
+    raw.impersonationStatus,
+  );
+  const selectedIncidentId = decodeSelectedIncidentId(raw.selectedIncidentId);
 
   return {
     ...(caseStatus === undefined ? {} : { caseStatus }),
@@ -110,14 +126,8 @@ const decodeLoaderInput = (raw: RawSearch): AdminSupportCasesInput => {
 const formatDate = (value: string): string =>
   value.slice(0, 16).replace("T", " ");
 
-const computeMinutesUntil = (value: string): number | null => {
-  const expiresAt = Date.parse(value);
-  if (Number.isNaN(expiresAt)) return null;
-  return Math.round((expiresAt - Date.now()) / 60_000);
-};
-
 export const Route = createAdminAppFileRoute("/desk/support")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: ({ deps }) =>
     import("../../lib/support-cases-loader").then(
@@ -225,10 +235,13 @@ function SupportReadyRoute({ data }: { readonly data: ReadyData }) {
   const expiringIncidents = useMemo(
     () =>
       data.incidents.filter((item) => {
-        const minutes = computeMinutesUntil(item.expiresAt);
-        return minutes !== null && minutes <= 1_440;
+        const minutes = computeMinutesUntilReference(
+          item.expiresAt,
+          data.generatedAt,
+        );
+        return minutes !== null && minutes >= 0 && minutes <= 1_440;
       }).length,
-    [data.incidents],
+    [data.generatedAt, data.incidents],
   );
   const activeSessions = useMemo(
     () =>
@@ -337,10 +350,16 @@ function SupportReadyRoute({ data }: { readonly data: ReadyData }) {
           gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
         }}
       >
-        <section className="ops-card">
-          <div className="ops-card-head">
-            <p className="ops-card-head__title">Attention queue</p>
-          </div>
+        <OpsPanel
+          title="Attention queue"
+          tone={
+            escalatedCases > 0
+              ? "alert"
+              : expiringIncidents > 0 || revocationPendingSessions > 0
+                ? "warn"
+                : "neutral"
+          }
+        >
           <div style={{ display: "grid", gap: 6 }}>
             <AttentionRow
               label="Escalated cases awaiting decisive action"
@@ -351,6 +370,7 @@ function SupportReadyRoute({ data }: { readonly data: ReadyData }) {
               label="Break-glass grants expiring within 24 hours"
               value={`${expiringIncidents}`}
               tone={expiringIncidents > 0 ? "warn" : "neutral"}
+              valueTestId="support-cases-expiring-incidents-count"
             />
             <AttentionRow
               label="Impersonation sessions pending revocation"
@@ -358,23 +378,26 @@ function SupportReadyRoute({ data }: { readonly data: ReadyData }) {
               tone={revocationPendingSessions > 0 ? "warn" : "neutral"}
             />
           </div>
-        </section>
+        </OpsPanel>
 
         {selectedIncident === undefined ? (
-          <section className="ops-card">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">Focused incident</p>
-            </div>
+          <OpsPanel title="Focused incident">
             <p className="ops-text-muted">
               Open an incident from the break-glass roster to keep reviewer,
               expiry, and reason context within reach.
             </p>
-          </section>
+          </OpsPanel>
         ) : (
-          <section className="ops-card">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">Focused incident</p>
-            </div>
+          <OpsPanel
+            title="Focused incident"
+            tone={
+              resolveStatusVariant(selectedIncident.status) === "error"
+                ? "alert"
+                : resolveStatusVariant(selectedIncident.status) === "pending"
+                  ? "warn"
+                  : "neutral"
+            }
+          >
             <div style={{ display: "grid", gap: 6 }}>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <span className="mono">{selectedIncident.caseId}</span>
@@ -408,7 +431,7 @@ function SupportReadyRoute({ data }: { readonly data: ReadyData }) {
                 </Link>
               </div>
             </div>
-          </section>
+          </OpsPanel>
         )}
       </div>
 
@@ -752,10 +775,12 @@ function AttentionRow({
   label,
   value,
   tone,
+  valueTestId,
 }: {
   readonly label: string;
   readonly value: string;
   readonly tone: "neutral" | "warn" | "alert";
+  readonly valueTestId?: string;
 }) {
   return (
     <div
@@ -781,7 +806,9 @@ function AttentionRow({
       }}
     >
       <span>{label}</span>
-      <span className="mono">{value}</span>
+      <span className="mono" data-testid={valueTestId}>
+        {value}
+      </span>
     </div>
   );
 }

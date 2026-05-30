@@ -1,16 +1,35 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Schema } from "effect";
-import { Badge, EmptyState, PermissionDeniedState } from "@comvestec/ui";
+import { Badge, EmptyState, StateScreen } from "@comvestec/ui";
 import {
+  universalSearchFacet,
   universalSearchPrefix,
+  UniversalSearchPrefixSchema,
   type UniversalSearchPrefix,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../file-route";
-import { AdminSessionRequiredState } from "../../components/admin-session-required-state";
-import { KpiCard, ScreenHeader } from "../../components/ui";
+import {
+  FilterBar,
+  FilterSelect,
+  KpiCard,
+  OpsPanel,
+  Pagination,
+  ScreenHeader,
+  SortableTableHeader,
+  applyTableState,
+  resolveTableAriaSort,
+  useTableState,
+} from "../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../lib/effect-boundary";
+import { formatAdminInteger } from "../../lib/number-format";
+import { formatAdminTimestamp } from "../../lib/timestamp-format";
 import type { AdminUniversalSearchRouteData } from "../../lib/universal-search-route-data";
 import {
-  resolveUniversalSearchEntryPermalink,
+  resolveUniversalSearchEntryDestination,
   universalSearchFacetLabel,
 } from "../../lib/universal-search-presentation";
 
@@ -18,23 +37,77 @@ const SearchRouteSchema = Schema.Struct({
   q: Schema.optional(Schema.String),
   prefix: Schema.optional(Schema.String),
 });
+const SearchRouteBoundarySchema = Schema.Struct({
+  q: Schema.optional(Schema.Unknown),
+  prefix: Schema.optional(Schema.Unknown),
+});
 
-const knownUniversalSearchPrefixes = new Set<string>(
-  Object.values(universalSearchPrefix),
-);
+type SearchRouteSearch = Schema.Schema.Type<typeof SearchRouteSchema>;
+const decodeSearchRouteBoundary = decodeSyncBoundary(SearchRouteBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeSearchPrefix = decodeSchemaOrUndefined(UniversalSearchPrefixSchema);
 
-const decodeSearchPrefix = (
-  value: string | undefined,
-): UniversalSearchPrefix | undefined =>
-  value !== undefined && knownUniversalSearchPrefixes.has(value)
-    ? (value as UniversalSearchPrefix)
-    : undefined;
+const validateSearch = (raw: unknown): SearchRouteSearch => {
+  const search = decodeSearchRouteBoundary(raw);
+  const q = decodeSearchString(search.q);
+  const prefix = decodeSearchString(search.prefix);
 
-const formatSearchTimestamp = (value: string): string =>
-  value.slice(0, 16).replace("T", " ");
+  return {
+    ...(q === undefined ? {} : { q }),
+    ...(prefix === undefined ? {} : { prefix }),
+  };
+};
+const searchPrefixOptions = [
+  { value: "", label: "All facets" },
+  ...Object.values(universalSearchPrefix).map((value) => ({
+    value,
+    label: value,
+  })),
+] as const;
+const searchFacetOrder = [
+  universalSearchFacet.tenants,
+  universalSearchFacet.users,
+  universalSearchFacet.featureFlags,
+  universalSearchFacet.configKeys,
+  universalSearchFacet.auditEvents,
+  universalSearchFacet.invoices,
+  universalSearchFacet.webhooks,
+  universalSearchFacet.customDomains,
+] as const;
+const searchSurfaceGuidance = [
+  {
+    label: "Tenant control plane",
+    description:
+      "Workspace posture, support context, billing, branding, and repair paths.",
+  },
+  {
+    label: "Governance surfaces",
+    description:
+      "Flags, runtime config, authorization subjects, and audit evidence.",
+  },
+  {
+    label: "Revenue posture",
+    description:
+      "Invoices, webhook delivery workflows, and vendor-backed operational context.",
+  },
+  {
+    label: "Operator triage",
+    description:
+      "A single query path for the screens operators actually need to land on quickly.",
+  },
+] as const;
+
+const resolveSearchPrefixLabel = (value: string | undefined): string =>
+  decodeSearchPrefix(value) ?? "All facets";
+
+type ReadyAdminUniversalSearchRouteData = Extract<
+  AdminUniversalSearchRouteData,
+  { readonly kind: "ready" }
+>;
+type SearchSortKey = "result" | "facet" | "scope" | "classification";
 
 export const Route = createAdminAppFileRoute("/desk/search")({
-  validateSearch: (raw) => Schema.validateSync(SearchRouteSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({
     query: search.q?.trim() ?? "",
     prefixFilter: decodeSearchPrefix(search.prefix),
@@ -51,7 +124,9 @@ export const Route = createAdminAppFileRoute("/desk/search")({
     });
   },
   component: SearchRoute,
-  pendingComponent: () => <EmptyState title="Loading search…" />,
+  pendingComponent: () => (
+    <StateScreen variant="loading" title="Loading federated search…" />
+  ),
 });
 
 function SearchRoute() {
@@ -60,11 +135,17 @@ function SearchRoute() {
   const navigate = Route.useNavigate();
   const [query, setQuery] = useState(search.q ?? "");
   const [prefix, setPrefix] = useState(search.prefix ?? "");
+  const tableState = useTableState<SearchSortKey>({
+    initialPageSize: 10,
+    initialSortKey: "result",
+    initialSortDir: "asc",
+  });
 
   useEffect(() => {
     setQuery(search.q ?? "");
     setPrefix(search.prefix ?? "");
-  }, [search.prefix, search.q]);
+    tableState.setPage(1);
+  }, [search.prefix, search.q, tableState.setPage]);
 
   const trimmedQuery = search.q?.trim() ?? "";
   const hasQuery = trimmedQuery.length > 0;
@@ -88,10 +169,7 @@ function SearchRoute() {
 
   if (!hasQuery) {
     return (
-      <section
-        data-testid="admin-search-empty"
-        style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}
-      >
+      <section className="ops-screen" data-testid="admin-search-empty">
         <ScreenHeader
           title="Search"
           breadcrumbs={[{ label: "Resources" }, { label: "Search" }]}
@@ -104,17 +182,51 @@ function SearchRoute() {
           onPrefixChange={setPrefix}
           onSubmit={submitSearch}
         />
-        <EmptyState
-          title="Search the operator catalog"
-          description="Enter a search term or prefix filter to inspect federated results across the admin workbench."
-        />
+        <div className="admin-search-grid">
+          <div className="admin-search-main">
+            <div className="ops-card">
+              <EmptyState
+                title="Search the operator catalog"
+                description="Enter a search term or prefix filter to inspect federated results across the admin workbench."
+              />
+            </div>
+          </div>
+          <div className="admin-search-aside">
+            <OpsPanel
+              title="Available prefixes"
+              description="Narrow the backend fan-out before the query leaves the route."
+            >
+              <div className="ops-chip-grid">
+                {searchPrefixOptions.slice(1).map((option) => (
+                  <div key={option.value} className="ops-chip-card">
+                    <span className="ops-chip-label">{option.label}</span>
+                  </div>
+                ))}
+              </div>
+            </OpsPanel>
+            <OpsPanel
+              title="Indexed operator surfaces"
+              description="Search lands you on the actual control-plane surfaces instead of duplicating those workflows here."
+            >
+              <div className="ops-meta-grid">
+                {searchSurfaceGuidance.map((item) => (
+                  <div key={item.label}>
+                    <p className="ops-meta-label">{item.label}</p>
+                    <p className="ops-meta-value">{item.description}</p>
+                  </div>
+                ))}
+              </div>
+            </OpsPanel>
+          </div>
+        </div>
       </section>
     );
   }
 
   if (data.kind === "shell") {
     return (
-      <AdminSessionRequiredState
+      <StateScreen
+        variant="denied"
         title="Operator session required"
         description="Sign in with a platform-operator or support-operator session to run federated search."
       />
@@ -122,36 +234,105 @@ function SearchRoute() {
   }
   if (data.kind === "stale-session") {
     return (
-      <AdminSessionRequiredState
+      <StateScreen
+        variant="stale"
         title="Session refresh required"
         description="Re-authenticate to access federated search."
-        stale
       />
     );
   }
   if (data.kind === "denied") {
     return (
-      <PermissionDeniedState title="Access denied" description={data.reason} />
+      <StateScreen
+        variant="denied"
+        title="Access denied"
+        description={data.reason}
+      />
     );
   }
   if (data.kind === "error") {
-    return <EmptyState title={data.title} description={data.description} />;
+    return (
+      <StateScreen
+        variant="5xx"
+        title={data.title}
+        description={data.description}
+      />
+    );
   }
 
   const { result, fromCache } = data;
+  const facetBreakdown = useMemo(() => {
+    const counts = new Map<(typeof searchFacetOrder)[number], number>();
+    for (const entry of result.entries) {
+      counts.set(entry.facet, (counts.get(entry.facet) ?? 0) + 1);
+    }
+    return searchFacetOrder
+      .map((facet) => ({
+        facet,
+        count: counts.get(facet) ?? 0,
+      }))
+      .filter((item) => item.count > 0);
+  }, [result.entries]);
+  const { visible, total } = applyTableState(result.entries, tableState, {
+    searchOn: (entry) =>
+      [
+        entry.label,
+        entry.subtitle ?? "",
+        entry.id,
+        entry.scopeTag,
+        entry.fieldClassification,
+        universalSearchFacetLabel(entry.facet),
+      ].join(" "),
+    sortOn: {
+      result: (entry) => `${entry.label} ${entry.subtitle ?? entry.id}`,
+      facet: (entry) => universalSearchFacetLabel(entry.facet),
+      scope: (entry) => entry.scopeTag,
+      classification: (entry) => entry.fieldClassification,
+    },
+  });
+  const queryPosture = [
+    {
+      label: "Query",
+      value: result.query,
+      mono: true,
+    },
+    {
+      label: "Prefix",
+      value: resolveSearchPrefixLabel(search.prefix),
+      mono: false,
+    },
+    {
+      label: "Correlation",
+      value: result.correlationId,
+      mono: true,
+    },
+    {
+      label: "Generated",
+      value: formatAdminTimestamp(result.generatedAt),
+      mono: true,
+    },
+    {
+      label: "Cache",
+      value: fromCache ? "Hit" : "Live",
+      mono: false,
+    },
+    {
+      label: "Freshness",
+      value: result.indexFreshness.isFresh ? "Fresh" : "Stale",
+      mono: false,
+    },
+  ] as const;
 
   return (
-    <section
-      data-testid="admin-search-ready"
-      style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}
-    >
+    <section className="ops-screen" data-testid="admin-search-ready">
       <ScreenHeader
         title="Search"
         breadcrumbs={[{ label: "Resources" }, { label: "Search" }]}
         subtitle={
           <>
-            Query <span className="mono">{result.query}</span> · correlation{" "}
-            <span className="mono">{result.correlationId}</span>
+            Query <span className="mono">{result.query}</span> ·{" "}
+            {formatAdminInteger(total)} matches across{" "}
+            {formatAdminInteger(facetBreakdown.length)} indexed facets
           </>
         }
       />
@@ -164,24 +345,21 @@ function SearchRoute() {
         onSubmit={submitSearch}
       />
 
-      <div
-        data-testid="admin-search-kpis"
-        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-      >
+      <div data-testid="admin-search-kpis" className="ops-bento">
         <KpiCard
           label="Results"
-          value={result.entries.length}
+          value={formatAdminInteger(total)}
           tone={result.entries.length > 0 ? "good" : "neutral"}
         />
         <KpiCard
-          label="Partial failures"
-          value={result.partialFailures.length}
-          tone={result.partialFailures.length > 0 ? "warn" : "neutral"}
+          label="Facets hit"
+          value={formatAdminInteger(facetBreakdown.length)}
+          tone={facetBreakdown.length > 0 ? "good" : "neutral"}
         />
         <KpiCard
-          label="Index freshness"
-          value={result.indexFreshness.isFresh ? "Fresh" : "Stale"}
-          tone={result.indexFreshness.isFresh ? "good" : "warn"}
+          label="Partial failures"
+          value={formatAdminInteger(result.partialFailures.length)}
+          tone={result.partialFailures.length > 0 ? "warn" : "neutral"}
         />
         <KpiCard
           label="Cache"
@@ -190,106 +368,236 @@ function SearchRoute() {
         />
       </div>
 
-      {result.partialFailures.length > 0 ? (
-        <div
-          data-testid="admin-search-partial-failures"
-          className="ops-card"
-          style={{ display: "grid", gap: 6 }}
-        >
-          <div className="ops-card-head">
-            <p className="ops-card-head__title">
-              Partial failures
-              <span className="ops-card-head__count">
-                {result.partialFailures.length}
-              </span>
-            </p>
-          </div>
-          {result.partialFailures.map((failure) => (
-            <div
-              key={`${failure.facet}:${failure.reason}`}
-              style={{ display: "grid", gap: 2 }}
-            >
-              <strong>{universalSearchFacetLabel(failure.facet)}</strong>
-              <span>{failure.reason}</span>
+      <div className="admin-search-grid">
+        <div className="admin-search-main">
+          <div className="ops-card">
+            <div className="ops-card-head">
+              <p className="ops-card-head__title">
+                Result workspace
+                <span className="ops-card-head__count">
+                  {formatAdminInteger(total)}
+                </span>
+              </p>
             </div>
-          ))}
-        </div>
-      ) : null}
 
-      <div className="ops-card">
-        <div className="ops-card-head">
-          <p className="ops-card-head__title">
-            Result workspace
-            <span className="ops-card-head__count">
-              {result.entries.length}
-            </span>
-          </p>
-          <span className="mono">
-            Generated {formatSearchTimestamp(result.generatedAt)}
-          </span>
-        </div>
-
-        {result.entries.length === 0 ? (
-          <EmptyState
-            title="No search results"
-            description="No federated results matched the current query. Broaden the term or switch the prefix filter."
-          />
-        ) : (
-          <div className="ops-table-wrapper">
-            <table
-              data-testid="admin-search-results-table"
-              className="ops-table"
-            >
-              <thead>
-                <tr>
-                  <th>Result</th>
-                  <th>Facet</th>
-                  <th>Scope</th>
-                  <th>Classification</th>
-                  <th>Open</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.entries.map((entry) => (
-                  <tr
-                    key={`${entry.facet}:${entry.id}`}
-                    data-testid="admin-search-result-row"
-                  >
-                    <td style={{ padding: 4 }}>
-                      <div style={{ display: "grid", gap: 2 }}>
-                        <span className="text-strong">{entry.label}</span>
-                        <span style={{ color: "var(--ops-text-secondary)" }}>
-                          {entry.subtitle ?? entry.id}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ padding: 4 }}>
-                      <Badge variant="neutral">
-                        {universalSearchFacetLabel(entry.facet)}
-                      </Badge>
-                    </td>
-                    <td style={{ padding: 4 }}>
-                      <span className="mono">{entry.scopeTag}</span>
-                    </td>
-                    <td style={{ padding: 4 }}>
-                      <span className="mono">{entry.fieldClassification}</span>
-                    </td>
-                    <td style={{ padding: 4 }}>
-                      <a
-                        href={resolveUniversalSearchEntryPermalink(entry)}
-                        data-testid="admin-search-result-link"
+            {total === 0 ? (
+              <EmptyState
+                title="No search results"
+                description="No federated results matched the current query. Broaden the term or switch the prefix filter."
+              />
+            ) : (
+              <div className="ops-table-wrapper">
+                <table
+                  data-testid="admin-search-results-table"
+                  className="ops-table"
+                >
+                  <thead>
+                    <tr>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(tableState, "result")}
+                        onToggle={() => tableState.toggleSort("result")}
                       >
-                        Open result
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        Result
+                      </SortableTableHeader>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(tableState, "facet")}
+                        onToggle={() => tableState.toggleSort("facet")}
+                      >
+                        Facet
+                      </SortableTableHeader>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(tableState, "scope")}
+                        onToggle={() => tableState.toggleSort("scope")}
+                      >
+                        Scope
+                      </SortableTableHeader>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(
+                          tableState,
+                          "classification",
+                        )}
+                        onToggle={() => tableState.toggleSort("classification")}
+                      >
+                        Classification
+                      </SortableTableHeader>
+                      <th>Open</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((entry) => (
+                      <SearchResultRow
+                        key={`${entry.facet}:${entry.id}`}
+                        entry={entry}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {total > 0 ? (
+              <Pagination
+                page={tableState.page}
+                pageSize={tableState.pageSize}
+                total={total}
+                onPageChange={tableState.setPage}
+                onPageSizeChange={tableState.setPageSize}
+              />
+            ) : null}
           </div>
-        )}
+        </div>
+
+        <div className="admin-search-aside">
+          <OpsPanel
+            title="Query posture"
+            description="Snapshot of the last federated query and backend response posture."
+            data-testid="admin-search-query-posture"
+          >
+            <div className="ops-meta-grid">
+              {queryPosture.map((item) => (
+                <div key={item.label}>
+                  <p className="ops-meta-label">{item.label}</p>
+                  <p
+                    className={[
+                      "ops-meta-value",
+                      item.mono ? "ops-meta-value--mono" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </OpsPanel>
+
+          <OpsPanel
+            title="Facet spread"
+            description="Which indexed surfaces contributed the current result set."
+            data-testid="admin-search-facet-breakdown"
+          >
+            {facetBreakdown.length === 0 ? (
+              <p className="ops-meta-value">
+                No indexed facets returned a match for this query.
+              </p>
+            ) : (
+              <div className="ops-chip-grid">
+                {facetBreakdown.map((item) => (
+                  <div key={item.facet} className="ops-chip-card">
+                    <span className="ops-chip-label">
+                      {universalSearchFacetLabel(item.facet)}
+                    </span>
+                    <span className="mono">
+                      {formatAdminInteger(item.count)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </OpsPanel>
+
+          <OpsPanel
+            title={
+              result.partialFailures.length > 0
+                ? "Partial failures"
+                : "Search health"
+            }
+            tone={result.partialFailures.length > 0 ? "warn" : "neutral"}
+            description={
+              result.partialFailures.length > 0
+                ? "Some indexed facets degraded while the route still returned partial results."
+                : "All requested facets responded without partial failures on the last query."
+            }
+            data-testid="admin-search-health-panel"
+          >
+            {result.partialFailures.length > 0 ? (
+              <div className="admin-search-failure-list">
+                {result.partialFailures.map((failure) => (
+                  <div
+                    key={`${failure.facet}:${failure.reason}`}
+                    className="admin-search-failure-item"
+                  >
+                    <strong>{universalSearchFacetLabel(failure.facet)}</strong>
+                    <span>{failure.reason}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ops-meta-grid">
+                <div>
+                  <p className="ops-meta-label">Coverage</p>
+                  <p className="ops-meta-value">
+                    All requested facets responded on the latest query.
+                  </p>
+                </div>
+                <div>
+                  <p className="ops-meta-label">Last reindex</p>
+                  <p className="ops-meta-value ops-meta-value--mono">
+                    {formatAdminTimestamp(
+                      result.indexFreshness.lastReindexedAt,
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+          </OpsPanel>
+        </div>
       </div>
     </section>
+  );
+}
+
+function SearchResultRow({
+  entry,
+}: {
+  readonly entry: ReadyAdminUniversalSearchRouteData["result"]["entries"][number];
+}) {
+  const destination = resolveUniversalSearchEntryDestination(entry);
+
+  return (
+    <tr data-testid="admin-search-result-row">
+      <td>
+        <div className="admin-search-result-copy">
+          <span className="text-strong">{entry.label}</span>
+          <span className="admin-search-result-subtitle">
+            {entry.subtitle ?? entry.id}
+          </span>
+        </div>
+      </td>
+      <td>
+        <Badge variant="neutral">
+          {universalSearchFacetLabel(entry.facet)}
+        </Badge>
+      </td>
+      <td>
+        <span className="mono">{entry.scopeTag}</span>
+      </td>
+      <td>
+        <span className="mono">{entry.fieldClassification}</span>
+      </td>
+      <td>
+        {destination.external ? (
+          <a
+            href={destination.href}
+            data-testid="admin-search-result-link"
+            className="ops-btn ops-btn--xs"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Open result
+          </a>
+        ) : (
+          <Link
+            to={destination.href}
+            data-testid="admin-search-result-link"
+            className="ops-btn ops-btn--xs"
+          >
+            Open result
+          </Link>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -312,40 +620,25 @@ function SearchForm({
     <form
       data-testid="admin-search-form"
       onSubmit={onSubmit}
-      className="ops-card"
-      style={{
-        display: "grid",
-        gap: 6,
-        gridTemplateColumns: "minmax(240px, 1.8fr) minmax(160px, 1fr) auto",
-        alignItems: "end",
-      }}
+      className="admin-search-form"
     >
-      <label style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}>
-        <span>Search query</span>
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => onQueryChange(event.currentTarget.value)}
-          placeholder="Search tenants, invoices, domains, or governance events…"
-        />
-      </label>
-
-      <label style={{ display: "grid", gap: 4, fontSize: "0.8125rem" }}>
-        <span>Prefix filter</span>
-        <select
+      <FilterBar
+        searchValue={query}
+        onSearchChange={onQueryChange}
+        searchPlaceholder="Search tenants, invoices, domains, or governance events…"
+        trailing={
+          <button type="submit" className="ops-btn ops-btn--primary">
+            Run search
+          </button>
+        }
+      >
+        <FilterSelect
+          label="Prefix filter"
           value={prefix}
-          onChange={(event) => onPrefixChange(event.currentTarget.value)}
-        >
-          <option value="">All facets</option>
-          {Object.values(universalSearchPrefix).map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <button type="submit">Run search</button>
+          onChange={onPrefixChange}
+          options={searchPrefixOptions}
+        />
+      </FilterBar>
     </form>
   );
 }

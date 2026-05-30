@@ -21,22 +21,20 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
  * Browser coverage for the spec-canonical `/desk/notify` Notification
- * Center v2 list surface shipped by Phase 6 vendor + workflow
- * operator screens commit 6b (admin-app implementation plan §8.16
- * + §11). Exercises the `notify-list-{loader,route-data,route-server}`
- * trio end to end through the admin browser harness mock state.
+ * Center v4 list surface aligned to the signal-deck redesign slice.
  *
  * Covers: ready spine + body, denied StateScreen, stale-session
  * StateScreen, error StateScreen.
  */
 const PATH = "/desk/notify";
+const DETAIL_PATH = "/desk/notify/ntf_browser_2";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/desk/notify Notification Center v2 list route", () => {
+describe("/desk/notify Notification Center v4 list route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -47,7 +45,7 @@ describe("/desk/notify Notification Center v2 list route", () => {
     mockedLoaders.resendNotification.mockClear();
   });
 
-  it("renders the ready notification workspace with pivots, search, and resend guardrails", async () => {
+  it("renders the ready notification workspace with focus, pivots, and resend visibility", async () => {
     const readyFixture = withFixtureTransform(
       createAdminBrowserFixtureState(),
       (fixture) => ({
@@ -103,7 +101,7 @@ describe("/desk/notify Notification Center v2 list route", () => {
         rendered?.container.querySelector(
           "[data-testid='notify-list-ready']",
         ) !== null,
-      "Expected notify list v2 ready surface to render.",
+      "Expected notify list v4 ready surface to render.",
     );
 
     expect(
@@ -119,6 +117,10 @@ describe("/desk/notify Notification Center v2 list route", () => {
         "[data-testid='notify-list-partial-failures']",
       ),
     ).not.toBeNull();
+    expect(rendered.container.textContent).toContain("ntf_browser_2");
+    expect(rendered.container.textContent).toContain(
+      "Automatically escalated because the visible roster includes a failed notification delivery that likely needs operator follow-up.",
+    );
 
     await click(getButtonByText(rendered.container, "Attention"));
     await waitFor(
@@ -140,6 +142,32 @@ describe("/desk/notify Notification Center v2 list route", () => {
         ).length === 3,
       "Expected all tab to restore the full notification roster.",
     );
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='notify-list-row-resend-cta'][data-notification-id='ntf_browser_2']",
+      ),
+    ).not.toBeNull();
+
+    const focusDeliveredButton =
+      rendered.container.querySelector<HTMLButtonElement>(
+        "[data-notification-id='ntf_browser_1'] [data-testid='notify-list-entry-focus']",
+      );
+    if (focusDeliveredButton === null) {
+      throw new Error("Expected the delivered notification focus button.");
+    }
+    await click(focusDeliveredButton);
+    await waitFor(
+      () =>
+        rendered?.container
+          .querySelector("[data-testid='notify-list-focus-summary']")
+          ?.textContent?.includes("ntf_browser_1") ?? false,
+      "Expected focusing a delivered notification to update the focus rail.",
+    );
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='notify-list-focus-resend-cta']",
+      ),
+    ).toBeNull();
 
     await changeInputValue(
       getInputByPlaceholder(
@@ -156,18 +184,26 @@ describe("/desk/notify Notification Center v2 list route", () => {
       "Expected notification search to narrow the roster to the requested recipient.",
     );
     expect(rendered.container.textContent).toContain("Queued operator digest");
-
-    await click(getButtonByText(rendered.container, "Resend"));
     await waitFor(
       () =>
-        rendered?.container.ownerDocument.querySelector(
-          "[data-testid='high-risk-body']",
-        ) !== null,
-      "Expected resend guardrails to open from the list workspace.",
+        rendered?.container
+          .querySelector("[data-testid='notify-list-focus-summary']")
+          ?.textContent?.includes("ntf_browser_3") ?? false,
+      "Expected the focus rail to realign to the visible queued notification after search.",
     );
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='notify-list-focus-resend-cta']",
+      ),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='notify-list-row-resend-cta']",
+      ),
+    ).toBeNull();
   });
 
-  it("invokes the resend mutations-server flow from the list workspace", async () => {
+  it("invokes the resend mutations-server flow from the list workspace while detail is mounted", async () => {
     const readyFixture = withFixtureTransform(
       createAdminBrowserFixtureState(),
       (fixture) => ({
@@ -199,24 +235,48 @@ describe("/desk/notify Notification Center v2 list route", () => {
             partialFailures: [],
           },
         }),
+        loadNotifyDetail: async (input) => ({
+          kind: "ready",
+          notification: {
+            notificationId: input.notificationId,
+            channel: notificationChannel.email,
+            status: notificationDeliveryStatus.failed,
+            recipientProjection: "alerts@example.test",
+            subjectProjection: "Notification delivery failure",
+            createdAt: new Date(2000).toISOString(),
+            lastError: "Provider rejected the notification payload.",
+            payloadProjection: '{ "template": "alert" }',
+            providerMetadata: '{ "providerId": "novu" }',
+            auditCorrelationId: "corr_ntf_browser_2",
+          },
+        }),
       }),
     );
 
-    rendered = await renderAdminApp(readyFixture, PATH);
+    rendered = await renderAdminApp(readyFixture, DETAIL_PATH);
 
     await waitFor(
       () =>
         rendered?.container.querySelector(
-          "[data-testid='notify-list-resend-cta']",
+          "[data-testid='notify-list-row-resend-cta'][data-notification-id='ntf_browser_2']",
         ) !== null,
       "Expected list resend CTA to render.",
     );
-
-    await click(
-      rendered.container.querySelector<HTMLButtonElement>(
-        "[data-testid='notify-list-resend-cta']",
-      )!,
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='notify-detail-ready']",
+        ) !== null,
+      "Expected notify detail outlet to render alongside the list workspace.",
     );
+
+    const rowResendButton = rendered.container.querySelector<HTMLButtonElement>(
+      "[data-testid='notify-list-row-resend-cta'][data-notification-id='ntf_browser_2']",
+    );
+    if (rowResendButton === null) {
+      throw new Error("Expected the ntf_browser_2 row resend CTA.");
+    }
+    await click(rowResendButton);
 
     await waitFor(
       () =>

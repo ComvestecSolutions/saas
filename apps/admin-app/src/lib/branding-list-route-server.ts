@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { platformScope, type PlatformScope } from "@comvestec/contracts";
+import { PlatformScopeSchema } from "@comvestec/contracts";
 import type {
   AdminBrandingListInput,
   AdminBrandingListRouteData,
@@ -10,6 +10,7 @@ import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 
 /**
  * Server-function entrypoint for the `/desk/branding` Branding &
@@ -19,49 +20,58 @@ import {
  * route-data Effect on the server. No Request/Response shaping
  * lives here — that belongs in platform HTTP adapters.
  */
-export type AdminBrandingListRawInput = {
-  readonly tenantTargets?: unknown;
-  readonly selectedTenantId?: unknown;
-};
+const AdminBrandingListTenantTargetSchema = Schema.Struct({
+  scope: PlatformScopeSchema,
+  scopeId: Schema.NonEmptyString,
+});
 
-const knownPlatformScopes = new Set<string>(Object.values(platformScope));
+const AdminBrandingListRawInputSchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    tenantTargets: Schema.optional(Schema.Unknown),
+    selectedTenantId: Schema.optional(Schema.Unknown),
+  }),
+);
 
-const isPlatformScope = (value: unknown): value is PlatformScope =>
-  typeof value === "string" && knownPlatformScopes.has(value);
+type AdminBrandingListRawInput = Schema.Schema.Type<
+  typeof AdminBrandingListRawInputSchema
+>;
 
-const decodeTenantTarget = (
-  value: unknown,
-): AdminBrandingListTenantTarget | undefined => {
-  if (typeof value !== "object" || value === null) return undefined;
-  const candidate = value as { scope?: unknown; scopeId?: unknown };
-  if (!isPlatformScope(candidate.scope)) return undefined;
-  if (typeof candidate.scopeId !== "string" || candidate.scopeId.length === 0) {
-    return undefined;
-  }
-  return { scope: candidate.scope, scopeId: candidate.scopeId };
-};
+const decodeAdminBrandingListRawInput = decodeSyncBoundary(
+  AdminBrandingListRawInputSchema,
+);
+const decodeTenantTarget = decodeSchemaOrUndefined(
+  AdminBrandingListTenantTargetSchema,
+);
+const decodeTenantTargetEntries = decodeSchemaOrUndefined(
+  Schema.Array(Schema.Unknown),
+);
+const decodeOptionalString = decodeSchemaOrUndefined(Schema.NonEmptyString);
 
 const decodeTenantTargets = (
   value: unknown,
 ): readonly AdminBrandingListTenantTarget[] => {
-  if (!Array.isArray(value)) return [];
+  const entries = decodeTenantTargetEntries(value) ?? [];
   const decoded: AdminBrandingListTenantTarget[] = [];
-  for (const entry of value) {
+
+  for (const entry of entries) {
     const target = decodeTenantTarget(entry);
-    if (target !== undefined) decoded.push(target);
+
+    if (target !== undefined) {
+      decoded.push(target);
+    }
   }
+
   return decoded;
 };
 
-const decodeOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const decodeRawInput = (
-  raw: AdminBrandingListRawInput | undefined,
+const normalizeAdminBrandingListInput = (
+  raw: AdminBrandingListRawInput,
 ): AdminBrandingListInput => {
   const safe = raw ?? {};
   const tenantTargets = decodeTenantTargets(safe.tenantTargets);
   const selectedTenantId = decodeOptionalString(safe.selectedTenantId);
+
   return {
     tenantTargets,
     ...(selectedTenantId === undefined ? {} : { selectedTenantId }),
@@ -71,25 +81,27 @@ const decodeRawInput = (
 const loadAdminBrandingListData = async (
   request: Request,
   environment: unknown,
-  raw: AdminBrandingListRawInput | undefined,
+  input: AdminBrandingListInput,
 ): Promise<AdminBrandingListRouteData> => {
   const { loadAdminBrandingListRouteDataFromRequest } =
     await import("./branding-list-route-data");
-  const decoded = decodeRawInput(raw);
+
   return Effect.runPromise(
-    loadAdminBrandingListRouteDataFromRequest(request, environment, decoded),
+    loadAdminBrandingListRouteDataFromRequest(request, environment, input),
   );
 };
 
 export const getAdminBrandingListData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminBrandingListRawInput | undefined) => input)
+  .inputValidator((input: unknown) =>
+    normalizeAdminBrandingListInput(decodeAdminBrandingListRawInput(input)),
+  )
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminBrandingListRawInput | undefined;
+      readonly data: AdminBrandingListInput;
     }) => loadAdminBrandingListData(context.request, process.env, data),
   );

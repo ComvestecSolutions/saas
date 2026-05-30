@@ -2,11 +2,16 @@ import { Schema } from "effect";
 import { Link } from "@tanstack/react-router";
 import { StateScreen } from "@comvestec/ui";
 import {
-  platformScope,
-  type OpenMeterUsageQueryGranularity,
+  OpenMeterUsageQueryGranularitySchema,
+  PlatformScopeSchema,
 } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
 import { ScreenHeader } from "../../../components/ui";
+import {
+  decodeSchemaOrUndefined,
+  decodeSyncBoundary,
+} from "../../../lib/effect-boundary";
+import { formatAdminInteger } from "../../../lib/number-format";
 import type {
   AdminMeterDetailInput,
   AdminMeterDetailRouteData,
@@ -29,9 +34,6 @@ import type {
  * surface today flags the latest bucket's freshness through the
  * Phase 1 `isFresh` flag.
  */
-const knownPlatformScopes = Object.values(platformScope);
-const knownGranularities = ["MINUTE", "HOUR", "DAY", "MONTH"] as const;
-
 const RawSearchSchema = Schema.Struct({
   tenantScope: Schema.optional(Schema.String),
   tenantScopeId: Schema.optional(Schema.String),
@@ -40,41 +42,56 @@ const RawSearchSchema = Schema.Struct({
   windowFrom: Schema.optional(Schema.String),
   windowTo: Schema.optional(Schema.String),
 });
+const RawSearchBoundarySchema = Schema.Struct({
+  tenantScope: Schema.optional(Schema.Unknown),
+  tenantScopeId: Schema.optional(Schema.Unknown),
+  subject: Schema.optional(Schema.Unknown),
+  granularity: Schema.optional(Schema.Unknown),
+  windowFrom: Schema.optional(Schema.Unknown),
+  windowTo: Schema.optional(Schema.Unknown),
+});
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
+const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
+const decodeTenantScope = decodeSchemaOrUndefined(PlatformScopeSchema);
+const decodeNonEmptyString = decodeSchemaOrUndefined(Schema.NonEmptyString);
+const decodeGranularity = decodeSchemaOrUndefined(
+  OpenMeterUsageQueryGranularitySchema,
+);
+
+const validateSearch = (raw: unknown): RawSearch => {
+  const search = decodeRawSearchBoundary(raw);
+  const tenantScope = decodeSearchString(search.tenantScope);
+  const tenantScopeId = decodeSearchString(search.tenantScopeId);
+  const subject = decodeSearchString(search.subject);
+  const granularity = decodeSearchString(search.granularity);
+  const windowFrom = decodeSearchString(search.windowFrom);
+  const windowTo = decodeSearchString(search.windowTo);
+
+  return {
+    ...(tenantScope === undefined ? {} : { tenantScope }),
+    ...(tenantScopeId === undefined ? {} : { tenantScopeId }),
+    ...(subject === undefined ? {} : { subject }),
+    ...(granularity === undefined ? {} : { granularity }),
+    ...(windowFrom === undefined ? {} : { windowFrom }),
+    ...(windowTo === undefined ? {} : { windowTo }),
+  };
+};
 
 const decodeLoaderInput = (
   meterSlug: string,
   raw: RawSearch,
 ): AdminMeterDetailInput | null => {
-  if (
-    raw.tenantScope === undefined ||
-    raw.tenantScopeId === undefined ||
-    raw.tenantScope.length === 0 ||
-    raw.tenantScopeId.length === 0
-  ) {
+  const tenantScope = decodeTenantScope(raw.tenantScope);
+  const tenantScopeId = decodeNonEmptyString(raw.tenantScopeId);
+  if (tenantScope === undefined || tenantScopeId === undefined) {
     return null;
   }
-  if (!(knownPlatformScopes as readonly string[]).includes(raw.tenantScope)) {
-    return null;
-  }
-  const subject =
-    raw.subject !== undefined && raw.subject.length > 0
-      ? raw.subject
-      : undefined;
-  const granularity =
-    raw.granularity !== undefined &&
-    (knownGranularities as readonly string[]).includes(raw.granularity)
-      ? (raw.granularity as OpenMeterUsageQueryGranularity)
-      : undefined;
-  const windowFrom =
-    raw.windowFrom !== undefined && raw.windowFrom.length > 0
-      ? raw.windowFrom
-      : undefined;
-  const windowTo =
-    raw.windowTo !== undefined && raw.windowTo.length > 0
-      ? raw.windowTo
-      : undefined;
+  const subject = decodeNonEmptyString(raw.subject);
+  const granularity = decodeGranularity(raw.granularity);
+  const windowFrom = decodeNonEmptyString(raw.windowFrom);
+  const windowTo = decodeNonEmptyString(raw.windowTo);
   const window =
     windowFrom !== undefined && windowTo !== undefined
       ? { from: windowFrom, to: windowTo }
@@ -82,9 +99,8 @@ const decodeLoaderInput = (
   return {
     meterSlug,
     tenant: {
-      scope:
-        raw.tenantScope as (typeof platformScope)[keyof typeof platformScope],
-      scopeId: raw.tenantScopeId,
+      scope: tenantScope,
+      scopeId: tenantScopeId,
     },
     ...(subject === undefined ? {} : { subject }),
     ...(granularity === undefined ? {} : { granularity }),
@@ -93,7 +109,7 @@ const decodeLoaderInput = (
 };
 
 export const Route = createAdminAppFileRoute("/desk/meter/$meterId")({
-  validateSearch: (raw) => Schema.validateSync(RawSearchSchema)(raw),
+  validateSearch,
   loaderDeps: ({ search }) => ({ search }),
   loader: async ({ params, deps }) => {
     const input = decodeLoaderInput(params.meterId, deps.search);
@@ -248,7 +264,7 @@ function MeterDetailRoute() {
           </svg>
           <div>
             {buckets.length} bucket{buckets.length === 1 ? "" : "s"} · peak{" "}
-            {maxValue.toLocaleString()}
+            {formatAdminInteger(maxValue)}
           </div>
         </div>
       )}
