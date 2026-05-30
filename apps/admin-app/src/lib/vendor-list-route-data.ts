@@ -12,11 +12,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/vendors` Vendor Health v2 list surface (admin-app
+ * `/desk/vendors` Vendor Health v2 list surface (admin-app
  * implementation plan §8.15 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6a). Mirrors the v2 loader-trio
- * pattern shipped for `/r/billing`, `/r/branding`, `/r/support`,
- * `/r/retention`, and `/r/webhook`.
+ * pattern shipped for `/desk/billing`, `/desk/branding`, `/desk/support`,
+ * `/desk/retention`, and `/desk/webhook`.
  *
  * Backed live by the `vendor-health-aggregator` platform
  * service (Phase 1 backend item 9). The aggregator takes a

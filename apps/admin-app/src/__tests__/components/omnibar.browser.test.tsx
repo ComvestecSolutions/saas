@@ -68,7 +68,7 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
                 id: "ten_acme",
                 label: "Acme Holdings",
                 scopeTag: "tenant",
-                permalink: "/r/tenant/ten_acme",
+                permalink: "/desk/tenant/ten_acme",
                 fieldClassification: "public",
               },
             ],
@@ -142,7 +142,7 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
 
     await act(async () => {
       await waitFor(
-        () => window.location.pathname === "/r/tenant/ten_acme",
+        () => window.location.pathname === "/desk/tenant/ten_acme",
         `Expected omnibar selection to navigate to /r/tenant/ten_acme (was ${window.location.pathname}).`,
       );
     });
@@ -206,7 +206,7 @@ describe("DeskShellOmnibar — bottom Command Strip", () => {
 
     await act(async () => {
       await waitFor(
-        () => window.location.pathname === "/r/tenant/ten_omnibar_fixture",
+        () => window.location.pathname === "/desk/tenant/ten_omnibar_fixture",
         `Expected omnibar Enter submit to navigate to /r/tenant/ten_omnibar_fixture (was ${window.location.pathname}).`,
       );
     });

@@ -12,7 +12,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/billing` Billing
+ * Browser coverage for the spec-canonical `/desk/billing` Billing
  * Operations v2 surface shipped by Phase 4 Domain operator
  * screens commit 1 (admin-app implementation plan §8.10 + §11).
  * Exercises the `billing-list-{loader,route-data,route-server}`
@@ -22,8 +22,8 @@ import {
  * supplied), denied StateScreen, stale-session StateScreen,
  * error StateScreen.
  */
-const PATH_EMPTY = "/r/billing";
-const PATH_WITH_TENANTS = `/r/billing?tenants=${encodeURIComponent(
+const PATH_EMPTY = "/desk/billing";
+const PATH_WITH_TENANTS = `/desk/billing?tenants=${encodeURIComponent(
   JSON.stringify(
     JSON.stringify([
       { scope: "organization", scopeId: "org_demo" },
@@ -37,7 +37,7 @@ const withFixtureTransform = (
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/billing Billing Operations v2 route", () => {
+describe("/desk/billing Billing Operations v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

@@ -4,11 +4,11 @@ import type {
 } from "./governance-flag-route-data";
 
 /**
- * Loader for the `/r/flag` Feature Flags v2 route (admin-app
+ * Loader for the `/desk/flag` Feature Flags v2 route (admin-app
  * implementation plan §8.6 + §11 — Phase 3 Governance &
  * access commit 1). Consumes the route-server entrypoint so
  * the loader stays free of Request/Response or Valkey
- * shaping. Mirrors the `/r/config` and other v2 loader trios.
+ * shaping. Mirrors the `/desk/config` and other v2 loader trios.
  */
 export const loadAdminGovernanceFlagV2LoaderData = async (
   input: AdminGovernanceFlagV2Input,

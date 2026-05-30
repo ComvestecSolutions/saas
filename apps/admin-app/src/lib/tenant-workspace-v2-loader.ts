@@ -5,7 +5,7 @@ import type {
 import { getAdminTenantWorkspaceV2Data } from "./tenant-workspace-v2-route-server";
 
 /**
- * Loader for the Tenant workspace v2 route (`/r/tenant/<id>`).
+ * Loader for the Tenant workspace v2 route (`/desk/tenant/<id>`).
  * Consumes the v2 snapshot via the trusted request-context
  * resolver so the loader stays free of Valkey, Request, or
  * Response shaping. The route component receives the

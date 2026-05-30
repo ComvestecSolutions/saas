@@ -1889,6 +1889,7 @@ const buildOperationsHomeV2Snapshot = (input: {
       posture: operationsHomeVendorPostureLevel.down,
       latencyP95Ms: 0,
       lastIncidentAt: timestamp(18, 17, 10),
+      message: "Postal admin API unreachable.",
     },
   ];
   const partialFailures = [
@@ -3845,7 +3846,7 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
               id: "ten_omnibar_fixture",
               label: `Omnibar tenant match for "${input.query}"`,
               scopeTag: "tenant",
-              permalink: "/r/tenant/ten_omnibar_fixture",
+              permalink: "/desk/tenant/ten_omnibar_fixture",
               fieldClassification: "public",
             },
           ],

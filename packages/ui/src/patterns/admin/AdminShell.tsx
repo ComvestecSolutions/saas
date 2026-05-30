@@ -52,6 +52,7 @@ function AdminShellInner({
       style={{
         display: "flex",
         height: "100dvh",
+        minHeight: 0,
         overflow: "hidden",
         background: "var(--ops-bg)",
         color: "var(--ops-text)",
@@ -73,6 +74,7 @@ function AdminShellInner({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          minHeight: 0,
           minWidth: 0,
         }}
       >
@@ -194,6 +196,7 @@ function AdminShellInner({
         <main
           style={{
             flex: 1,
+            minHeight: 0,
             overflow: "auto",
             padding: device.isMobile
               ? "14px 12px 24px"

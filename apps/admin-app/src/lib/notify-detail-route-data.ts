@@ -9,12 +9,12 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/notify/$id` Notification Center v2 detail surface
+ * `/desk/notify/$id` Notification Center v2 detail surface
  * (admin-app implementation plan §8.16 + §11 — Phase 6 vendor +
  * workflow operator screens commit 6c). Mirrors the v2
- * loader-trio shape used by `/r/incident/$incidentId`,
- * `/r/legal-hold/$holdId`, `/r/delivery/$deliveryId`,
- * `/r/api-key/$keyId`, and `/r/run/$id`.
+ * loader-trio shape used by `/desk/incident/$incidentId`,
+ * `/desk/legal-hold/$holdId`, `/desk/delivery/$deliveryId`,
+ * `/desk/api-key/$keyId`, and `/desk/run/$id`.
  *
  * Backed live by `getNotificationCenterAdminDetailFromEnvironment`
  * (admin-app implementation plan §9 item 16). The platform
@@ -32,8 +32,8 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * for `resendNotificationFromEnvironment` is tracked under the
  * Admin app row's Phase 6 follow-ups in the implementation
  * tracker (mirrors the rotate / revoke CTAs on
- * `/r/api-key/$keyId` and the replay / cancel CTAs on
- * `/r/run/$id`).
+ * `/desk/api-key/$keyId` and the replay / cancel CTAs on
+ * `/desk/run/$id`).
  */
 export type AdminNotifyDetailInput = {
   readonly notificationId: string;

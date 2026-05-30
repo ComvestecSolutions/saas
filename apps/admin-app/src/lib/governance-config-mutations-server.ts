@@ -13,7 +13,7 @@ import {
 /**
  * Runtime Config v2 mutation server-fns (admin-app implementation
  * plan §8.5 + §11 — Phase 3 Governance & access commit 2).
- * Mirrors the `/r/tenant/$tenantId` mutations-server sibling: each
+ * Mirrors the `/desk/tenant/$tenantId` mutations-server sibling: each
  * helper decodes its input at the framework boundary via
  * `Schema.decodeUnknown`, extracts the operator session id from
  * the request, and delegates to the platform

@@ -53,7 +53,7 @@ const fakeResult = (): UniversalSearchResult => ({
       id: "t-1",
       label: "Acme Tenant",
       scopeTag: "global",
-      permalink: "/r/tenants/t-1",
+      permalink: "/desk/tenants/t-1",
       fieldClassification: "internal",
     },
   ],

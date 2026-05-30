@@ -12,7 +12,7 @@ import {
 
 /**
  * Server-function entrypoint for the spec-canonical
- * `/r/retention` Retention & Legal-hold v2 surface (admin-app
+ * `/desk/retention` Retention & Legal-hold v2 surface (admin-app
  * implementation plan §8.11 + §11 — Phase 5 commit 2). Decodes
  * the loader input at the framework boundary and runs the
  * route-data Effect on the server. No Request/Response shaping

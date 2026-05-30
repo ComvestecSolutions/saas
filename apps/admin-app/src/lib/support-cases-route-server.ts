@@ -18,7 +18,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the spec-canonical `/r/support`
+ * Server-function entrypoint for the spec-canonical `/desk/support`
  * Support & Incident v2 surface (admin-app implementation plan
  * §8.8 + §11 — Phase 5 commit 1). Decodes the loader input at
  * the framework boundary and runs the route-data Effect on the

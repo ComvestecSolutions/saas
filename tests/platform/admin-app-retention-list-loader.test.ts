@@ -2,7 +2,7 @@
  * Admin-app Retention-list loader tests (admin-app
  * implementation plan §8.11 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 2). Covers
- * the discriminated-union mapping of the `/r/retention` loader
+ * the discriminated-union mapping of the `/desk/retention` loader
  * trio backed live by the Phase 1 by-session helpers:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`
@@ -14,7 +14,7 @@
  *     schedule entries until the by-session schedule helper
  *     lands; tracked under Admin app row Phase 5 follow-ups)
  *   - empty scope → `ready` with empty arrays (mirrors
- *     `/r/billing` empty-tenants behavior)
+ *     `/desk/billing` empty-tenants behavior)
  *
  * Mirrors `tests/platform/admin-app-support-cases-loader.test.ts`
  * and `tests/platform/admin-app-branding-list-loader.test.ts`.

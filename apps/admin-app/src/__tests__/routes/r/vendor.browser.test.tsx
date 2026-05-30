@@ -11,7 +11,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/vendor/$service`
+ * Browser coverage for the spec-canonical `/desk/vendor/$service`
  * Vendor Detail v2 surface shipped by Phase 6 vendor + workflow
  * operator screens commit 6a (admin-app implementation plan
  * §8.15 + §11). Exercises the
@@ -23,15 +23,15 @@ import {
  * stale-session StateScreen, error StateScreen for the not-
  * found case.
  */
-const PATH = `/r/vendor/${platformAdapterServiceName.keycloak}`;
-const POSTAL_PATH = `/r/vendor/${platformAdapterServiceName.postal}`;
+const PATH = `/desk/vendor/${platformAdapterServiceName.keycloak}`;
+const POSTAL_PATH = `/desk/vendor/${platformAdapterServiceName.postal}`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/vendor/$service Vendor Detail v2 route", () => {
+describe("/desk/vendor/$service Vendor Detail v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -81,7 +81,7 @@ describe("/r/vendor/$service Vendor Detail v2 route", () => {
       rendered.container
         .querySelector("[data-testid='vendor-detail-follow-ups'] a")
         ?.getAttribute("href"),
-    ).toBe("/r/search?q=keycloak");
+    ).toBe("/desk/search?q=keycloak");
     expect(rendered.container.textContent).toContain("Aggregate generated");
   }, 30_000);
 
@@ -108,7 +108,7 @@ describe("/r/vendor/$service Vendor Detail v2 route", () => {
       rendered.container
         .querySelector("[data-testid='vendor-detail-follow-ups'] a")
         ?.getAttribute("href"),
-    ).toBe("/r/notify");
+    ).toBe("/desk/notify");
   });
 
   it("surfaces a denied StateScreen when the loader returns denied", async () => {

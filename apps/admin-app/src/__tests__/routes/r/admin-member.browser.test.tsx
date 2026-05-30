@@ -9,14 +9,14 @@ import {
   type RenderedAdminApp,
 } from "../../../testing/admin-browser-harness";
 
-const PATH = "/r/admin-member/adm_member_fixture_1";
+const PATH = "/desk/admin-member/adm_member_fixture_1";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/admin-member/$id admin member detail route", () => {
+describe("/desk/admin-member/$id admin member detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -99,7 +99,7 @@ describe("/r/admin-member/$id admin member detail route", () => {
   it("surfaces a not-found error state when the member is missing", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/r/admin-member/adm_member_missing",
+      "/desk/admin-member/adm_member_missing",
     );
 
     await waitFor(

@@ -21,8 +21,8 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 /**
  * Access Control v2 route data (admin-app implementation plan
  * §8.7 + §11 — Phase 3 Governance & access commit 1). Mirrors
- * the v2 loader-trio pattern shipped for `/r/config` and
- * `/r/flag`: the route component consumes a thin
+ * the v2 loader-trio pattern shipped for `/desk/config` and
+ * `/desk/flag`: the route component consumes a thin
  * `shell | stale-session | denied | error | ready`
  * discriminated union.
  *

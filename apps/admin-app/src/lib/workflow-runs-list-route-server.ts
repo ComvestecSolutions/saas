@@ -17,7 +17,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the spec-canonical `/r/runs`
+ * Server-function entrypoint for the spec-canonical `/desk/runs`
  * Workflow Runs v2 list surface (admin-app implementation plan
  * §8.14 + §11 — Phase 6 commit 6b). Decodes the loader input at
  * the framework boundary and runs the route-data Effect on the

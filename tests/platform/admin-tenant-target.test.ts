@@ -34,11 +34,11 @@ describe("admin tenant target helpers", () => {
       individualId: "ind_demo",
     });
     expect(buildAdminTenantWorkspacePath(target)).toBe(
-      "/r/tenant/ind_demo?scope=individual",
+      "/desk/tenant/ind_demo?scope=individual",
     );
     expect(
       buildAdminTenantScopedRoutePath(adminRoutePath.branding, target),
-    ).toBe("/r/branding?scope=individual&scopeId=ind_demo");
+    ).toBe("/desk/branding?scope=individual&scopeId=ind_demo");
     expect(serializeAdminTenantTarget(target)).toBe("individual:ind_demo");
   });
 });

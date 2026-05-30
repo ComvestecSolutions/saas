@@ -20,7 +20,7 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/notify` Notification
+ * Browser coverage for the spec-canonical `/desk/notify` Notification
  * Center v2 list surface shipped by Phase 6 vendor + workflow
  * operator screens commit 6b (admin-app implementation plan §8.16
  * + §11). Exercises the `notify-list-{loader,route-data,route-server}`
@@ -29,14 +29,14 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * Covers: ready spine + body, denied StateScreen, stale-session
  * StateScreen, error StateScreen.
  */
-const PATH = "/r/notify";
+const PATH = "/desk/notify";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/notify Notification Center v2 list route", () => {
+describe("/desk/notify Notification Center v2 list route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

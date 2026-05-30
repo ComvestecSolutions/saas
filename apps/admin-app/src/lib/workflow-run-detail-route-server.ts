@@ -10,7 +10,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the spec-canonical `/r/run/$id`
+ * Server-function entrypoint for the spec-canonical `/desk/run/$id`
  * Workflow Run Detail v2 surface (admin-app implementation plan
  * §8.14 + §11 — Phase 6 commit 6b). Decodes the loader input at
  * the framework boundary and runs the route-data Effect on the

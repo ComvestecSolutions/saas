@@ -15,11 +15,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/webhook` Webhook Endpoints v2 list surface (admin-app
+ * `/desk/webhook` Webhook Endpoints v2 list surface (admin-app
  * implementation plan §8.12 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 3).
- * Mirrors the v2 loader-trio pattern shipped for `/r/billing`,
- * `/r/branding`, `/r/support`, and `/r/retention`.
+ * Mirrors the v2 loader-trio pattern shipped for `/desk/billing`,
+ * `/desk/branding`, `/desk/support`, and `/desk/retention`.
  *
  * Backed live by two helpers composed via `Effect.all`:
  *
@@ -41,7 +41,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * route's search params. When the operator has not yet picked a
  * target, the loader yields `ready` with empty arrays and the
  * route surfaces a "select a scope" affordance (mirrors
- * `/r/billing`, `/r/branding`, and `/r/retention`).
+ * `/desk/billing`, `/desk/branding`, and `/desk/retention`).
  */
 export type AdminWebhookListInput = {
   readonly scope?: PlatformScope;

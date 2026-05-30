@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Last updated: 2026-05-26
+Last updated: 2026-05-29
 
 The admin app is the internal operator and governance control surface
 for the Comvestec Solutions SaaS Foundation. It is built on the
@@ -18,7 +18,7 @@ foundation.
 1. Treat the current hybrid of legacy page routes and partial Desk
    routes as transitional only, not the target product.
 2. Redesign **every** operator-facing screen from scratch, including:
-   sign-in, operations home, every `/r/*` resource view, every
+   sign-in, operations home, every `/desk/*` workbench view, every
    `/admin/*` surface, and the empty/loading/denied/stale/error states
    shared between them.
 3. Eliminate operator-hostile workflows such as pasted bearer tokens,
@@ -29,6 +29,13 @@ foundation.
    request-context, audit, field security, and typed helper layers stay
    authoritative; the UI becomes a better first-party operator surface
    over those foundations rather than a bypass around them.
+
+## Canonical route taxonomy
+
+The Operator Desk uses `/desk/*` as the canonical workbench route
+prefix. Legacy `/r/*` paths remain compatibility redirects during the
+cutover window, but new first-party links, route constants, saved
+views, and operator-facing documentation must target `/desk/*`.
 
 ## Responsibilities
 

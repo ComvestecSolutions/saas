@@ -58,7 +58,7 @@ const okResult = {
         id: "ten_acme",
         label: "Acme Holdings",
         scopeTag: "tenant" as const,
-        permalink: "/r/tenant/ten_acme",
+        permalink: "/desk/tenant/ten_acme",
         fieldClassification: "public",
       },
     ],
@@ -135,7 +135,7 @@ describe("admin-app universal-search loader", () => {
     expect(result.kind).toBe("ready");
     if (result.kind !== "ready") return;
     expect(result.result.entries).toHaveLength(1);
-    expect(result.result.entries[0]?.permalink).toBe("/r/tenant/ten_acme");
+    expect(result.result.entries[0]?.permalink).toBe("/desk/tenant/ten_acme");
     expect(result.fromCache).toBe(false);
   });
 

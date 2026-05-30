@@ -1,21 +1,15 @@
-import { LoadingState } from "@comvestec/ui";
-import { MissionControlRouteView } from "../components/desk/mission-control-screen";
+import { Outlet } from "@tanstack/react-router";
 import { createAdminAppFileRoute } from "../file-route";
 
 /**
- * `/desk` — canonical Signal Deck mission-control route. Mirrors the
- * root operations-home aggregate so direct `/desk` entry lands on the
- * real command center rather than the old placeholder workbench.
+ * `/desk` — canonical Operator Desk layout route. Nested `index.tsx`
+ * owns the mission-control home surface while child routes render the
+ * rest of the desk workbench under the same parent shell.
  */
 export const Route = createAdminAppFileRoute("/desk")({
-  loader: () =>
-    import("../lib/desk-center-loader").then(
-      ({ loadAdminDeskCenterLoaderData }) => loadAdminDeskCenterLoaderData(),
-    ),
-  component: DeskMissionControlRoute,
-  pendingComponent: () => <LoadingState title="Loading signal deck…" />,
+  component: DeskLayoutRoute,
 });
 
-function DeskMissionControlRoute() {
-  return <MissionControlRouteView data={Route.useLoaderData()} />;
+function DeskLayoutRoute() {
+  return <Outlet />;
 }

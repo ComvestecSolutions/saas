@@ -166,6 +166,29 @@ describe("admin shell loader", () => {
     expect(loadClientRouteData).not.toHaveBeenCalled();
   });
 
+  it("falls back to the server-fn loader during SSR when the direct request path resolves to shell", async () => {
+    const serverRequest = new Request("http://localhost:3004/");
+    const getCurrentServerRequest = vi.fn(() => serverRequest);
+    const loadServerRouteDataFromRequest = vi.fn(
+      async (): Promise<AdminShellRouteData> => ({
+        kind: "shell",
+      }),
+    );
+    const loadClientRouteData = vi.fn(async () => readyShellData);
+
+    await expect(
+      loadAdminShellRouteDataForCurrentRuntime({
+        isBrowserRuntime: false,
+        getCurrentServerRequest,
+        loadServerRouteDataFromRequest,
+        loadClientRouteData,
+      }),
+    ).resolves.toEqual(readyShellData);
+    expect(getCurrentServerRequest).toHaveBeenCalledTimes(1);
+    expect(loadServerRouteDataFromRequest).toHaveBeenCalledWith(serverRequest);
+    expect(loadClientRouteData).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the client server-fn loader after hydration instead of the SSR request reader", async () => {
     const getCurrentServerRequest = vi.fn(
       () => new Request("http://localhost:3004/"),
@@ -197,7 +220,7 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminSignInPath({
-        returnTo: "/r/config?tab=audit",
+        returnTo: "/desk/config?tab=audit",
       }),
     );
   });
@@ -213,7 +236,7 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminStaleSessionPath({
-        returnTo: "/r/billing?view=entitlements",
+        returnTo: "/desk/billing?view=entitlements",
       }),
     );
   });
@@ -246,8 +269,8 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminSignInPath({
-        returnTo: `/r/branding?tenants=${encodeURIComponent(
-          JSON.stringify(encodedTargets),
+        returnTo: `/desk/branding?tenants=${encodeURIComponent(
+          encodedTargets,
         )}&selectedTenantId=org_demo`,
       }),
     );
@@ -264,7 +287,7 @@ describe("admin shell loader", () => {
       ),
     ).toBe(
       buildAdminSignInPath({
-        returnTo: "/r/support?queue=open",
+        returnTo: "/desk/support?queue=open",
       }),
     );
   });

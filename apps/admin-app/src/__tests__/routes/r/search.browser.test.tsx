@@ -9,14 +9,14 @@ import {
   type RenderedAdminApp,
 } from "../../../testing/admin-browser-harness";
 
-const READY_PATH = "/r/search?q=operator";
+const READY_PATH = "/desk/search?q=operator";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/search search route", () => {
+describe("/desk/search search route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -52,13 +52,13 @@ describe("/r/search search route", () => {
       rendered.container
         .querySelector("[data-testid='admin-search-result-link']")
         ?.getAttribute("href"),
-    ).toBe("/r/tenant/ten_omnibar_fixture");
+    ).toBe("/desk/tenant/ten_omnibar_fixture");
   }, 30_000);
 
   it("renders the empty search state before a query is submitted", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/r/search",
+      "/desk/search",
     );
 
     await waitFor(

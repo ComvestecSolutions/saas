@@ -10,7 +10,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the spec-canonical `/r/vendors`
+ * Server-function entrypoint for the spec-canonical `/desk/vendors`
  * Vendor Health v2 list surface (admin-app implementation plan
  * §8.15 + §11 — Phase 6 commit 6a). Decodes the (empty) loader
  * input at the framework boundary and runs the route-data

@@ -15,7 +15,7 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/access` Access
+ * Browser coverage for the spec-canonical `/desk/access` Access
  * Control v2 surface shipped by Phase 3 Governance & access
  * commit 4 (admin-app implementation plan §8.7 + §11). Exercises
  * the `governance-access-{loader,route-data,route-server}` trio
@@ -26,14 +26,14 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * per tab (Operators · Tuples · Projection profiles · Scopes &
  * permissions), denied StateScreen, stale-session StateScreen.
  */
-const LIST_PATH = "/r/access";
+const LIST_PATH = "/desk/access";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/access Access Control v2 route", () => {
+describe("/desk/access Access Control v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -81,12 +81,12 @@ describe("/r/access Access Control v2 route", () => {
       rendered.container
         .querySelector("[data-testid='access-control-current-operator-link']")
         ?.getAttribute("href"),
-    ).toBe("/r/operator/usr_platform_operator");
+    ).toBe("/desk/operator/usr_platform_operator");
     expect(
       rendered.container
         .querySelector("[data-testid='access-control-operator-link']")
         ?.getAttribute("href"),
-    ).toBe("/r/operator/usr_platform_operator");
+    ).toBe("/desk/operator/usr_platform_operator");
   });
 
   it("renders the Projection profiles tab when ?tab=profiles is set", async () => {

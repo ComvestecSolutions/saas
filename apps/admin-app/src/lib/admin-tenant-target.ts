@@ -69,7 +69,7 @@ export const buildAdminTenantWorkspacePath = (
   const search = new URLSearchParams();
   search.set("scope", target.scope);
 
-  return `/r/tenant/${encodeURIComponent(target.scopeId)}?${search.toString()}`;
+  return `/desk/tenant/${encodeURIComponent(target.scopeId)}?${search.toString()}`;
 };
 
 export const buildAdminTenantScopedRoutePath = (

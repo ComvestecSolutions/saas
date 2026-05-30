@@ -4,12 +4,12 @@ import type {
 } from "./domain-detail-route-data";
 
 /**
- * Loader for `/r/domain/$hostname` (admin-app implementation
+ * Loader for `/desk/domain/$hostname` (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 2).
  * Consumes the route-server entrypoint so the loader stays free
  * of Request/Response or Valkey shaping. Mirrors the v2
- * loader-trio shape used by `/r/billing`, `/r/invoice`, and
- * `/r/meter`.
+ * loader-trio shape used by `/desk/billing`, `/desk/invoice`, and
+ * `/desk/meter`.
  */
 export const loadAdminDomainDetailLoaderData = async (
   input: AdminDomainDetailInput,

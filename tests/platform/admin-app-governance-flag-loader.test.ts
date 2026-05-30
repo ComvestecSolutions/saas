@@ -2,7 +2,7 @@
  * Admin-app governance-flag v2 loader tests (admin-app
  * implementation plan §8.6 + §11 — Phase 3 Governance &
  * access commit 1). Covers the discriminated-union mapping of
- * the `/r/flag` loader trio backed live by
+ * the `/desk/flag` loader trio backed live by
  * `listAdminFeatureFlagsFromSessionId` in
  * `packages/platform/src/services/apps/admin-governance-actions.ts`:
  *

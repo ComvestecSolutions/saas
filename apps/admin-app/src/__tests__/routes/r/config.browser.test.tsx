@@ -17,7 +17,7 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/config` Runtime
+ * Browser coverage for the spec-canonical `/desk/config` Runtime
  * Config v2 surface shipped by Phase 3 Governance & access
  * commit 2 (admin-app implementation plan §8.5 + §11). Exercises
  * the `governance-config-{loader,route-data,route-server}` trio
@@ -28,16 +28,16 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * submit flow exercises the mutations-server via `useServerFn`,
  * denied / stale variants flow through `StateScreen`.
  */
-const LIST_PATH = "/r/config";
+const LIST_PATH = "/desk/config";
 const DETAIL_KEY = `${platformModuleId.runtimeConfig}.session.timeout-29`;
-const DETAIL_PATH = `/r/config/${platformModuleId.runtimeConfig}/${DETAIL_KEY}`;
+const DETAIL_PATH = `/desk/config/${platformModuleId.runtimeConfig}/${DETAIL_KEY}`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/config Runtime Config v2 route", () => {
+describe("/desk/config Runtime Config v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

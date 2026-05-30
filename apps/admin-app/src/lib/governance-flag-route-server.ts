@@ -15,7 +15,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the `/r/flag` Feature Flags
+ * Server-function entrypoint for the `/desk/flag` Feature Flags
  * v2 surface (admin-app implementation plan §8.6 + §11 — Phase
  * 3 Governance & access commit 1). Mirrors the v2 trio shape:
  * decodes the URL filter payload at the framework edge, runs

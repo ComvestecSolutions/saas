@@ -40,6 +40,16 @@ const isFirstPartyAppPostAuthRedirectPath = Schema.is(
   FirstPartyAppPostAuthRedirectPathSchema,
 );
 
+const canonicalizeAdminAuthReturnTo = (value: string) => {
+  const returnToUrl = new URL(value, "https://admin.internal");
+
+  return buildCanonicalAdminLegacyHref({
+    pathname: returnToUrl.pathname,
+    searchStr: returnToUrl.search,
+    hash: returnToUrl.hash,
+  });
+};
+
 const adminAuthRoutePaths = [
   adminAuthRoutePath.signIn,
   adminAuthRoutePath.legacySignIn,
@@ -57,7 +67,14 @@ export const sanitizeAdminAuthReturnTo = (value: string | null | undefined) => {
     return undefined;
   }
 
-  return isFirstPartyAppPostAuthRedirectPath(value) ? value : undefined;
+  if (!isFirstPartyAppPostAuthRedirectPath(value)) {
+    return undefined;
+  }
+
+  const canonicalReturnTo = canonicalizeAdminAuthReturnTo(value);
+  return isFirstPartyAppPostAuthRedirectPath(canonicalReturnTo)
+    ? canonicalReturnTo
+    : undefined;
 };
 
 export const sanitizeAdminAuthSignInReason = (

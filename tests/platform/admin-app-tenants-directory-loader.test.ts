@@ -2,7 +2,7 @@
  * Admin-app Tenants directory loader tests (admin-app
  * implementation plan §9 — Phase 2 Desk Core commit 3
  * cutover). Covers the discriminated-union mapping of the
- * `/r/tenants` loader trio:
+ * `/desk/tenants` loader trio:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`
  *   - `IdentitySessionRequestContextNotFoundError` → `stale-session`

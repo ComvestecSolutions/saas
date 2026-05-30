@@ -15,11 +15,11 @@ import { resolveAdminTenantTargetDisplayName } from "./admin-tenant-target-displ
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
- * Discriminated-union route data for the `/r/billing` Billing
+ * Discriminated-union route data for the `/desk/billing` Billing
  * Operations v2 surface (admin-app implementation plan §8.10 +
  * §11 — Phase 4 Domain operator screens commit 1). Mirrors the
- * v2 loader-trio pattern shipped for `/r/config`, `/r/flag`,
- * `/r/access`, and `/r/tenants`: the route component consumes a
+ * v2 loader-trio pattern shipped for `/desk/config`, `/desk/flag`,
+ * `/desk/access`, and `/desk/tenants`: the route component consumes a
  * thin `shell | stale-session | denied | error | ready`
  * discriminated union.
  *
@@ -39,7 +39,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  *     directory aggregate for billing scope. The loader accepts
  *     the explicit list of `tenantTargets` from the URL search
  *     and renders an empty-state when none are supplied — the
- *     tenant directory surface (`/r/tenants`) is the upstream
+ *     tenant directory surface (`/desk/tenants`) is the upstream
  *     pivot until the platform-side aggregate ships.
  *   - Per-tenant failure isolation (`partialFailures`) deferred
  *     until the typed error channel for `Effect.catchTags` is

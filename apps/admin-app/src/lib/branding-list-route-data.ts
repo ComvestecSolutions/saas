@@ -13,11 +13,11 @@ import {
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
- * Discriminated-union route data for the `/r/branding` Branding
+ * Discriminated-union route data for the `/desk/branding` Branding
  * & Domains v2 surface (admin-app implementation plan §8.10 +
  * §11 — Phase 4 Domain operator screens commit 2). Mirrors the
- * v2 loader-trio pattern shipped for `/r/billing`, `/r/invoice`,
- * and `/r/meter`. The route component consumes a thin
+ * v2 loader-trio pattern shipped for `/desk/billing`, `/desk/invoice`,
+ * and `/desk/meter`. The route component consumes a thin
  * `shell | stale-session | denied | error | ready` discriminated
  * union and reads per-tenant branding posture rows.
  *

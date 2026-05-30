@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { adminRoutePath } from "@comvestec/contracts";
 import { mockedLoaders } from "./admin-browser-mock-state";
-import { renderAdminApp, type RenderedAdminApp } from "./admin-browser-harness";
+import {
+  renderAdminApp,
+  waitFor,
+  type RenderedAdminApp,
+} from "./admin-browser-harness";
 import { createAdminBrowserFixtureState } from "./admin-browser-fixtures";
 
 type AdminBrowserHarnessGlobals = typeof globalThis & {
@@ -96,5 +100,24 @@ describe("admin browser harness", () => {
     expect(() => mockedLoaders.shell(shellLocation)).toThrow(
       "Admin browser fixture state has not been registered.",
     );
+  });
+
+  it("does not surface router devtools in the loaded admin shell", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      adminRoutePath.operationsHome,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Operations Home") ?? false,
+      "Expected the loaded admin shell to render its primary navigation.",
+    );
+
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='router-devtools-sentinel']",
+      ),
+    ).toBeNull();
   });
 });

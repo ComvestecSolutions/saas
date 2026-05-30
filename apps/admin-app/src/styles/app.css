@@ -751,6 +751,8 @@ body {
   border-bottom: 1px solid var(--ops-border);
   margin: 0 0 8px;
   overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
 }
 .ops-tab {
   display: inline-flex;
@@ -766,6 +768,7 @@ body {
   border-bottom: 2px solid transparent;
   cursor: pointer;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 .ops-tab:hover {
   color: var(--ops-text-secondary);

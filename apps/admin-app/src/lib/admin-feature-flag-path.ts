@@ -1,10 +1,10 @@
 import { adminRoutePath, type PlatformModuleId } from "@comvestec/contracts";
 
 /**
- * Canonical builder for `/r/flag` Feature Flags v2 surfaces
+ * Canonical builder for `/desk/flag` Feature Flags v2 surfaces
  * (admin-app implementation plan §8.6 + §11 — Phase 3 Governance
  * & access commit 3). Mirrors `buildAdminRuntimeConfigPath`: the
- * route detail variant is `/r/flag/{flagKey}` and the list
+ * route detail variant is `/desk/flag/{flagKey}` and the list
  * variant is the bare `adminRoutePath.featureFlags` literal.
  * Keeps URL construction next to the spec-canonical constant so
  * the admin-app never reaches for an ad hoc template literal.

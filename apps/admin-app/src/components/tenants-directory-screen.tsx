@@ -86,7 +86,7 @@ export function TenantsDirectoryScreen({
         header: "Workspace",
         cell: ({ row }) => (
           <Link
-            to="/r/tenant/$tenantId"
+            to="/desk/tenant/$tenantId"
             params={{ tenantId: row.original.target.scopeId }}
             search={{ scope: row.original.target.scope }}
             data-testid="tenants-directory-workspace-link"
@@ -275,7 +275,7 @@ export function TenantsDirectoryScreen({
               <div>
                 <Link
                   className="ops-btn ops-btn--xs"
-                  to="/r/tenant/$tenantId"
+                  to="/desk/tenant/$tenantId"
                   params={{ tenantId: focusedTenant.target.scopeId }}
                   search={{ scope: focusedTenant.target.scope }}
                 >

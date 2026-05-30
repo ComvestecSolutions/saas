@@ -105,7 +105,7 @@ const buildEntry = (
   id,
   label: `${facet}-${id}`,
   scopeTag: "global",
-  permalink: `/r/${facet}/${id}`,
+  permalink: `/desk/${facet}/${id}`,
   fieldClassification: "internal",
 });
 

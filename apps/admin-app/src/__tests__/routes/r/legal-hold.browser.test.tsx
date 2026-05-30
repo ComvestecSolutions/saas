@@ -15,7 +15,7 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/legal-hold/$holdId`
+ * Browser coverage for the spec-canonical `/desk/legal-hold/$holdId`
  * Legal Hold Detail surface shipped by Phase 5 Support /
  * compliance / integrations operator screens commit 2
  * (admin-app implementation plan §8.11 + §11). Exercises the
@@ -26,14 +26,14 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * StateScreen, stale-session StateScreen, not-found error
  * StateScreen.
  */
-const PATH = `/r/legal-hold/hold_org_01?scope=${platformScope.organization}&scopeId=org_demo`;
+const PATH = `/desk/legal-hold/hold_org_01?scope=${platformScope.organization}&scopeId=org_demo`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/legal-hold/$holdId Legal Hold Detail route", () => {
+describe("/desk/legal-hold/$holdId Legal Hold Detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

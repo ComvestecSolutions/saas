@@ -4,13 +4,13 @@ import type {
 } from "./legal-hold-detail-route-data";
 
 /**
- * Loader for the spec-canonical `/r/legal-hold/$holdId` Legal
+ * Loader for the spec-canonical `/desk/legal-hold/$holdId` Legal
  * Hold Detail v2 route (admin-app implementation plan §8.11 +
  * §11 — Phase 5 Support / compliance / integrations operator
  * screens commit 2). Consumes the route-server entrypoint so
  * the loader stays free of Request/Response or Valkey shaping.
- * Mirrors the v2 loader-trio shape used by `/r/invoice`,
- * `/r/meter`, `/r/domain`, and `/r/incident`.
+ * Mirrors the v2 loader-trio shape used by `/desk/invoice`,
+ * `/desk/meter`, `/desk/domain`, and `/desk/incident`.
  */
 export const loadAdminLegalHoldDetailLoaderData = async (
   input: AdminLegalHoldDetailInput,

@@ -2,7 +2,7 @@
  * Admin-app Webhook-list loader tests (admin-app
  * implementation plan §8.12 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 3).
- * Covers the discriminated-union mapping of the `/r/webhook`
+ * Covers the discriminated-union mapping of the `/desk/webhook`
  * loader trio backed live by `listWebhookSubscriptionsFromSessionId`
  * composed with `listOperatorWebhookDeliveriesFromEnvironment`
  * through `resolveTrustedRequestContextFromSessionId`:
@@ -15,7 +15,7 @@
  *   - boundary error → `error`
  *   - happy path → `ready` carrying subscriptions + deliveries
  *   - empty scope → `ready` with empty arrays (mirrors
- *     `/r/retention` empty-scope behavior)
+ *     `/desk/retention` empty-scope behavior)
  *
  * Mirrors `tests/platform/admin-app-retention-list-loader.test.ts`.
  */

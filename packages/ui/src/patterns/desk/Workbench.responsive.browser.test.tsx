@@ -4,7 +4,7 @@ import { mount } from "../../testing/browser-test-utils";
 
 describe("Workbench responsive recomposition", () => {
   it.each(["desktop", "tablet"] as const)(
-    "%s: panes flow horizontally as a single row of columns",
+    "%s: panes flow horizontally and keep the workbench vertically scrollable",
     (deviceClass) => {
       const host = mount(
         <Workbench deviceClass={deviceClass}>
@@ -17,6 +17,8 @@ describe("Workbench responsive recomposition", () => {
       ) as HTMLElement;
       expect(work.dataset["deviceClass"]).toBe(deviceClass);
       expect(work.style.gridAutoFlow).toBe("column");
+      expect(work.style.overflowX).toBe("hidden");
+      expect(work.style.overflowY).toBe("auto");
     },
   );
 
@@ -32,6 +34,7 @@ describe("Workbench responsive recomposition", () => {
     ) as HTMLElement;
     expect(work.dataset["deviceClass"]).toBe("mobile");
     expect(work.style.gridAutoFlow).toBe("row");
+    expect(work.style.overflowX).toBe("hidden");
     expect(work.style.overflowY).toBe("auto");
   });
 });

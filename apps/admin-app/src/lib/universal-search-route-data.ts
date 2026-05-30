@@ -17,7 +17,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * bottom Command Strip omnibar with a thin
  * `shell | stale-session | denied | error | ready`
  * discriminated union mirroring the v2 loader-trio shape used
- * by `/r/tenants`, `/r/tenant/$tenantId`, and `/r/audit`.
+ * by `/desk/tenants`, `/desk/tenant/$tenantId`, and `/desk/audit`.
  *
  * The route-data Effect:
  *   1. Extracts the subscriber-journey session id at the

@@ -23,7 +23,7 @@ describe("admin sign-in screen", () => {
   it("renders the governed redirect handoff instead of a local credential form", async () => {
     await act(async () => {
       root.render(
-        <AdminSignInScreen reason="stale-session" returnTo="/r/config" />,
+        <AdminSignInScreen reason="stale-session" returnTo="/desk/config" />,
       );
     });
 
@@ -35,10 +35,10 @@ describe("admin sign-in screen", () => {
     );
     expect(container.textContent).not.toContain("Passphrase");
     expect(container.textContent).not.toContain("Keycloak");
-    expect(container.textContent).not.toContain("/r/config");
+    expect(container.textContent).not.toContain("/desk/config");
 
     const continueLink = container.querySelector(
-      'a[href="/auth/start?returnTo=%2Fr%2Fconfig"]',
+      'a[href="/auth/start?returnTo=%2Fdesk%2Fconfig"]',
     );
 
     expect(continueLink).not.toBeNull();
@@ -48,7 +48,7 @@ describe("admin sign-in screen", () => {
   it("renders callback-expired recovery copy without exposing backend transport details", async () => {
     await act(async () => {
       root.render(
-        <AdminSignInScreen reason="callback-expired" returnTo="/r/access" />,
+        <AdminSignInScreen reason="callback-expired" returnTo="/desk/access" />,
       );
     });
 
@@ -59,7 +59,7 @@ describe("admin sign-in screen", () => {
     expect(container.textContent).not.toContain("callback state");
 
     const continueLink = container.querySelector(
-      'a[href="/auth/start?returnTo=%2Fr%2Faccess"]',
+      'a[href="/auth/start?returnTo=%2Fdesk%2Faccess"]',
     );
 
     expect(continueLink).not.toBeNull();

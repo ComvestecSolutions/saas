@@ -10,7 +10,7 @@ const facetFallbackPath: Record<UniversalSearchFacet, string> = {
   [universalSearchFacet.users]: adminRoutePath.accessControl,
   [universalSearchFacet.featureFlags]: adminRoutePath.featureFlags,
   [universalSearchFacet.configKeys]: adminRoutePath.runtimeConfig,
-  [universalSearchFacet.auditEvents]: "/r/audit",
+  [universalSearchFacet.auditEvents]: "/desk/audit",
   [universalSearchFacet.invoices]: adminRoutePath.billing,
   [universalSearchFacet.webhooks]: adminRoutePath.webhooksApiAccess,
   [universalSearchFacet.customDomains]: adminRoutePath.branding,
@@ -21,10 +21,10 @@ export const resolveUniversalSearchEntryPermalink = (
 ): string => {
   if (entry.permalink.length > 0) return entry.permalink;
   if (entry.facet === universalSearchFacet.tenants) {
-    return `/r/tenant/${entry.id}`;
+    return `/desk/tenant/${entry.id}`;
   }
   const fallback = facetFallbackPath[entry.facet];
-  return fallback === undefined ? `/r/${entry.facet}/${entry.id}` : fallback;
+  return fallback === undefined ? `/desk/${entry.facet}/${entry.id}` : fallback;
 };
 
 export const universalSearchFacetLabel = (

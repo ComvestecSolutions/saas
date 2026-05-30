@@ -31,6 +31,12 @@ const expectProtectedContentHidden = (container: HTMLElement) => {
   ).toBeNull();
 };
 
+const expectRouterDevtoolsHidden = (container: HTMLElement) => {
+  expect(
+    container.querySelector("[data-testid='router-devtools-sentinel']"),
+  ).toBeNull();
+};
+
 describe("admin auth guard browser flow", () => {
   let rendered: RenderedAdminApp | null = null;
 
@@ -55,6 +61,7 @@ describe("admin auth guard browser flow", () => {
 
     expect(rendered.container.textContent).toContain("Redirecting to sign in…");
     expectProtectedContentHidden(rendered.container);
+    expectRouterDevtoolsHidden(rendered.container);
   });
 
   it("keeps protected route content hidden while a stale session is being recovered", async () => {
@@ -71,6 +78,7 @@ describe("admin auth guard browser flow", () => {
 
     expect(rendered.container.textContent).toContain("Redirecting to sign in…");
     expectProtectedContentHidden(rendered.container);
+    expectRouterDevtoolsHidden(rendered.container);
   });
 
   it("shows an access-blocked state instead of looping back through sign-in when the session is authenticated but unauthorized", async () => {
@@ -99,6 +107,7 @@ describe("admin auth guard browser flow", () => {
       rendered.container.querySelector(".ops-auth-redirect-state"),
     ).toBeNull();
     expectProtectedContentHidden(rendered.container);
+    expectRouterDevtoolsHidden(rendered.container);
   });
 
   it("shows a non-redirect failure state when shell bootstrap fails after authentication", async () => {
@@ -129,5 +138,6 @@ describe("admin auth guard browser flow", () => {
       rendered.container.querySelector(".ops-auth-redirect-state"),
     ).toBeNull();
     expectProtectedContentHidden(rendered.container);
+    expectRouterDevtoolsHidden(rendered.container);
   });
 });

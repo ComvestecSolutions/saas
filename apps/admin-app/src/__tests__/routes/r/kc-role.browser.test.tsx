@@ -10,15 +10,15 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 const READY_PATH =
-  "/r/kc-role/kc_role_fixture_1?tenantScope=organization&tenantScopeId=org_demo";
-const TENANT_MISSING_PATH = "/r/kc-role/kc_role_fixture_1";
+  "/desk/kc-role/kc_role_fixture_1?tenantScope=organization&tenantScopeId=org_demo";
+const TENANT_MISSING_PATH = "/desk/kc-role/kc_role_fixture_1";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/kc-role/$id Keycloak role detail route", () => {
+describe("/desk/kc-role/$id Keycloak role detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

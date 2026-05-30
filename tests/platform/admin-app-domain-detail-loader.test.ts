@@ -2,7 +2,7 @@
  * Admin-app Domain-detail loader tests (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 2).
  * Covers the discriminated-union mapping of the
- * `/r/domain/$hostname` loader trio backed live by
+ * `/desk/domain/$hostname` loader trio backed live by
  * `getCustomDomainVerificationFromSessionId`:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`

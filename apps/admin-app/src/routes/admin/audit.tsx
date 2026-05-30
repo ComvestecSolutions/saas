@@ -27,7 +27,7 @@ import type { AdminAuditRouteData } from "../../lib/admin-audit-route-data";
  * `platformModuleId.adminOrganization` so the route cannot
  * widen scope.
  *
- * Distinct from `/r/audit` (the cross-module Audit Log v2
+ * Distinct from `/desk/audit` (the cross-module Audit Log v2
  * filter rail / live-tail surface) — this surface is
  * narrowly scoped to admin-organization activity (member
  * invites, invitation redemption, role changes, member

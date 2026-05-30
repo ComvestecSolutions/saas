@@ -2,7 +2,7 @@
  * Admin-app notify-detail loader tests (admin-app implementation
  * plan §8.16 + §11 — Phase 6 vendor + workflow operator screens
  * commit 6c). Covers the discriminated-union mapping of the
- * `/r/notify/$id` loader trio backed live by
+ * `/desk/notify/$id` loader trio backed live by
  * `getNotificationCenterAdminDetailFromEnvironment`:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`

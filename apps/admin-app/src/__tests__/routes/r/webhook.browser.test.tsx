@@ -15,7 +15,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/webhook` Webhook
+ * Browser coverage for the spec-canonical `/desk/webhook` Webhook
  * Endpoints v2 surface shipped by Phase 5 Support / compliance
  * / integrations operator screens commit 3 (admin-app
  * implementation plan §8.12 + §11). Exercises the
@@ -26,8 +26,8 @@ import {
  * rosters, denied StateScreen, stale-session StateScreen, error
  * StateScreen.
  */
-const PATH = `/r/webhook?scope=${platformScope.organization}&scopeId=org_demo`;
-const EMPTY_PATH = "/r/webhook";
+const PATH = `/desk/webhook?scope=${platformScope.organization}&scopeId=org_demo`;
+const EMPTY_PATH = "/desk/webhook";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
@@ -45,7 +45,7 @@ const selectTenantTargetOption = async (
   await click(getButtonByText(container, label));
 };
 
-describe("/r/webhook Webhook Endpoints v2 route", () => {
+describe("/desk/webhook Webhook Endpoints v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

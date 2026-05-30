@@ -279,6 +279,7 @@ export const OperationsHomeVendorPostureSchema = Schema.Struct({
   version: Schema.optional(Schema.NonEmptyString),
   lastIncidentAt: Schema.optional(IsoTimestampSchema),
   latencyP95Ms: Schema.optional(Schema.Number),
+  message: Schema.optional(Schema.NonEmptyString),
 });
 
 export type OperationsHomeVendorPosture = Schema.Schema.Type<

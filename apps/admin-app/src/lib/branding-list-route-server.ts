@@ -12,7 +12,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the `/r/branding` Branding &
+ * Server-function entrypoint for the `/desk/branding` Branding &
  * Domains v2 surface (admin-app implementation plan §8.10 + §11
  * — Phase 4 Domain operator screens commit 2). Decodes the
  * loader input at the framework boundary and runs the

@@ -2,7 +2,7 @@
  * Admin-app Support-cases loader tests (admin-app implementation
  * plan §8.8 + §11 — Phase 5 Support / compliance / integrations
  * operator screens commit 1). Covers the discriminated-union
- * mapping of the `/r/support` loader trio backed live by the
+ * mapping of the `/desk/support` loader trio backed live by the
  * Phase 1 by-session helpers:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`

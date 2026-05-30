@@ -7,7 +7,7 @@ import {
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
- * Discriminated-union route data for the `/r/tenants` directory
+ * Discriminated-union route data for the `/desk/tenants` directory
  * (admin-app implementation plan §9 — Phase 2 Desk Core commit
  * 3 cutover). Mirrors `operations-home-route-data.ts` and
  * `capability-snapshot-v2-route-data.ts`: the route consumes a

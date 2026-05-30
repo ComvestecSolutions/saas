@@ -15,11 +15,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/support` Support & Incident v2 surface (admin-app
+ * `/desk/support` Support & Incident v2 surface (admin-app
  * implementation plan §8.8 + §11 — Phase 5 Support / compliance
  * / integrations operator screens commit 1). Mirrors the v2
- * loader-trio pattern shipped for `/r/billing`, `/r/branding`,
- * and `/r/access`: the route component consumes a thin
+ * loader-trio pattern shipped for `/desk/billing`, `/desk/branding`,
+ * and `/desk/access`: the route component consumes a thin
  * `shell | stale-session | denied | error | ready` discriminated
  * union and reads the support workspace posture (active
  * break-glass incidents + impersonation sessions + open support
@@ -31,7 +31,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  *     queue rows (status, priority, last update).
  *   - `listSupportBreakGlassIncidentsFromSessionId` → break-glass
  *     incident rows (pending-review + reviewed), the upstream of
- *     the per-incident detail surface `/r/incident/$incidentId`.
+ *     the per-incident detail surface `/desk/incident/$incidentId`.
  *   - `listSupportImpersonationSessionsFromSessionId` → tenant
  *     impersonation sessions, surfaced so operators can pivot
  *     from a case row into the active impersonation banner.
@@ -42,7 +42,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * supersedes the legacy `support-operations-route-data.ts`
  * shipped under Phase 2 — the legacy file is left in place to
  * keep `/support-operations` linked and only the v2 trio lives
- * on the `/r/*` route taxonomy.
+ * on the `/desk/*` route taxonomy.
  */
 export type AdminSupportCasesInput = {
   readonly caseStatus?: SupportOperationsCaseSupportView["status"];

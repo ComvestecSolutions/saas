@@ -9,8 +9,8 @@ import type {
  * §11 — Phase 7 admin-org screens commit 7b-1). Consumes the
  * route-server entrypoint so the loader stays free of
  * Request/Response or Valkey shaping. Mirrors the v2
- * loader-trio shape used by `/r/notify/$id`,
- * `/r/api-key/$keyId`, and `/r/run/$id`.
+ * loader-trio shape used by `/desk/notify/$id`,
+ * `/desk/api-key/$keyId`, and `/desk/run/$id`.
  */
 export const loadAdminProfileLoaderData = async (
   input: AdminProfileInput,

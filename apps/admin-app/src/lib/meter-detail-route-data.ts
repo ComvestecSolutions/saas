@@ -15,7 +15,7 @@ import {
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
- * Discriminated-union route data for `/r/meter/$meterId`
+ * Discriminated-union route data for `/desk/meter/$meterId`
  * (admin-app implementation plan §8.10 + §11 — Phase 4 Domain
  * operator screens commit 1). Composes two Phase 1 helpers:
  *

@@ -1,11 +1,11 @@
 /**
  * Tenant workspace aggregate v2 contracts per admin-app
  * implementation plan §9 item 4 and the Operator Desk
- * `/r/tenant/<id>` Tenant workspace section of
+ * `/desk/tenant/<id>` Tenant workspace section of
  * `specs/02-apps/admin-app/spec.md`.
  *
  * The aggregate is the single payload that the admin-app's Desk
- * Center Workbench loads on `/r/tenant/<id>`. The platform
+ * Center Workbench loads on `/desk/tenant/<id>`. The platform
  * service that produces this payload fans out to multiple
  * tenant-scoped sources (overview, members, recent activity,
  * open incidents, usage spotlights, pending approvals) with

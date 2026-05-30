@@ -11,8 +11,8 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * `/admin/profile` admin-organization operator profile surface
  * (admin-app implementation plan §11 — Phase 7 admin-org screens
  * commit 7b-1). Mirrors the v2 loader-trio shape used across
- * Phase 6 commit 6c (`/r/notify/$id`) and Phase 5 commit 3
- * (`/r/api-key/$keyId`).
+ * Phase 6 commit 6c (`/desk/notify/$id`) and Phase 5 commit 3
+ * (`/desk/api-key/$keyId`).
  *
  * Backed live by `getAdminOperatorProfileFromEnvironment`
  * (admin-app implementation plan §9 item 1). The helper takes

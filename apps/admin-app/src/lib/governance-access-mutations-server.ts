@@ -12,7 +12,7 @@ import {
 /**
  * Access Control v2 mutation server-fns (admin-app implementation
  * plan §8.7 + §11 — Phase 3 Governance & access commit 4).
- * Mirrors the `/r/config` and `/r/flag` `*-mutations-server`
+ * Mirrors the `/desk/config` and `/desk/flag` `*-mutations-server`
  * siblings: each helper decodes its input at the framework
  * boundary via `Schema.decodeUnknown`, extracts the operator
  * session id from the request envelope, and is wired to delegate

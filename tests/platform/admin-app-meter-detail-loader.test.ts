@@ -2,7 +2,7 @@
  * Admin-app Meter-detail loader tests (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 1).
  * Covers the discriminated-union mapping of the
- * `/r/meter/$meterId` loader trio backed live by
+ * `/desk/meter/$meterId` loader trio backed live by
  * `getOpenMeterMeterBySlugFromEnvironment` +
  * `getOpenMeterUsageQueryFromEnvironment`:
  *

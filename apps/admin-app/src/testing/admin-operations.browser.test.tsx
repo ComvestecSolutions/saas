@@ -132,6 +132,9 @@ describe("admin operations browser flows", () => {
     expect(rendered.container.textContent).toContain("Break-glass incident");
     expect(rendered.container.textContent).toContain("novu");
     expect(rendered.container.textContent).toContain("postal");
+    expect(rendered.container.textContent).toContain(
+      "Postal admin API unreachable.",
+    );
     expect(
       rendered.container.querySelectorAll(".ops-alert").length,
     ).toBeGreaterThan(0);
@@ -515,7 +518,7 @@ describe("admin operations browser flows", () => {
     );
 
     const workspaceLink = rendered.container.querySelector<HTMLAnchorElement>(
-      "[data-testid='support-cases-case-row'] a[href^='/r/tenant/']",
+      "[data-testid='support-cases-case-row'] a[href^='/desk/tenant/']",
     );
     if (!(workspaceLink instanceof HTMLAnchorElement)) {
       throw new TypeError(

@@ -13,11 +13,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/delivery/$deliveryId` Webhook Delivery Detail v2 surface
+ * `/desk/delivery/$deliveryId` Webhook Delivery Detail v2 surface
  * (admin-app implementation plan §8.12 + §11 — Phase 5 Support
  * / compliance / integrations operator screens commit 3).
- * Mirrors the v2 loader-trio pattern shipped for `/r/invoice`,
- * `/r/meter`, `/r/domain`, `/r/incident`, and `/r/legal-hold`.
+ * Mirrors the v2 loader-trio pattern shipped for `/desk/invoice`,
+ * `/desk/meter`, `/desk/domain`, `/desk/incident`, and `/desk/legal-hold`.
  *
  * Backed live by the operator-webhook-delivery platform
  * service through `resolveTrustedRequestContextFromSessionId`
@@ -35,8 +35,8 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * body for `retryOperatorWebhookDeliveryFromEnvironment` is
  * tracked under the Admin app row's Phase 5 follow-ups in the
  * implementation tracker (spine first, body second; mirrors the
- * release-grant CTA on `/r/incident/$incidentId` and the
- * release-hold CTA on `/r/legal-hold/$holdId`).
+ * release-grant CTA on `/desk/incident/$incidentId` and the
+ * release-hold CTA on `/desk/legal-hold/$holdId`).
  */
 export type AdminDeliveryDetailInput = {
   readonly deliveryId: string;

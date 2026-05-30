@@ -15,18 +15,18 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/runs` Workflow Runs
+ * Browser coverage for the spec-canonical `/desk/runs` Workflow Runs
  * v2 list surface shipped by Phase 6 commit 6b
  * (admin-app implementation plan §8.14 + §11).
  */
-const PATH = "/r/runs";
+const PATH = "/desk/runs";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/runs Workflow Runs v2 list route", () => {
+describe("/desk/runs Workflow Runs v2 list route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -178,6 +178,47 @@ describe("/r/runs Workflow Runs v2 list route", () => {
     expect(rendered.container.textContent).toContain(
       "The current operator session cannot inspect workflow runs.",
     );
+  });
+
+  it("guides the operator when no workflow runs have succeeded yet", async () => {
+    const noSuccessFixture = withFixtureTransform(
+      createAdminBrowserFixtureState(),
+      (fixture) => ({
+        ...fixture,
+        loadWorkflowRunsList: async (input) => ({
+          kind: "ready",
+          filters: input.filters,
+          result: {
+            runs: [
+              {
+                runId: "wfr_browser_failed",
+                moduleId: platformModuleId.workflowJobs,
+                workflowKey: "platform.notifications.flush",
+                status: workflowRunStatus.failed,
+                queuedAt: new Date(3000).toISOString(),
+                startedAt: new Date(4000).toISOString(),
+                finishedAt: new Date(5000).toISOString(),
+                durationMs: 1000,
+                attempt: 2,
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    rendered = await renderAdminApp(noSuccessFixture, PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("No successful runs yet") ??
+        false,
+      "Expected workflow runs readiness guidance to render.",
+    );
+    expect(rendered.container.textContent).toContain(
+      "bun run backend:subscriber-journey:ready:local",
+    );
+    expect(rendered.container.textContent).toContain("Review vendor posture");
   });
 
   it("surfaces the stale-session affordance when the loader is stale", async () => {

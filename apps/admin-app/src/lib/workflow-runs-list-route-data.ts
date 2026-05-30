@@ -13,11 +13,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/runs` Workflow Runs v2 list surface (admin-app
+ * `/desk/runs` Workflow Runs v2 list surface (admin-app
  * implementation plan §8.14 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6b). Mirrors the v2 loader-trio
- * pattern shipped for `/r/vendors`, `/r/webhook`,
- * `/r/retention`, and `/r/notify`.
+ * pattern shipped for `/desk/vendors`, `/desk/webhook`,
+ * `/desk/retention`, and `/desk/notify`.
  *
  * Backed live by `listWorkflowRunsAdminFromEnvironment`
  * (admin-app implementation plan §9 item 15). The platform

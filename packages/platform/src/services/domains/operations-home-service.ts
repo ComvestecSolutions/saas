@@ -448,6 +448,7 @@ const mapVendorHealthEntryToOperationsHomeVendorPosture = (
     ? {}
     : { lastIncidentAt: entry.lastIncidentAt }),
   ...(entry.latencyMs > 0 ? { latencyP95Ms: entry.latencyMs } : {}),
+  ...(entry.message === undefined ? {} : { message: entry.message }),
 });
 
 type OperationsHomeKpiSourceResolvers = {

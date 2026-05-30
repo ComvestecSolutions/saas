@@ -9,7 +9,7 @@ import type {
 
 /**
  * RuntimeConfigListTable — presentational table used by the
- * `/r/config` list pane and the `/r/config/$moduleId/$configKey`
+ * `/desk/config` list pane and the `/desk/config/$moduleId/$configKey`
  * detail pane (admin-app implementation plan §8.5 + §11 — Phase 3
  * Governance & access commit 2). The two routes share the same
  * spec-canonical projection so the detail surface always renders
@@ -125,7 +125,7 @@ export function RuntimeConfigListTable({
               <td style={{ padding: 4 }}>
                 <Link
                   data-testid="runtime-config-list-row-link"
-                  to="/r/config/$moduleId/$configKey"
+                  to="/desk/config/$moduleId/$configKey"
                   params={{ moduleId: row.moduleId, configKey: row.key }}
                   preload={false}
                 >

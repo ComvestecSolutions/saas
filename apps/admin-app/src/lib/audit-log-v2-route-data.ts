@@ -16,7 +16,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 /**
  * Audit Log v2 route data (admin-app implementation plan §9 —
  * Phase 2 Desk Core commit 6). Mirrors the v2 loader-trio
- * pattern shipped for `/r/tenants` and `/r/tenant/$tenantId`:
+ * pattern shipped for `/desk/tenants` and `/desk/tenant/$tenantId`:
  * the route component consumes a thin `shell | stale-session |
  * denied | error | ready` discriminated union.
  *

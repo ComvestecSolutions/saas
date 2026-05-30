@@ -9,12 +9,12 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/run/$id` Workflow Run Detail v2 surface (admin-app
+ * `/desk/run/$id` Workflow Run Detail v2 surface (admin-app
  * implementation plan §8.14 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6b). Mirrors the v2 loader-trio
- * pattern shipped for `/r/incident/$incidentId`,
- * `/r/legal-hold/$holdId`, `/r/delivery/$deliveryId`, and
- * `/r/api-key/$keyId`.
+ * pattern shipped for `/desk/incident/$incidentId`,
+ * `/desk/legal-hold/$holdId`, `/desk/delivery/$deliveryId`, and
+ * `/desk/api-key/$keyId`.
  *
  * Backed live by `getWorkflowRunsAdminDetailFromEnvironment`
  * (admin-app implementation plan §9 item 15). The platform
@@ -33,7 +33,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * `cancelWorkflowRunFromEnvironment` are tracked under the
  * Admin app row's Phase 6 follow-ups in the implementation
  * tracker (mirrors the rotate / revoke CTAs on
- * `/r/api-key/$keyId`).
+ * `/desk/api-key/$keyId`).
  */
 export type AdminWorkflowRunDetailInput = {
   readonly runId: string;

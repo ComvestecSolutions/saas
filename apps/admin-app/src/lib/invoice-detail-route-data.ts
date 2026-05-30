@@ -9,7 +9,7 @@ import {
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
- * Discriminated-union route data for `/r/invoice/$invoiceId`
+ * Discriminated-union route data for `/desk/invoice/$invoiceId`
  * (admin-app implementation plan §8.10 + §11 — Phase 4 Domain
  * operator screens commit 1). The invoice-detail surface
  * resolves the Polar customer scoped to the invoice via the

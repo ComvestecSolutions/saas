@@ -18,7 +18,7 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/flag` Feature Flags
+ * Browser coverage for the spec-canonical `/desk/flag` Feature Flags
  * v2 surface shipped by Phase 3 Governance & access commit 3
  * (admin-app implementation plan §8.6 + §11). Exercises the
  * `governance-flag-{loader,route-data,route-server}` trio end to
@@ -29,15 +29,15 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * submit flow exercises the mutations-server via `useServerFn`,
  * denied / stale variants flow through `StateScreen`.
  */
-const LIST_PATH = "/r/flag";
-const DETAIL_PATH = `/r/flag/${platformModuleId.featureFlags}.operator-flag-1`;
+const LIST_PATH = "/desk/flag";
+const DETAIL_PATH = `/desk/flag/${platformModuleId.featureFlags}.operator-flag-1`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/flag Feature Flags v2 route", () => {
+describe("/desk/flag Feature Flags v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

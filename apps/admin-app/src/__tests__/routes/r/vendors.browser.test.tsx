@@ -15,7 +15,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/vendors` Vendor
+ * Browser coverage for the spec-canonical `/desk/vendors` Vendor
  * Health v2 surface shipped by Phase 6 vendor + workflow
  * operator screens commit 6a (admin-app implementation plan
  * §8.15 + §11). Exercises the
@@ -26,14 +26,14 @@ import {
  * out, denied StateScreen, stale-session StateScreen, error
  * StateScreen.
  */
-const PATH = "/r/vendors";
+const PATH = "/desk/vendors";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/vendors Vendor Health v2 route", () => {
+describe("/desk/vendors Vendor Health v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -77,7 +77,7 @@ describe("/r/vendors Vendor Health v2 route", () => {
       links.some((link) =>
         link
           .getAttribute("href")
-          ?.includes(`/r/vendor/${platformAdapterServiceName.keycloak}`),
+          ?.includes(`/desk/vendor/${platformAdapterServiceName.keycloak}`),
       ),
     ).toBe(true);
     expect(

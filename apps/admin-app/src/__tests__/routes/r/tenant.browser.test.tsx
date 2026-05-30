@@ -17,7 +17,7 @@ import {
 
 /**
  * Browser coverage for the Tenant workspace v2 route
- * (`/r/tenant/$tenantId`) shipped by Phase 2 Desk Core commit 4
+ * (`/desk/tenant/$tenantId`) shipped by Phase 2 Desk Core commit 4
  * (admin-app implementation plan §9 item 4). Exercises the v2
  * loader (`tenant-workspace-v2-loader`) end-to-end via the admin
  * browser harness mock state, and confirms the membership
@@ -28,14 +28,14 @@ import {
  * `partialFailures` rendering and ready / denied / stale-session
  * variants are asserted directly.
  */
-const TENANT_PATH = "/r/tenant/org_demo?scope=organization";
+const TENANT_PATH = "/desk/tenant/org_demo?scope=organization";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/tenant/$tenantId v2 route", () => {
+describe("/desk/tenant/$tenantId v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

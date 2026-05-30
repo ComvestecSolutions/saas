@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Last updated: 2026-05-26
+Last updated: 2026-05-29
 
 This plan supersedes the previous admin implementation plan. It
 covers the full redesign on the **Operator Desk** shell with the new
@@ -43,8 +43,9 @@ experience failures that this plan explicitly corrects:
 2. Some workflows still require manual machine-facing inputs such as a
    bearer token from the current Keycloak session or free-text scope
    identifiers.
-3. `/desk` and `/r/$` still expose placeholder states instead of real
-   operator-grade mission-control surfaces.
+3. `/desk` and the legacy `/r/*` compatibility redirect path still
+   expose placeholder transitions instead of real operator-grade
+   mission-control surfaces.
 4. Several mutation-heavy admin surfaces remain thin shells with
    limited confirmation and post-action guidance instead of complete
    operator workflows.
@@ -123,34 +124,34 @@ See ADR-022 for the full decision. Summary:
 Old model: routes → pages. New model: URL describes a workbench
 layout of resource views.
 
-| Type                   | Resource path                         | Pane behaviour                                                             |
-| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------- |
-| `tenant`               | `/r/tenant/<id>`                      | Tabbed: Overview · Members · Billing · Branding · Audit · Repair · Support |
-| `tenant-list`          | `/r/tenants`                          | Dense data table v2 with facets / saved views                              |
-| `runtime-config`       | `/r/config/<moduleId>/<key>[?scope=]` | Diff / proposal / approval drawer / history                                |
-| `feature-flag`         | `/r/flag/<key>[?scope=]`              | Lifecycle / rollout / dependencies / audit                                 |
-| `audit-event`          | `/r/audit/<eventId>`                  | Event detail with correlation graph                                        |
-| `audit-query`          | `/r/audit?…filters`                   | Stream-style log explorer + facets + live tail                             |
-| `support-incident`     | `/r/incident/<id>`                    | Break-glass review, reviewer, expiry, timeline                             |
-| `webhook-subscription` | `/r/webhook/<id>`                     | Subscription + recent deliveries + replay                                  |
-| `webhook-delivery`     | `/r/delivery/<id>`                    | Headers/body, retry, signature inspector, audit echo                       |
-| `api-key`              | `/r/api-key/<id>`                     | Rotate/revoke, scopes, usage; reveal flow                                  |
-| `billing-account`      | `/r/billing/<tenantId>`               | Plan, entitlements, usage, invoices, reconciliation                        |
-| `invoice`              | `/r/invoice/<id>`                     | Lines, payment state, deep-link to Polar                                   |
-| `meter`                | `/r/meter/<id>`                       | OpenMeter usage chart, anomalies                                           |
-| `legal-hold`           | `/r/legal-hold/<id>`                  | Hold placement / release / evidence                                        |
-| `retention-policy`     | `/r/retention/<dataType>`             | Policy, guards, purges scheduled                                           |
-| `domain`               | `/r/domain/<hostname>`                | Custom-domain lifecycle, DNS, verification                                 |
-| `branding-asset`       | `/r/branding/<tenantId>`              | Logo / theme / sender, preview                                             |
-| `keycloak-user`        | `/r/kc-user/<id>`                     | Roles, sessions, MFA, deep-link to Keycloak                                |
-| `kc-realm-role`        | `/r/kc-role/<id>`                     | Membership, audit                                                          |
-| `operator`             | `/r/operator/<id>`                    | Staffing profile, capabilities, recent actions                             |
-| `admin-membership`     | `/r/admin-member/<id>`                | Internal admin-org membership                                              |
-| `notification`         | `/r/notify/<id>`                      | Novu delivery state                                                        |
-| `vendor-health`        | `/r/vendor/<service>`                 | One service's health, latency, version, deep-link                          |
-| `workflow-run`         | `/r/run/<id>`                         | Workflow-jobs run with replay/cancel                                       |
+| Type                   | Resource path                            | Pane behaviour                                                             |
+| ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `tenant`               | `/desk/tenant/<id>`                      | Tabbed: Overview · Members · Billing · Branding · Audit · Repair · Support |
+| `tenant-list`          | `/desk/tenants`                          | Dense data table v2 with facets / saved views                              |
+| `runtime-config`       | `/desk/config/<moduleId>/<key>[?scope=]` | Diff / proposal / approval drawer / history                                |
+| `feature-flag`         | `/desk/flag/<key>[?scope=]`              | Lifecycle / rollout / dependencies / audit                                 |
+| `audit-event`          | `/desk/audit/<eventId>`                  | Event detail with correlation graph                                        |
+| `audit-query`          | `/desk/audit?…filters`                   | Stream-style log explorer + facets + live tail                             |
+| `support-incident`     | `/desk/incident/<id>`                    | Break-glass review, reviewer, expiry, timeline                             |
+| `webhook-subscription` | `/desk/webhook/<id>`                     | Subscription + recent deliveries + replay                                  |
+| `webhook-delivery`     | `/desk/delivery/<id>`                    | Headers/body, retry, signature inspector, audit echo                       |
+| `api-key`              | `/desk/api-key/<id>`                     | Rotate/revoke, scopes, usage; reveal flow                                  |
+| `billing-account`      | `/desk/billing/<tenantId>`               | Plan, entitlements, usage, invoices, reconciliation                        |
+| `invoice`              | `/desk/invoice/<id>`                     | Lines, payment state, deep-link to Polar                                   |
+| `meter`                | `/desk/meter/<id>`                       | OpenMeter usage chart, anomalies                                           |
+| `legal-hold`           | `/desk/legal-hold/<id>`                  | Hold placement / release / evidence                                        |
+| `retention-policy`     | `/desk/retention/<dataType>`             | Policy, guards, purges scheduled                                           |
+| `domain`               | `/desk/domain/<hostname>`                | Custom-domain lifecycle, DNS, verification                                 |
+| `branding-asset`       | `/desk/branding/<tenantId>`              | Logo / theme / sender, preview                                             |
+| `keycloak-user`        | `/desk/kc-user/<id>`                     | Roles, sessions, MFA, deep-link to Keycloak                                |
+| `kc-realm-role`        | `/desk/kc-role/<id>`                     | Membership, audit                                                          |
+| `operator`             | `/desk/operator/<id>`                    | Staffing profile, capabilities, recent actions                             |
+| `admin-membership`     | `/desk/admin-member/<id>`                | Internal admin-org membership                                              |
+| `notification`         | `/desk/notify/<id>`                      | Novu delivery state                                                        |
+| `vendor-health`        | `/desk/vendor/<service>`                 | One service's health, latency, version, deep-link                          |
+| `workflow-run`         | `/desk/run/<id>`                         | Workflow-jobs run with replay/cancel                                       |
 
-Top-level routes:
+Canonical top-level routes:
 
 ```
 /                 -> /desk (or /sign-in)
@@ -158,7 +159,8 @@ Top-level routes:
 /auth/sign-in     compatibility alias during cutover; same visual surface
 /auth/*           OIDC callback / start / logout (kept; behaviour unchanged)
 /desk             shell + workbench
-/r/*              resource view loaders
+/desk/*           resource view loaders
+/r/*              compatibility redirect to /desk/*
 /admin/*          internal admin-org settings (members, workspaces, tokens, profile, audit)
 ```
 
@@ -262,7 +264,7 @@ Default workbench on sign-in:
 
 Backend: §9 item 3 (Ops Home aggregate v2).
 
-### 8.3 Tenant list (`/r/tenants`)
+### 8.3 Tenant list (`/desk/tenants`)
 
 DenseDataTable v2. Columns: name, slug, env, plan, status
 chips, members, MRR, last activity, branding state, custom
@@ -270,50 +272,50 @@ domain, open incidents. Saved views: "All", "Prod", "Trial",
 "Past due", "Drifted", "Open incidents". Bulk actions gated by
 capability.
 
-### 8.4 Tenant workspace (`/r/tenant/<id>`)
+### 8.4 Tenant workspace (`/desk/tenant/<id>`)
 
 Tabs in one pane: **Overview · Members & Invitations · Billing ·
 Branding · Audit · Repair · Support · Danger Zone**. Danger
 Zone surfaces are greyed with a backend-gap tooltip until
 suspend/terminate land. Backend: §9 item 4.
 
-### 8.5 Runtime Config (`/r/config[...]`)
+### 8.5 Runtime Config (`/desk/config[...]`)
 
 List + 4-way diff detail + DiffApprovalDrawer. Edit form rendered
 from schema type. Source / status / scope filters. Last-N change
 history inline.
 
-### 8.6 Feature Flags (`/r/flag[...]`)
+### 8.6 Feature Flags (`/desk/flag[...]`)
 
 List with lifecycle / dependencies / billable cue. Detail with
 rollout state, dependency mini-graph, approval drawer. Backend:
 §9 item — dependency-graph projection over Unleash.
 
-### 8.7 Access Control (`/r/access`)
+### 8.7 Access Control (`/desk/access`)
 
 Tabs: **Operators (admin-org members + roles), Tuples (Ory Keto
 inspector), Projection profiles, Scopes & permissions**.
 
-### 8.8 Audit Log (`/r/audit`)
+### 8.8 Audit Log (`/desk/audit`)
 
 LogStream pattern with facets, time presets, live tail,
 correlation graph (paired pane), per-event JSON inspector with
 reveal flow, saved queries, audited exports.
 
-### 8.9 Support Operations (`/r/support`, `/r/incident/<id>`)
+### 8.9 Support Operations (`/desk/support`, `/desk/incident/<id>`)
 
 Cases list, active break-glass grants, expiring soon. Incident
 detail: timeline, approval state, reviewer, expiry, audit echo,
 release-grant cta. Backend: §9 items 5 + 14.
 
-### 8.10 Branding & Domains (`/r/branding[...]`, `/r/domain/<host>`)
+### 8.10 Branding & Domains (`/desk/branding[...]`, `/desk/domain/<host>`)
 
 Assets, theme tokens, sender identity, side-by-side preview
 (default vs tenant via real public-web iframe). Domain lifecycle
 chips, DNS records with copy, verify cta, activate behind
 high-risk guard.
 
-### 8.11 Billing & Entitlements (`/r/billing[...]`, `/r/invoice/<id>`, `/r/meter/<id>`)
+### 8.11 Billing & Entitlements (`/desk/billing[...]`, `/desk/invoice/<id>`, `/desk/meter/<id>`)
 
 Per-tenant + global revenue posture (MRR/ARR 6/12 months),
 failed payments, reconciliation gaps, Polar webhook failures.
@@ -321,35 +323,35 @@ Invoice deep-links to Polar (no in-app refund per owner
 decision). Meters show OpenMeter usage and anomalies. Backend:
 §9 items 7 + 8.
 
-### 8.12 Compliance & Retention (`/r/retention[...]`, `/r/legal-hold/<id>`)
+### 8.12 Compliance & Retention (`/desk/retention[...]`, `/desk/legal-hold/<id>`)
 
 Retention policies per data type with guards visible, scheduled
 purges with countdown and pause/resume, legal hold place/release
 with evidence capture.
 
-### 8.13 Webhooks & API Access (`/r/webhook[...]`, `/r/api-key/<id>`)
+### 8.13 Webhooks & API Access (`/desk/webhook[...]`, `/desk/api-key/<id>`)
 
 Tabs: inbound · outbound · API keys. Delivery log explorer with
 retry/replay, signature inspector, payload viewer with reveal.
 API keys: rotate/revoke + secret reveal. Backend: §9 item 6.
 
-### 8.14 Workflow Runs (`/r/runs`, `/r/run/<id>`)
+### 8.14 Workflow Runs (`/desk/runs`, `/desk/run/<id>`)
 
 List and detail with steps, payload, audit, replay, cancel.
 Backend: §9 item 15.
 
-### 8.15 Vendor Health (`/r/vendors`, `/r/vendor/<service>`)
+### 8.15 Vendor Health (`/desk/vendors`, `/desk/vendor/<service>`)
 
 Grid of all integrated services with status dot, version,
 latency, last incident, deep-link. Per-vendor detail with
 history and runbook. Backend: §9 items 9 + 10.
 
-### 8.16 Notification Center (`/r/notify[...]`)
+### 8.16 Notification Center (`/desk/notify[...]`)
 
 Outbound Novu deliveries, in-app inbox, filters, resend cta.
 Backend: §9 item 16.
 
-### 8.17 Search (`/r/search?q=`)
+### 8.17 Search (`/desk/search?q=`)
 
 Global search results page (omnibar "see all" surface). Backend:
 §9 item 11.
@@ -494,30 +496,30 @@ per item.
 
 ### Phase 2 — Desk core + Ops Home + Tenant + Audit + Omnibar v1
 
-Wire the desk shell to real data. Ship `/desk`, `/r/tenant`,
-`/r/tenants`, `/r/audit`. Omnibar v1 (federated search across
+Wire the desk shell to real data. Ship `/desk`, `/desk/tenant`,
+`/desk/tenants`, `/desk/audit`. Omnibar v1 (federated search across
 tenants, users, configs, flags).
 
 ### Phase 3 — Governance & access
 
-`/r/config`, `/r/flag`, `/r/access`. DiffApprovalDrawer fully
+`/desk/config`, `/desk/flag`, `/desk/access`. DiffApprovalDrawer fully
 wired. Admin-org role mapping consumed in capability snapshot
 v2.
 
 ### Phase 4 — Domain operator screens
 
-`/r/billing`, `/r/branding`, `/r/domain`, `/r/invoice`,
-`/r/meter`. Land Polar revenue + OpenMeter usage helpers.
+`/desk/billing`, `/desk/branding`, `/desk/domain`, `/desk/invoice`,
+`/desk/meter`. Land Polar revenue + OpenMeter usage helpers.
 
 ### Phase 5 — Support, compliance, integrations
 
-`/r/support`, `/r/incident`, `/r/retention`, `/r/legal-hold`,
-`/r/webhook`, `/r/delivery`, `/r/api-key`.
+`/desk/support`, `/desk/incident`, `/desk/retention`, `/desk/legal-hold`,
+`/desk/webhook`, `/desk/delivery`, `/desk/api-key`.
 
 ### Phase 6 — Vendor surfaces & workflow
 
-`/r/vendors`, `/r/vendor`, `/r/notify`, `/r/runs`, `/r/run`,
-`/r/kc-user`, `/r/kc-role`.
+`/desk/vendors`, `/desk/vendor`, `/desk/notify`, `/desk/runs`, `/desk/run`,
+`/desk/kc-user`, `/desk/kc-role`.
 
 ### Phase 7 — Admin org settings
 

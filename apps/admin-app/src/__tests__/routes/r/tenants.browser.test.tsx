@@ -16,7 +16,7 @@ import {
 
 /**
  * Browser coverage for the spec §8.3 dense data table v2
- * cutover of `/r/tenants` (admin-app implementation plan §9 —
+ * cutover of `/desk/tenants` (admin-app implementation plan §9 —
  * Phase 2 Desk Core commit 3). Rendered through the admin
  * browser harness so the loader-trio
  * (`tenants-directory-loader`, `tenants-directory-route-server`)
@@ -32,7 +32,7 @@ const withTenantsFixtureTransform = (
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/tenants resource route", () => {
+describe("/desk/tenants resource route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

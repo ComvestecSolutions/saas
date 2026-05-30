@@ -9,7 +9,7 @@ import { adminTest as test, expect } from "./fixtures/trusted-session";
  *      bearer token paste — spec guardrail §14.9)
  *   2. land on `/desk` and confirm the shell renders
  *   3. pin a tenant via the omnibar / EdgeRail (spec §8.4)
- *   4. open `/r/audit` and reveal a regulated-sensitive field
+ *   4. open `/desk/audit` and reveal a regulated-sensitive field
  *      through `RevealField` (spec §8.8 + governance pattern)
  *   5. open `/admin/members` and exercise the invite confirm flow
  *      through `HighRiskActionGuard` (spec §8.18)
@@ -51,13 +51,13 @@ test.describe("admin operator journey", () => {
       await omnibar.pressSequentially(`t/${trustedSession.tenantId}`);
       await omnibar.press("Enter");
       await expect(page).toHaveURL(
-        new RegExp(`/r/tenant/${trustedSession.tenantId}`),
+        new RegExp(`/desk/tenant/${trustedSession.tenantId}`),
       );
     });
 
-    await test.step("open /r/audit and reveal a regulated-sensitive field", async () => {
+    await test.step("open /desk/audit and reveal a regulated-sensitive field", async () => {
       await page.goto(
-        `${trustedSession.baseURL}/r/audit?module=support-operations`,
+        `${trustedSession.baseURL}/desk/audit?module=support-operations`,
         {
           waitUntil: "domcontentloaded",
         },

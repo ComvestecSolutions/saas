@@ -3,7 +3,7 @@
  * implementation plan §8.12 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 3).
  * Covers the discriminated-union mapping of the
- * `/r/delivery/$deliveryId` loader trio backed live by
+ * `/desk/delivery/$deliveryId` loader trio backed live by
  * `getOperatorWebhookDeliveryFromEnvironment` (returns an
  * `Option`) through `resolveTrustedRequestContextFromSessionId`:
  *

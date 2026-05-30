@@ -15,7 +15,7 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
  * Browser coverage for the spec-canonical
- * `/r/domain/$hostname` Custom-domain lifecycle surface
+ * `/desk/domain/$hostname` Custom-domain lifecycle surface
  * shipped by Phase 4 Domain operator screens commit 2
  * (admin-app implementation plan §8.10 + §11). Exercises the
  * `domain-detail-{loader,route-data,route-server}` trio end to
@@ -28,17 +28,17 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * stale-session StateScreen, error StateScreen.
  */
 const HOSTNAME = "ops.fixture.tenant.example";
-const PATH_READY = `/r/domain/${encodeURIComponent(
+const PATH_READY = `/desk/domain/${encodeURIComponent(
   HOSTNAME,
 )}?tenantScope=organization&tenantScopeId=org_demo`;
-const PATH_MISSING_TENANT = `/r/domain/${encodeURIComponent(HOSTNAME)}`;
+const PATH_MISSING_TENANT = `/desk/domain/${encodeURIComponent(HOSTNAME)}`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/domain/$hostname Custom-domain lifecycle v2 route", () => {
+describe("/desk/domain/$hostname Custom-domain lifecycle v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

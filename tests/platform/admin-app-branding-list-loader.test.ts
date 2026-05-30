@@ -1,7 +1,7 @@
 /**
  * Admin-app Branding-list loader tests (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 2).
- * Covers the discriminated-union mapping of the `/r/branding`
+ * Covers the discriminated-union mapping of the `/desk/branding`
  * loader trio backed live by
  * `getTenantBrandingSupportSafeViewFromSessionId`:
  *

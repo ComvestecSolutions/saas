@@ -11,7 +11,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for `/r/invoice/$invoiceId`
+ * Server-function entrypoint for `/desk/invoice/$invoiceId`
  * (admin-app implementation plan §8.10 + §11 — Phase 4 Domain
  * operator screens commit 1). Decodes the loader input at the
  * framework boundary and runs the route-data Effect on the

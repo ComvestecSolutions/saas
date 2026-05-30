@@ -11,7 +11,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for `/r/legal-hold/$holdId`
+ * Server-function entrypoint for `/desk/legal-hold/$holdId`
  * (admin-app implementation plan §8.11 + §11 — Phase 5 commit
  * 2). Decodes the loader input at the framework boundary and
  * runs the route-data Effect on the server. No

@@ -15,7 +15,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/audit` route
+ * Browser coverage for the spec-canonical `/desk/audit` route
  * shipped by Phase 2 Desk Core commit 6 (admin-app
  * implementation plan §9). Exercises the
  * `audit-log-v2-{loader,route-data,route-server}` trio end to
@@ -23,14 +23,14 @@ import {
  * the render / URL-filter state / live-tail toggle / denied /
  * empty / error variants.
  */
-const AUDIT_PATH = "/r/audit";
+const AUDIT_PATH = "/desk/audit";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/audit Audit Log v2 route", () => {
+describe("/desk/audit Audit Log v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

@@ -5,7 +5,7 @@ import { createAdminAppFileRoute } from "../../file-route";
 /**
  * Legacy tenant discovery entrypoint kept as a path-compatible alias
  * for existing deep links. The app-wide capability model now points
- * at `/r/tenants`; this route remains only as a compatibility shim.
+ * at `/desk/tenants`; this route remains only as a compatibility shim.
  */
 export const Route = createAdminAppFileRoute("/tenants/")({
   loader: () =>

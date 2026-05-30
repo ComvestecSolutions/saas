@@ -14,15 +14,15 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/vendor/$service` Vendor Detail v2 surface (admin-app
+ * `/desk/vendor/$service` Vendor Detail v2 surface (admin-app
  * implementation plan §8.15 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6a). Mirrors the v2 loader-trio
- * pattern shipped for `/r/incident/$incidentId`,
- * `/r/legal-hold/$holdId`, `/r/delivery/$deliveryId`, and
- * `/r/api-key/$keyId`.
+ * pattern shipped for `/desk/incident/$incidentId`,
+ * `/desk/legal-hold/$holdId`, `/desk/delivery/$deliveryId`, and
+ * `/desk/api-key/$keyId`.
  *
  * Backed live by the same `vendor-health-aggregator` platform
- * service consumed by `/r/vendors` (Phase 1 backend item 9).
+ * service consumed by `/desk/vendors` (Phase 1 backend item 9).
  * Per-vendor read helpers (Phase 1 backend item 10 — Keycloak,
  * Polar, OpenMeter, Novu, Postal, GlitchTip, OpenPanel) are
  * intentionally surfaced as deep-link affordances rather than

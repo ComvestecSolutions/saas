@@ -15,7 +15,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/retention`
+ * Browser coverage for the spec-canonical `/desk/retention`
  * Retention & Legal-hold v2 surface shipped by Phase 5 Support
  * / compliance / integrations operator screens commit 2
  * (admin-app implementation plan §8.11 + §11). Exercises the
@@ -26,8 +26,8 @@ import {
  * denied StateScreen, stale-session StateScreen, error
  * StateScreen.
  */
-const PATH = `/r/retention?scope=${platformScope.organization}&scopeId=org_demo`;
-const EMPTY_PATH = "/r/retention";
+const PATH = `/desk/retention?scope=${platformScope.organization}&scopeId=org_demo`;
+const EMPTY_PATH = "/desk/retention";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
@@ -45,7 +45,7 @@ const selectTenantTargetOption = async (
   await click(getButtonByText(container, label));
 };
 
-describe("/r/retention Retention & Legal-hold v2 route", () => {
+describe("/desk/retention Retention & Legal-hold v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

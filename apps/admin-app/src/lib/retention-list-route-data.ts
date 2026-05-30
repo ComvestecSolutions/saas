@@ -14,11 +14,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/retention` Retention & Legal-hold v2 surface (admin-app
+ * `/desk/retention` Retention & Legal-hold v2 surface (admin-app
  * implementation plan §8.11 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 2). Mirrors
- * the v2 loader-trio pattern shipped for `/r/billing`,
- * `/r/branding`, and `/r/support`: the route component consumes
+ * the v2 loader-trio pattern shipped for `/desk/billing`,
+ * `/desk/branding`, and `/desk/support`: the route component consumes
  * a thin `shell | stale-session | denied | error | ready`
  * discriminated union and renders the compliance retention
  * posture (policies + legal holds + upcoming schedule entries).
@@ -29,7 +29,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  *     rows (data-type, retention-days, legal-hold-active flag).
  *   - `listRetentionLegalHoldsFromSessionId` → legal hold rows
  *     (status, placed-at, released-at, evidence), the upstream
- *     of the per-hold detail surface `/r/legal-hold/$holdId`.
+ *     of the per-hold detail surface `/desk/legal-hold/$holdId`.
  *
  * Schedule entries (next-run-at, due-policy, target) do not yet
  * have a dedicated by-session helper exported from
@@ -38,14 +38,14 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * brief, the loader emits an empty schedule readonly array
  * shaped to a local canonical view and the gap is tracked in
  * the implementation tracker — spine first, body second
- * (mirrors the verify CTA on `/r/domain/$hostname` and the
- * release-grant CTA on `/r/incident/$incidentId`).
+ * (mirrors the verify CTA on `/desk/domain/$hostname` and the
+ * release-grant CTA on `/desk/incident/$incidentId`).
  *
  * Tenant target (scope + scopeId) is supplied via the route's
  * search params. When the operator has not yet picked a target
  * the loader yields `ready` with empty arrays and the route
  * surfaces a "select a scope" affordance (mirrors the empty
- * `tenants` set behavior on `/r/billing` and `/r/branding`).
+ * `tenants` set behavior on `/desk/billing` and `/desk/branding`).
  */
 export type RetentionScheduleEntryView = {
   readonly entryId: string;

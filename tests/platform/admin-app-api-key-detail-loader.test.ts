@@ -3,7 +3,7 @@
  * implementation plan §8.12 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 3).
  * Covers the discriminated-union mapping of the
- * `/r/api-key/$keyId` loader trio backed live by
+ * `/desk/api-key/$keyId` loader trio backed live by
  * `listWebhookApiKeysFromSessionId` through
  * `resolveTrustedRequestContextFromSessionId` and filtered to
  * the requested api-key id under the documented escape hatch:

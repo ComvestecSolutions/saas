@@ -1,7 +1,7 @@
 /**
  * Admin-app Billing-list loader tests (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 1).
- * Covers the discriminated-union mapping of the `/r/billing`
+ * Covers the discriminated-union mapping of the `/desk/billing`
  * loader trio backed live by `getPolarRevenueProjectionFromEnvironment`
  * and `listPolarCustomersByExternalIdFromEnvironment`:
  *

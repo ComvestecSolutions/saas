@@ -2,7 +2,7 @@
  * Admin-app governance-config v2 loader tests (admin-app
  * implementation plan §8.5 + §11 — Phase 3 Governance &
  * access commit 1). Covers the discriminated-union mapping of
- * the `/r/config` loader trio backed live by
+ * the `/desk/config` loader trio backed live by
  * `listAdminRuntimeConfig{Overrides,Proposals}FromSessionId`
  * in `packages/platform/src/services/apps/admin-governance-actions.ts`:
  *

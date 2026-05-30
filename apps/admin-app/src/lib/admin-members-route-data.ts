@@ -25,7 +25,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * → `RequestContext`, then
  * `listAdminOrganizationMembersFromEnvironment({ requestContext,
  * filter })` → `ReadonlyArray<AdminMember>`. Mirrors the
- * `/r/notify` + `/r/runs` v2 list loader pattern.
+ * `/desk/notify` + `/desk/runs` v2 list loader pattern.
  */
 export type AdminMembersInput = {
   readonly filter?: {

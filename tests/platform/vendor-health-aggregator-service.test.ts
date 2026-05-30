@@ -261,6 +261,51 @@ describe("vendor-health-aggregator service — happy + partial failure", () => {
     expect(audit.calls).toHaveLength(1);
   });
 
+  it("surfaces actionable Polar credential guidance for invalid_token healthcheck failures", async () => {
+    const audit = createAuditDouble();
+    const port = createPortDouble([
+      {
+        serviceName: platformAdapterServiceName.postgres,
+        result: { kind: "healthy" },
+      },
+      {
+        serviceName: platformAdapterServiceName.polar,
+        result: {
+          kind: "fail",
+          cause: {
+            _tag: "PolarAdapterRequestError",
+            operation: "healthcheck",
+            status: 401,
+            body: '{"error":"invalid_token"}',
+          },
+        },
+      },
+    ]);
+    const service = makeVendorHealthAggregatorService({
+      auditLog: audit.service,
+      vendorHealthcheckPort: port,
+      bounds: defaultBounds,
+      now: () => new Date("2026-02-01T00:00:00.000Z"),
+    });
+
+    const view = await Effect.runPromise(
+      service.getAggregate({ requestContext: operatorContext }),
+    );
+
+    expect(view.aggregate.entries[1]?.status).toBe("unavailable");
+    expect(view.aggregate.entries[1]?.message).toBe(
+      "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.",
+    );
+    expect(view.aggregate.partialFailures).toEqual([
+      {
+        serviceName: platformAdapterServiceName.polar,
+        reason:
+          "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.",
+      },
+    ]);
+    expect(audit.calls).toHaveLength(1);
+  });
+
   it("all-fail path raises VendorHealthAggregatorAllSourcesFailedError and suppresses audit", async () => {
     const audit = createAuditDouble();
     const port = createPortDouble([

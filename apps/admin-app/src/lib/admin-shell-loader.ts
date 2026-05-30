@@ -71,9 +71,16 @@ export const loadAdminShellRouteDataForCurrentRuntime = async (
 
   const currentServerRequest = getCurrentServerRequest();
 
-  return currentServerRequest === undefined
+  if (currentServerRequest === undefined) {
+    return loadClientRouteData();
+  }
+
+  const serverRouteData =
+    await loadServerRouteDataFromRequest(currentServerRequest);
+
+  return serverRouteData.kind === "shell"
     ? loadClientRouteData()
-    : loadServerRouteDataFromRequest(currentServerRequest);
+    : serverRouteData;
 };
 
 export const loadAdminShellLoaderData = async (

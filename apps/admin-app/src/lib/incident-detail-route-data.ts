@@ -9,11 +9,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/incident/$incidentId` Break-glass Incident Detail v2
+ * `/desk/incident/$incidentId` Break-glass Incident Detail v2
  * surface (admin-app implementation plan §8.8 + §11 — Phase 5
  * Support / compliance / integrations operator screens commit
  * 1). Mirrors the v2 loader-trio pattern shipped for
- * `/r/invoice`, `/r/meter`, and `/r/domain`.
+ * `/desk/invoice`, `/desk/meter`, and `/desk/domain`.
  *
  * Backed live by the Phase 1
  * `getSupportBreakGlassIncidentFromSessionId` helper, which
@@ -27,7 +27,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * body for `releaseBreakGlassGrantFromEnvironment` is tracked
  * under the Admin app row's Phase 5 follow-ups in the
  * implementation tracker (spine first, body second; mirrors the
- * verify CTA on `/r/domain/$hostname`).
+ * verify CTA on `/desk/domain/$hostname`).
  */
 export type AdminIncidentDetailInput = {
   readonly incidentId: string;

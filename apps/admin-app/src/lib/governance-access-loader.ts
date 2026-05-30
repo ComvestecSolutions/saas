@@ -4,11 +4,11 @@ import type {
 } from "./governance-access-route-data";
 
 /**
- * Loader for the `/r/access` Access Control v2 route
+ * Loader for the `/desk/access` Access Control v2 route
  * (admin-app implementation plan §8.7 + §11 — Phase 3
  * Governance & access commit 1). Consumes the route-server
  * entrypoint so the loader stays free of Request/Response or
- * Valkey shaping. Mirrors the `/r/config` and `/r/flag` v2
+ * Valkey shaping. Mirrors the `/desk/config` and `/desk/flag` v2
  * loader trios.
  */
 export const loadAdminGovernanceAccessV2LoaderData = async (

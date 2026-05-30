@@ -70,7 +70,7 @@ describe("/admin/members admin organization roster route", () => {
           "[data-testid='admin-members-detail-link'][data-member-id='adm_member_fixture_1']",
         )
         ?.getAttribute("href"),
-    ).toBe("/r/admin-member/adm_member_fixture_1");
+    ).toBe("/desk/admin-member/adm_member_fixture_1");
     expect(rendered.container.textContent).toContain("Owners");
     expect(rendered.container.textContent).toContain("Active");
   }, 30_000);

@@ -18,18 +18,18 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/notify/$id`
+ * Browser coverage for the spec-canonical `/desk/notify/$id`
  * Notification Center v2 detail surface shipped by Phase 6
  * commit 6c (admin-app implementation plan §8.16 + §11).
  */
-const PATH = "/r/notify/ntf_browser_1";
+const PATH = "/desk/notify/ntf_browser_1";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/notify/$id Notification Center v2 detail route", () => {
+describe("/desk/notify/$id Notification Center v2 detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

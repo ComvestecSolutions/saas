@@ -1,7 +1,7 @@
 /**
  * Admin-app Audit Log v2 loader tests (admin-app
  * implementation plan §9 — Phase 2 Desk Core commit 6).
- * Covers the discriminated-union mapping of the `/r/audit`
+ * Covers the discriminated-union mapping of the `/desk/audit`
  * loader trio backed live by
  * `queryAdminAuditEventsBy{Module,Target,Actor,Tenant}FromEnvironment`
  * in `packages/platform/src/services/apps/admin-governance-actions.ts`:

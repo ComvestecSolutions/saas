@@ -22,7 +22,7 @@ void Option;
 
 /**
  * Browser coverage for the spec-canonical
- * `/r/delivery/$deliveryId` Webhook Delivery Detail v2 surface
+ * `/desk/delivery/$deliveryId` Webhook Delivery Detail v2 surface
  * shipped by Phase 5 Support / compliance / integrations
  * operator screens commit 3 (admin-app implementation plan
  * §8.12 + §11). Exercises the
@@ -33,14 +33,14 @@ void Option;
  * state, denied StateScreen, stale-session StateScreen, error
  * StateScreen.
  */
-const PATH = `/r/delivery/dlv_org_demo_01?scope=${platformScope.organization}&scopeId=org_demo`;
+const PATH = `/desk/delivery/dlv_org_demo_01?scope=${platformScope.organization}&scopeId=org_demo`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/delivery/$deliveryId Webhook Delivery Detail v2 route", () => {
+describe("/desk/delivery/$deliveryId Webhook Delivery Detail v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

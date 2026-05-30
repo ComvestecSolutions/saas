@@ -303,6 +303,92 @@ const defaultCorrelationId = (): string => {
   );
 };
 
+const readFailureStatus = (cause: unknown): number | undefined =>
+  typeof cause === "object" &&
+  cause !== null &&
+  "status" in cause &&
+  typeof cause.status === "number"
+    ? cause.status
+    : undefined;
+
+const readFailureBody = (cause: unknown): string | undefined =>
+  typeof cause === "object" &&
+  cause !== null &&
+  "body" in cause &&
+  typeof cause.body === "string"
+    ? cause.body
+    : undefined;
+
+const parseFailureBodyMessage = (body: string): string | undefined => {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+
+    if (typeof parsed !== "object" || parsed === null) {
+      return undefined;
+    }
+
+    if ("error" in parsed && typeof parsed.error === "string") {
+      return parsed.error;
+    }
+
+    if ("message" in parsed && typeof parsed.message === "string") {
+      return parsed.message;
+    }
+  } catch {
+    return body.length > 0 ? body : undefined;
+  }
+
+  return undefined;
+};
+
+const buildPolarFailureReason = (cause: {
+  readonly status?: number;
+  readonly body?: string;
+}): string | undefined => {
+  const bodyMessage =
+    cause.body === undefined ? undefined : parseFailureBodyMessage(cause.body);
+
+  if (cause.status === 401 && bodyMessage === "invalid_token") {
+    return "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.";
+  }
+
+  if (cause.status !== undefined && bodyMessage !== undefined) {
+    return `Polar request failed (HTTP ${cause.status}): ${bodyMessage}`;
+  }
+
+  if (cause.status !== undefined) {
+    return `Polar request failed (HTTP ${cause.status}).`;
+  }
+
+  if (bodyMessage !== undefined) {
+    return `Polar request failed: ${bodyMessage}`;
+  }
+
+  return undefined;
+};
+
+const buildTaggedFailureReason = (cause: {
+  readonly _tag: string;
+  readonly status?: number;
+  readonly body?: string;
+}): string => {
+  if (cause._tag === "PolarAdapterRequestError") {
+    const polarReason = buildPolarFailureReason(cause);
+
+    if (polarReason !== undefined) {
+      return polarReason;
+    }
+  }
+
+  const parts = [
+    cause._tag,
+    cause.status === undefined ? undefined : `HTTP ${cause.status}`,
+    cause.body === undefined ? undefined : parseFailureBodyMessage(cause.body),
+  ].filter((value): value is string => value !== undefined && value.length > 0);
+
+  return parts.length > 0 ? parts.join(" · ") : cause._tag;
+};
+
 const buildPartialFailureReason = (cause: unknown): string => {
   if (cause === null || cause === undefined) {
     return "unknown vendor-health source failure";
@@ -315,7 +401,14 @@ const buildPartialFailureReason = (cause: unknown): string => {
     "_tag" in cause &&
     typeof (cause as { readonly _tag?: unknown })._tag === "string"
   ) {
-    return (cause as { readonly _tag: string })._tag;
+    const status = readFailureStatus(cause);
+    const body = readFailureBody(cause);
+
+    return buildTaggedFailureReason({
+      _tag: (cause as { readonly _tag: string })._tag,
+      ...(status === undefined ? {} : { status }),
+      ...(body === undefined ? {} : { body }),
+    });
   }
   if (cause instanceof Error) {
     return cause.message.length === 0 ? cause.name : cause.message;

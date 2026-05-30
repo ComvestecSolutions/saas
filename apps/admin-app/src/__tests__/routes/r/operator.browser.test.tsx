@@ -10,15 +10,15 @@ import {
   type RenderedAdminApp,
 } from "../../../testing/admin-browser-harness";
 
-const CURRENT_OPERATOR_PATH = "/r/operator/usr_platform_operator";
-const DIRECTORY_OPERATOR_PATH = "/r/operator/usr_support_operator";
+const CURRENT_OPERATOR_PATH = "/desk/operator/usr_platform_operator";
+const DIRECTORY_OPERATOR_PATH = "/desk/operator/usr_support_operator";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/operator/$id operator detail route", () => {
+describe("/desk/operator/$id operator detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -119,7 +119,7 @@ describe("/r/operator/$id operator detail route", () => {
   it("surfaces a not-found state for an unknown operator id", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/r/operator/usr_missing_operator",
+      "/desk/operator/usr_missing_operator",
     );
 
     await waitFor(

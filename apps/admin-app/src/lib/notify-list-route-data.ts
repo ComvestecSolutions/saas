@@ -13,11 +13,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/notify` Notification Center v2 list surface (admin-app
+ * `/desk/notify` Notification Center v2 list surface (admin-app
  * implementation plan §8.16 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6b). Mirrors the v2 loader-trio
- * pattern shipped for `/r/vendors`, `/r/webhook`,
- * `/r/retention`, and `/r/support`.
+ * pattern shipped for `/desk/vendors`, `/desk/webhook`,
+ * `/desk/retention`, and `/desk/support`.
  *
  * Backed live by `listNotificationCenterAdminFromEnvironment`
  * (admin-app implementation plan §9 item 16). The platform
@@ -36,7 +36,7 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * mutation surface are tracked under the Admin app row's
  * Phase 6 follow-ups in the implementation tracker — spine
  * first, body second (mirrors the rotate / revoke CTA pattern
- * on `/r/api-key/$keyId`). The list surface today exposes
+ * on `/desk/api-key/$keyId`). The list surface today exposes
  * deep-link affordances per row + a placeholder resend CTA
  * gated through `HighRiskActionGuard`.
  *

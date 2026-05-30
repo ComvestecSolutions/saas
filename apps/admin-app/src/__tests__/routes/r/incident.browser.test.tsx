@@ -14,7 +14,7 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/incident/$incidentId`
+ * Browser coverage for the spec-canonical `/desk/incident/$incidentId`
  * Incident detail surface shipped by Phase 5 Support / compliance
  * / integrations operator screens commit 1 (admin-app
  * implementation plan §8.8 + §11). Exercises the
@@ -25,14 +25,14 @@ import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
  * StateScreen, stale-session StateScreen, not-found error
  * StateScreen.
  */
-const PATH = "/r/incident/incident_case_01";
+const PATH = "/desk/incident/incident_case_01";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/incident/$incidentId Incident detail route", () => {
+describe("/desk/incident/$incidentId Incident detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

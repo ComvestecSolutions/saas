@@ -12,7 +12,7 @@ import {
 /**
  * Feature Flags v2 mutation server-fns (admin-app implementation
  * plan §8.6 + §11 — Phase 3 Governance & access commit 3).
- * Mirrors the `/r/config` `governance-config-mutations-server`
+ * Mirrors the `/desk/config` `governance-config-mutations-server`
  * sibling: each helper decodes its input at the framework
  * boundary via `Schema.decodeUnknown`, extracts the operator
  * session id from the request, and is wired to delegate to the

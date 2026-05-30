@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vitest";
 import type { AnyRouter } from "@tanstack/react-router";
+import { isAdminAuthRoutePath } from "../auth/paths";
 import type { AdminBrowserFixtureState } from "./admin-browser-fixtures";
 import {
   clearAdminBrowserFixtureState,
@@ -1839,7 +1840,9 @@ vi.mock("@tanstack/react-start", async (importOriginal) => {
 });
 
 vi.mock("@tanstack/react-router-devtools", () => ({
-  TanStackRouterDevtools: () => null,
+  TanStackRouterDevtools: () => (
+    <div data-testid="router-devtools-sentinel">TanStack Router Devtools</div>
+  ),
 }));
 
 export type RenderedAdminApp = {
@@ -1849,20 +1852,84 @@ export type RenderedAdminApp = {
   readonly cleanup: () => Promise<void>;
 };
 
+const buildBrowserLocationPath = (): string =>
+  `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+const resolveHarnessRedirectPath = (
+  container: ParentNode,
+): string | undefined => {
+  const redirectPath = container
+    .querySelector<HTMLElement>(".ops-auth-redirect-state")
+    ?.dataset.redirectPath?.trim();
+
+  if (redirectPath === undefined || redirectPath.length === 0) {
+    return undefined;
+  }
+
+  const redirectUrl = new URL(redirectPath, window.location.origin);
+
+  if (isAdminAuthRoutePath(redirectUrl.pathname)) {
+    return undefined;
+  }
+
+  return `${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`;
+};
+
 export const waitFor = async (
   predicate: () => boolean,
   errorMessage: string,
-  attempts = 60,
+  timeoutMs = 5_000,
+  pollIntervalMs = 16,
 ): Promise<void> => {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
     if (predicate()) {
       return;
     }
 
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => window.setTimeout(resolve, pollIntervalMs));
   }
 
   throw new Error(errorMessage);
+};
+
+const followHarnessRedirects = async (
+  router: AnyRouter,
+  container: ParentNode,
+): Promise<void> => {
+  for (let redirectCount = 0; redirectCount < 10; redirectCount += 1) {
+    const redirectPath = resolveHarnessRedirectPath(container);
+
+    if (redirectPath === undefined) {
+      return;
+    }
+
+    if (redirectPath === buildBrowserLocationPath()) {
+      return;
+    }
+
+    await act(async () => {
+      await Promise.resolve(
+        router.navigate({ href: redirectPath, replace: true }),
+      );
+      await Promise.resolve(router.load());
+    });
+
+    await waitFor(
+      () => buildBrowserLocationPath() === redirectPath,
+      `Expected browser harness redirect to navigate to ${redirectPath}.`,
+    );
+
+    await waitFor(
+      () => resolveHarnessRedirectPath(container) !== redirectPath,
+      `Expected browser harness redirect to settle after navigating to ${redirectPath}.`,
+    );
+  }
+
+  throw new Error(
+    `Exceeded the browser harness redirect limit while navigating from ${buildBrowserLocationPath()}.`,
+  );
 };
 
 export const renderAdminApp = async (
@@ -1914,6 +1981,8 @@ export const renderAdminApp = async (
       () => container.textContent !== null && container.textContent.length > 0,
       `Expected admin app to render at ${initialPath}.`,
     );
+
+    await followHarnessRedirects(router, container);
 
     return {
       container,

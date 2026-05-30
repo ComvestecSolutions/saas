@@ -4,14 +4,14 @@ import type {
 } from "./delivery-detail-route-data";
 
 /**
- * Loader for the spec-canonical `/r/delivery/$deliveryId`
+ * Loader for the spec-canonical `/desk/delivery/$deliveryId`
  * Webhook Delivery Detail v2 route (admin-app implementation
  * plan §8.12 + §11 — Phase 5 Support / compliance /
  * integrations operator screens commit 3). Consumes the
  * route-server entrypoint so the loader stays free of
  * Request/Response or Valkey shaping. Mirrors the v2 loader-trio
- * shape used by `/r/invoice`, `/r/meter`, `/r/domain`,
- * `/r/incident`, and `/r/legal-hold`.
+ * shape used by `/desk/invoice`, `/desk/meter`, `/desk/domain`,
+ * `/desk/incident`, and `/desk/legal-hold`.
  */
 export const loadAdminDeliveryDetailLoaderData = async (
   input: AdminDeliveryDetailInput,

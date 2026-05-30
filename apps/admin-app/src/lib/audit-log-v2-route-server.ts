@@ -8,9 +8,9 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for `/r/audit` (admin-app
+ * Server-function entrypoint for `/desk/audit` (admin-app
  * implementation plan §9 — Phase 2 Desk Core commit 6). Mirrors
- * the `/r/tenants` and `/r/tenant/$tenantId` v2 trio: runs the
+ * the `/desk/tenants` and `/desk/tenant/$tenantId` v2 trio: runs the
  * route-data Effect on the server, decodes the URL filter
  * payload at the framework edge, and surfaces the
  * discriminated-union state. Performs no Request/Response

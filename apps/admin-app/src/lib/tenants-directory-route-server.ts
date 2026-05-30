@@ -12,7 +12,7 @@ import {
 } from "./tanstack-start-server-runtime";
 
 /**
- * Server function entrypoint for the `/r/tenants` directory
+ * Server function entrypoint for the `/desk/tenants` directory
  * (admin-app implementation plan §9 — Phase 2 Desk Core
  * commit 3 cutover). Runs the route-data Effect and surfaces
  * the discriminated-union state. The helper deliberately

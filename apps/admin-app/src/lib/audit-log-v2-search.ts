@@ -10,7 +10,7 @@ import type {
 } from "./audit-log-v2-route-data";
 
 /**
- * URL filter-state shape for `/r/audit` (admin-app
+ * URL filter-state shape for `/desk/audit` (admin-app
  * implementation plan §9 — Phase 2 Desk Core commit 6). The raw
  * envelope passed to the TanStack-Router `validateSearch` /
  * server-fn validator is intentionally permissive; the

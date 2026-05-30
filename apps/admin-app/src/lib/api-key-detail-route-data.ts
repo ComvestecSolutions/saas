@@ -12,12 +12,12 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/api-key/$keyId` Webhook API Key Detail v2 surface
+ * `/desk/api-key/$keyId` Webhook API Key Detail v2 surface
  * (admin-app implementation plan §8.12 + §11 — Phase 5 Support
  * / compliance / integrations operator screens commit 3).
- * Mirrors the v2 loader-trio pattern shipped for `/r/invoice`,
- * `/r/meter`, `/r/domain`, `/r/incident`, `/r/legal-hold`, and
- * `/r/delivery`.
+ * Mirrors the v2 loader-trio pattern shipped for `/desk/invoice`,
+ * `/desk/meter`, `/desk/domain`, `/desk/incident`, `/desk/legal-hold`, and
+ * `/desk/delivery`.
  *
  * Backed live by `listWebhookApiKeysFromSessionId`. Because the
  * platform does not yet export a dedicated by-id
@@ -40,9 +40,9 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * `rotateWebhookApiKeyFromSessionId` /
  * `revokeWebhookApiKeyFromSessionId` are tracked under the
  * Admin app row's Phase 5 follow-ups (mirrors the release-grant
- * CTA on `/r/incident/$incidentId`, the release-hold CTA on
- * `/r/legal-hold/$holdId`, and the retry CTA on
- * `/r/delivery/$deliveryId`).
+ * CTA on `/desk/incident/$incidentId`, the release-hold CTA on
+ * `/desk/legal-hold/$holdId`, and the retry CTA on
+ * `/desk/delivery/$deliveryId`).
  */
 export type AdminApiKeyDetailInput = {
   readonly keyId: string;

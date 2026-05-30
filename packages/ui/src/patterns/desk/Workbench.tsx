@@ -60,7 +60,8 @@ export function Workbench({
         padding: 6,
         background:
           "linear-gradient(180deg, color-mix(in oklab, white 1.5%, transparent), transparent), linear-gradient(180deg, var(--canvas-900), var(--canvas-975))",
-        overflowY: stackAsRows ? "auto" : "hidden",
+        overflowX: "hidden",
+        overflowY: "auto",
       }}
     >
       {children}

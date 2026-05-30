@@ -11,7 +11,7 @@ import {
 
 /**
  * Server-function entrypoint for the spec-canonical
- * `/r/notify/$id` Notification Center v2 detail surface
+ * `/desk/notify/$id` Notification Center v2 detail surface
  * (admin-app implementation plan §8.16 + §11 — Phase 6 commit
  * 6c). Decodes the loader input at the framework boundary and
  * runs the route-data Effect on the server. No

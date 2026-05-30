@@ -13,7 +13,7 @@ import {
 import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
- * Discriminated-union route data for `/r/domain/$hostname`
+ * Discriminated-union route data for `/desk/domain/$hostname`
  * (admin-app implementation plan §8.10 + §11 — Phase 4 Domain
  * operator screens commit 2). The domain-detail surface
  * renders the custom-domain lifecycle chip, DNS-record table

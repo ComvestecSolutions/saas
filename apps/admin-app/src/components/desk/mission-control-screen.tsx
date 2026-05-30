@@ -281,7 +281,9 @@ const buildMissionDigestCards = (
       meta:
         vendorLead === undefined
           ? "No vendor posture loaded"
-          : `${vendorLead.vendor} · ${vendorLead.posture}`,
+          : [vendorLead.vendor, vendorLead.posture, vendorLead.message]
+              .filter((value): value is string => value !== undefined)
+              .join(" · "),
       tone: degradedVendors.length > 0 ? "error" : "nominal",
     },
     {
@@ -718,6 +720,11 @@ function MissionControlReadyView({
                         ? `p95 ${vendor.latencyP95Ms}ms`
                         : "latency n/a"}
                     </div>
+                    {vendor.message !== undefined ? (
+                      <div className="ops-vendor-grid__meta">
+                        {vendor.message}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>

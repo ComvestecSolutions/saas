@@ -2,7 +2,7 @@
  * Admin-app workflow-runs-list loader tests (admin-app
  * implementation plan §8.14 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6b). Covers the discriminated-union
- * mapping of the `/r/runs` loader trio backed live by
+ * mapping of the `/desk/runs` loader trio backed live by
  * `listWorkflowRunsAdminFromEnvironment`:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`

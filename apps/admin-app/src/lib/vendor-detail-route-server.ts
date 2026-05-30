@@ -14,7 +14,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for `/r/vendor/$service` (admin-app
+ * Server-function entrypoint for `/desk/vendor/$service` (admin-app
  * implementation plan §8.15 + §11 — Phase 6 commit 6a). Decodes
  * the loader input at the framework boundary and runs the
  * route-data Effect on the server. No Request/Response shaping

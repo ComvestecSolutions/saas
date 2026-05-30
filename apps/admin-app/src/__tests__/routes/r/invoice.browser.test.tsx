@@ -10,22 +10,22 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for `/r/invoice/$invoiceId` (admin-app
+ * Browser coverage for `/desk/invoice/$invoiceId` (admin-app
  * implementation plan §8.10 + §11 — Phase 4 commit 1). Exercises
  * the `invoice-detail-{loader,route-data,route-server}` trio
  * end to end through the admin browser harness mock state.
  */
 const READY_PATH =
-  "/r/invoice/inv_demo_01" +
+  "/desk/invoice/inv_demo_01" +
   "?tenantScope=organization&tenantScopeId=org_demo&customerId=cust_polar_01";
-const SHELL_PATH = "/r/invoice/inv_demo_01";
+const SHELL_PATH = "/desk/invoice/inv_demo_01";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/invoice/$invoiceId Invoice detail route", () => {
+describe("/desk/invoice/$invoiceId Invoice detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

@@ -9,8 +9,8 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 /**
  * Feature Flags v2 route data (admin-app implementation plan
  * §8.6 + §11 — Phase 3 Governance & access commit 1). Mirrors
- * the v2 loader-trio pattern shipped for `/r/tenants`,
- * `/r/tenant/$tenantId`, `/r/audit`, and `/r/config`: the
+ * the v2 loader-trio pattern shipped for `/desk/tenants`,
+ * `/desk/tenant/$tenantId`, `/desk/audit`, and `/desk/config`: the
  * route component consumes a thin `shell | stale-session |
  * denied | error | ready` discriminated union.
  *

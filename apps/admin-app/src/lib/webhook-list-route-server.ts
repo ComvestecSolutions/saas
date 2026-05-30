@@ -11,7 +11,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for the spec-canonical `/r/webhook`
+ * Server-function entrypoint for the spec-canonical `/desk/webhook`
  * Webhook Endpoints v2 surface (admin-app implementation plan
  * §8.12 + §11 — Phase 5 commit 3). Decodes the loader input at
  * the framework boundary and runs the route-data Effect on the

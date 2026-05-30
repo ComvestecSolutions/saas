@@ -598,7 +598,7 @@ function AdminMembersRoute() {
                   <td style={{ padding: 4 }}>
                     <div style={{ display: "grid", gap: 2 }}>
                       <Link
-                        to="/r/admin-member/$id"
+                        to="/desk/admin-member/$id"
                         params={{ id: member.id }}
                         data-testid="admin-members-detail-link"
                         data-member-id={member.id}

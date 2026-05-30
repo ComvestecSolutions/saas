@@ -2,7 +2,7 @@
  * Admin-app Keycloak-role-detail loader tests (admin-app
  * implementation plan §8.15 + §11 — Phase 6 vendor + workflow
  * operator screens follow-up). Covers the discriminated-union
- * mapping of the `/r/kc-role/$id` loader trio backed live by
+ * mapping of the `/desk/kc-role/$id` loader trio backed live by
  * `getKeycloakRoleByIdFromEnvironment` through
  * `resolveTrustedRequestContextFromSessionId`.
  *

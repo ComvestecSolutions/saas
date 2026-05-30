@@ -129,13 +129,15 @@ const buildVendorAggregate = (): VendorHealthAggregateProjection => ({
       status: "unavailable",
       latencyMs: 0,
       lastCheckedAt: "2026-01-01T00:10:00.000Z",
-      message: "PolarAdapterRequestError",
+      message:
+        "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.",
     },
   ],
   partialFailures: [
     {
       serviceName: platformAdapterServiceName.polar,
-      reason: "PolarAdapterRequestError",
+      reason:
+        "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.",
     },
   ],
   generatedAt: "2026-01-01T00:10:00.000Z",
@@ -265,7 +267,7 @@ describe("admin-app operations-home loader", () => {
     expect(result.partialFailures).toEqual([
       {
         section: "vendorPosture",
-        reason: `${platformAdapterServiceName.polar}: PolarAdapterRequestError`,
+        reason: `${platformAdapterServiceName.polar}: Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.`,
       },
     ]);
   });

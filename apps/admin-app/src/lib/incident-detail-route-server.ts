@@ -10,7 +10,7 @@ import {
 } from "./admin-request-server-middleware";
 
 /**
- * Server-function entrypoint for `/r/incident/$incidentId`
+ * Server-function entrypoint for `/desk/incident/$incidentId`
  * (admin-app implementation plan §8.8 + §11 — Phase 5 commit
  * 1). Decodes the loader input at the framework boundary and
  * runs the route-data Effect on the server. No Request/Response

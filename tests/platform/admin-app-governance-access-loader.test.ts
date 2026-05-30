@@ -2,7 +2,7 @@
  * Admin-app governance-access v2 loader tests (admin-app
  * implementation plan §8.7 + §11 — Phase 3 Governance &
  * access commit 1). Covers the discriminated-union mapping of
- * the `/r/access` loader trio backed live by the
+ * the `/desk/access` loader trio backed live by the
  * `*FromSessionId` helpers in
  * `packages/platform/src/services/apps/admin-{governance,operator-management}-actions.ts`:
  *

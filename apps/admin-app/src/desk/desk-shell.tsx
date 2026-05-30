@@ -79,47 +79,47 @@ const resolveDomainId = (routePath: string): DeskDomainId => {
   }
   if (
     routePath === adminRoutePath.tenantWorkspaceDiscovery ||
-    routePath.startsWith("/r/tenant/") ||
+    routePath.startsWith("/desk/tenant/") ||
     routePath.startsWith("/tenants")
   ) {
     return "tenants";
   }
   if (
-    routePath.startsWith("/r/config") ||
-    routePath.startsWith("/r/flag") ||
-    routePath.startsWith("/r/access") ||
-    routePath.startsWith("/r/audit") ||
+    routePath.startsWith("/desk/config") ||
+    routePath.startsWith("/desk/flag") ||
+    routePath.startsWith("/desk/access") ||
+    routePath.startsWith("/desk/audit") ||
     routePath.startsWith("/governance/")
   ) {
     return "governance";
   }
   if (
     routePath === adminRoutePath.billing ||
-    routePath.startsWith("/r/invoice/") ||
-    routePath.startsWith("/r/meter/")
+    routePath.startsWith("/desk/invoice/") ||
+    routePath.startsWith("/desk/meter/")
   ) {
     return "revenue";
   }
   if (
     routePath === adminRoutePath.supportOperations ||
     routePath === adminRoutePath.complianceRetention ||
-    routePath.startsWith("/r/support") ||
-    routePath.startsWith("/r/incident/") ||
-    routePath.startsWith("/r/retention") ||
-    routePath.startsWith("/r/legal-hold/")
+    routePath.startsWith("/desk/support") ||
+    routePath.startsWith("/desk/incident/") ||
+    routePath.startsWith("/desk/retention") ||
+    routePath.startsWith("/desk/legal-hold/")
   ) {
     return "risk";
   }
   if (
     routePath === adminRoutePath.webhooksApiAccess ||
-    routePath.startsWith("/r/webhook") ||
-    routePath.startsWith("/r/delivery/") ||
-    routePath.startsWith("/r/api-key/") ||
-    routePath.startsWith("/r/runs") ||
-    routePath.startsWith("/r/run/") ||
-    routePath.startsWith("/r/vendors") ||
-    routePath.startsWith("/r/vendor/") ||
-    routePath.startsWith("/r/notify")
+    routePath.startsWith("/desk/webhook") ||
+    routePath.startsWith("/desk/delivery/") ||
+    routePath.startsWith("/desk/api-key/") ||
+    routePath.startsWith("/desk/runs") ||
+    routePath.startsWith("/desk/run/") ||
+    routePath.startsWith("/desk/vendors") ||
+    routePath.startsWith("/desk/vendor/") ||
+    routePath.startsWith("/desk/notify")
   ) {
     return "integrations";
   }
@@ -334,9 +334,9 @@ const workspacePaneResourceRoutePath = {
   "operations-home": adminRoutePath.operationsHome,
   support: adminRoutePath.supportOperations,
   audit: adminRoutePath.auditLog,
-  vendors: "/r/vendors",
-  runs: "/r/runs",
-  notify: "/r/notify",
+  vendors: "/desk/vendors",
+  runs: "/desk/runs",
+  notify: "/desk/notify",
   tenants: adminRoutePath.tenantWorkspaceDiscovery,
   config: adminRoutePath.runtimeConfig,
   "feature-flags": adminRoutePath.featureFlags,
@@ -406,9 +406,9 @@ const resolveSavedViewRoutePath = (
     case adminSavedViewResourceKind.webhookDeliveries:
       return adminRoutePath.webhooksApiAccess;
     case adminSavedViewResourceKind.workflowRuns:
-      return "/r/runs";
+      return "/desk/runs";
     case adminSavedViewResourceKind.notifications:
-      return "/r/notify";
+      return "/desk/notify";
     case adminSavedViewResourceKind.adminMembers:
       return "/admin/members";
     case adminSavedViewResourceKind.users:

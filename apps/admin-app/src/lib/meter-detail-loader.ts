@@ -4,7 +4,7 @@ import type {
 } from "./meter-detail-route-data";
 
 /**
- * Loader for `/r/meter/$meterId` (admin-app implementation
+ * Loader for `/desk/meter/$meterId` (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 1).
  * Consumes the route-server entrypoint so the loader stays free
  * of Request/Response or Valkey shaping.

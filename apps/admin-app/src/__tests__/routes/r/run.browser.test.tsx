@@ -15,18 +15,18 @@ import {
 import { mockedLoaders } from "../../../testing/admin-browser-mock-state";
 
 /**
- * Browser coverage for the spec-canonical `/r/run/$id` Workflow
+ * Browser coverage for the spec-canonical `/desk/run/$id` Workflow
  * Run Detail v2 surface shipped by Phase 6 commit 6b
  * (admin-app implementation plan §8.14 + §11).
  */
-const PATH = "/r/run/wfr_browser_1";
+const PATH = "/desk/run/wfr_browser_1";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/run/$id Workflow Run Detail v2 route", () => {
+describe("/desk/run/$id Workflow Run Detail v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

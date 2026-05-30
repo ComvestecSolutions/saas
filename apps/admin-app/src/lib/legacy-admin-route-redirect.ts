@@ -35,7 +35,7 @@ const buildBrandingLegacyRouteRedirectHref = (
 
     if (encodedTargets !== undefined) {
       redirectedSearchParts.push(
-        `tenants=${encodeURIComponent(JSON.stringify(encodedTargets))}`,
+        `tenants=${encodeURIComponent(encodedTargets)}`,
       );
     }
 

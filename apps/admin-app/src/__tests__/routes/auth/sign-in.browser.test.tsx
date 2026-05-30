@@ -46,7 +46,7 @@ describe("/sign-in route", () => {
     expect(rendered.container.textContent).toContain(
       "After sign-in, you will be returned to the page you were trying to open.",
     );
-    expect(rendered.container.textContent).not.toContain("/r/config");
+    expect(rendered.container.textContent).not.toContain("/desk/config");
 
     const continueLink = getLinkByText(
       rendered.container,
@@ -54,7 +54,7 @@ describe("/sign-in route", () => {
     );
 
     expect(continueLink.getAttribute("href")).toBe(
-      "/auth/start?returnTo=%2Fr%2Fconfig",
+      "/auth/start?returnTo=%2Fdesk%2Fconfig",
     );
   });
 

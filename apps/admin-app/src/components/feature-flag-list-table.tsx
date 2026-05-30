@@ -9,9 +9,9 @@ import type {
 
 /**
  * FeatureFlagListTable — presentational table used by the
- * `/r/flag` list pane and the `/r/flag/$flagKey` detail pane
+ * `/desk/flag` list pane and the `/desk/flag/$flagKey` detail pane
  * (admin-app implementation plan §8.6 + §11 — Phase 3 Governance
- * & access commit 3). Mirrors the `/r/config`
+ * & access commit 3). Mirrors the `/desk/config`
  * `RuntimeConfigListTable`: the two routes share the same
  * spec-canonical projection so the detail surface always renders
  * the surrounding rows, and clicking a row deep-links into the
@@ -119,7 +119,7 @@ export function FeatureFlagListTable({
               <td style={{ padding: 4 }}>
                 <Link
                   data-testid="feature-flag-list-row-link"
-                  to="/r/flag/$flagKey"
+                  to="/desk/flag/$flagKey"
                   params={{ flagKey: row.key }}
                   preload={false}
                 >

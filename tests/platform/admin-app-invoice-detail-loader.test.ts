@@ -2,7 +2,7 @@
  * Admin-app Invoice-detail loader tests (admin-app implementation
  * plan §8.10 + §11 — Phase 4 Domain operator screens commit 1).
  * Covers the discriminated-union mapping of the
- * `/r/invoice/$invoiceId` loader trio backed live by
+ * `/desk/invoice/$invoiceId` loader trio backed live by
  * `getPolarCustomerByIdFromEnvironment`:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`

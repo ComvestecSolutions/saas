@@ -2,7 +2,7 @@
  * Admin-app vendor-detail loader tests (admin-app
  * implementation plan §8.15 + §11 — Phase 6 vendor + workflow
  * operator screens commit 6a). Covers the discriminated-union
- * mapping of the `/r/vendor/$service` loader trio backed live
+ * mapping of the `/desk/vendor/$service` loader trio backed live
  * by the SAME `getVendorHealthAggregateFromEnvironment` helper
  * through `resolveTrustedRequestContextFromSessionId`, narrowed
  * by `serviceName` under the documented list-then-filter

@@ -81,9 +81,21 @@ export const adminTest = base.extend<{
       .locator('input[name="password"]')
       .fill(trustedSession.operatorPassword);
     await page.getByRole("button", { name: /sign in/i }).click();
-    await page.waitForURL(/\/desk$/, {
+    await page.waitForURL(/\/desk(?:\?.*)?$/, {
       timeout: 60_000,
     });
+    await expect(
+      page.getByRole("application", { name: /operator desk/i }),
+    ).toBeVisible({
+      timeout: 60_000,
+    });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.adminShellHydrated === "true",
+      undefined,
+      {
+        timeout: 60_000,
+      },
+    );
     await use(page);
   },
 });

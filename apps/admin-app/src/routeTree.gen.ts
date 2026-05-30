@@ -13,6 +13,7 @@ import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SupportOperationsRouteImport } from './routes/support-operations'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RepairOperationsRouteImport } from './routes/repair-operations'
+import { Route as RRouteImport } from './routes/r'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as DeskRouteImport } from './routes/desk'
 import { Route as ComplianceRetentionRouteImport } from './routes/compliance-retention'
@@ -20,26 +21,28 @@ import { Route as BrandingRouteImport } from './routes/branding'
 import { Route as BillingRouteImport } from './routes/billing'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TenantsIndexRouteImport } from './routes/tenants/index'
-import { Route as RWebhookRouteImport } from './routes/r/webhook'
-import { Route as RVendorsRouteImport } from './routes/r/vendors'
-import { Route as RTenantsRouteImport } from './routes/r/tenants'
-import { Route as RSupportRouteImport } from './routes/r/support'
-import { Route as RSearchRouteImport } from './routes/r/search'
-import { Route as RRunsRouteImport } from './routes/r/runs'
-import { Route as RRetentionRouteImport } from './routes/r/retention'
-import { Route as RNotifyRouteImport } from './routes/r/notify'
-import { Route as RFlagRouteImport } from './routes/r/flag'
-import { Route as RConfigRouteImport } from './routes/r/config'
-import { Route as RBrandingRouteImport } from './routes/r/branding'
-import { Route as RBillingRouteImport } from './routes/r/billing'
-import { Route as RAuditRouteImport } from './routes/r/audit'
-import { Route as RAccessRouteImport } from './routes/r/access'
+import { Route as DeskIndexRouteImport } from './routes/desk/index'
 import { Route as RSplatRouteImport } from './routes/r/$'
 import { Route as IntegrationsWebhooksApiAccessRouteImport } from './routes/integrations/webhooks-api-access'
 import { Route as GovernanceRuntimeConfigRouteImport } from './routes/governance/runtime-config'
 import { Route as GovernanceFeatureFlagsRouteImport } from './routes/governance/feature-flags'
 import { Route as GovernanceAuditLogRouteImport } from './routes/governance/audit-log'
 import { Route as GovernanceAccessControlRouteImport } from './routes/governance/access-control'
+import { Route as DeskWebhookRouteImport } from './routes/desk/webhook'
+import { Route as DeskVendorsRouteImport } from './routes/desk/vendors'
+import { Route as DeskTenantsRouteImport } from './routes/desk/tenants'
+import { Route as DeskSupportRouteImport } from './routes/desk/support'
+import { Route as DeskSearchRouteImport } from './routes/desk/search'
+import { Route as DeskRunsRouteImport } from './routes/desk/runs'
+import { Route as DeskRetentionRouteImport } from './routes/desk/retention'
+import { Route as DeskNotifyRouteImport } from './routes/desk/notify'
+import { Route as DeskFlagRouteImport } from './routes/desk/flag'
+import { Route as DeskConfigRouteImport } from './routes/desk/config'
+import { Route as DeskBrandingRouteImport } from './routes/desk/branding'
+import { Route as DeskBillingRouteImport } from './routes/desk/billing'
+import { Route as DeskAuditRouteImport } from './routes/desk/audit'
+import { Route as DeskAccessRouteImport } from './routes/desk/access'
+import { Route as DeskSplatRouteImport } from './routes/desk/$'
 import { Route as AuthStartRouteImport } from './routes/auth/start'
 import { Route as AuthStaleSessionRouteImport } from './routes/auth/stale-session'
 import { Route as AuthSignInRouteImport } from './routes/auth/sign-in'
@@ -50,23 +53,23 @@ import { Route as AdminTokensRouteImport } from './routes/admin/tokens'
 import { Route as AdminProfileRouteImport } from './routes/admin/profile'
 import { Route as AdminMembersRouteImport } from './routes/admin/members'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
-import { Route as RVendorServiceRouteImport } from './routes/r/vendor/$service'
-import { Route as RTenantTenantIdRouteImport } from './routes/r/tenant/$tenantId'
-import { Route as RRunIdRouteImport } from './routes/r/run/$id'
-import { Route as ROperatorIdRouteImport } from './routes/r/operator/$id'
-import { Route as RNotifyIdRouteImport } from './routes/r/notify/$id'
-import { Route as RMeterMeterIdRouteImport } from './routes/r/meter/$meterId'
-import { Route as RLegalHoldHoldIdRouteImport } from './routes/r/legal-hold/$holdId'
-import { Route as RKcUserIdRouteImport } from './routes/r/kc-user/$id'
-import { Route as RKcRoleIdRouteImport } from './routes/r/kc-role/$id'
-import { Route as RInvoiceInvoiceIdRouteImport } from './routes/r/invoice/$invoiceId'
-import { Route as RIncidentIncidentIdRouteImport } from './routes/r/incident/$incidentId'
-import { Route as RFlagFlagKeyRouteImport } from './routes/r/flag/$flagKey'
-import { Route as RDomainHostnameRouteImport } from './routes/r/domain/$hostname'
-import { Route as RDeliveryDeliveryIdRouteImport } from './routes/r/delivery/$deliveryId'
-import { Route as RApiKeyKeyIdRouteImport } from './routes/r/api-key/$keyId'
-import { Route as RAdminMemberIdRouteImport } from './routes/r/admin-member/$id'
-import { Route as RConfigModuleIdConfigKeyRouteImport } from './routes/r/config/$moduleId/$configKey'
+import { Route as DeskVendorServiceRouteImport } from './routes/desk/vendor/$service'
+import { Route as DeskTenantTenantIdRouteImport } from './routes/desk/tenant/$tenantId'
+import { Route as DeskRunIdRouteImport } from './routes/desk/run/$id'
+import { Route as DeskOperatorIdRouteImport } from './routes/desk/operator/$id'
+import { Route as DeskNotifyIdRouteImport } from './routes/desk/notify/$id'
+import { Route as DeskMeterMeterIdRouteImport } from './routes/desk/meter/$meterId'
+import { Route as DeskLegalHoldHoldIdRouteImport } from './routes/desk/legal-hold/$holdId'
+import { Route as DeskKcUserIdRouteImport } from './routes/desk/kc-user/$id'
+import { Route as DeskKcRoleIdRouteImport } from './routes/desk/kc-role/$id'
+import { Route as DeskInvoiceInvoiceIdRouteImport } from './routes/desk/invoice/$invoiceId'
+import { Route as DeskIncidentIncidentIdRouteImport } from './routes/desk/incident/$incidentId'
+import { Route as DeskFlagFlagKeyRouteImport } from './routes/desk/flag/$flagKey'
+import { Route as DeskDomainHostnameRouteImport } from './routes/desk/domain/$hostname'
+import { Route as DeskDeliveryDeliveryIdRouteImport } from './routes/desk/delivery/$deliveryId'
+import { Route as DeskApiKeyKeyIdRouteImport } from './routes/desk/api-key/$keyId'
+import { Route as DeskAdminMemberIdRouteImport } from './routes/desk/admin-member/$id'
+import { Route as DeskConfigModuleIdConfigKeyRouteImport } from './routes/desk/config/$moduleId/$configKey'
 
 const TenantsRoute = TenantsRouteImport.update({
   id: '/tenants',
@@ -86,6 +89,11 @@ const SignInRoute = SignInRouteImport.update({
 const RepairOperationsRoute = RepairOperationsRouteImport.update({
   id: '/repair-operations',
   path: '/repair-operations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RRoute = RRouteImport.update({
+  id: '/r',
+  path: '/r',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -123,80 +131,15 @@ const TenantsIndexRoute = TenantsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => TenantsRoute,
 } as any)
-const RWebhookRoute = RWebhookRouteImport.update({
-  id: '/r/webhook',
-  path: '/r/webhook',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RVendorsRoute = RVendorsRouteImport.update({
-  id: '/r/vendors',
-  path: '/r/vendors',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RTenantsRoute = RTenantsRouteImport.update({
-  id: '/r/tenants',
-  path: '/r/tenants',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RSupportRoute = RSupportRouteImport.update({
-  id: '/r/support',
-  path: '/r/support',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RSearchRoute = RSearchRouteImport.update({
-  id: '/r/search',
-  path: '/r/search',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RRunsRoute = RRunsRouteImport.update({
-  id: '/r/runs',
-  path: '/r/runs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RRetentionRoute = RRetentionRouteImport.update({
-  id: '/r/retention',
-  path: '/r/retention',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RNotifyRoute = RNotifyRouteImport.update({
-  id: '/r/notify',
-  path: '/r/notify',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RFlagRoute = RFlagRouteImport.update({
-  id: '/r/flag',
-  path: '/r/flag',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RConfigRoute = RConfigRouteImport.update({
-  id: '/r/config',
-  path: '/r/config',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RBrandingRoute = RBrandingRouteImport.update({
-  id: '/r/branding',
-  path: '/r/branding',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RBillingRoute = RBillingRouteImport.update({
-  id: '/r/billing',
-  path: '/r/billing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RAuditRoute = RAuditRouteImport.update({
-  id: '/r/audit',
-  path: '/r/audit',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RAccessRoute = RAccessRouteImport.update({
-  id: '/r/access',
-  path: '/r/access',
-  getParentRoute: () => rootRouteImport,
+const DeskIndexRoute = DeskIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DeskRoute,
 } as any)
 const RSplatRoute = RSplatRouteImport.update({
-  id: '/r/$',
-  path: '/r/$',
-  getParentRoute: () => rootRouteImport,
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => RRoute,
 } as any)
 const IntegrationsWebhooksApiAccessRoute =
   IntegrationsWebhooksApiAccessRouteImport.update({
@@ -223,6 +166,81 @@ const GovernanceAccessControlRoute = GovernanceAccessControlRouteImport.update({
   id: '/governance/access-control',
   path: '/governance/access-control',
   getParentRoute: () => rootRouteImport,
+} as any)
+const DeskWebhookRoute = DeskWebhookRouteImport.update({
+  id: '/webhook',
+  path: '/webhook',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskVendorsRoute = DeskVendorsRouteImport.update({
+  id: '/vendors',
+  path: '/vendors',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskTenantsRoute = DeskTenantsRouteImport.update({
+  id: '/tenants',
+  path: '/tenants',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskSupportRoute = DeskSupportRouteImport.update({
+  id: '/support',
+  path: '/support',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskSearchRoute = DeskSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskRunsRoute = DeskRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskRetentionRoute = DeskRetentionRouteImport.update({
+  id: '/retention',
+  path: '/retention',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskNotifyRoute = DeskNotifyRouteImport.update({
+  id: '/notify',
+  path: '/notify',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskFlagRoute = DeskFlagRouteImport.update({
+  id: '/flag',
+  path: '/flag',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskConfigRoute = DeskConfigRouteImport.update({
+  id: '/config',
+  path: '/config',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskBrandingRoute = DeskBrandingRouteImport.update({
+  id: '/branding',
+  path: '/branding',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskBillingRoute = DeskBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskAuditRoute = DeskAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskAccessRoute = DeskAccessRouteImport.update({
+  id: '/access',
+  path: '/access',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskSplatRoute = DeskSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => DeskRoute,
 } as any)
 const AuthStartRoute = AuthStartRouteImport.update({
   id: '/auth/start',
@@ -274,91 +292,91 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
   path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RVendorServiceRoute = RVendorServiceRouteImport.update({
-  id: '/r/vendor/$service',
-  path: '/r/vendor/$service',
-  getParentRoute: () => rootRouteImport,
+const DeskVendorServiceRoute = DeskVendorServiceRouteImport.update({
+  id: '/vendor/$service',
+  path: '/vendor/$service',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RTenantTenantIdRoute = RTenantTenantIdRouteImport.update({
-  id: '/r/tenant/$tenantId',
-  path: '/r/tenant/$tenantId',
-  getParentRoute: () => rootRouteImport,
+const DeskTenantTenantIdRoute = DeskTenantTenantIdRouteImport.update({
+  id: '/tenant/$tenantId',
+  path: '/tenant/$tenantId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RRunIdRoute = RRunIdRouteImport.update({
-  id: '/r/run/$id',
-  path: '/r/run/$id',
-  getParentRoute: () => rootRouteImport,
+const DeskRunIdRoute = DeskRunIdRouteImport.update({
+  id: '/run/$id',
+  path: '/run/$id',
+  getParentRoute: () => DeskRoute,
 } as any)
-const ROperatorIdRoute = ROperatorIdRouteImport.update({
-  id: '/r/operator/$id',
-  path: '/r/operator/$id',
-  getParentRoute: () => rootRouteImport,
+const DeskOperatorIdRoute = DeskOperatorIdRouteImport.update({
+  id: '/operator/$id',
+  path: '/operator/$id',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RNotifyIdRoute = RNotifyIdRouteImport.update({
+const DeskNotifyIdRoute = DeskNotifyIdRouteImport.update({
   id: '/$id',
   path: '/$id',
-  getParentRoute: () => RNotifyRoute,
+  getParentRoute: () => DeskNotifyRoute,
 } as any)
-const RMeterMeterIdRoute = RMeterMeterIdRouteImport.update({
-  id: '/r/meter/$meterId',
-  path: '/r/meter/$meterId',
-  getParentRoute: () => rootRouteImport,
+const DeskMeterMeterIdRoute = DeskMeterMeterIdRouteImport.update({
+  id: '/meter/$meterId',
+  path: '/meter/$meterId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RLegalHoldHoldIdRoute = RLegalHoldHoldIdRouteImport.update({
-  id: '/r/legal-hold/$holdId',
-  path: '/r/legal-hold/$holdId',
-  getParentRoute: () => rootRouteImport,
+const DeskLegalHoldHoldIdRoute = DeskLegalHoldHoldIdRouteImport.update({
+  id: '/legal-hold/$holdId',
+  path: '/legal-hold/$holdId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RKcUserIdRoute = RKcUserIdRouteImport.update({
-  id: '/r/kc-user/$id',
-  path: '/r/kc-user/$id',
-  getParentRoute: () => rootRouteImport,
+const DeskKcUserIdRoute = DeskKcUserIdRouteImport.update({
+  id: '/kc-user/$id',
+  path: '/kc-user/$id',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RKcRoleIdRoute = RKcRoleIdRouteImport.update({
-  id: '/r/kc-role/$id',
-  path: '/r/kc-role/$id',
-  getParentRoute: () => rootRouteImport,
+const DeskKcRoleIdRoute = DeskKcRoleIdRouteImport.update({
+  id: '/kc-role/$id',
+  path: '/kc-role/$id',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RInvoiceInvoiceIdRoute = RInvoiceInvoiceIdRouteImport.update({
-  id: '/r/invoice/$invoiceId',
-  path: '/r/invoice/$invoiceId',
-  getParentRoute: () => rootRouteImport,
+const DeskInvoiceInvoiceIdRoute = DeskInvoiceInvoiceIdRouteImport.update({
+  id: '/invoice/$invoiceId',
+  path: '/invoice/$invoiceId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RIncidentIncidentIdRoute = RIncidentIncidentIdRouteImport.update({
-  id: '/r/incident/$incidentId',
-  path: '/r/incident/$incidentId',
-  getParentRoute: () => rootRouteImport,
+const DeskIncidentIncidentIdRoute = DeskIncidentIncidentIdRouteImport.update({
+  id: '/incident/$incidentId',
+  path: '/incident/$incidentId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RFlagFlagKeyRoute = RFlagFlagKeyRouteImport.update({
+const DeskFlagFlagKeyRoute = DeskFlagFlagKeyRouteImport.update({
   id: '/$flagKey',
   path: '/$flagKey',
-  getParentRoute: () => RFlagRoute,
+  getParentRoute: () => DeskFlagRoute,
 } as any)
-const RDomainHostnameRoute = RDomainHostnameRouteImport.update({
-  id: '/r/domain/$hostname',
-  path: '/r/domain/$hostname',
-  getParentRoute: () => rootRouteImport,
+const DeskDomainHostnameRoute = DeskDomainHostnameRouteImport.update({
+  id: '/domain/$hostname',
+  path: '/domain/$hostname',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RDeliveryDeliveryIdRoute = RDeliveryDeliveryIdRouteImport.update({
-  id: '/r/delivery/$deliveryId',
-  path: '/r/delivery/$deliveryId',
-  getParentRoute: () => rootRouteImport,
+const DeskDeliveryDeliveryIdRoute = DeskDeliveryDeliveryIdRouteImport.update({
+  id: '/delivery/$deliveryId',
+  path: '/delivery/$deliveryId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RApiKeyKeyIdRoute = RApiKeyKeyIdRouteImport.update({
-  id: '/r/api-key/$keyId',
-  path: '/r/api-key/$keyId',
-  getParentRoute: () => rootRouteImport,
+const DeskApiKeyKeyIdRoute = DeskApiKeyKeyIdRouteImport.update({
+  id: '/api-key/$keyId',
+  path: '/api-key/$keyId',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RAdminMemberIdRoute = RAdminMemberIdRouteImport.update({
-  id: '/r/admin-member/$id',
-  path: '/r/admin-member/$id',
-  getParentRoute: () => rootRouteImport,
+const DeskAdminMemberIdRoute = DeskAdminMemberIdRouteImport.update({
+  id: '/admin-member/$id',
+  path: '/admin-member/$id',
+  getParentRoute: () => DeskRoute,
 } as any)
-const RConfigModuleIdConfigKeyRoute =
-  RConfigModuleIdConfigKeyRouteImport.update({
+const DeskConfigModuleIdConfigKeyRoute =
+  DeskConfigModuleIdConfigKeyRouteImport.update({
     id: '/$moduleId/$configKey',
     path: '/$moduleId/$configKey',
-    getParentRoute: () => RConfigRoute,
+    getParentRoute: () => DeskConfigRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -366,8 +384,9 @@ export interface FileRoutesByFullPath {
   '/billing': typeof BillingRoute
   '/branding': typeof BrandingRoute
   '/compliance-retention': typeof ComplianceRetentionRoute
-  '/desk': typeof DeskRoute
+  '/desk': typeof DeskRouteWithChildren
   '/profile': typeof ProfileRoute
+  '/r': typeof RRouteWithChildren
   '/repair-operations': typeof RepairOperationsRoute
   '/sign-in': typeof SignInRoute
   '/support-operations': typeof SupportOperationsRoute
@@ -382,52 +401,54 @@ export interface FileRoutesByFullPath {
   '/auth/sign-in': typeof AuthSignInRoute
   '/auth/stale-session': typeof AuthStaleSessionRoute
   '/auth/start': typeof AuthStartRoute
+  '/desk/$': typeof DeskSplatRoute
+  '/desk/access': typeof DeskAccessRoute
+  '/desk/audit': typeof DeskAuditRoute
+  '/desk/billing': typeof DeskBillingRoute
+  '/desk/branding': typeof DeskBrandingRoute
+  '/desk/config': typeof DeskConfigRouteWithChildren
+  '/desk/flag': typeof DeskFlagRouteWithChildren
+  '/desk/notify': typeof DeskNotifyRouteWithChildren
+  '/desk/retention': typeof DeskRetentionRoute
+  '/desk/runs': typeof DeskRunsRoute
+  '/desk/search': typeof DeskSearchRoute
+  '/desk/support': typeof DeskSupportRoute
+  '/desk/tenants': typeof DeskTenantsRoute
+  '/desk/vendors': typeof DeskVendorsRoute
+  '/desk/webhook': typeof DeskWebhookRoute
   '/governance/access-control': typeof GovernanceAccessControlRoute
   '/governance/audit-log': typeof GovernanceAuditLogRoute
   '/governance/feature-flags': typeof GovernanceFeatureFlagsRoute
   '/governance/runtime-config': typeof GovernanceRuntimeConfigRoute
   '/integrations/webhooks-api-access': typeof IntegrationsWebhooksApiAccessRoute
   '/r/$': typeof RSplatRoute
-  '/r/access': typeof RAccessRoute
-  '/r/audit': typeof RAuditRoute
-  '/r/billing': typeof RBillingRoute
-  '/r/branding': typeof RBrandingRoute
-  '/r/config': typeof RConfigRouteWithChildren
-  '/r/flag': typeof RFlagRouteWithChildren
-  '/r/notify': typeof RNotifyRouteWithChildren
-  '/r/retention': typeof RRetentionRoute
-  '/r/runs': typeof RRunsRoute
-  '/r/search': typeof RSearchRoute
-  '/r/support': typeof RSupportRoute
-  '/r/tenants': typeof RTenantsRoute
-  '/r/vendors': typeof RVendorsRoute
-  '/r/webhook': typeof RWebhookRoute
+  '/desk/': typeof DeskIndexRoute
   '/tenants/': typeof TenantsIndexRoute
-  '/r/admin-member/$id': typeof RAdminMemberIdRoute
-  '/r/api-key/$keyId': typeof RApiKeyKeyIdRoute
-  '/r/delivery/$deliveryId': typeof RDeliveryDeliveryIdRoute
-  '/r/domain/$hostname': typeof RDomainHostnameRoute
-  '/r/flag/$flagKey': typeof RFlagFlagKeyRoute
-  '/r/incident/$incidentId': typeof RIncidentIncidentIdRoute
-  '/r/invoice/$invoiceId': typeof RInvoiceInvoiceIdRoute
-  '/r/kc-role/$id': typeof RKcRoleIdRoute
-  '/r/kc-user/$id': typeof RKcUserIdRoute
-  '/r/legal-hold/$holdId': typeof RLegalHoldHoldIdRoute
-  '/r/meter/$meterId': typeof RMeterMeterIdRoute
-  '/r/notify/$id': typeof RNotifyIdRoute
-  '/r/operator/$id': typeof ROperatorIdRoute
-  '/r/run/$id': typeof RRunIdRoute
-  '/r/tenant/$tenantId': typeof RTenantTenantIdRoute
-  '/r/vendor/$service': typeof RVendorServiceRoute
-  '/r/config/$moduleId/$configKey': typeof RConfigModuleIdConfigKeyRoute
+  '/desk/admin-member/$id': typeof DeskAdminMemberIdRoute
+  '/desk/api-key/$keyId': typeof DeskApiKeyKeyIdRoute
+  '/desk/delivery/$deliveryId': typeof DeskDeliveryDeliveryIdRoute
+  '/desk/domain/$hostname': typeof DeskDomainHostnameRoute
+  '/desk/flag/$flagKey': typeof DeskFlagFlagKeyRoute
+  '/desk/incident/$incidentId': typeof DeskIncidentIncidentIdRoute
+  '/desk/invoice/$invoiceId': typeof DeskInvoiceInvoiceIdRoute
+  '/desk/kc-role/$id': typeof DeskKcRoleIdRoute
+  '/desk/kc-user/$id': typeof DeskKcUserIdRoute
+  '/desk/legal-hold/$holdId': typeof DeskLegalHoldHoldIdRoute
+  '/desk/meter/$meterId': typeof DeskMeterMeterIdRoute
+  '/desk/notify/$id': typeof DeskNotifyIdRoute
+  '/desk/operator/$id': typeof DeskOperatorIdRoute
+  '/desk/run/$id': typeof DeskRunIdRoute
+  '/desk/tenant/$tenantId': typeof DeskTenantTenantIdRoute
+  '/desk/vendor/$service': typeof DeskVendorServiceRoute
+  '/desk/config/$moduleId/$configKey': typeof DeskConfigModuleIdConfigKeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
   '/branding': typeof BrandingRoute
   '/compliance-retention': typeof ComplianceRetentionRoute
-  '/desk': typeof DeskRoute
   '/profile': typeof ProfileRoute
+  '/r': typeof RRouteWithChildren
   '/repair-operations': typeof RepairOperationsRoute
   '/sign-in': typeof SignInRoute
   '/support-operations': typeof SupportOperationsRoute
@@ -441,44 +462,46 @@ export interface FileRoutesByTo {
   '/auth/sign-in': typeof AuthSignInRoute
   '/auth/stale-session': typeof AuthStaleSessionRoute
   '/auth/start': typeof AuthStartRoute
+  '/desk/$': typeof DeskSplatRoute
+  '/desk/access': typeof DeskAccessRoute
+  '/desk/audit': typeof DeskAuditRoute
+  '/desk/billing': typeof DeskBillingRoute
+  '/desk/branding': typeof DeskBrandingRoute
+  '/desk/config': typeof DeskConfigRouteWithChildren
+  '/desk/flag': typeof DeskFlagRouteWithChildren
+  '/desk/notify': typeof DeskNotifyRouteWithChildren
+  '/desk/retention': typeof DeskRetentionRoute
+  '/desk/runs': typeof DeskRunsRoute
+  '/desk/search': typeof DeskSearchRoute
+  '/desk/support': typeof DeskSupportRoute
+  '/desk/tenants': typeof DeskTenantsRoute
+  '/desk/vendors': typeof DeskVendorsRoute
+  '/desk/webhook': typeof DeskWebhookRoute
   '/governance/access-control': typeof GovernanceAccessControlRoute
   '/governance/audit-log': typeof GovernanceAuditLogRoute
   '/governance/feature-flags': typeof GovernanceFeatureFlagsRoute
   '/governance/runtime-config': typeof GovernanceRuntimeConfigRoute
   '/integrations/webhooks-api-access': typeof IntegrationsWebhooksApiAccessRoute
   '/r/$': typeof RSplatRoute
-  '/r/access': typeof RAccessRoute
-  '/r/audit': typeof RAuditRoute
-  '/r/billing': typeof RBillingRoute
-  '/r/branding': typeof RBrandingRoute
-  '/r/config': typeof RConfigRouteWithChildren
-  '/r/flag': typeof RFlagRouteWithChildren
-  '/r/notify': typeof RNotifyRouteWithChildren
-  '/r/retention': typeof RRetentionRoute
-  '/r/runs': typeof RRunsRoute
-  '/r/search': typeof RSearchRoute
-  '/r/support': typeof RSupportRoute
-  '/r/tenants': typeof RTenantsRoute
-  '/r/vendors': typeof RVendorsRoute
-  '/r/webhook': typeof RWebhookRoute
+  '/desk': typeof DeskIndexRoute
   '/tenants': typeof TenantsIndexRoute
-  '/r/admin-member/$id': typeof RAdminMemberIdRoute
-  '/r/api-key/$keyId': typeof RApiKeyKeyIdRoute
-  '/r/delivery/$deliveryId': typeof RDeliveryDeliveryIdRoute
-  '/r/domain/$hostname': typeof RDomainHostnameRoute
-  '/r/flag/$flagKey': typeof RFlagFlagKeyRoute
-  '/r/incident/$incidentId': typeof RIncidentIncidentIdRoute
-  '/r/invoice/$invoiceId': typeof RInvoiceInvoiceIdRoute
-  '/r/kc-role/$id': typeof RKcRoleIdRoute
-  '/r/kc-user/$id': typeof RKcUserIdRoute
-  '/r/legal-hold/$holdId': typeof RLegalHoldHoldIdRoute
-  '/r/meter/$meterId': typeof RMeterMeterIdRoute
-  '/r/notify/$id': typeof RNotifyIdRoute
-  '/r/operator/$id': typeof ROperatorIdRoute
-  '/r/run/$id': typeof RRunIdRoute
-  '/r/tenant/$tenantId': typeof RTenantTenantIdRoute
-  '/r/vendor/$service': typeof RVendorServiceRoute
-  '/r/config/$moduleId/$configKey': typeof RConfigModuleIdConfigKeyRoute
+  '/desk/admin-member/$id': typeof DeskAdminMemberIdRoute
+  '/desk/api-key/$keyId': typeof DeskApiKeyKeyIdRoute
+  '/desk/delivery/$deliveryId': typeof DeskDeliveryDeliveryIdRoute
+  '/desk/domain/$hostname': typeof DeskDomainHostnameRoute
+  '/desk/flag/$flagKey': typeof DeskFlagFlagKeyRoute
+  '/desk/incident/$incidentId': typeof DeskIncidentIncidentIdRoute
+  '/desk/invoice/$invoiceId': typeof DeskInvoiceInvoiceIdRoute
+  '/desk/kc-role/$id': typeof DeskKcRoleIdRoute
+  '/desk/kc-user/$id': typeof DeskKcUserIdRoute
+  '/desk/legal-hold/$holdId': typeof DeskLegalHoldHoldIdRoute
+  '/desk/meter/$meterId': typeof DeskMeterMeterIdRoute
+  '/desk/notify/$id': typeof DeskNotifyIdRoute
+  '/desk/operator/$id': typeof DeskOperatorIdRoute
+  '/desk/run/$id': typeof DeskRunIdRoute
+  '/desk/tenant/$tenantId': typeof DeskTenantTenantIdRoute
+  '/desk/vendor/$service': typeof DeskVendorServiceRoute
+  '/desk/config/$moduleId/$configKey': typeof DeskConfigModuleIdConfigKeyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -486,8 +509,9 @@ export interface FileRoutesById {
   '/billing': typeof BillingRoute
   '/branding': typeof BrandingRoute
   '/compliance-retention': typeof ComplianceRetentionRoute
-  '/desk': typeof DeskRoute
+  '/desk': typeof DeskRouteWithChildren
   '/profile': typeof ProfileRoute
+  '/r': typeof RRouteWithChildren
   '/repair-operations': typeof RepairOperationsRoute
   '/sign-in': typeof SignInRoute
   '/support-operations': typeof SupportOperationsRoute
@@ -502,44 +526,46 @@ export interface FileRoutesById {
   '/auth/sign-in': typeof AuthSignInRoute
   '/auth/stale-session': typeof AuthStaleSessionRoute
   '/auth/start': typeof AuthStartRoute
+  '/desk/$': typeof DeskSplatRoute
+  '/desk/access': typeof DeskAccessRoute
+  '/desk/audit': typeof DeskAuditRoute
+  '/desk/billing': typeof DeskBillingRoute
+  '/desk/branding': typeof DeskBrandingRoute
+  '/desk/config': typeof DeskConfigRouteWithChildren
+  '/desk/flag': typeof DeskFlagRouteWithChildren
+  '/desk/notify': typeof DeskNotifyRouteWithChildren
+  '/desk/retention': typeof DeskRetentionRoute
+  '/desk/runs': typeof DeskRunsRoute
+  '/desk/search': typeof DeskSearchRoute
+  '/desk/support': typeof DeskSupportRoute
+  '/desk/tenants': typeof DeskTenantsRoute
+  '/desk/vendors': typeof DeskVendorsRoute
+  '/desk/webhook': typeof DeskWebhookRoute
   '/governance/access-control': typeof GovernanceAccessControlRoute
   '/governance/audit-log': typeof GovernanceAuditLogRoute
   '/governance/feature-flags': typeof GovernanceFeatureFlagsRoute
   '/governance/runtime-config': typeof GovernanceRuntimeConfigRoute
   '/integrations/webhooks-api-access': typeof IntegrationsWebhooksApiAccessRoute
   '/r/$': typeof RSplatRoute
-  '/r/access': typeof RAccessRoute
-  '/r/audit': typeof RAuditRoute
-  '/r/billing': typeof RBillingRoute
-  '/r/branding': typeof RBrandingRoute
-  '/r/config': typeof RConfigRouteWithChildren
-  '/r/flag': typeof RFlagRouteWithChildren
-  '/r/notify': typeof RNotifyRouteWithChildren
-  '/r/retention': typeof RRetentionRoute
-  '/r/runs': typeof RRunsRoute
-  '/r/search': typeof RSearchRoute
-  '/r/support': typeof RSupportRoute
-  '/r/tenants': typeof RTenantsRoute
-  '/r/vendors': typeof RVendorsRoute
-  '/r/webhook': typeof RWebhookRoute
+  '/desk/': typeof DeskIndexRoute
   '/tenants/': typeof TenantsIndexRoute
-  '/r/admin-member/$id': typeof RAdminMemberIdRoute
-  '/r/api-key/$keyId': typeof RApiKeyKeyIdRoute
-  '/r/delivery/$deliveryId': typeof RDeliveryDeliveryIdRoute
-  '/r/domain/$hostname': typeof RDomainHostnameRoute
-  '/r/flag/$flagKey': typeof RFlagFlagKeyRoute
-  '/r/incident/$incidentId': typeof RIncidentIncidentIdRoute
-  '/r/invoice/$invoiceId': typeof RInvoiceInvoiceIdRoute
-  '/r/kc-role/$id': typeof RKcRoleIdRoute
-  '/r/kc-user/$id': typeof RKcUserIdRoute
-  '/r/legal-hold/$holdId': typeof RLegalHoldHoldIdRoute
-  '/r/meter/$meterId': typeof RMeterMeterIdRoute
-  '/r/notify/$id': typeof RNotifyIdRoute
-  '/r/operator/$id': typeof ROperatorIdRoute
-  '/r/run/$id': typeof RRunIdRoute
-  '/r/tenant/$tenantId': typeof RTenantTenantIdRoute
-  '/r/vendor/$service': typeof RVendorServiceRoute
-  '/r/config/$moduleId/$configKey': typeof RConfigModuleIdConfigKeyRoute
+  '/desk/admin-member/$id': typeof DeskAdminMemberIdRoute
+  '/desk/api-key/$keyId': typeof DeskApiKeyKeyIdRoute
+  '/desk/delivery/$deliveryId': typeof DeskDeliveryDeliveryIdRoute
+  '/desk/domain/$hostname': typeof DeskDomainHostnameRoute
+  '/desk/flag/$flagKey': typeof DeskFlagFlagKeyRoute
+  '/desk/incident/$incidentId': typeof DeskIncidentIncidentIdRoute
+  '/desk/invoice/$invoiceId': typeof DeskInvoiceInvoiceIdRoute
+  '/desk/kc-role/$id': typeof DeskKcRoleIdRoute
+  '/desk/kc-user/$id': typeof DeskKcUserIdRoute
+  '/desk/legal-hold/$holdId': typeof DeskLegalHoldHoldIdRoute
+  '/desk/meter/$meterId': typeof DeskMeterMeterIdRoute
+  '/desk/notify/$id': typeof DeskNotifyIdRoute
+  '/desk/operator/$id': typeof DeskOperatorIdRoute
+  '/desk/run/$id': typeof DeskRunIdRoute
+  '/desk/tenant/$tenantId': typeof DeskTenantTenantIdRoute
+  '/desk/vendor/$service': typeof DeskVendorServiceRoute
+  '/desk/config/$moduleId/$configKey': typeof DeskConfigModuleIdConfigKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -550,6 +576,7 @@ export interface FileRouteTypes {
     | '/compliance-retention'
     | '/desk'
     | '/profile'
+    | '/r'
     | '/repair-operations'
     | '/sign-in'
     | '/support-operations'
@@ -564,52 +591,54 @@ export interface FileRouteTypes {
     | '/auth/sign-in'
     | '/auth/stale-session'
     | '/auth/start'
+    | '/desk/$'
+    | '/desk/access'
+    | '/desk/audit'
+    | '/desk/billing'
+    | '/desk/branding'
+    | '/desk/config'
+    | '/desk/flag'
+    | '/desk/notify'
+    | '/desk/retention'
+    | '/desk/runs'
+    | '/desk/search'
+    | '/desk/support'
+    | '/desk/tenants'
+    | '/desk/vendors'
+    | '/desk/webhook'
     | '/governance/access-control'
     | '/governance/audit-log'
     | '/governance/feature-flags'
     | '/governance/runtime-config'
     | '/integrations/webhooks-api-access'
     | '/r/$'
-    | '/r/access'
-    | '/r/audit'
-    | '/r/billing'
-    | '/r/branding'
-    | '/r/config'
-    | '/r/flag'
-    | '/r/notify'
-    | '/r/retention'
-    | '/r/runs'
-    | '/r/search'
-    | '/r/support'
-    | '/r/tenants'
-    | '/r/vendors'
-    | '/r/webhook'
+    | '/desk/'
     | '/tenants/'
-    | '/r/admin-member/$id'
-    | '/r/api-key/$keyId'
-    | '/r/delivery/$deliveryId'
-    | '/r/domain/$hostname'
-    | '/r/flag/$flagKey'
-    | '/r/incident/$incidentId'
-    | '/r/invoice/$invoiceId'
-    | '/r/kc-role/$id'
-    | '/r/kc-user/$id'
-    | '/r/legal-hold/$holdId'
-    | '/r/meter/$meterId'
-    | '/r/notify/$id'
-    | '/r/operator/$id'
-    | '/r/run/$id'
-    | '/r/tenant/$tenantId'
-    | '/r/vendor/$service'
-    | '/r/config/$moduleId/$configKey'
+    | '/desk/admin-member/$id'
+    | '/desk/api-key/$keyId'
+    | '/desk/delivery/$deliveryId'
+    | '/desk/domain/$hostname'
+    | '/desk/flag/$flagKey'
+    | '/desk/incident/$incidentId'
+    | '/desk/invoice/$invoiceId'
+    | '/desk/kc-role/$id'
+    | '/desk/kc-user/$id'
+    | '/desk/legal-hold/$holdId'
+    | '/desk/meter/$meterId'
+    | '/desk/notify/$id'
+    | '/desk/operator/$id'
+    | '/desk/run/$id'
+    | '/desk/tenant/$tenantId'
+    | '/desk/vendor/$service'
+    | '/desk/config/$moduleId/$configKey'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/billing'
     | '/branding'
     | '/compliance-retention'
-    | '/desk'
     | '/profile'
+    | '/r'
     | '/repair-operations'
     | '/sign-in'
     | '/support-operations'
@@ -623,44 +652,46 @@ export interface FileRouteTypes {
     | '/auth/sign-in'
     | '/auth/stale-session'
     | '/auth/start'
+    | '/desk/$'
+    | '/desk/access'
+    | '/desk/audit'
+    | '/desk/billing'
+    | '/desk/branding'
+    | '/desk/config'
+    | '/desk/flag'
+    | '/desk/notify'
+    | '/desk/retention'
+    | '/desk/runs'
+    | '/desk/search'
+    | '/desk/support'
+    | '/desk/tenants'
+    | '/desk/vendors'
+    | '/desk/webhook'
     | '/governance/access-control'
     | '/governance/audit-log'
     | '/governance/feature-flags'
     | '/governance/runtime-config'
     | '/integrations/webhooks-api-access'
     | '/r/$'
-    | '/r/access'
-    | '/r/audit'
-    | '/r/billing'
-    | '/r/branding'
-    | '/r/config'
-    | '/r/flag'
-    | '/r/notify'
-    | '/r/retention'
-    | '/r/runs'
-    | '/r/search'
-    | '/r/support'
-    | '/r/tenants'
-    | '/r/vendors'
-    | '/r/webhook'
+    | '/desk'
     | '/tenants'
-    | '/r/admin-member/$id'
-    | '/r/api-key/$keyId'
-    | '/r/delivery/$deliveryId'
-    | '/r/domain/$hostname'
-    | '/r/flag/$flagKey'
-    | '/r/incident/$incidentId'
-    | '/r/invoice/$invoiceId'
-    | '/r/kc-role/$id'
-    | '/r/kc-user/$id'
-    | '/r/legal-hold/$holdId'
-    | '/r/meter/$meterId'
-    | '/r/notify/$id'
-    | '/r/operator/$id'
-    | '/r/run/$id'
-    | '/r/tenant/$tenantId'
-    | '/r/vendor/$service'
-    | '/r/config/$moduleId/$configKey'
+    | '/desk/admin-member/$id'
+    | '/desk/api-key/$keyId'
+    | '/desk/delivery/$deliveryId'
+    | '/desk/domain/$hostname'
+    | '/desk/flag/$flagKey'
+    | '/desk/incident/$incidentId'
+    | '/desk/invoice/$invoiceId'
+    | '/desk/kc-role/$id'
+    | '/desk/kc-user/$id'
+    | '/desk/legal-hold/$holdId'
+    | '/desk/meter/$meterId'
+    | '/desk/notify/$id'
+    | '/desk/operator/$id'
+    | '/desk/run/$id'
+    | '/desk/tenant/$tenantId'
+    | '/desk/vendor/$service'
+    | '/desk/config/$moduleId/$configKey'
   id:
     | '__root__'
     | '/'
@@ -669,6 +700,7 @@ export interface FileRouteTypes {
     | '/compliance-retention'
     | '/desk'
     | '/profile'
+    | '/r'
     | '/repair-operations'
     | '/sign-in'
     | '/support-operations'
@@ -683,44 +715,46 @@ export interface FileRouteTypes {
     | '/auth/sign-in'
     | '/auth/stale-session'
     | '/auth/start'
+    | '/desk/$'
+    | '/desk/access'
+    | '/desk/audit'
+    | '/desk/billing'
+    | '/desk/branding'
+    | '/desk/config'
+    | '/desk/flag'
+    | '/desk/notify'
+    | '/desk/retention'
+    | '/desk/runs'
+    | '/desk/search'
+    | '/desk/support'
+    | '/desk/tenants'
+    | '/desk/vendors'
+    | '/desk/webhook'
     | '/governance/access-control'
     | '/governance/audit-log'
     | '/governance/feature-flags'
     | '/governance/runtime-config'
     | '/integrations/webhooks-api-access'
     | '/r/$'
-    | '/r/access'
-    | '/r/audit'
-    | '/r/billing'
-    | '/r/branding'
-    | '/r/config'
-    | '/r/flag'
-    | '/r/notify'
-    | '/r/retention'
-    | '/r/runs'
-    | '/r/search'
-    | '/r/support'
-    | '/r/tenants'
-    | '/r/vendors'
-    | '/r/webhook'
+    | '/desk/'
     | '/tenants/'
-    | '/r/admin-member/$id'
-    | '/r/api-key/$keyId'
-    | '/r/delivery/$deliveryId'
-    | '/r/domain/$hostname'
-    | '/r/flag/$flagKey'
-    | '/r/incident/$incidentId'
-    | '/r/invoice/$invoiceId'
-    | '/r/kc-role/$id'
-    | '/r/kc-user/$id'
-    | '/r/legal-hold/$holdId'
-    | '/r/meter/$meterId'
-    | '/r/notify/$id'
-    | '/r/operator/$id'
-    | '/r/run/$id'
-    | '/r/tenant/$tenantId'
-    | '/r/vendor/$service'
-    | '/r/config/$moduleId/$configKey'
+    | '/desk/admin-member/$id'
+    | '/desk/api-key/$keyId'
+    | '/desk/delivery/$deliveryId'
+    | '/desk/domain/$hostname'
+    | '/desk/flag/$flagKey'
+    | '/desk/incident/$incidentId'
+    | '/desk/invoice/$invoiceId'
+    | '/desk/kc-role/$id'
+    | '/desk/kc-user/$id'
+    | '/desk/legal-hold/$holdId'
+    | '/desk/meter/$meterId'
+    | '/desk/notify/$id'
+    | '/desk/operator/$id'
+    | '/desk/run/$id'
+    | '/desk/tenant/$tenantId'
+    | '/desk/vendor/$service'
+    | '/desk/config/$moduleId/$configKey'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -728,8 +762,9 @@ export interface RootRouteChildren {
   BillingRoute: typeof BillingRoute
   BrandingRoute: typeof BrandingRoute
   ComplianceRetentionRoute: typeof ComplianceRetentionRoute
-  DeskRoute: typeof DeskRoute
+  DeskRoute: typeof DeskRouteWithChildren
   ProfileRoute: typeof ProfileRoute
+  RRoute: typeof RRouteWithChildren
   RepairOperationsRoute: typeof RepairOperationsRoute
   SignInRoute: typeof SignInRoute
   SupportOperationsRoute: typeof SupportOperationsRoute
@@ -749,35 +784,6 @@ export interface RootRouteChildren {
   GovernanceFeatureFlagsRoute: typeof GovernanceFeatureFlagsRoute
   GovernanceRuntimeConfigRoute: typeof GovernanceRuntimeConfigRoute
   IntegrationsWebhooksApiAccessRoute: typeof IntegrationsWebhooksApiAccessRoute
-  RSplatRoute: typeof RSplatRoute
-  RAccessRoute: typeof RAccessRoute
-  RAuditRoute: typeof RAuditRoute
-  RBillingRoute: typeof RBillingRoute
-  RBrandingRoute: typeof RBrandingRoute
-  RConfigRoute: typeof RConfigRouteWithChildren
-  RFlagRoute: typeof RFlagRouteWithChildren
-  RNotifyRoute: typeof RNotifyRouteWithChildren
-  RRetentionRoute: typeof RRetentionRoute
-  RRunsRoute: typeof RRunsRoute
-  RSearchRoute: typeof RSearchRoute
-  RSupportRoute: typeof RSupportRoute
-  RTenantsRoute: typeof RTenantsRoute
-  RVendorsRoute: typeof RVendorsRoute
-  RWebhookRoute: typeof RWebhookRoute
-  RAdminMemberIdRoute: typeof RAdminMemberIdRoute
-  RApiKeyKeyIdRoute: typeof RApiKeyKeyIdRoute
-  RDeliveryDeliveryIdRoute: typeof RDeliveryDeliveryIdRoute
-  RDomainHostnameRoute: typeof RDomainHostnameRoute
-  RIncidentIncidentIdRoute: typeof RIncidentIncidentIdRoute
-  RInvoiceInvoiceIdRoute: typeof RInvoiceInvoiceIdRoute
-  RKcRoleIdRoute: typeof RKcRoleIdRoute
-  RKcUserIdRoute: typeof RKcUserIdRoute
-  RLegalHoldHoldIdRoute: typeof RLegalHoldHoldIdRoute
-  RMeterMeterIdRoute: typeof RMeterMeterIdRoute
-  ROperatorIdRoute: typeof ROperatorIdRoute
-  RRunIdRoute: typeof RRunIdRoute
-  RTenantTenantIdRoute: typeof RTenantTenantIdRoute
-  RVendorServiceRoute: typeof RVendorServiceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -808,6 +814,13 @@ declare module '@tanstack/react-router' {
       path: '/repair-operations'
       fullPath: '/repair-operations'
       preLoaderRoute: typeof RepairOperationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r': {
+      id: '/r'
+      path: '/r'
+      fullPath: '/r'
+      preLoaderRoute: typeof RRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -859,110 +872,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TenantsIndexRouteImport
       parentRoute: typeof TenantsRoute
     }
-    '/r/webhook': {
-      id: '/r/webhook'
-      path: '/r/webhook'
-      fullPath: '/r/webhook'
-      preLoaderRoute: typeof RWebhookRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/vendors': {
-      id: '/r/vendors'
-      path: '/r/vendors'
-      fullPath: '/r/vendors'
-      preLoaderRoute: typeof RVendorsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/tenants': {
-      id: '/r/tenants'
-      path: '/r/tenants'
-      fullPath: '/r/tenants'
-      preLoaderRoute: typeof RTenantsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/support': {
-      id: '/r/support'
-      path: '/r/support'
-      fullPath: '/r/support'
-      preLoaderRoute: typeof RSupportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/search': {
-      id: '/r/search'
-      path: '/r/search'
-      fullPath: '/r/search'
-      preLoaderRoute: typeof RSearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/runs': {
-      id: '/r/runs'
-      path: '/r/runs'
-      fullPath: '/r/runs'
-      preLoaderRoute: typeof RRunsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/retention': {
-      id: '/r/retention'
-      path: '/r/retention'
-      fullPath: '/r/retention'
-      preLoaderRoute: typeof RRetentionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/notify': {
-      id: '/r/notify'
-      path: '/r/notify'
-      fullPath: '/r/notify'
-      preLoaderRoute: typeof RNotifyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/flag': {
-      id: '/r/flag'
-      path: '/r/flag'
-      fullPath: '/r/flag'
-      preLoaderRoute: typeof RFlagRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/config': {
-      id: '/r/config'
-      path: '/r/config'
-      fullPath: '/r/config'
-      preLoaderRoute: typeof RConfigRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/branding': {
-      id: '/r/branding'
-      path: '/r/branding'
-      fullPath: '/r/branding'
-      preLoaderRoute: typeof RBrandingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/billing': {
-      id: '/r/billing'
-      path: '/r/billing'
-      fullPath: '/r/billing'
-      preLoaderRoute: typeof RBillingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/audit': {
-      id: '/r/audit'
-      path: '/r/audit'
-      fullPath: '/r/audit'
-      preLoaderRoute: typeof RAuditRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r/access': {
-      id: '/r/access'
-      path: '/r/access'
-      fullPath: '/r/access'
-      preLoaderRoute: typeof RAccessRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/': {
+      id: '/desk/'
+      path: '/'
+      fullPath: '/desk/'
+      preLoaderRoute: typeof DeskIndexRouteImport
+      parentRoute: typeof DeskRoute
     }
     '/r/$': {
       id: '/r/$'
-      path: '/r/$'
+      path: '/$'
       fullPath: '/r/$'
       preLoaderRoute: typeof RSplatRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof RRoute
     }
     '/integrations/webhooks-api-access': {
       id: '/integrations/webhooks-api-access'
@@ -998,6 +920,111 @@ declare module '@tanstack/react-router' {
       fullPath: '/governance/access-control'
       preLoaderRoute: typeof GovernanceAccessControlRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/desk/webhook': {
+      id: '/desk/webhook'
+      path: '/webhook'
+      fullPath: '/desk/webhook'
+      preLoaderRoute: typeof DeskWebhookRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/vendors': {
+      id: '/desk/vendors'
+      path: '/vendors'
+      fullPath: '/desk/vendors'
+      preLoaderRoute: typeof DeskVendorsRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/tenants': {
+      id: '/desk/tenants'
+      path: '/tenants'
+      fullPath: '/desk/tenants'
+      preLoaderRoute: typeof DeskTenantsRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/support': {
+      id: '/desk/support'
+      path: '/support'
+      fullPath: '/desk/support'
+      preLoaderRoute: typeof DeskSupportRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/search': {
+      id: '/desk/search'
+      path: '/search'
+      fullPath: '/desk/search'
+      preLoaderRoute: typeof DeskSearchRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/runs': {
+      id: '/desk/runs'
+      path: '/runs'
+      fullPath: '/desk/runs'
+      preLoaderRoute: typeof DeskRunsRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/retention': {
+      id: '/desk/retention'
+      path: '/retention'
+      fullPath: '/desk/retention'
+      preLoaderRoute: typeof DeskRetentionRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/notify': {
+      id: '/desk/notify'
+      path: '/notify'
+      fullPath: '/desk/notify'
+      preLoaderRoute: typeof DeskNotifyRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/flag': {
+      id: '/desk/flag'
+      path: '/flag'
+      fullPath: '/desk/flag'
+      preLoaderRoute: typeof DeskFlagRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/config': {
+      id: '/desk/config'
+      path: '/config'
+      fullPath: '/desk/config'
+      preLoaderRoute: typeof DeskConfigRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/branding': {
+      id: '/desk/branding'
+      path: '/branding'
+      fullPath: '/desk/branding'
+      preLoaderRoute: typeof DeskBrandingRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/billing': {
+      id: '/desk/billing'
+      path: '/billing'
+      fullPath: '/desk/billing'
+      preLoaderRoute: typeof DeskBillingRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/audit': {
+      id: '/desk/audit'
+      path: '/audit'
+      fullPath: '/desk/audit'
+      preLoaderRoute: typeof DeskAuditRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/access': {
+      id: '/desk/access'
+      path: '/access'
+      fullPath: '/desk/access'
+      preLoaderRoute: typeof DeskAccessRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/desk/$': {
+      id: '/desk/$'
+      path: '/$'
+      fullPath: '/desk/$'
+      preLoaderRoute: typeof DeskSplatRouteImport
+      parentRoute: typeof DeskRoute
     }
     '/auth/start': {
       id: '/auth/start'
@@ -1069,127 +1096,241 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/r/vendor/$service': {
-      id: '/r/vendor/$service'
-      path: '/r/vendor/$service'
-      fullPath: '/r/vendor/$service'
-      preLoaderRoute: typeof RVendorServiceRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/vendor/$service': {
+      id: '/desk/vendor/$service'
+      path: '/vendor/$service'
+      fullPath: '/desk/vendor/$service'
+      preLoaderRoute: typeof DeskVendorServiceRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/tenant/$tenantId': {
-      id: '/r/tenant/$tenantId'
-      path: '/r/tenant/$tenantId'
-      fullPath: '/r/tenant/$tenantId'
-      preLoaderRoute: typeof RTenantTenantIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/tenant/$tenantId': {
+      id: '/desk/tenant/$tenantId'
+      path: '/tenant/$tenantId'
+      fullPath: '/desk/tenant/$tenantId'
+      preLoaderRoute: typeof DeskTenantTenantIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/run/$id': {
-      id: '/r/run/$id'
-      path: '/r/run/$id'
-      fullPath: '/r/run/$id'
-      preLoaderRoute: typeof RRunIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/run/$id': {
+      id: '/desk/run/$id'
+      path: '/run/$id'
+      fullPath: '/desk/run/$id'
+      preLoaderRoute: typeof DeskRunIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/operator/$id': {
-      id: '/r/operator/$id'
-      path: '/r/operator/$id'
-      fullPath: '/r/operator/$id'
-      preLoaderRoute: typeof ROperatorIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/operator/$id': {
+      id: '/desk/operator/$id'
+      path: '/operator/$id'
+      fullPath: '/desk/operator/$id'
+      preLoaderRoute: typeof DeskOperatorIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/notify/$id': {
-      id: '/r/notify/$id'
+    '/desk/notify/$id': {
+      id: '/desk/notify/$id'
       path: '/$id'
-      fullPath: '/r/notify/$id'
-      preLoaderRoute: typeof RNotifyIdRouteImport
-      parentRoute: typeof RNotifyRoute
+      fullPath: '/desk/notify/$id'
+      preLoaderRoute: typeof DeskNotifyIdRouteImport
+      parentRoute: typeof DeskNotifyRoute
     }
-    '/r/meter/$meterId': {
-      id: '/r/meter/$meterId'
-      path: '/r/meter/$meterId'
-      fullPath: '/r/meter/$meterId'
-      preLoaderRoute: typeof RMeterMeterIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/meter/$meterId': {
+      id: '/desk/meter/$meterId'
+      path: '/meter/$meterId'
+      fullPath: '/desk/meter/$meterId'
+      preLoaderRoute: typeof DeskMeterMeterIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/legal-hold/$holdId': {
-      id: '/r/legal-hold/$holdId'
-      path: '/r/legal-hold/$holdId'
-      fullPath: '/r/legal-hold/$holdId'
-      preLoaderRoute: typeof RLegalHoldHoldIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/legal-hold/$holdId': {
+      id: '/desk/legal-hold/$holdId'
+      path: '/legal-hold/$holdId'
+      fullPath: '/desk/legal-hold/$holdId'
+      preLoaderRoute: typeof DeskLegalHoldHoldIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/kc-user/$id': {
-      id: '/r/kc-user/$id'
-      path: '/r/kc-user/$id'
-      fullPath: '/r/kc-user/$id'
-      preLoaderRoute: typeof RKcUserIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/kc-user/$id': {
+      id: '/desk/kc-user/$id'
+      path: '/kc-user/$id'
+      fullPath: '/desk/kc-user/$id'
+      preLoaderRoute: typeof DeskKcUserIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/kc-role/$id': {
-      id: '/r/kc-role/$id'
-      path: '/r/kc-role/$id'
-      fullPath: '/r/kc-role/$id'
-      preLoaderRoute: typeof RKcRoleIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/kc-role/$id': {
+      id: '/desk/kc-role/$id'
+      path: '/kc-role/$id'
+      fullPath: '/desk/kc-role/$id'
+      preLoaderRoute: typeof DeskKcRoleIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/invoice/$invoiceId': {
-      id: '/r/invoice/$invoiceId'
-      path: '/r/invoice/$invoiceId'
-      fullPath: '/r/invoice/$invoiceId'
-      preLoaderRoute: typeof RInvoiceInvoiceIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/invoice/$invoiceId': {
+      id: '/desk/invoice/$invoiceId'
+      path: '/invoice/$invoiceId'
+      fullPath: '/desk/invoice/$invoiceId'
+      preLoaderRoute: typeof DeskInvoiceInvoiceIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/incident/$incidentId': {
-      id: '/r/incident/$incidentId'
-      path: '/r/incident/$incidentId'
-      fullPath: '/r/incident/$incidentId'
-      preLoaderRoute: typeof RIncidentIncidentIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/incident/$incidentId': {
+      id: '/desk/incident/$incidentId'
+      path: '/incident/$incidentId'
+      fullPath: '/desk/incident/$incidentId'
+      preLoaderRoute: typeof DeskIncidentIncidentIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/flag/$flagKey': {
-      id: '/r/flag/$flagKey'
+    '/desk/flag/$flagKey': {
+      id: '/desk/flag/$flagKey'
       path: '/$flagKey'
-      fullPath: '/r/flag/$flagKey'
-      preLoaderRoute: typeof RFlagFlagKeyRouteImport
-      parentRoute: typeof RFlagRoute
+      fullPath: '/desk/flag/$flagKey'
+      preLoaderRoute: typeof DeskFlagFlagKeyRouteImport
+      parentRoute: typeof DeskFlagRoute
     }
-    '/r/domain/$hostname': {
-      id: '/r/domain/$hostname'
-      path: '/r/domain/$hostname'
-      fullPath: '/r/domain/$hostname'
-      preLoaderRoute: typeof RDomainHostnameRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/domain/$hostname': {
+      id: '/desk/domain/$hostname'
+      path: '/domain/$hostname'
+      fullPath: '/desk/domain/$hostname'
+      preLoaderRoute: typeof DeskDomainHostnameRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/delivery/$deliveryId': {
-      id: '/r/delivery/$deliveryId'
-      path: '/r/delivery/$deliveryId'
-      fullPath: '/r/delivery/$deliveryId'
-      preLoaderRoute: typeof RDeliveryDeliveryIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/delivery/$deliveryId': {
+      id: '/desk/delivery/$deliveryId'
+      path: '/delivery/$deliveryId'
+      fullPath: '/desk/delivery/$deliveryId'
+      preLoaderRoute: typeof DeskDeliveryDeliveryIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/api-key/$keyId': {
-      id: '/r/api-key/$keyId'
-      path: '/r/api-key/$keyId'
-      fullPath: '/r/api-key/$keyId'
-      preLoaderRoute: typeof RApiKeyKeyIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/api-key/$keyId': {
+      id: '/desk/api-key/$keyId'
+      path: '/api-key/$keyId'
+      fullPath: '/desk/api-key/$keyId'
+      preLoaderRoute: typeof DeskApiKeyKeyIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/admin-member/$id': {
-      id: '/r/admin-member/$id'
-      path: '/r/admin-member/$id'
-      fullPath: '/r/admin-member/$id'
-      preLoaderRoute: typeof RAdminMemberIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/desk/admin-member/$id': {
+      id: '/desk/admin-member/$id'
+      path: '/admin-member/$id'
+      fullPath: '/desk/admin-member/$id'
+      preLoaderRoute: typeof DeskAdminMemberIdRouteImport
+      parentRoute: typeof DeskRoute
     }
-    '/r/config/$moduleId/$configKey': {
-      id: '/r/config/$moduleId/$configKey'
+    '/desk/config/$moduleId/$configKey': {
+      id: '/desk/config/$moduleId/$configKey'
       path: '/$moduleId/$configKey'
-      fullPath: '/r/config/$moduleId/$configKey'
-      preLoaderRoute: typeof RConfigModuleIdConfigKeyRouteImport
-      parentRoute: typeof RConfigRoute
+      fullPath: '/desk/config/$moduleId/$configKey'
+      preLoaderRoute: typeof DeskConfigModuleIdConfigKeyRouteImport
+      parentRoute: typeof DeskConfigRoute
     }
   }
 }
+
+interface DeskConfigRouteChildren {
+  DeskConfigModuleIdConfigKeyRoute: typeof DeskConfigModuleIdConfigKeyRoute
+}
+
+const DeskConfigRouteChildren: DeskConfigRouteChildren = {
+  DeskConfigModuleIdConfigKeyRoute: DeskConfigModuleIdConfigKeyRoute,
+}
+
+const DeskConfigRouteWithChildren = DeskConfigRoute._addFileChildren(
+  DeskConfigRouteChildren,
+)
+
+interface DeskFlagRouteChildren {
+  DeskFlagFlagKeyRoute: typeof DeskFlagFlagKeyRoute
+}
+
+const DeskFlagRouteChildren: DeskFlagRouteChildren = {
+  DeskFlagFlagKeyRoute: DeskFlagFlagKeyRoute,
+}
+
+const DeskFlagRouteWithChildren = DeskFlagRoute._addFileChildren(
+  DeskFlagRouteChildren,
+)
+
+interface DeskNotifyRouteChildren {
+  DeskNotifyIdRoute: typeof DeskNotifyIdRoute
+}
+
+const DeskNotifyRouteChildren: DeskNotifyRouteChildren = {
+  DeskNotifyIdRoute: DeskNotifyIdRoute,
+}
+
+const DeskNotifyRouteWithChildren = DeskNotifyRoute._addFileChildren(
+  DeskNotifyRouteChildren,
+)
+
+interface DeskRouteChildren {
+  DeskSplatRoute: typeof DeskSplatRoute
+  DeskAccessRoute: typeof DeskAccessRoute
+  DeskAuditRoute: typeof DeskAuditRoute
+  DeskBillingRoute: typeof DeskBillingRoute
+  DeskBrandingRoute: typeof DeskBrandingRoute
+  DeskConfigRoute: typeof DeskConfigRouteWithChildren
+  DeskFlagRoute: typeof DeskFlagRouteWithChildren
+  DeskNotifyRoute: typeof DeskNotifyRouteWithChildren
+  DeskRetentionRoute: typeof DeskRetentionRoute
+  DeskRunsRoute: typeof DeskRunsRoute
+  DeskSearchRoute: typeof DeskSearchRoute
+  DeskSupportRoute: typeof DeskSupportRoute
+  DeskTenantsRoute: typeof DeskTenantsRoute
+  DeskVendorsRoute: typeof DeskVendorsRoute
+  DeskWebhookRoute: typeof DeskWebhookRoute
+  DeskIndexRoute: typeof DeskIndexRoute
+  DeskAdminMemberIdRoute: typeof DeskAdminMemberIdRoute
+  DeskApiKeyKeyIdRoute: typeof DeskApiKeyKeyIdRoute
+  DeskDeliveryDeliveryIdRoute: typeof DeskDeliveryDeliveryIdRoute
+  DeskDomainHostnameRoute: typeof DeskDomainHostnameRoute
+  DeskIncidentIncidentIdRoute: typeof DeskIncidentIncidentIdRoute
+  DeskInvoiceInvoiceIdRoute: typeof DeskInvoiceInvoiceIdRoute
+  DeskKcRoleIdRoute: typeof DeskKcRoleIdRoute
+  DeskKcUserIdRoute: typeof DeskKcUserIdRoute
+  DeskLegalHoldHoldIdRoute: typeof DeskLegalHoldHoldIdRoute
+  DeskMeterMeterIdRoute: typeof DeskMeterMeterIdRoute
+  DeskOperatorIdRoute: typeof DeskOperatorIdRoute
+  DeskRunIdRoute: typeof DeskRunIdRoute
+  DeskTenantTenantIdRoute: typeof DeskTenantTenantIdRoute
+  DeskVendorServiceRoute: typeof DeskVendorServiceRoute
+}
+
+const DeskRouteChildren: DeskRouteChildren = {
+  DeskSplatRoute: DeskSplatRoute,
+  DeskAccessRoute: DeskAccessRoute,
+  DeskAuditRoute: DeskAuditRoute,
+  DeskBillingRoute: DeskBillingRoute,
+  DeskBrandingRoute: DeskBrandingRoute,
+  DeskConfigRoute: DeskConfigRouteWithChildren,
+  DeskFlagRoute: DeskFlagRouteWithChildren,
+  DeskNotifyRoute: DeskNotifyRouteWithChildren,
+  DeskRetentionRoute: DeskRetentionRoute,
+  DeskRunsRoute: DeskRunsRoute,
+  DeskSearchRoute: DeskSearchRoute,
+  DeskSupportRoute: DeskSupportRoute,
+  DeskTenantsRoute: DeskTenantsRoute,
+  DeskVendorsRoute: DeskVendorsRoute,
+  DeskWebhookRoute: DeskWebhookRoute,
+  DeskIndexRoute: DeskIndexRoute,
+  DeskAdminMemberIdRoute: DeskAdminMemberIdRoute,
+  DeskApiKeyKeyIdRoute: DeskApiKeyKeyIdRoute,
+  DeskDeliveryDeliveryIdRoute: DeskDeliveryDeliveryIdRoute,
+  DeskDomainHostnameRoute: DeskDomainHostnameRoute,
+  DeskIncidentIncidentIdRoute: DeskIncidentIncidentIdRoute,
+  DeskInvoiceInvoiceIdRoute: DeskInvoiceInvoiceIdRoute,
+  DeskKcRoleIdRoute: DeskKcRoleIdRoute,
+  DeskKcUserIdRoute: DeskKcUserIdRoute,
+  DeskLegalHoldHoldIdRoute: DeskLegalHoldHoldIdRoute,
+  DeskMeterMeterIdRoute: DeskMeterMeterIdRoute,
+  DeskOperatorIdRoute: DeskOperatorIdRoute,
+  DeskRunIdRoute: DeskRunIdRoute,
+  DeskTenantTenantIdRoute: DeskTenantTenantIdRoute,
+  DeskVendorServiceRoute: DeskVendorServiceRoute,
+}
+
+const DeskRouteWithChildren = DeskRoute._addFileChildren(DeskRouteChildren)
+
+interface RRouteChildren {
+  RSplatRoute: typeof RSplatRoute
+}
+
+const RRouteChildren: RRouteChildren = {
+  RSplatRoute: RSplatRoute,
+}
+
+const RRouteWithChildren = RRoute._addFileChildren(RRouteChildren)
 
 interface TenantsRouteChildren {
   TenantsIndexRoute: typeof TenantsIndexRoute
@@ -1202,45 +1343,14 @@ const TenantsRouteChildren: TenantsRouteChildren = {
 const TenantsRouteWithChildren =
   TenantsRoute._addFileChildren(TenantsRouteChildren)
 
-interface RConfigRouteChildren {
-  RConfigModuleIdConfigKeyRoute: typeof RConfigModuleIdConfigKeyRoute
-}
-
-const RConfigRouteChildren: RConfigRouteChildren = {
-  RConfigModuleIdConfigKeyRoute: RConfigModuleIdConfigKeyRoute,
-}
-
-const RConfigRouteWithChildren =
-  RConfigRoute._addFileChildren(RConfigRouteChildren)
-
-interface RFlagRouteChildren {
-  RFlagFlagKeyRoute: typeof RFlagFlagKeyRoute
-}
-
-const RFlagRouteChildren: RFlagRouteChildren = {
-  RFlagFlagKeyRoute: RFlagFlagKeyRoute,
-}
-
-const RFlagRouteWithChildren = RFlagRoute._addFileChildren(RFlagRouteChildren)
-
-interface RNotifyRouteChildren {
-  RNotifyIdRoute: typeof RNotifyIdRoute
-}
-
-const RNotifyRouteChildren: RNotifyRouteChildren = {
-  RNotifyIdRoute: RNotifyIdRoute,
-}
-
-const RNotifyRouteWithChildren =
-  RNotifyRoute._addFileChildren(RNotifyRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BillingRoute: BillingRoute,
   BrandingRoute: BrandingRoute,
   ComplianceRetentionRoute: ComplianceRetentionRoute,
-  DeskRoute: DeskRoute,
+  DeskRoute: DeskRouteWithChildren,
   ProfileRoute: ProfileRoute,
+  RRoute: RRouteWithChildren,
   RepairOperationsRoute: RepairOperationsRoute,
   SignInRoute: SignInRoute,
   SupportOperationsRoute: SupportOperationsRoute,
@@ -1260,35 +1370,6 @@ const rootRouteChildren: RootRouteChildren = {
   GovernanceFeatureFlagsRoute: GovernanceFeatureFlagsRoute,
   GovernanceRuntimeConfigRoute: GovernanceRuntimeConfigRoute,
   IntegrationsWebhooksApiAccessRoute: IntegrationsWebhooksApiAccessRoute,
-  RSplatRoute: RSplatRoute,
-  RAccessRoute: RAccessRoute,
-  RAuditRoute: RAuditRoute,
-  RBillingRoute: RBillingRoute,
-  RBrandingRoute: RBrandingRoute,
-  RConfigRoute: RConfigRouteWithChildren,
-  RFlagRoute: RFlagRouteWithChildren,
-  RNotifyRoute: RNotifyRouteWithChildren,
-  RRetentionRoute: RRetentionRoute,
-  RRunsRoute: RRunsRoute,
-  RSearchRoute: RSearchRoute,
-  RSupportRoute: RSupportRoute,
-  RTenantsRoute: RTenantsRoute,
-  RVendorsRoute: RVendorsRoute,
-  RWebhookRoute: RWebhookRoute,
-  RAdminMemberIdRoute: RAdminMemberIdRoute,
-  RApiKeyKeyIdRoute: RApiKeyKeyIdRoute,
-  RDeliveryDeliveryIdRoute: RDeliveryDeliveryIdRoute,
-  RDomainHostnameRoute: RDomainHostnameRoute,
-  RIncidentIncidentIdRoute: RIncidentIncidentIdRoute,
-  RInvoiceInvoiceIdRoute: RInvoiceInvoiceIdRoute,
-  RKcRoleIdRoute: RKcRoleIdRoute,
-  RKcUserIdRoute: RKcUserIdRoute,
-  RLegalHoldHoldIdRoute: RLegalHoldHoldIdRoute,
-  RMeterMeterIdRoute: RMeterMeterIdRoute,
-  ROperatorIdRoute: ROperatorIdRoute,
-  RRunIdRoute: RRunIdRoute,
-  RTenantTenantIdRoute: RTenantTenantIdRoute,
-  RVendorServiceRoute: RVendorServiceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

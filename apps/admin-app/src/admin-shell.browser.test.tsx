@@ -197,6 +197,30 @@ describe("admin shell browser surface", () => {
     ).toBeNull();
   });
 
+  it("keeps the content pane scrollable inside the shell frame", async () => {
+    await act(async () => {
+      root.render(
+        <AdminShell
+          navGroups={baseNavGroups}
+          currentPath={adminRoutePath.operationsHome}
+          contextChips={[{ label: "Env", value: "platform" }]}
+        >
+          <section>Scrollable shell</section>
+        </AdminShell>,
+      );
+    });
+
+    const shellRoot = container.firstElementChild as HTMLElement | null;
+    const contentColumn = container.querySelector("header")?.parentElement;
+    const contentPane = container.querySelector("main");
+
+    expect(shellRoot?.style.height).toBe("100dvh");
+    expect(shellRoot?.style.minHeight).toBe("0px");
+    expect(contentColumn?.style.minHeight).toBe("0px");
+    expect(contentPane?.style.minHeight).toBe("0px");
+    expect(contentPane?.style.overflow).toBe("auto");
+  });
+
   it("renders the sign-in redirect state for missing root sessions", async () => {
     const previousHarnessFlag =
       adminBrowserHarnessGlobals.__ADMIN_BROWSER_HARNESS__;

@@ -667,6 +667,6 @@ describe("admin route state browser flows", () => {
         ) !== null,
       "Expected workspace error action to return to the canonical tenant directory.",
     );
-    expect(rendered.router.state.location.pathname).toBe("/r/tenants");
+    expect(rendered.router.state.location.pathname).toBe("/desk/tenants");
   });
 });

@@ -10,7 +10,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import appCss from "../styles/app.css?url";
 import uiCss from "@comvestec/ui/styles?url";
 import { StateScreen } from "@comvestec/ui";
@@ -24,6 +23,7 @@ import {
   releaseAdminRunAsGrant,
   type ReleaseAdminRunAsGrantInput,
 } from "../lib/run-as-banner-mutations-server";
+import { buildCanonicalAdminLegacyHref } from "../lib/legacy-admin-route-redirect";
 
 type AdminShellBrowserLocation = {
   readonly pathname: string;
@@ -65,10 +65,6 @@ function RootComponent() {
   const routerState = useRouterState();
   const router = useRouter();
   const releaseRunAsGrant = useServerFn(releaseAdminRunAsGrant);
-  const invalidateBeforeRedirect = useCallback(
-    () => router.invalidate({ sync: true }),
-    [router],
-  );
   const handleRunAsGrantRelease = useCallback(
     async (input: ReleaseAdminRunAsGrantInput) => {
       await releaseRunAsGrant({ data: input });
@@ -76,15 +72,28 @@ function RootComponent() {
     },
     [releaseRunAsGrant, router],
   );
+  const retryShellLoadBeforeRedirect = useCallback(
+    () => router.invalidate({ sync: true }),
+    [router],
+  );
   const { pathname, searchStr } = resolveAdminShellCurrentLocation(
     routerState.location,
   );
+  const canonicalHref = buildCanonicalAdminLegacyHref({ pathname, searchStr });
+  const currentHref = `${pathname}${searchStr}`;
 
   if (isAdminAuthRoutePath(pathname)) {
     return (
       <RootDocument>
         <Outlet />
-        <TanStackRouterDevtools position="bottom-right" />
+      </RootDocument>
+    );
+  }
+
+  if (canonicalHref !== currentHref) {
+    return (
+      <RootDocument>
+        <AdminAuthRedirectState redirectPath={canonicalHref} />
       </RootDocument>
     );
   }
@@ -94,15 +103,19 @@ function RootComponent() {
       { pathname, searchStr },
       shellData,
     );
+    const shouldRetryShellLoad = shellData.kind === "shell";
 
     return (
       <RootDocument>
         <AdminAuthRedirectState
           redirectPath={redirectPath}
-          invalidateBeforeRedirect={invalidateBeforeRedirect}
-          htmlRedirectFallbackEnabled={false}
+          {...(shouldRetryShellLoad
+            ? {
+                invalidateBeforeRedirect: retryShellLoadBeforeRedirect,
+                htmlRedirectFallbackEnabled: false,
+              }
+            : {})}
         />
-        <TanStackRouterDevtools position="bottom-right" />
       </RootDocument>
     );
   }
@@ -115,7 +128,6 @@ function RootComponent() {
           title="Access denied"
           description={shellData.reason}
         />
-        <TanStackRouterDevtools position="bottom-right" />
       </RootDocument>
     );
   }
@@ -128,7 +140,6 @@ function RootComponent() {
           title={shellData.title}
           description={shellData.description}
         />
-        <TanStackRouterDevtools position="bottom-right" />
       </RootDocument>
     );
   }
@@ -148,7 +159,6 @@ function RootComponent() {
       >
         <Outlet />
       </DeskShell>
-      <TanStackRouterDevtools position="bottom-right" />
     </RootDocument>
   );
 }

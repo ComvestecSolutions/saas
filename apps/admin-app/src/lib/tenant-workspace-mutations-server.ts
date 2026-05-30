@@ -40,7 +40,7 @@ import {
  * (`mutateTenantMembershipFromSessionId`,
  * `issueTenantInvitationFromSessionId`,
  * `revokeTenantInvitationFromSessionId`) so the v2 route
- * (`/r/tenant/$tenantId`) consumes a clean sibling without
+ * (`/desk/tenant/$tenantId`) consumes a clean sibling without
  * importing a legacy data trio.
  *
  * No `Request` / `Response` shaping happens here — the helpers

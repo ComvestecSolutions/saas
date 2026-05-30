@@ -10,25 +10,25 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for `/r/meter/$meterId` (admin-app
+ * Browser coverage for `/desk/meter/$meterId` (admin-app
  * implementation plan §8.10 + §11 — Phase 4 commit 1). Exercises
  * the `meter-detail-{loader,route-data,route-server}` trio
  * end to end through the admin browser harness mock state.
  */
 const READY_NO_USAGE_PATH =
-  "/r/meter/events.fixture" +
+  "/desk/meter/events.fixture" +
   "?tenantScope=organization&tenantScopeId=org_demo";
 const READY_WITH_USAGE_PATH =
   READY_NO_USAGE_PATH +
   "&subject=sub_1&granularity=DAY&windowFrom=2026-05-01T00%3A00%3A00.000Z&windowTo=2026-05-08T00%3A00%3A00.000Z";
-const TENANT_MISSING_PATH = "/r/meter/events.fixture";
+const TENANT_MISSING_PATH = "/desk/meter/events.fixture";
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
   apply: (fixture: AdminBrowserFixtureState) => AdminBrowserFixtureState,
 ): AdminBrowserFixtureState => apply(base);
 
-describe("/r/meter/$meterId Meter detail route", () => {
+describe("/desk/meter/$meterId Meter detail route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

@@ -169,6 +169,7 @@ const sampleVendorPosture = (
   ...(overrides?.latencyP95Ms === undefined
     ? {}
     : { latencyP95Ms: overrides.latencyP95Ms }),
+  ...(overrides?.message === undefined ? {} : { message: overrides.message }),
 });
 
 // ---------------------------------------------------------------------------

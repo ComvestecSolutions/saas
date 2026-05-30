@@ -8,7 +8,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 import { createAdminBrowserFixtureState } from "../../../testing/admin-browser-fixtures";
 
-describe("/r/$ catch-all resource route", () => {
+describe("/desk/$ catch-all resource route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {
@@ -21,7 +21,7 @@ describe("/r/$ catch-all resource route", () => {
   it("renders a recovery workspace instead of a coming-soon placeholder", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/r/unknown-resource",
+      "/desk/unknown-resource",
     );
 
     await waitFor(
@@ -33,7 +33,7 @@ describe("/r/$ catch-all resource route", () => {
     );
 
     const text = rendered.container.textContent ?? "";
-    expect(text).toContain("/r/unknown-resource");
+    expect(text).toContain("/desk/unknown-resource");
     expect(text).not.toContain("Resource view coming soon");
     expect(text).toContain("Tenant directory");
 
@@ -54,7 +54,7 @@ describe("/r/$ catch-all resource route", () => {
   it("prioritizes resource suggestions that match the requested slug", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
-      "/r/vendor-latency",
+      "/desk/vendor-latency",
     );
 
     await waitFor(
@@ -69,6 +69,6 @@ describe("/r/$ catch-all resource route", () => {
       "[data-testid='unknown-resource-link']",
     );
     expect(firstSuggestion?.textContent).toContain("Vendor intelligence");
-    expect(firstSuggestion?.getAttribute("href")).toBe("/r/vendors");
+    expect(firstSuggestion?.getAttribute("href")).toBe("/desk/vendors");
   });
 });

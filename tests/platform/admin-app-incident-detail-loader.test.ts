@@ -2,7 +2,7 @@
  * Admin-app Incident-detail loader tests (admin-app
  * implementation plan §8.8 + §11 — Phase 5 Support / compliance
  * / integrations operator screens commit 1). Covers the
- * discriminated-union mapping of the `/r/incident/$incidentId`
+ * discriminated-union mapping of the `/desk/incident/$incidentId`
  * loader trio backed live by
  * `getSupportBreakGlassIncidentFromSessionId`:
  *

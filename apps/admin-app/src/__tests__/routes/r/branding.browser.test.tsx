@@ -14,7 +14,7 @@ import {
 } from "../../../testing/admin-browser-harness";
 
 /**
- * Browser coverage for the spec-canonical `/r/branding` Branding
+ * Browser coverage for the spec-canonical `/desk/branding` Branding
  * & Domains v2 surface shipped by Phase 4 Domain operator
  * screens commit 2 (admin-app implementation plan §8.10 + §11).
  * Exercises the `branding-list-{loader,route-data,route-server}`
@@ -24,8 +24,8 @@ import {
  * empty-state pivot, denied StateScreen, stale-session
  * StateScreen, error StateScreen.
  */
-const PATH_EMPTY = "/r/branding";
-const PATH_WITH_TENANTS = `/r/branding?tenants=${encodeURIComponent(
+const PATH_EMPTY = "/desk/branding";
+const PATH_WITH_TENANTS = `/desk/branding?tenants=${encodeURIComponent(
   JSON.stringify(
     JSON.stringify([
       { scope: "organization", scopeId: "org_demo" },
@@ -50,7 +50,7 @@ const selectTenantTargetOption = async (
   await click(getButtonByText(container, label));
 };
 
-describe("/r/branding Branding & Domains v2 route", () => {
+describe("/desk/branding Branding & Domains v2 route", () => {
   let rendered: RenderedAdminApp | null = null;
 
   afterEach(async () => {

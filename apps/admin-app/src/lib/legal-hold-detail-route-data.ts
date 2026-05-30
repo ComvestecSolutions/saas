@@ -12,11 +12,11 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
 
 /**
  * Discriminated-union route data for the spec-canonical
- * `/r/legal-hold/$holdId` Legal Hold Detail v2 surface
+ * `/desk/legal-hold/$holdId` Legal Hold Detail v2 surface
  * (admin-app implementation plan §8.11 + §11 — Phase 5 Support
  * / compliance / integrations operator screens commit 2).
- * Mirrors the v2 loader-trio pattern shipped for `/r/invoice`,
- * `/r/meter`, `/r/domain`, and `/r/incident`.
+ * Mirrors the v2 loader-trio pattern shipped for `/desk/invoice`,
+ * `/desk/meter`, `/desk/domain`, and `/desk/incident`.
  *
  * Backed live by the Phase 1
  * `listRetentionLegalHoldsFromSessionId` helper. Because the
@@ -35,8 +35,8 @@ import { retryTransientAdminSessionReadiness } from "./admin-session-readiness";
  * at the route component level — the mutations-server handler
  * body for `releaseRetentionLegalHoldFromEnvironment` is
  * tracked under the same Phase 5 follow-ups (mirrors the
- * release-grant CTA on `/r/incident/$incidentId` and the
- * verify CTA on `/r/domain/$hostname`).
+ * release-grant CTA on `/desk/incident/$incidentId` and the
+ * verify CTA on `/desk/domain/$hostname`).
  */
 export type AdminLegalHoldDetailInput = {
   readonly holdId: string;

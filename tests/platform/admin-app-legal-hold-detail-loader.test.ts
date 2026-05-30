@@ -3,7 +3,7 @@
  * implementation plan §8.11 + §11 — Phase 5 Support /
  * compliance / integrations operator screens commit 2). Covers
  * the discriminated-union mapping of the
- * `/r/legal-hold/$holdId` loader trio:
+ * `/desk/legal-hold/$holdId` loader trio:
  *
  *   - `SubscriberJourneySessionIdMissingError` → `shell`
  *   - `IdentitySessionRequestContextNotFoundError` → `stale-session`

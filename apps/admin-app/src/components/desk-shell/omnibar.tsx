@@ -30,7 +30,7 @@ import { navigateAdminPath } from "../../lib/browser-navigation";
  * presentational `Omnibar` UI primitive (CommandStrip glass
  * surface) to the `loadAdminUniversalSearchLoaderData` loader
  * trio with a debounced server-fn call, prefix routing, and
- * `/r/...` deep-link navigation.
+ * `/desk/...` deep-link navigation.
  *
  * Prefix routing — value is split at the first `/`. Recognised
  * prefixes are decoded against `universalSearchPrefix.*` and
@@ -42,7 +42,7 @@ import { navigateAdminPath } from "../../lib/browser-navigation";
  * permalink (the service is the canonical owner of every
  * resource-shell URL); when a permalink is missing or empty
  * (defensive — the contract requires it) the wrapper falls back
- * to a mapped `adminRoutePath.*` or `/r/<facet>/<id>` shape.
+ * to a mapped `adminRoutePath.*` or `/desk/<facet>/<id>` shape.
  *
  * Escape hatch (commit 7 prompt): keyboard map richer than the
  * primitive default (↑/↓/Enter/Esc), `⌘K` toggle, and the
@@ -126,9 +126,9 @@ const resolveSubmittedPrefixPermalink = (
         : undefined;
     }
     case universalSearchPrefix.invoice:
-      return `/r/invoice/${encodeURIComponent(input.query)}`;
+      return `/desk/invoice/${encodeURIComponent(input.query)}`;
     case universalSearchPrefix.domain:
-      return `/r/domain/${encodeURIComponent(input.query)}`;
+      return `/desk/domain/${encodeURIComponent(input.query)}`;
     case universalSearchPrefix.user:
     case universalSearchPrefix.keycloakUser:
     case universalSearchPrefix.event:

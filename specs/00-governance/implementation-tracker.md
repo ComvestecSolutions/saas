@@ -187,54 +187,41 @@ Application rows continue to track first-party app maturity, but backend-only co
   [Admin App Spec](../02-apps/admin-app/spec.md),
   [Implementation Plan](../02-apps/admin-app/implementation-plan.md),
   [Admin Operator Access Management](../01-platform/access/005-admin-operator-access-management.md)
-- Status: implemented (canonical `/desk`, `/r/*`, and `/admin/*` surfaces are
-  live end to end; the desk shell reads backend-owned workspaces, saved views,
-  and run-as state; Operations Home, Tenant Workspace, and the `/r/tenants`
-  directory now use truthful live aggregates; live tenant-target labels no
-  longer depend on fixture-backed directory rows; the dead tenant freeze bulk
-  action has been removed; and the seeded admin operator journey no longer
-  loops in `AdminAuthRedirectState` because the root redirect handler is stable
-  across rerenders. Validation evidence now includes `bun run format:check`,
-  `bun run typecheck`, `bun run test:browser:admin`, focused backend/browser
-  tenant-directory coverage, focused admin-shell redirect-loop coverage, and
-  `bun run test:admin:local` (seeded journey + a11y + visual suites). Path to
-  `validated`: the tracker rule still requires `bun run test` green for the
-  current repository state, and that repo-wide gate has not yet completed green
-  during this slice.)
+- Status: validated (canonical `/desk/*` operator routes and `/admin/*`
+  governance surfaces are live end to end; legacy `/r/*` links redirect to the
+  canonical desk taxonomy; the desk shell reads backend-owned workspaces, saved
+  views, run-as state, vendor posture, and workflow aggregates; tenant-target
+  labels and directories use truthful live backend data; and the seeded admin
+  operator journey now recovers the browser session on `/desk` before falling
+  back to sign-in. Validation evidence includes `bun run format:check`, `bun
+run typecheck`, `bun run test:browser:admin`, `bun run test:admin:local`,
+  and `bun run test` on the current repository state.)
 - Evidence:
   [specs/02-apps/admin-app/spec.md](../02-apps/admin-app/spec.md),
   [specs/02-apps/admin-app/implementation-plan.md](../02-apps/admin-app/implementation-plan.md),
   [apps/admin-app/src/routes/\_\_root.tsx](../../apps/admin-app/src/routes/__root.tsx),
   [apps/admin-app/src/admin-shell.browser.test.tsx](../../apps/admin-app/src/admin-shell.browser.test.tsx),
   [apps/admin-app/src/desk/desk-shell.tsx](../../apps/admin-app/src/desk/desk-shell.tsx),
-  [apps/admin-app/src/lib/admin-shell-route-data.ts](../../apps/admin-app/src/lib/admin-shell-route-data.ts),
-  [apps/admin-app/src/routes/index.tsx](../../apps/admin-app/src/routes/index.tsx),
-  [apps/admin-app/src/routes/r/search.tsx](../../apps/admin-app/src/routes/r/search.tsx),
-  [apps/admin-app/src/routes/r/tenants.tsx](../../apps/admin-app/src/routes/r/tenants.tsx),
-  [apps/admin-app/src/routes/r/tenant/%24tenantId.tsx](../../apps/admin-app/src/routes/r/tenant/%24tenantId.tsx),
+  [apps/admin-app/src/lib/admin-shell-loader.ts](../../apps/admin-app/src/lib/admin-shell-loader.ts),
+  [apps/admin-app/src/lib/legacy-admin-route-redirect.ts](../../apps/admin-app/src/lib/legacy-admin-route-redirect.ts),
+  [apps/admin-app/src/routes/desk.tsx](../../apps/admin-app/src/routes/desk.tsx),
+  [apps/admin-app/src/routes/desk/index.tsx](../../apps/admin-app/src/routes/desk/index.tsx),
+  [apps/admin-app/src/routes/tenants/index.tsx](../../apps/admin-app/src/routes/tenants/index.tsx),
+  [apps/admin-app/src/routes/admin/members.tsx](../../apps/admin-app/src/routes/admin/members.tsx),
+  [apps/admin-app/src/routes/admin/audit.tsx](../../apps/admin-app/src/routes/admin/audit.tsx),
   [apps/admin-app/src/components/tenants-directory-screen.tsx](../../apps/admin-app/src/components/tenants-directory-screen.tsx),
   [apps/admin-app/src/lib/tenants-directory-route-data.ts](../../apps/admin-app/src/lib/tenants-directory-route-data.ts),
-  [apps/admin-app/src/lib/admin-tenant-target-display-name.ts](../../apps/admin-app/src/lib/admin-tenant-target-display-name.ts),
+  [apps/admin-app/src/auth/paths.ts](../../apps/admin-app/src/auth/paths.ts),
+  [apps/admin-app/src/testing/admin-route-states.browser.test.tsx](../../apps/admin-app/src/testing/admin-route-states.browser.test.tsx),
   [packages/platform/src/services/domains/operations-home-service.ts](../../packages/platform/src/services/domains/operations-home-service.ts),
-  [packages/platform/src/services/apps/admin-tenant-management-actions.ts](../../packages/platform/src/services/apps/admin-tenant-management-actions.ts),
-  [packages/platform/src/services/domains/admin-tenant-management.ts](../../packages/platform/src/services/domains/admin-tenant-management.ts),
-  [packages/platform/src/services/domains/tenant-workspace-service.ts](../../packages/platform/src/services/domains/tenant-workspace-service.ts),
-  [packages/platform/src/services/domains/universal-search-service.ts](../../packages/platform/src/services/domains/universal-search-service.ts),
-  [packages/platform/src/services/domains/workflow-runs-admin-service.ts](../../packages/platform/src/services/domains/workflow-runs-admin-service.ts),
-  [packages/platform/src/services/domains/notification-center-admin-service.ts](../../packages/platform/src/services/domains/notification-center-admin-service.ts),
-  [apps/admin-app/src/**tests**/routes/desk.browser.test.tsx](../../apps/admin-app/src/__tests__/routes/desk.browser.test.tsx),
-  [apps/admin-app/src/**tests**/routes/r/tenants.browser.test.tsx](../../apps/admin-app/src/__tests__/routes/r/tenants.browser.test.tsx),
-  [apps/admin-app/src/**tests**/routes/r/tenant.browser.test.tsx](../../apps/admin-app/src/__tests__/routes/r/tenant.browser.test.tsx),
+  [packages/platform/src/services/domains/vendor-health-aggregator-service.ts](../../packages/platform/src/services/domains/vendor-health-aggregator-service.ts),
+  [packages/e2e/tests/admin-operator-journey.spec.ts](../../packages/e2e/tests/admin-operator-journey.spec.ts),
+  [packages/e2e/tests/fixtures/trusted-session.ts](../../packages/e2e/tests/fixtures/trusted-session.ts),
   [tests/platform/admin-shell-loader.test.ts](../../tests/platform/admin-shell-loader.test.ts),
+  [tests/platform/admin-app-operations-home-loader.test.ts](../../tests/platform/admin-app-operations-home-loader.test.ts),
   [tests/platform/admin-app-tenants-directory-loader.test.ts](../../tests/platform/admin-app-tenants-directory-loader.test.ts),
-  [tests/platform/admin-tenant-management-directory.test.ts](../../tests/platform/admin-tenant-management-directory.test.ts),
-  [tests/platform/admin-tenant-management-http.test.ts](../../tests/platform/admin-tenant-management-http.test.ts),
-  [tests/platform/operations-home-runtime-sources.test.ts](../../tests/platform/operations-home-runtime-sources.test.ts),
-  [tests/platform/tenant-workspace-runtime-sources.test.ts](../../tests/platform/tenant-workspace-runtime-sources.test.ts),
-  [tests/platform/admin-app-universal-search-loader.test.ts](../../tests/platform/admin-app-universal-search-loader.test.ts),
-  [tests/platform/backend-e2e/backend-api-admin-universal-search.test.ts](../../tests/platform/backend-e2e/backend-api-admin-universal-search.test.ts),
-  [tests/platform/backend-e2e/backend-api-workflow-runs-admin.test.ts](../../tests/platform/backend-e2e/backend-api-workflow-runs-admin.test.ts),
-  [tests/platform/backend-e2e/backend-api-admin-notification-center.test.ts](../../tests/platform/backend-e2e/backend-api-admin-notification-center.test.ts)
+  [tests/platform/admin-app-workflow-runs-list-loader.test.ts](../../tests/platform/admin-app-workflow-runs-list-loader.test.ts),
+  [tests/platform/vendor-health-aggregator-service.test.ts](../../tests/platform/vendor-health-aggregator-service.test.ts)
 - Next gap: Product-app completion can now proceed on top of the implemented admin control plane.
 
 #### packages/ui v2 (Operator Desk primitives)
