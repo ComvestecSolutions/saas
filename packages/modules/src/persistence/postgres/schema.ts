@@ -7,6 +7,7 @@ import {
   adminOperatorTestTokensTable,
   adminOperatorTestTokenUsageEventsTable,
 } from "./access/admin-operator-test-tokens";
+import { manualBreakGlassGrantsTable } from "./access/manual-break-glass";
 import { adminSavedViewsTable } from "./access/admin-saved-views";
 import { adminWorkspacesTable } from "./access/admin-workspaces";
 import { auditLogEventsTable } from "./governance/audit-log";
@@ -63,6 +64,7 @@ export {
   adminMembersTable,
   adminOperatorTestTokensTable,
   adminOperatorTestTokenUsageEventsTable,
+  manualBreakGlassGrantsTable,
   adminSavedViewsTable,
   adminWorkspacesTable,
   auditLogEventsTable,
@@ -105,6 +107,7 @@ export const postgresSchema = {
   adminMemberInvitationsTable,
   adminOperatorTestTokensTable,
   adminOperatorTestTokenUsageEventsTable,
+  manualBreakGlassGrantsTable,
   adminSavedViewsTable,
   adminWorkspacesTable,
   auditLogEventsTable,

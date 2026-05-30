@@ -176,6 +176,13 @@
       "when": 1779296371052,
       "tag": "0024_dapper_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779967784156,
+      "tag": "0025_cooing_quasar",
+      "breakpoints": true
     }
   ]
 }
