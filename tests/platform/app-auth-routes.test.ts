@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import {
+  adminRoutePath,
   actorType,
   platformModuleId,
   platformScope,
@@ -30,6 +31,9 @@ const authRouteEnvironment = {
   ADMIN_APP_BASE_URL: "http://localhost:3004",
   KEYCLOAK_CLIENT_SECRET: "route-state-secret",
 };
+
+const buildAdminSignInLocation = (returnTo: string, reason: string) =>
+  `http://localhost:3004/sign-in?returnTo=${encodeURIComponent(returnTo)}&reason=${reason}`;
 
 const preparePublicAuthStartForRouteTests: NonNullable<
   Parameters<typeof handlePublicWebAuthStartRequest>[3]
@@ -765,7 +769,10 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
+      buildAdminSignInLocation(
+        adminRoutePath.runtimeConfig,
+        "sign-in-unavailable",
+      ),
     );
   });
 
@@ -930,7 +937,10 @@ describe("app auth routes", () => {
       "corr_admin_callback_expired",
     );
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Faccess-control&reason=callback-expired",
+      buildAdminSignInLocation(
+        adminRoutePath.accessControl,
+        "callback-expired",
+      ),
     );
   });
 
@@ -1036,7 +1046,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/sign-in?returnTo=%2Fprofile&reason=access-denied",
+      buildAdminSignInLocation(adminRoutePath.profile, "access-denied"),
     );
   });
 
@@ -1186,7 +1196,10 @@ describe("app auth routes", () => {
       "corr_admin_callback_session_read",
     );
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=sign-in-unavailable",
+      buildAdminSignInLocation(
+        adminRoutePath.runtimeConfig,
+        "sign-in-unavailable",
+      ),
     );
   });
 
@@ -1229,7 +1242,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=signed-out",
+      buildAdminSignInLocation(adminRoutePath.runtimeConfig, "signed-out"),
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
@@ -1275,7 +1288,7 @@ describe("app auth routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost:3004/sign-in?returnTo=%2Fgovernance%2Fruntime-config&reason=stale-session",
+      buildAdminSignInLocation(adminRoutePath.runtimeConfig, "stale-session"),
     );
     expect(response.headers.get("set-cookie")).toBe(
       `${subscriberJourneySessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,

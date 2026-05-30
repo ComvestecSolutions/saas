@@ -6,7 +6,7 @@
  * helpers shared by the platform service and the snapshot
  * dispatcher. Owner-locked invariants (admin-only authz on
  * backfill, audit emission, bounded snapshot cache, env-boundary
- * decoding of `POLAR_API_BASE_URL` + `POLAR_API_KEY`) live in the
+ * decoding of `POLAR_API_BASE_URL` + `POLAR_ACCESS_TOKEN`) live in the
  * platform service ABOVE persistence — this module owns only the
  * pure helpers both layers need to agree on.
  *

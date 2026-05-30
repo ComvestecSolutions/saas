@@ -12,27 +12,28 @@ import { adminTest as test, expect } from "../tests/fixtures/trusted-session";
  *
  * Route coverage matches the admin-app router under §8 of the spec:
  *   - /desk
- *   - /r/tenants, /r/audit, /r/config, /r/flag, /r/access,
- *     /r/billing, /r/branding, /r/retention, /r/webhook, /r/runs,
- *     /r/vendors, /r/notify, /r/support
+ *   - /desk/tenants, /desk/audit, /desk/config, /desk/flag,
+ *     /desk/access, /desk/billing, /desk/branding,
+ *     /desk/retention, /desk/webhook, /desk/runs, /desk/vendors,
+ *     /desk/notify, /desk/support
  *   - /admin/profile, /admin/members, /admin/workspaces,
  *     /admin/tokens, /admin/audit
  */
 const visualRoutes = [
   "/desk",
-  "/r/tenants",
-  "/r/audit",
-  "/r/config",
-  "/r/flag",
-  "/r/access",
-  "/r/billing",
-  "/r/branding",
-  "/r/retention",
-  "/r/webhook",
-  "/r/runs",
-  "/r/vendors",
-  "/r/notify",
-  "/r/support",
+  "/desk/tenants",
+  "/desk/audit",
+  "/desk/config",
+  "/desk/flag",
+  "/desk/access",
+  "/desk/billing",
+  "/desk/branding",
+  "/desk/retention",
+  "/desk/webhook",
+  "/desk/runs",
+  "/desk/vendors",
+  "/desk/notify",
+  "/desk/support",
   "/admin/profile",
   "/admin/members",
   "/admin/workspaces",
@@ -67,7 +68,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/audit") {
+  if (route === "/desk/audit") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='audit-log-v2-posture']",
@@ -77,7 +78,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/access") {
+  if (route === "/desk/access") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='access-control-list-ready'] > .ops-bento",
@@ -90,7 +91,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/billing") {
+  if (route === "/desk/billing") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='billing-list-posture']",
@@ -100,7 +101,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/branding") {
+  if (route === "/desk/branding") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='branding-list-posture']",
@@ -110,7 +111,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/retention") {
+  if (route === "/desk/retention") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='retention-list-posture']",
@@ -120,7 +121,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/webhook") {
+  if (route === "/desk/webhook") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='webhook-list-posture']",
@@ -130,7 +131,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/runs") {
+  if (route === "/desk/runs") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='workflow-runs-list-posture']",
@@ -140,7 +141,7 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
     ] as const;
   }
 
-  if (route === "/r/support") {
+  if (route === "/desk/support") {
     return [
       ...shellVisualMaskSelectors,
       "[data-testid='support-cases-posture']",
@@ -177,7 +178,7 @@ for (const route of visualRoutes) {
     signedInPage: page,
     trustedSession,
   }) => {
-    if (route === "/r/support") {
+    if (route === "/desk/support") {
       await page.addInitScript(
         ({ now }) => {
           Date.now = () => now;

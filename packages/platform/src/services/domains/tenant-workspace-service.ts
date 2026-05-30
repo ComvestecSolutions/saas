@@ -1,11 +1,11 @@
 /**
  * Tenant workspace aggregate v2 platform service (admin-app
  * implementation plan §9 item 4; Desk Center Workbench
- * `/r/tenant/<id>` Tenant workspace section of
+ * `/desk/tenant/<id>` Tenant workspace section of
  * `specs/02-apps/admin-app/spec.md`).
  *
  * Produces the single payload the admin-app desk loads on
- * `/r/tenant/<id>` by fanning out to multiple tenant-scoped
+ * `/desk/tenant/<id>` by fanning out to multiple tenant-scoped
  * sources concurrently (overview, members, recent activity,
  * open incidents, usage spotlights, pending approvals). Each
  * source is invoked through a typed source-port Context.Tag so
@@ -340,7 +340,7 @@ const TenantWorkspaceUsageSpotlightsEnvironmentSchema = Schema.Struct({
   OPENMETER_API_BASE_URL: Schema.NonEmptyString,
   OPENMETER_API_KEY: Schema.NonEmptyString,
   POLAR_API_BASE_URL: Schema.NonEmptyString,
-  POLAR_API_KEY: Schema.NonEmptyString,
+  POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
 });
 
 const decodeTenantWorkspaceUsageSpotlightsEnvironment = Schema.decodeUnknown(
@@ -1204,7 +1204,7 @@ const makeLiveTenantWorkspaceUsageSpotlightsSource = (
               }),
               polar: makePolarAdapter({
                 apiUrl: resolved.POLAR_API_BASE_URL,
-                apiKey: resolved.POLAR_API_KEY,
+                apiKey: resolved.POLAR_ACCESS_TOKEN,
               }),
             }),
           ),

@@ -52,7 +52,7 @@
  * decodes `POSTGRES_URL` (for audit log persistence) +
  * 2 new `VENDOR_HEALTH_AGGREGATOR_*` keys +
  * every adapter credential env it enumerates (`KEYCLOAK_*`,
- * `POLAR_API_*`, `OPENMETER_API_*`, `UNLEASH_*`, `NOVU_API_*`,
+ * `POLAR_API_BASE_URL` + `POLAR_ACCESS_TOKEN`, `OPENMETER_API_*`, `UNLEASH_*`, `NOVU_API_*`,
  * `POSTAL_API_*`, `ERROR_TRACKING_DSN`, `OPENPANEL_*`,
  * `OTEL_EXPORTER_OTLP_ENDPOINT`, `GRAFANA_BASE_URL`,
  * `MEILISEARCH_*`, `CONVEX_SELF_HOSTED_*`, `VALKEY_URL`,
@@ -349,7 +349,7 @@ const buildPolarFailureReason = (cause: {
     cause.body === undefined ? undefined : parseFailureBodyMessage(cause.body);
 
   if (cause.status === 401 && bodyMessage === "invalid_token") {
-    return "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_URL.";
+    return "Polar access token rejected (invalid_token). Refresh POLAR_ACCESS_TOKEN or align it with POLAR_API_BASE_URL.";
   }
 
   if (cause.status !== undefined && bodyMessage !== undefined) {
@@ -629,7 +629,7 @@ const VendorHealthAggregatorProcessEnvironmentSchema = Schema.Struct({
   UNLEASH_API_KEY: Schema.NonEmptyString,
   // Polar
   POLAR_API_BASE_URL: Schema.NonEmptyString,
-  POLAR_API_KEY: Schema.NonEmptyString,
+  POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   // OpenMeter
   OPENMETER_API_BASE_URL: Schema.NonEmptyString,
   OPENMETER_API_KEY: Schema.NonEmptyString,
@@ -742,7 +742,7 @@ export const resolveVendorHealthAggregatorRuntimeOptionsFromEnvironment = (
           },
           polar: {
             apiUrl: resolved.POLAR_API_BASE_URL,
-            apiKey: resolved.POLAR_API_KEY,
+            apiKey: resolved.POLAR_ACCESS_TOKEN,
           },
           openmeter: {
             url: resolved.OPENMETER_API_BASE_URL,

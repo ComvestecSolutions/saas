@@ -47,7 +47,7 @@
  *     customer data masquerading as fresh.
  *
  * Runtime config: `runPolarCustomerReadFromEnvironment` decodes
- * `POLAR_API_BASE_URL` + `POLAR_API_KEY` + `POSTGRES_URL` +
+ * `POLAR_API_BASE_URL` + `POLAR_ACCESS_TOKEN` + `POSTGRES_URL` +
  * `POLAR_CUSTOMER_READ_CACHE_MAX_SIZE` +
  * `POLAR_CUSTOMER_READ_SNAPSHOT_CACHE_TTL_SECONDS` +
  * `POLAR_CUSTOMER_READ_DEFAULT_LIST_LIMIT` at the boundary with NO
@@ -661,7 +661,7 @@ export const makePolarCustomerReadServiceLayer = (
 const PolarCustomerReadProcessEnvironmentSchema = Schema.Struct({
   POSTGRES_URL: Schema.NonEmptyString,
   POLAR_API_BASE_URL: Schema.NonEmptyString,
-  POLAR_API_KEY: Schema.NonEmptyString,
+  POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_CUSTOMER_READ_CACHE_MAX_SIZE: Schema.NumberFromString.pipe(
     Schema.int(),
     Schema.positive(),
@@ -698,7 +698,7 @@ const resolvePolarCustomerReadRuntimeOptionsFromEnvironment = (
         postgresUrl: resolved.POSTGRES_URL,
         polar: {
           apiBaseUrl: resolved.POLAR_API_BASE_URL,
-          apiKey: resolved.POLAR_API_KEY,
+          apiKey: resolved.POLAR_ACCESS_TOKEN,
         },
         bounds: {
           cacheMaxSize: resolved.POLAR_CUSTOMER_READ_CACHE_MAX_SIZE,

@@ -71,13 +71,6 @@ const routeMatches = (currentPath: string, routePath: string): boolean =>
 
 const resolveDomainId = (routePath: string): DeskDomainId => {
   if (
-    routePath === adminRoutePath.operationsHome ||
-    routePath === "/desk" ||
-    routePath.startsWith("/desk/")
-  ) {
-    return "mission";
-  }
-  if (
     routePath === adminRoutePath.tenantWorkspaceDiscovery ||
     routePath.startsWith("/desk/tenant/") ||
     routePath.startsWith("/tenants")
@@ -89,6 +82,9 @@ const resolveDomainId = (routePath: string): DeskDomainId => {
     routePath.startsWith("/desk/flag") ||
     routePath.startsWith("/desk/access") ||
     routePath.startsWith("/desk/audit") ||
+    routePath.startsWith("/desk/domain") ||
+    routePath.startsWith("/desk/kc-user") ||
+    routePath.startsWith("/desk/kc-role") ||
     routePath.startsWith("/governance/")
   ) {
     return "governance";
@@ -122,6 +118,23 @@ const resolveDomainId = (routePath: string): DeskDomainId => {
     routePath.startsWith("/desk/notify")
   ) {
     return "integrations";
+  }
+  if (
+    routePath === adminRoutePath.profile ||
+    routePath === adminRoutePath.repairOperations ||
+    routePath === adminRoutePath.branding ||
+    routePath.startsWith("/desk/operator") ||
+    routePath.startsWith("/admin/")
+  ) {
+    return "admin";
+  }
+  if (
+    routePath === adminRoutePath.operationsHome ||
+    routePath === "/desk" ||
+    routePath.startsWith("/desk/search") ||
+    routePath.startsWith("/desk/")
+  ) {
+    return "mission";
   }
   return "admin";
 };

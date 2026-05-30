@@ -27,7 +27,30 @@ type ReactActGlobals = typeof globalThis & {
  * session loader. The route component lives at `routes/desk.tsx`
  * and is covered by the workbench-pane rendering assertion below.
  */
-const buildProfile = (): AdminOperatorProfile => ({
+type CapabilityFixture = AdminOperatorProfile["capabilities"][number];
+
+const buildCapability = (
+  capability: CapabilityFixture["capability"],
+  routePath: CapabilityFixture["routePath"],
+  label: string,
+): CapabilityFixture => ({
+  capability,
+  routePath,
+  visible: true,
+  allowed: true,
+  label,
+  actionPolicyIds: [],
+});
+
+const buildProfile = (
+  capabilities: readonly CapabilityFixture[] = [
+    buildCapability(
+      adminOperatorCapability.operationsHome,
+      adminRoutePath.operationsHome,
+      "Operations Home",
+    ),
+  ],
+): AdminOperatorProfile => ({
   sessionId: "session-fixture",
   identity: {
     actorId: "operator-fixture",
@@ -37,17 +60,47 @@ const buildProfile = (): AdminOperatorProfile => ({
     displayName: "Operator Fixture",
     actorType: "platform-operator",
   },
-  capabilities: [
-    {
-      capability: adminOperatorCapability.operationsHome,
-      routePath: adminRoutePath.operationsHome,
-      visible: true,
-      allowed: true,
-      label: "Operations Home",
-      actionPolicyIds: [],
-    },
-  ],
+  capabilities: [...capabilities],
 });
+
+const buildPulseProfile = (): AdminOperatorProfile =>
+  buildProfile([
+    buildCapability(
+      adminOperatorCapability.operationsHome,
+      adminRoutePath.operationsHome,
+      "Operations Home",
+    ),
+    buildCapability(
+      adminOperatorCapability.tenantWorkspace,
+      adminRoutePath.tenantWorkspaceDiscovery,
+      "Tenants",
+    ),
+    buildCapability(
+      adminOperatorCapability.runtimeConfig,
+      adminRoutePath.runtimeConfig,
+      "Runtime Config",
+    ),
+    buildCapability(
+      adminOperatorCapability.billing,
+      adminRoutePath.billing,
+      "Billing",
+    ),
+    buildCapability(
+      adminOperatorCapability.supportOperations,
+      adminRoutePath.supportOperations,
+      "Support",
+    ),
+    buildCapability(
+      adminOperatorCapability.webhooksApiAccess,
+      adminRoutePath.webhooksApiAccess,
+      "Webhooks",
+    ),
+    buildCapability(
+      adminOperatorCapability.branding,
+      adminRoutePath.branding,
+      "Branding",
+    ),
+  ]);
 
 const buildWorkspaces = () =>
   [
@@ -169,6 +222,54 @@ describe("Operator Desk shell route", () => {
     expect(
       container.querySelector('[data-testid="workbench-stub"]'),
     ).not.toBeNull();
+  });
+
+  it("renders canonical desk domain segments and dispatches navigation when a segment is selected", async () => {
+    const onNavigate = vi.fn();
+    const segmentTargets = [
+      ["tenants", adminRoutePath.tenantWorkspaceDiscovery],
+      ["governance", adminRoutePath.runtimeConfig],
+      ["revenue", adminRoutePath.billing],
+      ["risk", adminRoutePath.supportOperations],
+      ["integrations", adminRoutePath.webhooksApiAccess],
+      ["admin", adminRoutePath.branding],
+    ] as const;
+
+    await act(async () => {
+      root.render(
+        <DeskShell
+          profile={buildPulseProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          currentPath={adminRoutePath.operationsHome}
+          onNavigate={onNavigate}
+          deviceClass="desktop"
+        >
+          <span />
+        </DeskShell>,
+      );
+    });
+
+    const setTimeoutSpy = vi
+      .spyOn(window, "setTimeout")
+      .mockImplementation((() => 0) as unknown as typeof window.setTimeout);
+
+    try {
+      for (const [segmentId, expectedPath] of segmentTargets) {
+        const segment = await waitForSelector(`[data-segment="${segmentId}"]`);
+
+        expect(segment).not.toBeNull();
+
+        await act(async () => {
+          segment?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onNavigate).toHaveBeenLastCalledWith(expectedPath);
+      }
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
   });
 
   it("renders an Omnibar that opens via the ⌘K shortcut handler", async () => {

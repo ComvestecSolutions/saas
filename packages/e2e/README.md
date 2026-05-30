@@ -12,10 +12,11 @@ Suites:
   no manual token paste, no synthesized credentials.
 - `visual/**` — per-route Playwright screenshots at desktop / tablet
   / mobile for the current primary admin route subset declared in
-  `visual/admin-routes.spec.ts`: `/desk`, `/r/tenants`, `/r/audit`,
-  `/r/config`, `/r/flag`, `/r/access`, `/r/billing`, `/r/branding`,
-  `/r/retention`, `/r/webhook`, `/r/runs`, `/r/vendors`, `/r/notify`,
-  `/r/support`, `/admin/profile`, `/admin/members`,
+  `visual/admin-routes.spec.ts`: `/desk`, `/desk/tenants`,
+  `/desk/audit`, `/desk/config`, `/desk/flag`, `/desk/access`,
+  `/desk/billing`, `/desk/branding`, `/desk/retention`,
+  `/desk/webhook`, `/desk/runs`, `/desk/vendors`, `/desk/notify`,
+  `/desk/support`, `/admin/profile`, `/admin/members`,
   `/admin/workspaces`, `/admin/tokens`, and `/admin/audit` (Phase 8c).
 - `a11y/**` — `@axe-core/playwright`-backed WCAG 2.1 AA audit for the
   same primary route subset declared in `a11y/admin-routes.spec.ts`;

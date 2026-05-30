@@ -356,6 +356,7 @@ describe("operations-home runtime sources", () => {
       {
         vendor: platformAdapterServiceName.polar,
         posture: operationsHomeVendorPostureLevel.down,
+        message: "PolarAdapterRequestError",
       },
     ]);
   });

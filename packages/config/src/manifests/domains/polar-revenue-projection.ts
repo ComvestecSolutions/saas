@@ -18,7 +18,7 @@
  *     fallback synthesis (security invariant: no synthesized
  *     localhost URLs).
  *   - `polarApiKey` (default sentinel; required env) is the Polar
- *     API key the service decodes from `POLAR_API_KEY` at the env
+ *     access token the service decodes from `POLAR_ACCESS_TOKEN` at the env
  *     boundary with no local fallback synthesis. Classified
  *     `secret` and never surfaced through the projection layer.
  *   - `cacheMaxSize` (default 1024) bounds the in-memory
@@ -164,7 +164,7 @@ export const polarRevenueProjectionManifest = defineModuleManifest({
     {
       key: polarRevenueProjectionConfigKey.polarApiKey,
       description:
-        "Polar API key the service uses to authenticate snapshot reads. Decoded at the env boundary from POLAR_API_KEY with no local fallback synthesis. Classified secret; never surfaced through the projection layer.",
+        "Polar access token the service uses to authenticate snapshot reads. Decoded at the env boundary from POLAR_ACCESS_TOKEN with no local fallback synthesis. Classified secret; never surfaced through the projection layer.",
       schema: configSchemaType.string,
       defaultValue: "",
       billable: false,

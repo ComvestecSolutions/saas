@@ -53,7 +53,7 @@
  *     request a backfill via the only mutation surface.
  *
  * Runtime config: `runPolarRevenueProjectionFromEnvironment`
- * decodes `POSTGRES_URL` + `POLAR_API_BASE_URL` + `POLAR_API_KEY`
+ * decodes `POSTGRES_URL` + `POLAR_API_BASE_URL` + `POLAR_ACCESS_TOKEN`
  * + `POLAR_REVENUE_PROJECTION_SNAPSHOT_INTERVAL_MINUTES` +
  * `POLAR_REVENUE_PROJECTION_HISTORY_RETENTION_DAYS` +
  * `POLAR_REVENUE_PROJECTION_CACHE_MAX_SIZE` at the boundary with
@@ -651,7 +651,7 @@ export const makePolarRevenueProjectionServiceLayer = (
 const PolarRevenueProjectionProcessEnvironmentSchema = Schema.Struct({
   POSTGRES_URL: Schema.NonEmptyString,
   POLAR_API_BASE_URL: Schema.NonEmptyString,
-  POLAR_API_KEY: Schema.NonEmptyString,
+  POLAR_ACCESS_TOKEN: Schema.NonEmptyString,
   POLAR_REVENUE_PROJECTION_SNAPSHOT_INTERVAL_MINUTES:
     Schema.NumberFromString.pipe(Schema.int(), Schema.positive()),
   POLAR_REVENUE_PROJECTION_HISTORY_RETENTION_DAYS: Schema.NumberFromString.pipe(
@@ -671,7 +671,7 @@ const decodePolarRevenueProjectionProcessEnvironment = Schema.decodeUnknown(
 export type PolarRevenueProjectionRuntimeOptions = {
   readonly postgresUrl: string;
   readonly polarApiBaseUrl: string;
-  readonly polarApiKey: string;
+  readonly polarAccessToken: string;
   readonly bounds: PolarRevenueProjectionRuntimeBounds;
 };
 
@@ -683,7 +683,7 @@ const resolvePolarRevenueProjectionRuntimeOptionsFromEnvironment = (
       (resolved): PolarRevenueProjectionRuntimeOptions => ({
         postgresUrl: resolved.POSTGRES_URL,
         polarApiBaseUrl: resolved.POLAR_API_BASE_URL,
-        polarApiKey: resolved.POLAR_API_KEY,
+        polarAccessToken: resolved.POLAR_ACCESS_TOKEN,
         bounds: {
           snapshotIntervalMinutes:
             resolved.POLAR_REVENUE_PROJECTION_SNAPSHOT_INTERVAL_MINUTES,
@@ -745,7 +745,7 @@ const makePolarRevenueProjectionRuntime = (
     });
     const auditLog = yield* makeAuditLogModule(auditLogRepository);
     const polarAdapter = yield* makePolarAdapter({
-      apiKey: options.polarApiKey,
+      apiKey: options.polarAccessToken,
       apiUrl: options.polarApiBaseUrl,
     });
     const polarApiClientLayer = makeDefaultPolarApiClientLayer.pipe(
