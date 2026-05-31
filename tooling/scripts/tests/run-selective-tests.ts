@@ -38,6 +38,8 @@ export const selectiveTestSuiteId = {
   publicWebBrowser: "public-web-browser",
 } as const;
 
+export const backendFullSuiteShardCount = 4;
+
 export type SelectiveTestSuiteId =
   (typeof selectiveTestSuiteId)[keyof typeof selectiveTestSuiteId];
 
@@ -669,7 +671,7 @@ const resolveChangedFiles = (
   };
 };
 
-const buildFullSuiteCommand = (suite: SelectiveTestSuite) =>
+const buildBaseFullSuiteCommand = (suite: SelectiveTestSuite) =>
   [
     "bunx",
     "vitest",
@@ -680,6 +682,30 @@ const buildFullSuiteCommand = (suite: SelectiveTestSuite) =>
     suite.projectName,
     ...(suite.passWithNoTests === true ? ["--passWithNoTests"] : []),
   ] as const;
+
+export const shouldShardBackendFullSuite = (
+  suite: SelectiveTestSuite,
+  platform: NodeJS.Platform = process.platform,
+) => suite.id === selectiveTestSuiteId.backend && platform === "win32";
+
+export const buildFullSuiteCommands = (
+  suite: SelectiveTestSuite,
+  platform: NodeJS.Platform = process.platform,
+) => {
+  if (!shouldShardBackendFullSuite(suite, platform)) {
+    return [buildBaseFullSuiteCommand(suite)] as const;
+  }
+
+  return Array.from(
+    { length: backendFullSuiteShardCount },
+    (_, index) =>
+      [
+        ...buildBaseFullSuiteCommand(suite),
+        "--shard",
+        `${index + 1}/${backendFullSuiteShardCount}`,
+      ] as const,
+  );
+};
 
 const buildRelatedSuiteCommand = (
   suite: SelectiveTestSuite,
@@ -698,7 +724,7 @@ const buildRelatedSuiteCommand = (
     ...changedFiles,
   ] as const;
 
-const runSuite = async (command: readonly [string, ...string[]]) => {
+const runSuiteCommand = async (command: readonly [string, ...string[]]) => {
   const processHandle = Bun.spawn(command, {
     cwd: repoRootDirectory,
     env: Bun.env satisfies NodeJS.ProcessEnv,
@@ -708,6 +734,26 @@ const runSuite = async (command: readonly [string, ...string[]]) => {
   });
 
   return processHandle.exited;
+};
+
+const runSuiteCommands = async (
+  suite: SelectiveTestSuite,
+  commands: readonly (readonly [string, ...string[]])[],
+) => {
+  for (const [index, command] of commands.entries()) {
+    if (commands.length > 1) {
+      console.log(
+        `Running ${suite.label} shard ${index + 1}/${commands.length}...`,
+      );
+    }
+
+    const exitCode = await runSuiteCommand(command);
+    if (exitCode !== 0) {
+      return exitCode;
+    }
+  }
+
+  return 0;
 };
 
 const runSelectiveTests = async () => {
@@ -792,10 +838,14 @@ const runSelectiveTests = async () => {
       const shouldRunFullSuite =
         options.all ||
         shouldRunFullSuiteForSuiteChanges(suite, suiteChangedFiles);
+      const runModeLabel =
+        shouldRunFullSuite && shouldShardBackendFullSuite(suite)
+          ? `full suite in ${backendFullSuiteShardCount} shards`
+          : shouldRunFullSuite
+            ? "full suite"
+            : "related tests";
 
-      console.log(
-        `[dry-run] Would run ${suite.label} (${shouldRunFullSuite ? "full suite" : "related tests"}).`,
-      );
+      console.log(`[dry-run] Would run ${suite.label} (${runModeLabel}).`);
       executedSuites += 1;
       continue;
     }
@@ -803,14 +853,18 @@ const runSelectiveTests = async () => {
     const shouldRunFullSuite =
       options.all ||
       shouldRunFullSuiteForSuiteChanges(suite, suiteChangedFiles);
-    const command = shouldRunFullSuite
-      ? buildFullSuiteCommand(suite)
-      : buildRelatedSuiteCommand(suite, relatedFiles);
+    const commands = shouldRunFullSuite
+      ? buildFullSuiteCommands(suite)
+      : [buildRelatedSuiteCommand(suite, relatedFiles)];
+    const runModeLabel =
+      shouldRunFullSuite && shouldShardBackendFullSuite(suite)
+        ? `full suite in ${commands.length} shards`
+        : shouldRunFullSuite
+          ? "full suite"
+          : "related tests";
 
-    console.log(
-      `Running ${suite.label} (${shouldRunFullSuite ? "full suite" : "related tests"})...`,
-    );
-    const exitCode = await runSuite(command);
+    console.log(`Running ${suite.label} (${runModeLabel})...`);
+    const exitCode = await runSuiteCommands(suite, commands);
 
     if (exitCode !== 0) {
       throw new Error(`${suite.label} failed with exit code ${exitCode}.`);

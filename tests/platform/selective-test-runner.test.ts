@@ -1,9 +1,12 @@
 import {
+  backendFullSuiteShardCount,
+  buildFullSuiteCommands,
   parsePushRefs,
   resolveSuiteRelatedFiles,
   selectAffectedTestSuites,
   selectiveTestSuiteId,
   selectiveTestSuites,
+  shouldShardBackendFullSuite,
   shouldRunFullSuiteForSuiteChanges,
   shouldSkipSuiteFromCache,
   shouldUseSelectiveCache,
@@ -136,6 +139,59 @@ describe("shouldRunFullSuiteForSuiteChanges", () => {
         () => false,
       ),
     ).toBe(true);
+  });
+});
+
+describe("buildFullSuiteCommands", () => {
+  const backendSuite = selectiveTestSuites[0];
+  const adminBrowserSuite = selectiveTestSuites[2];
+
+  it("shards backend full-suite commands on Windows", () => {
+    expect(shouldShardBackendFullSuite(backendSuite, "win32")).toBe(true);
+    expect(buildFullSuiteCommands(backendSuite, "win32")).toEqual(
+      Array.from({ length: backendFullSuiteShardCount }, (_, index) => [
+        "bunx",
+        "vitest",
+        "run",
+        "--config",
+        "vitest.config.ts",
+        "--project",
+        "backend",
+        "--shard",
+        `${index + 1}/${backendFullSuiteShardCount}`,
+      ]),
+    );
+  });
+
+  it("keeps backend full-suite commands unsharded off Windows", () => {
+    expect(shouldShardBackendFullSuite(backendSuite, "linux")).toBe(false);
+    expect(buildFullSuiteCommands(backendSuite, "linux")).toEqual([
+      [
+        "bunx",
+        "vitest",
+        "run",
+        "--config",
+        "vitest.config.ts",
+        "--project",
+        "backend",
+      ],
+    ]);
+  });
+
+  it("keeps browser full-suite commands unsharded on Windows", () => {
+    expect(shouldShardBackendFullSuite(adminBrowserSuite, "win32")).toBe(false);
+    expect(buildFullSuiteCommands(adminBrowserSuite, "win32")).toEqual([
+      [
+        "bunx",
+        "vitest",
+        "run",
+        "--config",
+        "vitest.config.ts",
+        "--project",
+        "admin-browser",
+        "--passWithNoTests",
+      ],
+    ]);
   });
 });
 
