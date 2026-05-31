@@ -11,6 +11,7 @@ import {
   RunAsBanner,
   Workbench,
   WorkspaceTabs,
+  useDeviceClass,
   type DeviceClass,
   type HighRiskReason,
 } from "@comvestec/ui";
@@ -554,7 +555,15 @@ const navigateToPath = (
   onNavigate: ((path: string) => void) | undefined,
 ) => navigateAdminPath(path, onNavigate);
 
-export function DeskShell({
+export function DeskShell({ ...props }: DeskShellProps) {
+  return (
+    <DeviceProvider>
+      <DeskShellContent {...props} />
+    </DeviceProvider>
+  );
+}
+
+function DeskShellContent({
   profile,
   workspaces,
   savedViews,
@@ -565,6 +574,8 @@ export function DeskShell({
   onReleaseRunAsGrant,
   deviceClass,
 }: DeskShellProps) {
+  const resolvedDeviceClass = deviceClass ?? useDeviceClass();
+  const compactCommandActions = resolvedDeviceClass === "mobile";
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [runAsReleaseArmed, setRunAsReleaseArmed] = useState(false);
   const [runAsReleaseError, setRunAsReleaseError] = useState<string | null>(
@@ -573,8 +584,9 @@ export function DeskShell({
   const navigationMenuId = "desk-shell-navigation-menu";
   const operator = profile.identity;
   const currentPath = resolveCurrentPath(currentPathProp);
-  const deviceClassProps: { readonly deviceClass: DeviceClass } | {} =
-    deviceClass === undefined ? {} : { deviceClass };
+  const deviceClassProps = {
+    deviceClass: resolvedDeviceClass,
+  } as const satisfies { readonly deviceClass: DeviceClass };
   const omnibarNavigationProps:
     | { readonly onNavigate: (path: string) => void }
     | {} = onNavigate === undefined ? {} : { onNavigate };
@@ -674,182 +686,278 @@ export function DeskShell({
   };
 
   return (
-    <DeviceProvider>
-      <>
-        <AppDesk
-          {...deviceClassProps}
-          pulseRibbon={
-            <PulseRibbon
-              {...deviceClassProps}
-              segments={pulseSegments}
-              onSelect={(segment) => {
-                const firstRoute = visibleCapabilities.find(
-                  (capability) =>
-                    resolveDomainId(capability.routePath) === segment.id,
-                );
-                if (firstRoute?.allowed !== true) {
-                  return;
-                }
-                navigateToPath(firstRoute.routePath, onNavigate);
+    <>
+      <AppDesk
+        {...deviceClassProps}
+        pulseRibbon={
+          <PulseRibbon
+            {...deviceClassProps}
+            segments={pulseSegments}
+            onSelect={(segment) => {
+              const firstRoute = visibleCapabilities.find(
+                (capability) =>
+                  resolveDomainId(capability.routePath) === segment.id,
+              );
+              if (firstRoute?.allowed !== true) {
+                return;
+              }
+              navigateToPath(firstRoute.routePath, onNavigate);
+            }}
+          />
+        }
+        edgeRail={
+          <EdgeRail
+            {...deviceClassProps}
+            items={edgeRailItems}
+            onActivate={(item) => {
+              const match = visibleCapabilities.find(
+                (capability) => capability.capability === item.id,
+              );
+              if (match === undefined) {
+                return;
+              }
+              navigateToPath(match.routePath, onNavigate);
+            }}
+          />
+        }
+        workbench={<Workbench {...deviceClassProps}>{children}</Workbench>}
+        contextSpine={
+          <ContextSpine {...deviceClassProps}>
+            <section
+              data-testid="context-spine-actor-card"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: 6,
+                borderRadius: 10,
+                border: "1px solid color-mix(in oklab, white 8%, transparent)",
+                background:
+                  "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 82%, transparent)",
               }}
-            />
-          }
-          edgeRail={
-            <EdgeRail
-              {...deviceClassProps}
-              items={edgeRailItems}
-              onActivate={(item) => {
-                const match = visibleCapabilities.find(
-                  (capability) => capability.capability === item.id,
-                );
-                if (match === undefined) {
-                  return;
-                }
-                navigateToPath(match.routePath, onNavigate);
-              }}
-            />
-          }
-          workbench={<Workbench {...deviceClassProps}>{children}</Workbench>}
-          contextSpine={
-            <ContextSpine {...deviceClassProps}>
-              <section
-                data-testid="context-spine-actor-card"
+            >
+              <span
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
+                  fontFamily: "var(--font-condensed)",
+                  fontSize: "0.68rem",
+                  color: "var(--fg-muted)",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Operator
+              </span>
+              <strong
+                style={{ fontSize: "0.92rem", color: "var(--fg-elevated)" }}
+              >
+                {operator.displayName}
+              </strong>
+              <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
+                {operator.email}
+              </span>
+              <span
+                data-testid="context-spine-actor-role"
+                style={{
+                  fontSize: "0.68rem",
+                  color: "var(--fg-muted)",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {operator.actorType}
+              </span>
+            </section>
+            <section
+              style={{
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div
+                data-testid="context-spine-route-card"
+                style={{
                   padding: 6,
                   borderRadius: 10,
                   border:
                     "1px solid color-mix(in oklab, white 8%, transparent)",
                   background:
-                    "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 82%, transparent)",
+                    "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
                 }}
               >
-                <span
+                <div
                   style={{
                     fontFamily: "var(--font-condensed)",
-                    fontSize: "0.68rem",
-                    color: "var(--fg-muted)",
+                    fontSize: "0.66rem",
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                  }}
-                >
-                  Operator
-                </span>
-                <strong
-                  style={{ fontSize: "0.92rem", color: "var(--fg-elevated)" }}
-                >
-                  {operator.displayName}
-                </strong>
-                <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
-                  {operator.email}
-                </span>
-                <span
-                  data-testid="context-spine-actor-role"
-                  style={{
-                    fontSize: "0.68rem",
                     color: "var(--fg-muted)",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
+                    marginBottom: 4,
                   }}
                 >
-                  {operator.actorType}
-                </span>
-              </section>
-              <section
+                  In focus
+                </div>
+                <div
+                  style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
+                >
+                  {resolveCurrentRouteLabel(currentPath, visibleCapabilities)}
+                </div>
+                <div
+                  className="mono"
+                  style={{ fontSize: "0.72rem", color: "var(--fg-muted)" }}
+                >
+                  {currentPath}
+                </div>
+              </div>
+              <div
+                data-testid="context-spine-capability-posture-card"
                 style={{
-                  display: "grid",
-                  gap: 6,
+                  padding: 6,
+                  borderRadius: 10,
+                  border:
+                    "1px solid color-mix(in oklab, white 8%, transparent)",
+                  background:
+                    "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
                 }}
               >
                 <div
-                  data-testid="context-spine-route-card"
                   style={{
-                    padding: 6,
-                    borderRadius: 10,
-                    border:
-                      "1px solid color-mix(in oklab, white 8%, transparent)",
-                    background:
-                      "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
+                    fontFamily: "var(--font-condensed)",
+                    fontSize: "0.66rem",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "var(--fg-muted)",
+                    marginBottom: 4,
                   }}
                 >
-                  <div
-                    style={{
-                      fontFamily: "var(--font-condensed)",
-                      fontSize: "0.66rem",
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
-                      color: "var(--fg-muted)",
-                      marginBottom: 4,
-                    }}
-                  >
-                    In focus
-                  </div>
-                  <div
-                    style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
-                  >
-                    {resolveCurrentRouteLabel(currentPath, visibleCapabilities)}
-                  </div>
-                  <div
-                    className="mono"
-                    style={{ fontSize: "0.72rem", color: "var(--fg-muted)" }}
-                  >
-                    {currentPath}
-                  </div>
+                  Capability posture
                 </div>
                 <div
-                  data-testid="context-spine-capability-posture-card"
+                  style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
+                >
+                  {
+                    visibleCapabilities.filter(
+                      (capability) => capability.allowed,
+                    ).length
+                  }{" "}
+                  active surfaces
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
+                  {gatedSurfaces.length === 0
+                    ? "No gated surfaces in this session."
+                    : `${gatedSurfaces.length} gated surface${gatedSurfaces.length === 1 ? "" : "s"} need higher privilege.`}
+                </div>
+              </div>
+              <div
+                data-testid="context-spine-saved-views"
+                style={{
+                  padding: 6,
+                  borderRadius: 10,
+                  border:
+                    "1px solid color-mix(in oklab, white 8%, transparent)",
+                  background:
+                    "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
+                  display: "grid",
+                  gap: 4,
+                }}
+              >
+                <div
                   style={{
-                    padding: 6,
-                    borderRadius: 10,
-                    border:
-                      "1px solid color-mix(in oklab, white 8%, transparent)",
-                    background:
-                      "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
+                    fontFamily: "var(--font-condensed)",
+                    fontSize: "0.66rem",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "var(--fg-muted)",
                   }}
                 >
-                  <div
-                    style={{
-                      fontFamily: "var(--font-condensed)",
-                      fontSize: "0.66rem",
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
-                      color: "var(--fg-muted)",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Capability posture
-                  </div>
-                  <div
-                    style={{ fontSize: "0.9rem", color: "var(--fg-elevated)" }}
-                  >
-                    {
-                      visibleCapabilities.filter(
-                        (capability) => capability.allowed,
-                      ).length
-                    }{" "}
-                    active surfaces
-                  </div>
+                  Saved views
+                </div>
+                {featuredSavedViews.length === 0 ? (
                   <div
                     style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}
                   >
-                    {gatedSurfaces.length === 0
-                      ? "No gated surfaces in this session."
-                      : `${gatedSurfaces.length} gated surface${gatedSurfaces.length === 1 ? "" : "s"} need higher privilege.`}
+                    No pinned saved views for this surface yet.
                   </div>
-                </div>
+                ) : (
+                  featuredSavedViews.map((savedView) =>
+                    savedView.routePath === undefined ? (
+                      <div
+                        key={savedView.id}
+                        style={{
+                          display: "grid",
+                          gap: 2,
+                          padding: "6px 8px",
+                          borderRadius: 8,
+                          background:
+                            "color-mix(in oklab, white 4%, transparent)",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "0.8rem",
+                            color: "var(--fg-elevated)",
+                          }}
+                        >
+                          {savedView.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--fg-muted)",
+                          }}
+                        >
+                          {savedView.resourceLabel}
+                          {savedView.pinned ? " · pinned" : ""}
+                        </span>
+                      </div>
+                    ) : (
+                      <a
+                        key={savedView.id}
+                        href={savedView.routePath}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          navigateToPath(savedView.routePath!, onNavigate);
+                        }}
+                        style={{
+                          display: "grid",
+                          gap: 2,
+                          padding: "6px 8px",
+                          borderRadius: 8,
+                          textDecoration: "none",
+                          background: routeMatches(
+                            currentPath,
+                            savedView.routePath,
+                          )
+                            ? "color-mix(in oklab, white 6%, transparent)"
+                            : "color-mix(in oklab, white 4%, transparent)",
+                          color: "var(--fg-elevated)",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.8rem" }}>
+                          {savedView.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--fg-muted)",
+                          }}
+                        >
+                          {savedView.resourceLabel}
+                          {savedView.pinned ? " · pinned" : ""}
+                        </span>
+                      </a>
+                    ),
+                  )
+                )}
+              </div>
+              {activeRunAsBanner?.expiresAt !== undefined ? (
                 <div
-                  data-testid="context-spine-saved-views"
                   style={{
                     padding: 6,
                     borderRadius: 10,
-                    border:
-                      "1px solid color-mix(in oklab, white 8%, transparent)",
+                    border: "1px solid var(--status-error-border)",
                     background:
-                      "color-mix(in oklab, var(--canvas-850) 84%, transparent)",
-                    display: "grid",
-                    gap: 4,
+                      "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
+                    color: "var(--status-error-fg)",
                   }}
                 >
                   <div
@@ -858,387 +966,289 @@ export function DeskShell({
                       fontSize: "0.66rem",
                       letterSpacing: "0.12em",
                       textTransform: "uppercase",
-                      color: "var(--fg-muted)",
+                      marginBottom: 4,
                     }}
                   >
-                    Saved views
+                    Run-as context
                   </div>
-                  {featuredSavedViews.length === 0 ? (
-                    <div
-                      style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}
-                    >
-                      No pinned saved views for this surface yet.
-                    </div>
-                  ) : (
-                    featuredSavedViews.map((savedView) =>
-                      savedView.routePath === undefined ? (
-                        <div
-                          key={savedView.id}
-                          style={{
-                            display: "grid",
-                            gap: 2,
-                            padding: "6px 8px",
-                            borderRadius: 8,
-                            background:
-                              "color-mix(in oklab, white 4%, transparent)",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "0.8rem",
-                              color: "var(--fg-elevated)",
-                            }}
-                          >
-                            {savedView.name}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              color: "var(--fg-muted)",
-                            }}
-                          >
-                            {savedView.resourceLabel}
-                            {savedView.pinned ? " · pinned" : ""}
-                          </span>
-                        </div>
-                      ) : (
-                        <a
-                          key={savedView.id}
-                          href={savedView.routePath}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            navigateToPath(savedView.routePath!, onNavigate);
-                          }}
-                          style={{
-                            display: "grid",
-                            gap: 2,
-                            padding: "6px 8px",
-                            borderRadius: 8,
-                            textDecoration: "none",
-                            background: routeMatches(
-                              currentPath,
-                              savedView.routePath,
-                            )
-                              ? "color-mix(in oklab, white 6%, transparent)"
-                              : "color-mix(in oklab, white 4%, transparent)",
-                            color: "var(--fg-elevated)",
-                          }}
-                        >
-                          <span style={{ fontSize: "0.8rem" }}>
-                            {savedView.name}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              color: "var(--fg-muted)",
-                            }}
-                          >
-                            {savedView.resourceLabel}
-                            {savedView.pinned ? " · pinned" : ""}
-                          </span>
-                        </a>
-                      ),
-                    )
-                  )}
+                  <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                    {resolveRunAsActorLabel(activeRunAsBanner)}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", marginTop: 2 }}>
+                    {resolveRunAsReason(activeRunAsBanner)}
+                  </div>
+                  <div
+                    className="mono"
+                    style={{ fontSize: "0.72rem", marginTop: 2 }}
+                  >
+                    until {activeRunAsBanner.expiresAt}
+                  </div>
                 </div>
-                {activeRunAsBanner?.expiresAt !== undefined ? (
-                  <div
-                    style={{
-                      padding: 6,
-                      borderRadius: 10,
-                      border: "1px solid var(--status-error-border)",
-                      background:
-                        "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
-                      color: "var(--status-error-fg)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: "var(--font-condensed)",
-                        fontSize: "0.66rem",
-                        letterSpacing: "0.12em",
-                        textTransform: "uppercase",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Run-as context
-                    </div>
-                    <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>
-                      {resolveRunAsActorLabel(activeRunAsBanner)}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", marginTop: 2 }}>
-                      {resolveRunAsReason(activeRunAsBanner)}
-                    </div>
-                    <div
-                      className="mono"
-                      style={{ fontSize: "0.72rem", marginTop: 2 }}
-                    >
-                      until {activeRunAsBanner.expiresAt}
-                    </div>
-                  </div>
-                ) : null}
-                {runAsReleaseError !== null ? (
-                  <div
-                    data-testid="desk-shell-run-as-error"
-                    style={{
-                      padding: 6,
-                      borderRadius: 10,
-                      border: "1px solid var(--status-error-border)",
-                      background:
-                        "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
-                      color: "var(--status-error-fg)",
-                      fontSize: "0.75rem",
-                    }}
-                  >
-                    {runAsReleaseError}
-                  </div>
-                ) : null}
-              </section>
-            </ContextSpine>
-          }
-          commandStrip={
-            <CommandStrip
-              {...deviceClassProps}
-              omnibar={<DeskShellOmnibar {...omnibarNavigationProps} />}
-              workspaceTabs={
-                <WorkspaceTabs
-                  tabs={workspaceTabs}
-                  onActivate={(tab) => {
-                    const match = workspaceTabs.find(
-                      (entry) => entry.id === tab.id,
-                    );
-                    if (match === undefined) {
-                      return;
-                    }
-                    navigateToPath(match.path, onNavigate);
+              ) : null}
+              {runAsReleaseError !== null ? (
+                <div
+                  data-testid="desk-shell-run-as-error"
+                  style={{
+                    padding: 6,
+                    borderRadius: 10,
+                    border: "1px solid var(--status-error-border)",
+                    background:
+                      "color-mix(in oklab, var(--status-error-bg) 84%, transparent)",
+                    color: "var(--status-error-fg)",
+                    fontSize: "0.75rem",
                   }}
-                />
-              }
-              alertsPulse={
-                <AlertsPulse
-                  count={gatedSurfaces.length}
-                  tone={
-                    gatedSurfaces.length === 0
-                      ? "neutral"
-                      : gatedSurfaces.length >= 3
-                        ? "error"
-                        : "pending"
+                >
+                  {runAsReleaseError}
+                </div>
+              ) : null}
+            </section>
+          </ContextSpine>
+        }
+        commandStrip={
+          <CommandStrip
+            {...deviceClassProps}
+            omnibar={<DeskShellOmnibar {...omnibarNavigationProps} />}
+            workspaceTabs={
+              <WorkspaceTabs
+                tabs={workspaceTabs}
+                onActivate={(tab) => {
+                  const match = workspaceTabs.find(
+                    (entry) => entry.id === tab.id,
+                  );
+                  if (match === undefined) {
+                    return;
                   }
-                  ariaLabel="Gated admin surfaces"
-                />
-              }
-              runAsBanner={
+                  navigateToPath(match.path, onNavigate);
+                }}
+              />
+            }
+            alertsPulse={
+              <AlertsPulse
+                count={gatedSurfaces.length}
+                tone={
+                  gatedSurfaces.length === 0
+                    ? "neutral"
+                    : gatedSurfaces.length >= 3
+                      ? "error"
+                      : "pending"
+                }
+                ariaLabel="Gated admin surfaces"
+              />
+            }
+            runAsBanner={
+              <div
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: compactCommandActions ? 4 : 6,
+                }}
+              >
+                {activeRunAsBanner?.expiresAt !== undefined ? (
+                  <RunAsBanner
+                    actorLabel={resolveRunAsActorLabel(activeRunAsBanner)}
+                    reason={resolveRunAsReason(activeRunAsBanner)}
+                    expiresAtIso={activeRunAsBanner.expiresAt}
+                    {...(activeRunAsBanner.releasable &&
+                    activeRunAsBanner.grantId !== undefined &&
+                    onReleaseRunAsGrant !== undefined
+                      ? {
+                          onRelease: () => {
+                            setRunAsReleaseError(null);
+                            setRunAsReleaseArmed(true);
+                          },
+                        }
+                      : {})}
+                  />
+                ) : null}
                 <div
                   style={{
                     position: "relative",
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 6,
+                    gap: compactCommandActions ? 4 : 6,
                   }}
                 >
-                  {activeRunAsBanner?.expiresAt !== undefined ? (
-                    <RunAsBanner
-                      actorLabel={resolveRunAsActorLabel(activeRunAsBanner)}
-                      reason={resolveRunAsReason(activeRunAsBanner)}
-                      expiresAtIso={activeRunAsBanner.expiresAt}
-                      {...(activeRunAsBanner.releasable &&
-                      activeRunAsBanner.grantId !== undefined &&
-                      onReleaseRunAsGrant !== undefined
-                        ? {
-                            onRelease: () => {
-                              setRunAsReleaseError(null);
-                              setRunAsReleaseArmed(true);
-                            },
-                          }
-                        : {})}
-                    />
-                  ) : null}
-                  <div
+                  <button
+                    type="button"
+                    aria-label="Open control surfaces"
+                    aria-expanded={navigationOpen}
+                    aria-controls={navigationMenuId}
+                    onClick={() => setNavigationOpen((current) => !current)}
                     style={{
-                      position: "relative",
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 6,
+                      height: 28,
+                      paddingInline: compactCommandActions ? 6 : 8,
+                      borderRadius: 8,
+                      border:
+                        "1px solid color-mix(in oklab, white 8%, transparent)",
+                      background:
+                        "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
+                      color: "var(--fg-secondary)",
+                      cursor: "pointer",
                     }}
                   >
-                    <button
-                      type="button"
-                      aria-label="Open control surfaces"
-                      aria-expanded={navigationOpen}
-                      aria-controls={navigationMenuId}
-                      onClick={() => setNavigationOpen((current) => !current)}
-                      style={{
-                        height: 28,
-                        paddingInline: 8,
-                        borderRadius: 8,
-                        border:
-                          "1px solid color-mix(in oklab, white 8%, transparent)",
-                        background:
-                          "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
-                        color: "var(--fg-secondary)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 6,
-                        }}
-                      >
-                        <MenuGridIcon size={14} />
-                      </span>
-                      Surfaces
-                    </button>
-                    <a
-                      href={adminRoutePath.profile}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        navigateToPath(adminRoutePath.profile, onNavigate);
-                      }}
+                    <span
+                      aria-hidden="true"
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        height: 28,
-                        paddingInline: 8,
-                        borderRadius: 8,
-                        border:
-                          "1px solid color-mix(in oklab, white 8%, transparent)",
-                        background:
-                          "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
-                        color: "var(--fg-secondary)",
-                        textDecoration: "none",
+                        justifyContent: "center",
+                        marginRight: compactCommandActions ? 4 : 6,
                       }}
                     >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 6,
-                        }}
-                      >
-                        <UserBadgeIcon size={14} />
-                      </span>
-                      Operator profile
-                    </a>
-                    {navigationOpen ? (
-                      <div
-                        id={navigationMenuId}
-                        data-testid="desk-shell-navigation-menu"
-                        style={{
-                          position: "absolute",
-                          right: 0,
-                          bottom: "calc(100% + 6px)",
-                          width: 240,
-                          maxHeight: 280,
-                          overflow: "auto",
-                          padding: 6,
-                          borderRadius: 10,
-                          border:
-                            "1px solid color-mix(in oklab, white 10%, transparent)",
-                          background:
-                            "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 94%, transparent)",
-                          boxShadow: "0 22px 48px -28px rgb(0 0 0 / 0.82)",
-                          display: "grid",
-                          gap: 4,
-                          zIndex: 20,
-                        }}
-                      >
-                        {navigationLinks.map((capability) => (
-                          <a
-                            key={capability.capability}
-                            href={capability.routePath}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              setNavigationOpen(false);
-                              navigateToPath(capability.routePath, onNavigate);
-                            }}
+                      <MenuGridIcon size={14} />
+                    </span>
+                    {compactCommandActions ? "Menu" : "Surfaces"}
+                  </button>
+                  <a
+                    aria-label="Open operator profile"
+                    href={adminRoutePath.profile}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToPath(adminRoutePath.profile, onNavigate);
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      height: 28,
+                      paddingInline: compactCommandActions ? 6 : 8,
+                      borderRadius: 8,
+                      border:
+                        "1px solid color-mix(in oklab, white 8%, transparent)",
+                      background:
+                        "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
+                      color: "var(--fg-secondary)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: compactCommandActions ? 4 : 6,
+                      }}
+                    >
+                      <UserBadgeIcon size={14} />
+                    </span>
+                    {compactCommandActions ? "Profile" : "Operator profile"}
+                  </a>
+                  {navigationOpen ? (
+                    <div
+                      id={navigationMenuId}
+                      data-testid="desk-shell-navigation-menu"
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        bottom: "calc(100% + 6px)",
+                        width: 240,
+                        maxHeight: 280,
+                        overflow: "auto",
+                        padding: 6,
+                        borderRadius: 10,
+                        border:
+                          "1px solid color-mix(in oklab, white 10%, transparent)",
+                        background:
+                          "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 94%, transparent)",
+                        boxShadow: "0 22px 48px -28px rgb(0 0 0 / 0.82)",
+                        display: "grid",
+                        gap: 4,
+                        zIndex: 20,
+                      }}
+                    >
+                      {navigationLinks.map((capability) => (
+                        <a
+                          key={capability.capability}
+                          href={capability.routePath}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setNavigationOpen(false);
+                            navigateToPath(capability.routePath, onNavigate);
+                          }}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "28px minmax(0, 1fr)",
+                            gap: 8,
+                            alignItems: "start",
+                            padding: "8px 10px",
+                            borderRadius: 10,
+                            textDecoration: "none",
+                            background: routeMatches(
+                              currentPath,
+                              capability.routePath,
+                            )
+                              ? "color-mix(in oklab, white 7%, transparent)"
+                              : "transparent",
+                            color: "var(--fg-elevated)",
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
                             style={{
-                              display: "grid",
-                              gridTemplateColumns: "28px minmax(0, 1fr)",
-                              gap: 8,
-                              alignItems: "start",
-                              padding: "8px 10px",
-                              borderRadius: 10,
-                              textDecoration: "none",
-                              background: routeMatches(
-                                currentPath,
-                                capability.routePath,
-                              )
-                                ? "color-mix(in oklab, white 7%, transparent)"
-                                : "transparent",
-                              color: "var(--fg-elevated)",
+                              display: "inline-flex",
+                              width: 28,
+                              height: 28,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderRadius: 8,
+                              background:
+                                "color-mix(in oklab, white 4%, transparent)",
+                              color: "var(--fg-secondary)",
                             }}
                           >
+                            {resolveCapabilityIcon(capability.capability)}
+                          </span>
+                          <span
+                            style={{ display: "grid", gap: 2, minWidth: 0 }}
+                          >
+                            <span>{capability.label}</span>
                             <span
-                              aria-hidden="true"
                               style={{
-                                display: "inline-flex",
-                                width: 28,
-                                height: 28,
-                                alignItems: "center",
-                                justifyContent: "center",
-                                borderRadius: 8,
-                                background:
-                                  "color-mix(in oklab, white 4%, transparent)",
-                                color: "var(--fg-secondary)",
+                                fontSize: "0.72rem",
+                                lineHeight: 1.35,
+                                color: "var(--fg-muted)",
                               }}
                             >
-                              {resolveCapabilityIcon(capability.capability)}
+                              {resolveCapabilityDescription(
+                                capability.capability,
+                              )}
                             </span>
-                            <span
-                              style={{ display: "grid", gap: 2, minWidth: 0 }}
-                            >
-                              <span>{capability.label}</span>
-                              <span
-                                style={{
-                                  fontSize: "0.72rem",
-                                  lineHeight: 1.35,
-                                  color: "var(--fg-muted)",
-                                }}
-                              >
-                                {resolveCapabilityDescription(
-                                  capability.capability,
-                                )}
-                              </span>
-                            </span>
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-              }
-            />
-          }
-        />
-        {runAsReleaseArmed && activeRunAsBanner?.grantId !== undefined ? (
-          <HighRiskActionGuard
-            action={{
-              id: "run-as-banner-release",
-              label: "Release active run-as grant",
-            }}
-            selection={[activeRunAsBanner.grantId]}
-            reasons={runAsReleaseReasons}
-            requireNote
-            confirmLabel="Release"
-            renderSelectionSummary={() => (
-              <div style={{ display: "grid", gap: 4 }}>
-                <strong>{resolveRunAsActorLabel(activeRunAsBanner)}</strong>
-                <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
-                  {resolveRunAsReason(activeRunAsBanner)}
-                </span>
               </div>
-            )}
-            onConfirm={handleRunAsReleaseConfirm}
-            onCancel={() => setRunAsReleaseArmed(false)}
+            }
           />
-        ) : null}
-      </>
-    </DeviceProvider>
+        }
+      />
+      {runAsReleaseArmed && activeRunAsBanner?.grantId !== undefined ? (
+        <HighRiskActionGuard
+          action={{
+            id: "run-as-banner-release",
+            label: "Release active run-as grant",
+          }}
+          selection={[activeRunAsBanner.grantId]}
+          reasons={runAsReleaseReasons}
+          requireNote
+          confirmLabel="Release"
+          renderSelectionSummary={() => (
+            <div style={{ display: "grid", gap: 4 }}>
+              <strong>{resolveRunAsActorLabel(activeRunAsBanner)}</strong>
+              <span style={{ fontSize: "0.75rem", color: "var(--fg-muted)" }}>
+                {resolveRunAsReason(activeRunAsBanner)}
+              </span>
+            </div>
+          )}
+          onConfirm={handleRunAsReleaseConfirm}
+          onCancel={() => setRunAsReleaseArmed(false)}
+        />
+      ) : null}
+    </>
   );
 }

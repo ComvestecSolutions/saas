@@ -113,23 +113,29 @@ test.describe("admin operator journey", () => {
       await tokenLabelInput.click();
       await tokenLabelInput.pressSequentially(trustedSession.tokenLabel);
       await page.getByTestId("admin-tokens-issue-cta").click();
-      await page
-        .getByLabel(/admin operator test tokens — issue token/i)
-        .click();
-      await page
+      const issueGuard = page.getByRole("dialog", {
+        name: /high-risk: issue admin operator test token/i,
+      });
+      await expect(issueGuard).toBeVisible();
+      await issueGuard
+        .locator("[data-testid='high-risk-body'] input[type='radio']")
+        .first()
+        .check();
+      await issueGuard
         .getByTestId("high-risk-note")
         .fill("e2e:operator-journey:issue");
-      await page.getByTestId("high-risk-arm").click();
-      await page.getByTestId("high-risk-confirm-final").click();
+      await issueGuard.getByTestId("high-risk-arm").click();
+      await issueGuard.getByTestId("high-risk-confirm-final").click();
 
       await expect(
         page.getByTestId("admin-tokens-action-success"),
       ).toContainText(trustedSession.tokenLabel);
       await expect(page.getByTestId("reveal-field-value")).toBeVisible();
-      const issuedTokenDialog = page.getByRole("dialog", {
-        name: /admin test token issued/i,
-      });
-      await issuedTokenDialog.press("Escape");
+      const issuedTokenDialog = page.getByTestId(
+        "admin-tokens-plaintext-dialog",
+      );
+      await expect(issuedTokenDialog).toBeVisible();
+      await page.keyboard.press("Escape");
       await expect(issuedTokenDialog).toBeHidden();
 
       const row = page
@@ -139,14 +145,19 @@ test.describe("admin operator journey", () => {
       await expect(row).toBeVisible();
 
       await row.getByTestId("admin-tokens-revoke-cta").click();
-      await page
-        .getByLabel(/admin operator test tokens — revoke token/i)
-        .click();
-      await page
+      const revokeGuard = page.getByRole("dialog", {
+        name: /high-risk: revoke admin operator test token/i,
+      });
+      await expect(revokeGuard).toBeVisible();
+      await revokeGuard
+        .locator("[data-testid='high-risk-body'] input[type='radio']")
+        .first()
+        .check();
+      await revokeGuard
         .getByTestId("high-risk-note")
         .fill("e2e:operator-journey:revoke");
-      await page.getByTestId("high-risk-arm").click();
-      await page.getByTestId("high-risk-confirm-final").click();
+      await revokeGuard.getByTestId("high-risk-arm").click();
+      await revokeGuard.getByTestId("high-risk-confirm-final").click();
 
       await expect(row).toContainText(/revoked/i);
     });

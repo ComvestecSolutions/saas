@@ -19,13 +19,13 @@ describe("AppDesk responsive recomposition", () => {
     expect(host.querySelector("[data-testid='spine']")).not.toBeNull();
   });
 
-  it("tablet: still mounts rail and spine but tightens the rail column", () => {
+  it("tablet: still mounts rail and spine with the peek-only rail width", () => {
     const host = mount(<AppDesk {...baseSlots} deviceClass="tablet" />);
     const root = host.querySelector("[data-pattern='app-desk']") as HTMLElement;
     expect(root.dataset["deviceClass"]).toBe("tablet");
     expect(host.querySelector("[data-testid='rail']")).not.toBeNull();
     expect(host.querySelector("[data-testid='spine']")).not.toBeNull();
-    expect(root.style.gridTemplateColumns).toContain("48px");
+    expect(root.style.gridTemplateColumns).toContain("60px");
   });
 
   it("mobile: drops the rail and the spine in favor of stacked work + sticky strip", () => {

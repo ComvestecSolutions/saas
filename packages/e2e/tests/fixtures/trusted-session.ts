@@ -4,6 +4,50 @@ import {
   type AdminTrustedSession,
 } from "../../admin-e2e-environment";
 
+const operatorUsernameInputSelector = 'input[name="username"]';
+const operatorPasswordInputSelector = 'input[name="password"]';
+const continueToSignInLinkName = /continue to sign in/i;
+const operatorSignInRetryCount = 3;
+
+const waitForOperatorCredentialsForm = (page: Page, timeout: number) =>
+  page.locator(operatorUsernameInputSelector).waitFor({
+    state: "visible",
+    timeout,
+  });
+
+const resolveOperatorSignInRetryLink = (page: Page) =>
+  page.getByRole("link", { name: continueToSignInLinkName });
+
+const waitForOperatorCredentialsFormWithRetries = async (page: Page) => {
+  for (
+    let retryAttempt = 0;
+    retryAttempt < operatorSignInRetryCount;
+    retryAttempt += 1
+  ) {
+    const formResult = await waitForOperatorCredentialsForm(page, 5_000).then(
+      () => "ready" as const,
+      () => "retry" as const,
+    );
+
+    if (formResult === "ready") {
+      return;
+    }
+
+    const retryLink = resolveOperatorSignInRetryLink(page);
+    const retryLinkVisible = await retryLink.isVisible().catch(() => false);
+
+    if (!retryLinkVisible) {
+      break;
+    }
+
+    await retryLink.click();
+  }
+
+  await expect(page.locator(operatorUsernameInputSelector)).toBeVisible({
+    timeout: 60_000,
+  });
+};
+
 /**
  * Trusted-session fixture for the admin-operator-journey suite.
  *
@@ -74,11 +118,12 @@ export const adminTest = base.extend<{
         waitUntil: "domcontentloaded",
       },
     );
+    await waitForOperatorCredentialsFormWithRetries(page);
     await page
-      .locator('input[name="username"]')
+      .locator(operatorUsernameInputSelector)
       .fill(trustedSession.operatorUsername);
     await page
-      .locator('input[name="password"]')
+      .locator(operatorPasswordInputSelector)
       .fill(trustedSession.operatorPassword);
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL(/\/desk(?:\?.*)?$/, {

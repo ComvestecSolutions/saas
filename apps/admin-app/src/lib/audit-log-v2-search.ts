@@ -113,7 +113,7 @@ export const normalizeAdminAuditLogV2RawSearch = (
 };
 
 export const decodeAuditLogV2Search = (
-  raw: AdminAuditLogV2RawSearch,
+  raw: unknown,
 ): AdminAuditLogV2Filters => {
   const search = normalizeAdminAuditLogV2RawSearch(raw);
   const module = decodeModuleId(search.module) ?? platformModuleId.auditLog;

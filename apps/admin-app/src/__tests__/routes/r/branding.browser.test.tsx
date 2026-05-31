@@ -33,6 +33,7 @@ const PATH_WITH_TENANTS = `/desk/branding?tenants=${encodeURIComponent(
     ]),
   ),
 )}`;
+const PATH_WITH_LEGACY_SELECTED_TENANT = `${PATH_WITH_TENANTS}&selectedTenantId=org_demo`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
@@ -149,6 +150,33 @@ describe("/desk/branding Branding & Domains v2 route", () => {
         "[data-testid='branding-list-pivot-tenants']",
       ),
     ).not.toBeNull();
+  });
+
+  it("keeps legacy selectedTenantId scope ids focused after hydration", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      PATH_WITH_LEGACY_SELECTED_TENANT,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='branding-list-focus-panel']",
+        ) !== null,
+      "Expected the branding focus panel to render for the legacy selected tenant id.",
+    );
+
+    const selectedChip = rendered.container.querySelector<HTMLElement>(
+      "[data-testid='branding-list-target-chip'][data-selected='true']",
+    );
+
+    expect(selectedChip).not.toBeNull();
+    expect(selectedChip?.textContent).toContain("Org Demo");
+    expect(
+      rendered.container.querySelector(
+        "[data-testid='branding-list-focus-panel']",
+      )?.textContent,
+    ).toContain("Org Demo");
   });
 
   it("surfaces a denied StateScreen when the loader returns denied", async () => {

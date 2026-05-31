@@ -53,6 +53,10 @@ describe("/admin/tokens admin operator token registry route", () => {
     expect(focusSummary?.getAttribute("data-token-id")).toBe(
       "aot_fixture_active",
     );
+    expect(
+      rendered.container.ownerDocument.documentElement.dataset
+        .adminTokensHydrated,
+    ).toBe("true");
     expect(rendered.container.textContent).toContain("QA harness — primary");
     expect(rendered.container.textContent).toContain("Expiring soon");
     expect(rendered.container.textContent).toContain("Owner-only tokens");

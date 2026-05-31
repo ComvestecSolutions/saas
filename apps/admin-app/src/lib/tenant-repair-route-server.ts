@@ -40,13 +40,22 @@ const TenantRepairRouteLoaderInputSchema = Schema.Struct({
   inspectionReason: Schema.optional(Schema.NonEmptyString),
 });
 
+const TenantRepairRouteLoaderInputBoundarySchema = Schema.Union(
+  Schema.Undefined,
+  TenantRepairRouteLoaderInputSchema,
+);
+
 type TenantRepairWorkflowActionInput = Schema.Schema.Type<
   typeof TenantRepairWorkflowActionInputSchema
 >;
 
 type TenantRepairRouteLoaderInputValue = Schema.Schema.Type<
-  typeof TenantRepairRouteLoaderInputSchema
+  typeof TenantRepairRouteLoaderInputBoundarySchema
 >;
+
+const decodeTenantRepairRouteLoaderInput = decodeSyncBoundary(
+  TenantRepairRouteLoaderInputBoundarySchema,
+);
 
 type ReplayTenantRepairGap = (
   environment: unknown,
@@ -231,8 +240,10 @@ export const createGetAdminTenantRepairData = (
   tenantRepairServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(tenantRepairServerFn)])
-    .inputValidator((input: TenantRepairRouteLoaderInputValue | undefined) =>
-      normalizeTenantRepairRouteLoaderInput(input),
+    .inputValidator((input: unknown) =>
+      normalizeTenantRepairRouteLoaderInput(
+        decodeTenantRepairRouteLoaderInput(input),
+      ),
     )
     .handler(
       ({
@@ -340,8 +351,10 @@ export const createCancelAdminTenantRepairGap = (
 
 export const getAdminTenantRepairData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: TenantRepairRouteLoaderInputValue | undefined) =>
-    normalizeTenantRepairRouteLoaderInput(input),
+  .inputValidator((input: unknown) =>
+    normalizeTenantRepairRouteLoaderInput(
+      decodeTenantRepairRouteLoaderInput(input),
+    ),
   )
   .handler(
     ({

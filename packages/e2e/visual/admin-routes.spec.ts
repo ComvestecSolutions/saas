@@ -481,13 +481,16 @@ test("visual baseline: tenant workspace members tab", async ({
   await expect(
     page.locator("[data-testid='tenant-workspace-v2-members-pane']"),
   ).toBeVisible();
+  const tenantWorkspaceMembersGrid = page
+    .locator("[data-testid='tenant-workspace-v2-members-pane']")
+    .locator("xpath=ancestor::div[contains(@class, 'ops-pane-grid')][1]");
+  await expect(tenantWorkspaceMembersGrid).toBeVisible();
   const mask = tenantWorkspaceMembersMaskSelectors.map((selector) =>
     page.locator(selector),
   );
-  await expect(page).toHaveScreenshot(
+  await expect(tenantWorkspaceMembersGrid).toHaveScreenshot(
     "desk_tenant_org_demo_scope_organization_members.png",
     {
-      fullPage: true,
       mask,
     },
   );
@@ -509,13 +512,16 @@ test("visual baseline: tenant workspace danger zone tab", async ({
   await expect(
     page.locator("[data-testid='tenant-workspace-v2-danger-pane']"),
   ).toBeVisible();
+  const tenantWorkspaceDangerPanel = page.getByRole("region", {
+    name: "High-risk controls",
+  });
+  await expect(tenantWorkspaceDangerPanel).toBeVisible();
   const mask = tenantWorkspaceDangerMaskSelectors.map((selector) =>
     page.locator(selector),
   );
-  await expect(page).toHaveScreenshot(
+  await expect(tenantWorkspaceDangerPanel).toHaveScreenshot(
     "desk_tenant_org_demo_scope_organization_danger_zone.png",
     {
-      fullPage: true,
       mask,
     },
   );

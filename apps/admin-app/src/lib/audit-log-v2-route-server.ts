@@ -1,7 +1,13 @@
 import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import type { AdminAuditLogV2RouteData } from "./audit-log-v2-route-data";
-import type { AdminAuditLogV2RawSearch } from "./audit-log-v2-search";
+import type {
+  AdminAuditLogV2Filters,
+  AdminAuditLogV2RouteData,
+} from "./audit-log-v2-route-data";
+import {
+  decodeAuditLogV2Search,
+  toAuditExportFilter,
+} from "./audit-log-v2-search";
 import {
   adminRequestServerMiddleware,
   type AdminRequestContext,
@@ -29,17 +35,10 @@ import {
 const loadAdminAuditLogV2Data = async (
   request: Request,
   environment: unknown,
-  rawSearch: AdminAuditLogV2RawSearch,
+  filters: AdminAuditLogV2Filters,
 ): Promise<AdminAuditLogV2RouteData> => {
-  const [
-    { loadAdminAuditLogV2RouteDataFromRequest },
-    { decodeAuditLogV2Search },
-  ] = await Promise.all([
-    import("./audit-log-v2-route-data"),
-    import("./audit-log-v2-search"),
-  ]);
-
-  const filters = decodeAuditLogV2Search(rawSearch);
+  const { loadAdminAuditLogV2RouteDataFromRequest } =
+    await import("./audit-log-v2-route-data");
 
   return Effect.runPromise(
     loadAdminAuditLogV2RouteDataFromRequest(request, environment, filters),
@@ -49,16 +48,12 @@ const loadAdminAuditLogV2Data = async (
 const runAdminAuditLogV2Export = async (
   request: Request,
   environment: unknown,
-  rawSearch: AdminAuditLogV2RawSearch,
+  filters: AdminAuditLogV2Filters,
 ) => {
   const {
     exportAdminAuditEventsFromEnvironment,
     extractRequiredSubscriberJourneySessionId,
   } = await import("@comvestec/platform");
-  const { decodeAuditLogV2Search, toAuditExportFilter } =
-    await import("./audit-log-v2-search");
-
-  const filters = decodeAuditLogV2Search(rawSearch);
 
   return Effect.runPromise(
     extractRequiredSubscriberJourneySessionId(request).pipe(
@@ -72,36 +67,28 @@ const runAdminAuditLogV2Export = async (
   );
 };
 
-const normalizeRawSearch = (
-  raw: AdminAuditLogV2RawSearch | undefined,
-): AdminAuditLogV2RawSearch => raw ?? {};
-
 export const getAdminAuditLogV2Data = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminAuditLogV2RawSearch | undefined) =>
-    normalizeRawSearch(input),
-  )
+  .inputValidator((input: unknown) => decodeAuditLogV2Search(input))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminAuditLogV2RawSearch;
+      readonly data: AdminAuditLogV2Filters;
     }) => loadAdminAuditLogV2Data(context.request, process.env, data),
   );
 
 export const getAdminAuditLogV2Export = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminAuditLogV2RawSearch | undefined) =>
-    normalizeRawSearch(input),
-  )
+  .inputValidator((input: unknown) => decodeAuditLogV2Search(input))
   .handler(
     ({
       context,
       data,
     }: {
       readonly context: AdminRequestContext;
-      readonly data: AdminAuditLogV2RawSearch;
+      readonly data: AdminAuditLogV2Filters;
     }) => runAdminAuditLogV2Export(context.request, process.env, data),
   );

@@ -248,6 +248,7 @@ export function AdminTenantTargetForm({
                       type="button"
                       className={`ops-target-picker-option${isActive ? " ops-target-picker-option--active" : ""}`}
                       data-target-option={option.key}
+                      aria-pressed={isActive}
                       onClick={() => selectTarget(option)}
                     >
                       <span className="ops-target-picker-option-label">

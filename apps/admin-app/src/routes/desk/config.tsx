@@ -7,6 +7,7 @@ import { createAdminAppFileRoute } from "../../file-route";
 import {
   FilterBar,
   KpiCard,
+  OpsPanel,
   Pagination,
   resolveTableAriaSort,
   ScreenHeader,
@@ -42,6 +43,10 @@ const RawSearchBoundarySchema = Schema.Struct({
 });
 
 type RawSearch = Schema.Schema.Type<typeof RawSearchSchema>;
+type ReadyData = Extract<
+  AdminGovernanceConfigV2RouteData,
+  { readonly kind: "ready" }
+>;
 type RuntimeConfigTab = "overrides" | "proposals";
 const decodeRawSearchBoundary = decodeSyncBoundary(RawSearchBoundarySchema);
 const decodeSearchString = decodeSchemaOrUndefined(Schema.String);
@@ -85,21 +90,6 @@ export const Route = createAdminAppFileRoute("/desk/config")({
 
 function RuntimeConfigListRoute() {
   const data: AdminGovernanceConfigV2RouteData = Route.useLoaderData();
-  const [tab, setTab] = useState<RuntimeConfigTab>("overrides");
-  const overridesState = useTableState<
-    "module" | "key" | "scope" | "changedAt"
-  >({
-    initialPageSize: 25,
-    initialSortKey: "changedAt",
-    initialSortDir: "desc",
-  });
-  const proposalsState = useTableState<
-    "module" | "key" | "action" | "changedAt"
-  >({
-    initialPageSize: 25,
-    initialSortKey: "changedAt",
-    initialSortDir: "desc",
-  });
 
   if (data.kind === "shell") {
     return (
@@ -138,6 +128,25 @@ function RuntimeConfigListRoute() {
     );
   }
 
+  return <RuntimeConfigReadyRoute data={data} />;
+}
+
+function RuntimeConfigReadyRoute({ data }: { readonly data: ReadyData }) {
+  const [tab, setTab] = useState<RuntimeConfigTab>("overrides");
+  const overridesState = useTableState<
+    "module" | "key" | "scope" | "changedAt"
+  >({
+    initialPageSize: 25,
+    initialSortKey: "changedAt",
+    initialSortDir: "desc",
+  });
+  const proposalsState = useTableState<
+    "module" | "key" | "action" | "changedAt"
+  >({
+    initialPageSize: 25,
+    initialSortKey: "changedAt",
+    initialSortDir: "desc",
+  });
   const overridesView = applyTableState(data.overrides, overridesState, {
     searchOn: (override) =>
       `${override.moduleId} ${override.key} ${override.scope} ${override.scopeId} ${String(override.value ?? "")} ${override.source}`,
@@ -169,267 +178,409 @@ function RuntimeConfigListRoute() {
 
   return (
     <section
-      className="ops-screen"
+      className="ops-screen ops-shell-grid"
       data-testid="runtime-config-list-ready"
       data-pattern="runtime-config-v2"
     >
-      <ScreenHeader
-        icon={<ShieldIcon />}
-        title="Runtime Configuration"
-        breadcrumbs={[{ label: "Resources" }, { label: "Runtime config" }]}
-        subtitle="Active runtime overrides and pending proposals across platform modules."
-      />
-
-      <div className="ops-bento" data-testid="runtime-config-kpis">
-        <KpiCard
-          label="Active overrides"
-          value={data.overrides.length}
-          tone={data.overrides.length > 0 ? "accent" : "neutral"}
-        />
-        <KpiCard
-          label="Pending proposals"
-          value={data.proposals.length}
-          tone={data.proposals.length > 0 ? "warn" : "good"}
-        />
-        <KpiCard label="Modules touched" value={moduleCount} />
-      </div>
-
-      <Tabs<RuntimeConfigTab>
-        value={tab}
-        onChange={setTab}
-        items={[
-          {
-            value: "overrides",
-            label: "Overrides",
-            count: data.overrides.length,
-          },
-          {
-            value: "proposals",
-            label: "Proposals",
-            count: data.proposals.length,
-          },
-        ]}
-      />
-
-      {tab === "overrides" ? (
-        <div className="ops-card">
-          <FilterBar
-            searchValue={overridesState.search}
-            onSearchChange={overridesState.setSearch}
-            searchPlaceholder="Search by module, key, scope, or value…"
-          />
-          {overridesView.visible.length === 0 ? (
-            <div data-testid="runtime-config-list-empty">
-              <EmptyState
-                title="No active overrides"
-                description="All modules are running on their declared runtime defaults."
-              />
+      <aside className="ops-shell-grid__aside">
+        <OpsPanel
+          title="Runtime posture"
+          description="Code-declared schemas stay in sync with the live operator state surfaced here."
+          tone={
+            data.proposals.length > 0
+              ? "warn"
+              : data.overrides.length > 0
+                ? "neutral"
+                : "neutral"
+          }
+        >
+          <div className="ops-meta-grid">
+            <div>
+              <p className="ops-meta-label">Overrides</p>
+              <p className="ops-meta-value">{data.overrides.length}</p>
             </div>
-          ) : (
-            <div className="ops-table-wrapper">
-              <table
-                className="ops-table"
-                data-testid="runtime-config-list-table"
-                data-pattern="dense-data-table"
+            <div>
+              <p className="ops-meta-label">Proposals</p>
+              <p className="ops-meta-value">{data.proposals.length}</p>
+            </div>
+            <div>
+              <p className="ops-meta-label">Modules touched</p>
+              <p className="ops-meta-value">{moduleCount}</p>
+            </div>
+          </div>
+        </OpsPanel>
+
+        <OpsPanel
+          title={
+            tab === "overrides" ? "Overrides workflow" : "Proposal workflow"
+          }
+          description={
+            tab === "overrides"
+              ? "Review effective runtime drift before opening a key detail drawer."
+              : "Use pending proposals to stage and approve change safely."
+          }
+        >
+          <ul className="ops-guidance-list">
+            <li>
+              Filter by module, key, scope, or staged action to isolate the
+              current operator task.
+            </li>
+            <li>
+              Open a key row when you need the approval drawer and deeper change
+              review context.
+            </li>
+            <li>
+              Empty tables are still meaningful: they show that code-declared
+              defaults are currently governing runtime state.
+            </li>
+          </ul>
+        </OpsPanel>
+      </aside>
+
+      <div className="ops-shell-grid__main">
+        <ScreenHeader
+          icon={<ShieldIcon />}
+          title="Runtime Configuration"
+          breadcrumbs={[{ label: "Resources" }, { label: "Runtime config" }]}
+          subtitle="Active runtime overrides and pending proposals across platform modules."
+        />
+
+        <div className="ops-bento" data-testid="runtime-config-kpis">
+          <KpiCard
+            label="Active overrides"
+            value={data.overrides.length}
+            tone={data.overrides.length > 0 ? "accent" : "neutral"}
+          />
+          <KpiCard
+            label="Pending proposals"
+            value={data.proposals.length}
+            tone={data.proposals.length > 0 ? "warn" : "good"}
+          />
+          <KpiCard label="Modules touched" value={moduleCount} />
+        </div>
+
+        <Tabs<RuntimeConfigTab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            {
+              value: "overrides",
+              label: "Overrides",
+              count: data.overrides.length,
+            },
+            {
+              value: "proposals",
+              label: "Proposals",
+              count: data.proposals.length,
+            },
+          ]}
+        />
+
+        {tab === "overrides" ? (
+          <div className="ops-card">
+            <FilterBar
+              searchValue={overridesState.search}
+              onSearchChange={overridesState.setSearch}
+              searchPlaceholder="Search by module, key, scope, or value…"
+            />
+            {overridesView.visible.length === 0 ? (
+              <div
+                className="ops-pane-grid"
+                data-testid="runtime-config-list-empty"
               >
-                <thead>
-                  <tr>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(overridesState, "module")}
-                      onToggle={() => overridesState.toggleSort("module")}
-                    >
-                      Module
-                    </SortableTableHeader>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(overridesState, "key")}
-                      onToggle={() => overridesState.toggleSort("key")}
-                    >
-                      Key
-                    </SortableTableHeader>
-                    <th>Effective value</th>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(overridesState, "scope")}
-                      onToggle={() => overridesState.toggleSort("scope")}
-                    >
-                      Scope
-                    </SortableTableHeader>
-                    <th>Source</th>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(
-                        overridesState,
-                        "changedAt",
-                      )}
-                      onToggle={() => overridesState.toggleSort("changedAt")}
-                    >
-                      Updated
-                    </SortableTableHeader>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overridesView.visible.map((override) => (
-                    <tr
-                      key={`${override.moduleId}:${override.key}:${override.scope}:${override.scopeId}`}
-                      data-testid="runtime-config-list-row"
-                      data-row-key={override.key}
-                    >
-                      <td className="mono">{override.moduleId}</td>
-                      <td>
-                        <Link
-                          data-testid="runtime-config-list-row-link"
-                          to="/desk/config/$moduleId/$configKey"
-                          params={{
-                            moduleId: override.moduleId,
-                            configKey: override.key,
-                          }}
-                          preload={false}
-                        >
-                          {override.key}
-                        </Link>
-                      </td>
-                      <td className="mono ops-redacted">
-                        {override.value != null
-                          ? String(override.value)
-                          : "(unset)"}
-                      </td>
-                      <td>
-                        <div style={{ display: "grid", gap: 2 }}>
-                          <span>{override.scope}</span>
-                          <span
-                            className="mono"
-                            style={{ color: "var(--ops-text-secondary)" }}
+                <OpsPanel
+                  title="No active overrides"
+                  description="All modules are currently running on their declared runtime defaults."
+                >
+                  <EmptyState
+                    title="No active overrides"
+                    description="No live runtime drift is currently overriding the committed configuration schema."
+                  />
+                </OpsPanel>
+                <OpsPanel
+                  title="What this means"
+                  description="The absence of overrides is useful posture, not empty space."
+                >
+                  <div className="ops-target-signal-list">
+                    <div className="ops-target-signal">
+                      <div className="ops-target-signal-copy">
+                        <p className="ops-target-signal-title">
+                          Defaults are authoritative
+                        </p>
+                        <p className="ops-target-signal-detail">
+                          Code-declared schemas are governing runtime behavior
+                          without local drift.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="ops-target-signal">
+                      <div className="ops-target-signal-copy">
+                        <p className="ops-target-signal-title">
+                          Proposal path stays open
+                        </p>
+                        <p className="ops-target-signal-detail">
+                          Use the proposals tab when you need staged approval
+                          before changing a module runtime value.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </OpsPanel>
+              </div>
+            ) : (
+              <div className="ops-table-wrapper">
+                <table
+                  className="ops-table"
+                  data-testid="runtime-config-list-table"
+                  data-pattern="dense-data-table"
+                >
+                  <thead>
+                    <tr>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(
+                          overridesState,
+                          "module",
+                        )}
+                        onToggle={() => overridesState.toggleSort("module")}
+                      >
+                        Module
+                      </SortableTableHeader>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(overridesState, "key")}
+                        onToggle={() => overridesState.toggleSort("key")}
+                      >
+                        Key
+                      </SortableTableHeader>
+                      <th>Effective value</th>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(overridesState, "scope")}
+                        onToggle={() => overridesState.toggleSort("scope")}
+                      >
+                        Scope
+                      </SortableTableHeader>
+                      <th>Source</th>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(
+                          overridesState,
+                          "changedAt",
+                        )}
+                        onToggle={() => overridesState.toggleSort("changedAt")}
+                      >
+                        Updated
+                      </SortableTableHeader>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overridesView.visible.map((override) => (
+                      <tr
+                        key={`${override.moduleId}:${override.key}:${override.scope}:${override.scopeId}`}
+                        data-testid="runtime-config-list-row"
+                        data-row-key={override.key}
+                      >
+                        <td className="mono">{override.moduleId}</td>
+                        <td>
+                          <Link
+                            data-testid="runtime-config-list-row-link"
+                            to="/desk/config/$moduleId/$configKey"
+                            params={{
+                              moduleId: override.moduleId,
+                              configKey: override.key,
+                            }}
+                            preload={false}
                           >
-                            {override.scopeId}
-                          </span>
-                        </div>
-                      </td>
-                      <td>{override.source}</td>
-                      <td className="mono">
-                        {override.changedAt.slice(0, 19).replace("T", " ")}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <Pagination
-            page={overridesState.page}
-            pageSize={overridesState.pageSize}
-            total={overridesView.total}
-            onPageChange={overridesState.setPage}
-            onPageSizeChange={overridesState.setPageSize}
-          />
-        </div>
-      ) : (
-        <div className="ops-card">
-          <FilterBar
-            searchValue={proposalsState.search}
-            onSearchChange={proposalsState.setSearch}
-            searchPlaceholder="Search proposals…"
-          />
-          {proposalsView.visible.length === 0 ? (
-            <div data-testid="runtime-config-proposals-empty">
-              <EmptyState
-                title="No pending proposals"
-                description="There are no staged configuration changes awaiting approval."
-              />
-            </div>
-          ) : (
-            <div className="ops-table-wrapper">
-              <table
-                className="ops-table"
-                data-testid="runtime-config-proposals-table"
-                data-pattern="dense-data-table"
+                            {override.key}
+                          </Link>
+                        </td>
+                        <td className="mono ops-redacted">
+                          {override.value != null
+                            ? String(override.value)
+                            : "(unset)"}
+                        </td>
+                        <td>
+                          <div style={{ display: "grid", gap: 2 }}>
+                            <span>{override.scope}</span>
+                            <span
+                              className="mono"
+                              style={{ color: "var(--ops-text-secondary)" }}
+                            >
+                              {override.scopeId}
+                            </span>
+                          </div>
+                        </td>
+                        <td>{override.source}</td>
+                        <td className="mono">
+                          {override.changedAt.slice(0, 19).replace("T", " ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <Pagination
+              page={overridesState.page}
+              pageSize={overridesState.pageSize}
+              total={overridesView.total}
+              onPageChange={overridesState.setPage}
+              onPageSizeChange={overridesState.setPageSize}
+            />
+          </div>
+        ) : (
+          <div className="ops-card">
+            <FilterBar
+              searchValue={proposalsState.search}
+              onSearchChange={proposalsState.setSearch}
+              searchPlaceholder="Search proposals…"
+            />
+            {proposalsView.visible.length === 0 ? (
+              <div
+                className="ops-pane-grid"
+                data-testid="runtime-config-proposals-empty"
               >
-                <thead>
-                  <tr>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(proposalsState, "module")}
-                      onToggle={() => proposalsState.toggleSort("module")}
-                    >
-                      Module
-                    </SortableTableHeader>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(proposalsState, "key")}
-                      onToggle={() => proposalsState.toggleSort("key")}
-                    >
-                      Key
-                    </SortableTableHeader>
-                    <th>Proposed value</th>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(proposalsState, "action")}
-                      onToggle={() => proposalsState.toggleSort("action")}
-                    >
-                      Action
-                    </SortableTableHeader>
-                    <th>Status</th>
-                    <SortableTableHeader
-                      ariaSort={resolveTableAriaSort(
-                        proposalsState,
-                        "changedAt",
-                      )}
-                      onToggle={() => proposalsState.toggleSort("changedAt")}
-                    >
-                      Changed
-                    </SortableTableHeader>
-                  </tr>
-                </thead>
-                <tbody>
-                  {proposalsView.visible.map((proposal) => (
-                    <tr
-                      key={`${proposal.moduleId}:${proposal.key}:${proposal.changedAt ?? proposal.status}`}
-                      data-testid="runtime-config-proposals-row"
-                    >
-                      <td className="mono">{proposal.moduleId}</td>
-                      <td>
-                        <Link
-                          to="/desk/config/$moduleId/$configKey"
-                          params={{
-                            moduleId: proposal.moduleId,
-                            configKey: proposal.key,
-                          }}
-                          preload={false}
-                        >
-                          {proposal.key}
-                        </Link>
-                      </td>
-                      <td className="mono ops-redacted">
-                        {proposal.value != null
-                          ? String(proposal.value)
-                          : "(unset)"}
-                      </td>
-                      <td>{proposal.action ?? "proposal"}</td>
-                      <td>
-                        <StatusChip
-                          tone={
-                            proposal.status === "pending" ? "pending" : "drift"
-                          }
-                          size="sm"
-                        >
-                          {proposal.status}
-                        </StatusChip>
-                      </td>
-                      <td className="mono">
-                        {proposal.changedAt?.slice(0, 19).replace("T", " ") ??
-                          "—"}
-                      </td>
+                <OpsPanel
+                  title="No pending proposals"
+                  description="There are no staged configuration changes awaiting approval."
+                >
+                  <EmptyState
+                    title="No pending proposals"
+                    description="The approval queue is currently clear."
+                  />
+                </OpsPanel>
+                <OpsPanel
+                  title="When proposals appear"
+                  description="Staged runtime config changes land here before operators approve them."
+                >
+                  <div className="ops-target-signal-list">
+                    <div className="ops-target-signal">
+                      <div className="ops-target-signal-copy">
+                        <p className="ops-target-signal-title">
+                          Approval first
+                        </p>
+                        <p className="ops-target-signal-detail">
+                          High-risk config changes should move through staged
+                          proposal review before they become live overrides.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="ops-target-signal">
+                      <div className="ops-target-signal-copy">
+                        <p className="ops-target-signal-title">
+                          Diff-backed traceability
+                        </p>
+                        <p className="ops-target-signal-detail">
+                          Proposal rows connect back to the same detail surface
+                          used by active overrides.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </OpsPanel>
+              </div>
+            ) : (
+              <div className="ops-table-wrapper">
+                <table
+                  className="ops-table"
+                  data-testid="runtime-config-proposals-table"
+                  data-pattern="dense-data-table"
+                >
+                  <thead>
+                    <tr>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(
+                          proposalsState,
+                          "module",
+                        )}
+                        onToggle={() => proposalsState.toggleSort("module")}
+                      >
+                        Module
+                      </SortableTableHeader>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(proposalsState, "key")}
+                        onToggle={() => proposalsState.toggleSort("key")}
+                      >
+                        Key
+                      </SortableTableHeader>
+                      <th>Proposed value</th>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(
+                          proposalsState,
+                          "action",
+                        )}
+                        onToggle={() => proposalsState.toggleSort("action")}
+                      >
+                        Action
+                      </SortableTableHeader>
+                      <th>Status</th>
+                      <SortableTableHeader
+                        ariaSort={resolveTableAriaSort(
+                          proposalsState,
+                          "changedAt",
+                        )}
+                        onToggle={() => proposalsState.toggleSort("changedAt")}
+                      >
+                        Changed
+                      </SortableTableHeader>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <Pagination
-            page={proposalsState.page}
-            pageSize={proposalsState.pageSize}
-            total={proposalsView.total}
-            onPageChange={proposalsState.setPage}
-            onPageSizeChange={proposalsState.setPageSize}
-          />
-        </div>
-      )}
+                  </thead>
+                  <tbody>
+                    {proposalsView.visible.map((proposal) => (
+                      <tr
+                        key={`${proposal.moduleId}:${proposal.key}:${proposal.changedAt ?? proposal.status}`}
+                        data-testid="runtime-config-proposals-row"
+                      >
+                        <td className="mono">{proposal.moduleId}</td>
+                        <td>
+                          <Link
+                            to="/desk/config/$moduleId/$configKey"
+                            params={{
+                              moduleId: proposal.moduleId,
+                              configKey: proposal.key,
+                            }}
+                            preload={false}
+                          >
+                            {proposal.key}
+                          </Link>
+                        </td>
+                        <td className="mono ops-redacted">
+                          {proposal.value != null
+                            ? String(proposal.value)
+                            : "(unset)"}
+                        </td>
+                        <td>{proposal.action ?? "proposal"}</td>
+                        <td>
+                          <StatusChip
+                            tone={
+                              proposal.status === "pending"
+                                ? "pending"
+                                : "drift"
+                            }
+                            size="sm"
+                          >
+                            {proposal.status}
+                          </StatusChip>
+                        </td>
+                        <td className="mono">
+                          {proposal.changedAt?.slice(0, 19).replace("T", " ") ??
+                            "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <Pagination
+              page={proposalsState.page}
+              pageSize={proposalsState.pageSize}
+              total={proposalsView.total}
+              onPageChange={proposalsState.setPage}
+              onPageSizeChange={proposalsState.setPageSize}
+            />
+          </div>
+        )}
 
-      <Outlet />
+        <Outlet />
+      </div>
     </section>
   );
 }

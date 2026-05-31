@@ -28,6 +28,7 @@ import {
  */
 const PATH = `/desk/webhook?scope=${platformScope.organization}&scopeId=org_demo`;
 const EMPTY_PATH = "/desk/webhook";
+const DELIVERY_DETAIL_PATH = `${PATH}&selectedDeliveryId=dlv_org_demo_03`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
@@ -157,6 +158,26 @@ describe("/desk/webhook Webhook Endpoints v2 route", () => {
         rendered?.container.textContent?.includes("dlv_org_demo_03") ?? false,
       "Expected delivery search to reveal the requested delivery.",
     );
+  });
+
+  it("opens on the deliveries roster when a delivery deep-link is present", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      DELIVERY_DETAIL_PATH,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='webhook-list-deliveries-table']",
+        ) !== null,
+      "Expected the deliveries roster to render immediately for a selected delivery deep-link.",
+    );
+
+    expect(
+      rendered.container.querySelector("[data-testid='webhook-list-focus']")
+        ?.textContent,
+    ).toContain("dlv_org_demo_03");
   });
 
   it("surfaces a denied StateScreen when the loader returns denied", async () => {

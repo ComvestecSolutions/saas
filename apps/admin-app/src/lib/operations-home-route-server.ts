@@ -9,6 +9,7 @@ import {
   createAdminRequestMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSyncBoundary } from "./effect-boundary";
 import {
   tanstackStartServerRuntime,
   type TanstackStartServerRuntime,
@@ -32,9 +33,18 @@ const AdminOperationsHomeRouteLoaderInputSchema = Schema.Struct({
   ),
 });
 
+const AdminOperationsHomeRouteLoaderInputBoundarySchema = Schema.Union(
+  Schema.Undefined,
+  AdminOperationsHomeRouteLoaderInputSchema,
+);
+
 type AdminOperationsHomeRouteLoaderInputValue = Schema.Schema.Type<
-  typeof AdminOperationsHomeRouteLoaderInputSchema
+  typeof AdminOperationsHomeRouteLoaderInputBoundarySchema
 >;
+
+const decodeAdminOperationsHomeRouteLoaderInput = decodeSyncBoundary(
+  AdminOperationsHomeRouteLoaderInputBoundarySchema,
+);
 
 const normalizeAdminOperationsHomeLoaderInput = (
   input: AdminOperationsHomeRouteLoaderInputValue | undefined,
@@ -70,9 +80,10 @@ export const createGetAdminOperationsHomeData = (
   operationsHomeServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationsHomeServerFn)])
-    .inputValidator(
-      (input: AdminOperationsHomeRouteLoaderInputValue | undefined) =>
-        normalizeAdminOperationsHomeLoaderInput(input),
+    .inputValidator((input: unknown) =>
+      normalizeAdminOperationsHomeLoaderInput(
+        decodeAdminOperationsHomeRouteLoaderInput(input),
+      ),
     )
     .handler(
       ({
@@ -86,9 +97,10 @@ export const createGetAdminOperationsHomeData = (
 
 export const getAdminOperationsHomeData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(
-    (input: AdminOperationsHomeRouteLoaderInputValue | undefined) =>
-      normalizeAdminOperationsHomeLoaderInput(input),
+  .inputValidator((input: unknown) =>
+    normalizeAdminOperationsHomeLoaderInput(
+      decodeAdminOperationsHomeRouteLoaderInput(input),
+    ),
   )
   .handler(
     ({

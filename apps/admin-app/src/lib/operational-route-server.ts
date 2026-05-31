@@ -1,10 +1,11 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import {
   adminRequestServerMiddleware,
   createAdminRequestMiddleware,
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
+import { decodeSchemaOrUndefined, decodeSyncBoundary } from "./effect-boundary";
 import {
   tanstackStartServerRuntime,
   type TanstackStartServerRuntime,
@@ -20,11 +21,28 @@ type NormalizedScopeSelectionInput = {
   readonly scopeId: string;
 };
 
+const ScopeSelectionInputBoundarySchema = Schema.Union(
+  Schema.Undefined,
+  Schema.Struct({
+    scope: Schema.optional(Schema.Unknown),
+    scopeId: Schema.optional(Schema.Unknown),
+  }),
+);
+
+type ScopeSelectionInputBoundary = Schema.Schema.Type<
+  typeof ScopeSelectionInputBoundarySchema
+>;
+
+const decodeScopeSelectionInputBoundary = decodeSyncBoundary(
+  ScopeSelectionInputBoundarySchema,
+);
+const decodeScopeSelectionString = decodeSchemaOrUndefined(Schema.String);
+
 export const normalizeScopeSelectionInput = (
-  input: ScopeSelectionInput | undefined,
+  input: ScopeSelectionInputBoundary,
 ): NormalizedScopeSelectionInput => ({
-  scope: input?.scope,
-  scopeId: input?.scopeId ?? "",
+  scope: decodeScopeSelectionString(input?.scope),
+  scopeId: decodeScopeSelectionString(input?.scopeId) ?? "",
 });
 
 export const hasCompleteScopeSelection = (
@@ -125,7 +143,9 @@ export const createGetAdminBrandingData = (
   operationalServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationalServerFn)])
-    .inputValidator(normalizeScopeSelectionInput)
+    .inputValidator((input: unknown) =>
+      normalizeScopeSelectionInput(decodeScopeSelectionInputBoundary(input)),
+    )
     .handler(
       ({
         context,
@@ -162,7 +182,9 @@ export const createGetAdminComplianceRetentionData = (
   operationalServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationalServerFn)])
-    .inputValidator(normalizeScopeSelectionInput)
+    .inputValidator((input: unknown) =>
+      normalizeScopeSelectionInput(decodeScopeSelectionInputBoundary(input)),
+    )
     .handler(
       ({
         context,
@@ -188,7 +210,9 @@ export const createGetAdminWebhooksApiAccessData = (
   operationalServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(operationalServerFn)])
-    .inputValidator(normalizeScopeSelectionInput)
+    .inputValidator((input: unknown) =>
+      normalizeScopeSelectionInput(decodeScopeSelectionInputBoundary(input)),
+    )
     .handler(
       ({
         context,
@@ -215,7 +239,9 @@ export const getAdminSupportOperationsData = createServerFn({ method: "GET" })
 
 export const getAdminBrandingData = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(normalizeScopeSelectionInput)
+  .inputValidator((input: unknown) =>
+    normalizeScopeSelectionInput(decodeScopeSelectionInputBoundary(input)),
+  )
   .handler(
     ({
       context,
@@ -244,7 +270,9 @@ export const getAdminComplianceRetentionData = createServerFn({
   method: "GET",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(normalizeScopeSelectionInput)
+  .inputValidator((input: unknown) =>
+    normalizeScopeSelectionInput(decodeScopeSelectionInputBoundary(input)),
+  )
   .handler(
     ({
       context,
@@ -267,7 +295,9 @@ export const getAdminWebhooksApiAccessData = createServerFn({
   method: "GET",
 })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator(normalizeScopeSelectionInput)
+  .inputValidator((input: unknown) =>
+    normalizeScopeSelectionInput(decodeScopeSelectionInputBoundary(input)),
+  )
   .handler(
     ({
       context,

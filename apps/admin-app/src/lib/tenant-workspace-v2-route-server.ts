@@ -10,6 +10,7 @@ import {
   type AdminRequestContext,
 } from "./admin-request-server-middleware";
 import { adminTenantTargetScopes } from "./admin-tenant-target";
+import { decodeSyncBoundary } from "./effect-boundary";
 import {
   tanstackStartServerRuntime,
   type TanstackStartServerRuntime,
@@ -42,6 +43,10 @@ const AdminTenantWorkspaceV2LoaderInputSchema = Schema.Struct({
 type AdminTenantWorkspaceV2LoaderInputValue = Schema.Schema.Type<
   typeof AdminTenantWorkspaceV2LoaderInputSchema
 >;
+
+const decodeAdminTenantWorkspaceV2LoaderInput = decodeSyncBoundary(
+  AdminTenantWorkspaceV2LoaderInputSchema,
+);
 
 const normalizeAdminTenantWorkspaceV2LoaderInput = (
   input: AdminTenantWorkspaceV2LoaderInputValue,
@@ -79,8 +84,10 @@ export const createGetAdminTenantWorkspaceV2Data = (
   tenantWorkspaceV2ServerFn
     .createServerFn({ method: "GET" })
     .middleware([createAdminRequestMiddleware(tenantWorkspaceV2ServerFn)])
-    .inputValidator((input: AdminTenantWorkspaceV2LoaderInputValue) =>
-      normalizeAdminTenantWorkspaceV2LoaderInput(input),
+    .inputValidator((input: unknown) =>
+      normalizeAdminTenantWorkspaceV2LoaderInput(
+        decodeAdminTenantWorkspaceV2LoaderInput(input),
+      ),
     )
     .handler(
       ({
@@ -94,8 +101,10 @@ export const createGetAdminTenantWorkspaceV2Data = (
 
 export const getAdminTenantWorkspaceV2Data = createServerFn({ method: "GET" })
   .middleware([adminRequestServerMiddleware])
-  .inputValidator((input: AdminTenantWorkspaceV2LoaderInputValue) =>
-    normalizeAdminTenantWorkspaceV2LoaderInput(input),
+  .inputValidator((input: unknown) =>
+    normalizeAdminTenantWorkspaceV2LoaderInput(
+      decodeAdminTenantWorkspaceV2LoaderInput(input),
+    ),
   )
   .handler(
     ({

@@ -26,6 +26,7 @@ import {
   createAdminBrowserFixtureState,
   knownAdminTargets,
 } from "./admin-browser-fixtures";
+import { serializeAdminTenantTarget } from "../lib/admin-tenant-target";
 
 const sortTextAscending = (values: ReadonlyArray<string>) =>
   [...values].sort((left, right) =>
@@ -293,7 +294,7 @@ describe("admin operations browser flows", () => {
     );
   }, 30_000);
 
-  it("opens the operator profile from the shell header and shows identity posture", async () => {
+  it("opens the operator profile from the shell controls and shows identity posture", async () => {
     rendered = await renderAdminApp(
       createAdminBrowserFixtureState(),
       adminRoutePath.operationsHome,
@@ -305,10 +306,16 @@ describe("admin operations browser flows", () => {
       "Expected operations-home route to render before opening the profile.",
     );
 
-    await followLink(
-      rendered.router,
-      getLinkByText(rendered.container, "Operator profile"),
+    const operatorProfileLink = rendered.container.querySelector(
+      'a[aria-label="Open operator profile"]',
     );
+    if (!(operatorProfileLink instanceof HTMLAnchorElement)) {
+      throw new TypeError(
+        "Expected the shell operator profile link to expose an accessible label.",
+      );
+    }
+
+    await followLink(rendered.router, operatorProfileLink);
     await waitFor(
       () =>
         rendered?.container.querySelector(
@@ -816,8 +823,11 @@ describe("admin operations browser flows", () => {
         ).length === 1,
       "Expected the canonical branding target workflow to load the selected tenant.",
     );
-    expect(rendered.router.state.location.searchStr).toContain(
-      `selectedTenantId=${knownAdminTargets.organization.scopeId}`,
+    const searchParams = new URLSearchParams(
+      rendered.router.state.location.searchStr,
+    );
+    expect(searchParams.get("selectedTenantId")).toBe(
+      serializeAdminTenantTarget(knownAdminTargets.organization),
     );
 
     await followLink(

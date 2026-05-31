@@ -28,6 +28,7 @@ import {
  */
 const PATH = `/desk/retention?scope=${platformScope.organization}&scopeId=org_demo`;
 const EMPTY_PATH = "/desk/retention";
+const HOLD_DETAIL_PATH = `${PATH}&selectedHoldId=hold_org_03`;
 
 const withFixtureTransform = (
   base: AdminBrowserFixtureState,
@@ -155,6 +156,26 @@ describe("/desk/retention Retention & Legal-hold v2 route", () => {
       () => rendered?.container.textContent?.includes("hold_org_03") ?? false,
       "Expected legal-hold search to reveal the requested hold.",
     );
+  });
+
+  it("opens on the legal-holds roster when a hold deep-link is present", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      HOLD_DETAIL_PATH,
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='retention-list-holds-table']",
+        ) !== null,
+      "Expected the holds roster to render immediately for a selected hold deep-link.",
+    );
+
+    expect(
+      rendered.container.querySelector("[data-testid='retention-list-focus']")
+        ?.textContent,
+    ).toContain("hold_org_03");
   });
 
   it("surfaces a denied StateScreen when the loader returns denied", async () => {

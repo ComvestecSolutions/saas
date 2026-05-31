@@ -1608,6 +1608,12 @@ body {
 .ops-target-card:hover {
   border-color: var(--ops-border-accent);
 }
+.ops-target-card[data-selected="true"] {
+  border-color: var(--ops-border-accent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--ops-accent) 42%, transparent),
+    0 18px 34px -28px rgba(0, 0, 0, 0.88);
+}
 .ops-target-card-header {
   display: flex;
   justify-content: space-between;
@@ -1704,6 +1710,11 @@ body {
   gap: 10px;
   min-width: 0;
 }
+.ops-shell-grid__aside {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
 .ops-stack-xs {
   display: grid;
   gap: 4px;
@@ -1755,10 +1766,44 @@ body {
   font-size: 0.8rem;
   color: var(--ops-text-secondary);
 }
+.ops-guidance-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ops-text-secondary);
+}
+.ops-guidance-list li {
+  line-height: 1.55;
+}
 .ops-insight-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 6px;
+}
+.ops-attention-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--ops-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+.ops-attention-row[data-tone="warn"] {
+  border-color: rgba(255, 203, 107, 0.35);
+  background: rgba(98, 70, 18, 0.2);
+}
+.ops-attention-row[data-tone="alert"] {
+  border-color: rgba(255, 122, 122, 0.35);
+  background: rgba(96, 24, 24, 0.24);
+}
+.ops-composer-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1.45fr) minmax(180px, 1fr) auto;
+  align-items: end;
 }
 .ops-insight-card {
   display: grid;
@@ -2655,9 +2700,15 @@ body {
   .admin-search-grid {
     grid-template-columns: 1fr;
   }
+  .ops-shell-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 960px) {
+  .ops-composer-grid {
+    grid-template-columns: 1fr;
+  }
   .ops-target-manual-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2667,9 +2718,6 @@ body {
 }
 
 @media (max-width: 640px) {
-  .ops-shell-grid {
-    grid-template-columns: 1fr;
-  }
   .ops-pane-grid,
   .ops-link-grid {
     grid-template-columns: 1fr;

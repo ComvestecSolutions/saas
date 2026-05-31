@@ -396,6 +396,35 @@ describe("Operator Desk shell route", () => {
     expect(document.body.textContent).toContain("Webhook delivery posture");
   });
 
+  it("compresses command-strip utility actions on mobile shells", async () => {
+    await act(async () => {
+      root.render(
+        <DeskShell
+          profile={buildFullProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          currentPath={adminRoutePath.operationsHome}
+          deviceClass="mobile"
+        >
+          <span />
+        </DeskShell>,
+      );
+    });
+
+    const menuButton = container.querySelector(
+      'button[aria-label="Open control surfaces"]',
+    );
+    const profileLink = container.querySelector(
+      'a[aria-label="Open operator profile"]',
+    );
+
+    expect(menuButton?.textContent).toContain("Menu");
+    expect(menuButton?.textContent).not.toContain("Surfaces");
+    expect(profileLink?.textContent).toContain("Profile");
+    expect(profileLink?.textContent).not.toContain("Operator profile");
+  });
+
   it("renders an Omnibar that opens via the ⌘K shortcut handler", async () => {
     await act(async () => {
       root.render(

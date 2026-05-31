@@ -158,9 +158,9 @@ function AdminTokensRoute() {
     if (typeof document === "undefined") {
       return;
     }
-    document.documentElement.setAttribute("data-adminTokensHydrated", "true");
+    document.documentElement.dataset.adminTokensHydrated = "true";
     return () => {
-      document.documentElement.removeAttribute("data-adminTokensHydrated");
+      delete document.documentElement.dataset.adminTokensHydrated;
     };
   }, []);
 

@@ -64,4 +64,27 @@ describe("admin sign-in screen", () => {
 
     expect(continueLink).not.toBeNull();
   });
+
+  it("keeps the retry handoff visible when sign-in is temporarily unavailable", async () => {
+    await act(async () => {
+      root.render(
+        <AdminSignInScreen
+          reason="sign-in-unavailable"
+          returnTo="/desk/tenants"
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("Sign-in unavailable");
+    expect(container.textContent).toContain(
+      "The admin sign-in handoff is not available right now.",
+    );
+
+    const continueLink = container.querySelector(
+      'a[href="/auth/start?returnTo=%2Fdesk%2Ftenants"]',
+    );
+
+    expect(continueLink).not.toBeNull();
+    expect(continueLink?.textContent).toContain("Continue to sign in");
+  });
 });
