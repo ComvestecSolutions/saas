@@ -269,6 +269,65 @@ export const mergeResolvedLocalRuntimeEnvironmentValues = (input: {
     ...input.vaultValues,
   }) satisfies Record<string, string>;
 
+const normalizeOptionalEnvValue = (value: string | undefined) => {
+  const normalizedValue = value?.trim();
+
+  return normalizedValue !== undefined && normalizedValue.length > 0
+    ? normalizedValue
+    : undefined;
+};
+
+const normalizePolarApiHostValues = (input: {
+  readonly values: Readonly<Record<string, string>>;
+  readonly baseValues: Readonly<Record<string, string>>;
+}) => {
+  const polarApiUrl = normalizeOptionalEnvValue(input.values.POLAR_API_URL);
+  const polarApiBaseUrl = normalizeOptionalEnvValue(
+    input.values.POLAR_API_BASE_URL,
+  );
+
+  if (
+    polarApiUrl !== undefined &&
+    polarApiBaseUrl !== undefined &&
+    polarApiUrl === polarApiBaseUrl
+  ) {
+    return input.values;
+  }
+
+  const defaultPolarApiUrl = normalizeOptionalEnvValue(
+    input.baseValues.POLAR_API_URL,
+  );
+  const defaultPolarApiBaseUrl = normalizeOptionalEnvValue(
+    input.baseValues.POLAR_API_BASE_URL,
+  );
+  const mirroredPolarHost =
+    polarApiUrl === undefined
+      ? polarApiBaseUrl
+      : polarApiBaseUrl === undefined
+        ? polarApiUrl
+        : polarApiBaseUrl === defaultPolarApiBaseUrl
+          ? polarApiUrl
+          : polarApiUrl === defaultPolarApiUrl
+            ? polarApiBaseUrl
+            : undefined;
+
+  if (mirroredPolarHost !== undefined) {
+    return {
+      ...input.values,
+      POLAR_API_URL: mirroredPolarHost,
+      POLAR_API_BASE_URL: mirroredPolarHost,
+    } satisfies Record<string, string>;
+  }
+
+  if (polarApiUrl === undefined && polarApiBaseUrl === undefined) {
+    return input.values;
+  }
+
+  throw new Error(
+    `POLAR_API_URL and POLAR_API_BASE_URL must resolve to the same Polar host. Received POLAR_API_URL=${polarApiUrl ?? "<empty>"} and POLAR_API_BASE_URL=${polarApiBaseUrl ?? "<empty>"}. Set both keys to the same value or remove the extra override so the local runtime can mirror the remaining host.`,
+  );
+};
+
 export const toWorkspaceRelativePath = (filePath: string) =>
   relative(workspaceRootDirectory, filePath).replace(/\\/g, "/");
 
@@ -870,11 +929,14 @@ export const resolveLocalRuntimeEnvironment = async (input?: {
   });
 
   const normalizedValues = syncHostPostgresUrlWithEffectivePort(
-    mergeResolvedLocalRuntimeEnvironmentValues({
+    normalizePolarApiHostValues({
       baseValues,
-      legacyDotEnvValues,
-      envOverrideValues,
-      vaultValues: vaultRecord.data,
+      values: mergeResolvedLocalRuntimeEnvironmentValues({
+        baseValues,
+        legacyDotEnvValues,
+        envOverrideValues,
+        vaultValues: vaultRecord.data,
+      }),
     }),
   );
 

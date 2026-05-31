@@ -69,6 +69,49 @@ describe("local runtime environment resolution", () => {
     }
   });
 
+  it("resolves the tracked Polar defaults from .env.example to sandbox for both host keys", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-polar-defaults-"),
+    );
+    const missingVaultTokenFilePath = join(tempDirectoryPath, ".vault-token");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+
+    try {
+      delete process.env.VAULT_TOKEN;
+      process.env.VAULT_TOKEN_FILE = missingVaultTokenFilePath;
+
+      const resolution = await resolveLocalRuntimeEnvironment({
+        envFile: ".env.example",
+        allowMissingVault: true,
+      });
+
+      expect(resolution.values.POLAR_API_URL).toBe(
+        "https://sandbox-api.polar.sh/v1",
+      );
+      expect(resolution.values.POLAR_API_BASE_URL).toBe(
+        "https://sandbox-api.polar.sh/v1",
+      );
+    } finally {
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
   it("keeps non-secret env-file values ahead of shell overrides", async () => {
     const tempDirectoryPath = mkdtempSync(
       join(tmpdir(), "comvestec-local-runtime-env-"),
@@ -88,6 +131,265 @@ describe("local runtime environment resolution", () => {
 
       expect(resolution.values.PUBLIC_WEB_PORT).toBe("3100");
     } finally {
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("mirrors a non-default POLAR_API_URL override onto POLAR_API_BASE_URL", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-polar-api-url-"),
+    );
+    const envFilePath = join(tempDirectoryPath, "runtime.env");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+
+    try {
+      delete process.env.VAULT_TOKEN;
+      process.env.VAULT_TOKEN_FILE = join(
+        tempDirectoryPath,
+        "missing-vault-token",
+      );
+      writeFileSync(
+        envFilePath,
+        "POLAR_API_URL=https://polar-stage.invalid/v1\n",
+      );
+
+      const resolution = await resolveLocalRuntimeEnvironment({
+        envFile: envFilePath,
+        allowMissingVault: true,
+      });
+
+      expect(resolution.values.POLAR_API_URL).toBe(
+        "https://polar-stage.invalid/v1",
+      );
+      expect(resolution.values.POLAR_API_BASE_URL).toBe(
+        "https://polar-stage.invalid/v1",
+      );
+    } finally {
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("mirrors a non-default POLAR_API_BASE_URL override onto POLAR_API_URL", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-polar-api-base-url-"),
+    );
+    const envFilePath = join(tempDirectoryPath, "runtime.env");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+
+    try {
+      delete process.env.VAULT_TOKEN;
+      process.env.VAULT_TOKEN_FILE = join(
+        tempDirectoryPath,
+        "missing-vault-token",
+      );
+      writeFileSync(
+        envFilePath,
+        "POLAR_API_BASE_URL=https://polar-stage.invalid/v1\n",
+      );
+
+      const resolution = await resolveLocalRuntimeEnvironment({
+        envFile: envFilePath,
+        allowMissingVault: true,
+      });
+
+      expect(resolution.values.POLAR_API_URL).toBe(
+        "https://polar-stage.invalid/v1",
+      );
+      expect(resolution.values.POLAR_API_BASE_URL).toBe(
+        "https://polar-stage.invalid/v1",
+      );
+    } finally {
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("treats blank Polar host overrides as absent and mirrors the populated host", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-polar-blank-host-"),
+    );
+    const envFilePath = join(tempDirectoryPath, "runtime.env");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+
+    try {
+      delete process.env.VAULT_TOKEN;
+      process.env.VAULT_TOKEN_FILE = join(
+        tempDirectoryPath,
+        "missing-vault-token",
+      );
+      writeFileSync(
+        envFilePath,
+        [
+          "POLAR_API_URL=https://sandbox-api.polar.sh/v1",
+          "POLAR_API_BASE_URL=",
+          "",
+        ].join("\n"),
+      );
+
+      const resolution = await resolveLocalRuntimeEnvironment({
+        envFile: envFilePath,
+        allowMissingVault: true,
+      });
+
+      expect(resolution.values.POLAR_API_URL).toBe(
+        "https://sandbox-api.polar.sh/v1",
+      );
+      expect(resolution.values.POLAR_API_BASE_URL).toBe(
+        "https://sandbox-api.polar.sh/v1",
+      );
+    } finally {
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("treats blank Polar host overrides as absent and mirrors a non-default populated host", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-polar-blank-host-"),
+    );
+    const envFilePath = join(tempDirectoryPath, "runtime.env");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+
+    try {
+      delete process.env.VAULT_TOKEN;
+      process.env.VAULT_TOKEN_FILE = join(
+        tempDirectoryPath,
+        "missing-vault-token",
+      );
+      writeFileSync(
+        envFilePath,
+        [
+          "POLAR_API_URL=https://polar-stage.invalid/v1",
+          "POLAR_API_BASE_URL=",
+          "",
+        ].join("\n"),
+      );
+
+      const resolution = await resolveLocalRuntimeEnvironment({
+        envFile: envFilePath,
+        allowMissingVault: true,
+      });
+
+      expect(resolution.values.POLAR_API_URL).toBe(
+        "https://polar-stage.invalid/v1",
+      );
+      expect(resolution.values.POLAR_API_BASE_URL).toBe(
+        "https://polar-stage.invalid/v1",
+      );
+    } finally {
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
+      rmSync(tempDirectoryPath, {
+        force: true,
+        recursive: true,
+      });
+    }
+  });
+
+  it("fails closed on conflicting non-default Polar host overrides", async () => {
+    const tempDirectoryPath = mkdtempSync(
+      join(tmpdir(), "comvestec-local-runtime-polar-host-conflict-"),
+    );
+    const envFilePath = join(tempDirectoryPath, "runtime.env");
+    const originalVaultToken = process.env.VAULT_TOKEN;
+    const originalVaultTokenFile = process.env.VAULT_TOKEN_FILE;
+
+    try {
+      delete process.env.VAULT_TOKEN;
+      process.env.VAULT_TOKEN_FILE = join(
+        tempDirectoryPath,
+        "missing-vault-token",
+      );
+      writeFileSync(
+        envFilePath,
+        [
+          "POLAR_API_URL=https://polar-left.invalid/v1",
+          "POLAR_API_BASE_URL=https://polar-right.invalid/v1",
+          "",
+        ].join("\n"),
+      );
+
+      await expect(
+        resolveLocalRuntimeEnvironment({
+          envFile: envFilePath,
+          allowMissingVault: true,
+        }),
+      ).rejects.toThrow(
+        /POLAR_API_URL and POLAR_API_BASE_URL must resolve to the same Polar host/u,
+      );
+    } finally {
+      if (originalVaultToken === undefined) {
+        delete process.env.VAULT_TOKEN;
+      } else {
+        process.env.VAULT_TOKEN = originalVaultToken;
+      }
+
+      if (originalVaultTokenFile === undefined) {
+        delete process.env.VAULT_TOKEN_FILE;
+      } else {
+        process.env.VAULT_TOKEN_FILE = originalVaultTokenFile;
+      }
+
       rmSync(tempDirectoryPath, {
         force: true,
         recursive: true,

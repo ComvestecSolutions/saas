@@ -39,7 +39,7 @@ The backend-only delivery program described here is now complete for backend-com
 
 ### Current validated posture
 
-1. There is no current implementation blocker in the validated local backend lane. `bun run format:check`, `bun run typecheck`, `bun run test`, `bun run test:backend:e2e:local`, and the backend-ready smoke kickoff all complete successfully after aligning the local `POLAR_API_URL` override with the sandbox-scoped Polar organization access token.
+1. There is no current implementation blocker in the validated local backend lane. `bun run format:check`, `bun run typecheck`, `bun run test`, `bun run test:backend:e2e:local`, and the backend-ready smoke kickoff all complete successfully with the repo-tracked local Polar sandbox defaults and the sandbox-scoped Polar organization access token aligned.
 2. Security invariants are now explicit in the backend-e2e lane rather than only transitive: no-session app-shell fallbacks, trusted-session spoofing denial, break-glass expiry and allow behavior, support-safe or secret field omission, cross-tenant denial, and webhook replay idempotency all have direct backend evidence and must stay explicit as future routes land.
 3. Honest validated status now depends on keeping that full backend evidence bar green as the platform evolves.
 
@@ -156,7 +156,7 @@ The following remain explicitly out of scope until the backend e2e program reach
 
 ## Next Gaps
 
-1. Keep local Polar operator guidance honest: when the active organization access token is sandbox-scoped, set `POLAR_API_URL=https://sandbox-api.polar.sh/v1` in `.env.local` instead of relying on the production default from `.env.example`.
+1. Keep local Polar operator guidance honest: the repo-tracked local defaults for both `POLAR_API_URL` and `POLAR_API_BASE_URL` now stay on `https://sandbox-api.polar.sh/v1`. If a local run intentionally targets a different Polar host, override both keys together in `.env.local`.
 2. Keep the current explicit field-redaction, tenant-isolation, trusted-session, break-glass, and idempotency assertions current so future route additions do not regress them behind only transitive coverage.
 3. Keep shared workflows primary-on-one-transport and parity-on-the-other instead of drifting back into duplicated deep suites.
 4. Preserve validated status by rerunning the full backend evidence bar after future route additions or local runtime credential rotations.

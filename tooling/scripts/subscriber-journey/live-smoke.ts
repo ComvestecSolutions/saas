@@ -516,20 +516,10 @@ const explainPolarReadinessFailure = (
       (responseBody !== undefined && responseBody.includes("invalid_token"));
 
     if (invalidToken) {
-      const usesProductionPolarHost = (() => {
-        try {
-          return new URL(environment.POLAR_API_URL).hostname === "api.polar.sh";
-        } catch {
-          return false;
-        }
-      })();
-
       return yield* Effect.fail(
         buildPolarReadinessConfigurationError(
-          usesProductionPolarHost
-            ? "Backend readiness reported Polar unhealthy. A direct Polar catalog probe returned invalid_token, which usually means the current token is invalid or the local runtime is pointing at the production Polar host with a sandbox-scoped organization access token. If this local run uses a sandbox token, set POLAR_API_URL=https://sandbox-api.polar.sh/v1 in .env.local; otherwise refresh POLAR_ACCESS_TOKEN and rerun bun run backend:subscriber-journey:ready:local."
-            : "Backend readiness reported Polar unhealthy. A direct Polar catalog probe returned invalid_token, so the current POLAR_ACCESS_TOKEN is invalid for the configured POLAR_API_URL. Refresh the token or align POLAR_API_URL with the token scope, then rerun bun run backend:subscriber-journey:ready:local.",
-          usesProductionPolarHost ? "POLAR_API_URL" : "POLAR_ACCESS_TOKEN",
+          "Backend readiness reported Polar unhealthy. A direct Polar catalog probe returned invalid_token, which means the current POLAR_ACCESS_TOKEN does not match the configured Polar host. The repo-tracked local defaults keep both POLAR_API_URL and POLAR_API_BASE_URL on https://sandbox-api.polar.sh/v1. Refresh POLAR_ACCESS_TOKEN or align both Polar host keys with the token scope, then rerun bun run backend:subscriber-journey:ready:local.",
+          "POLAR_ACCESS_TOKEN",
         ),
       );
     }

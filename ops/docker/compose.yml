@@ -142,7 +142,7 @@ services:
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-saas-platform}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN}
-      POLAR_API_URL: ${POLAR_API_URL:-https://api.polar.sh}
+      POLAR_API_URL: ${POLAR_API_URL:-https://sandbox-api.polar.sh/v1}
       VALKEY_URL_INTERNAL: ${VALKEY_URL_INTERNAL:-redis://valkey:6379}
       KETO_READ_URL_INTERNAL: ${KETO_READ_URL_INTERNAL:-http://ory-keto:4466}
       KETO_WRITE_URL_INTERNAL: ${KETO_WRITE_URL_INTERNAL:-http://ory-keto:4467}
