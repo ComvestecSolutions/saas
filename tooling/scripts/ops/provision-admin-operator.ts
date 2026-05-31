@@ -1,6 +1,7 @@
 import { Effect, ParseResult, Schema } from "effect";
 import {
   adminMemberRole,
+  adminMemberStatus,
   actorType,
   authorizationNamespace,
   authorizationRelation,
@@ -65,6 +66,12 @@ type ProvisionAdminOperatorEnvironment = Schema.Schema.Type<
 type ProvisionAdminOperatorInput = Schema.Schema.Type<
   typeof ProvisionAdminOperatorInputSchema
 >;
+
+type ToolingScriptConfigurationError = {
+  readonly _tag: "ToolingScriptConfigurationError";
+  readonly key: string;
+  readonly message: string;
+};
 
 const platformOperatorAuthorizationSubject = `actor-type:${actorType.platformOperator}`;
 
@@ -303,6 +310,108 @@ const buildBootstrapRequestContext = (input: {
   },
 });
 
+const buildToolingScriptConfigurationError = (key: string, message: string) =>
+  ({
+    _tag: "ToolingScriptConfigurationError",
+    key,
+    message,
+  }) satisfies ToolingScriptConfigurationError;
+
+const ensureRequestedAdminOwnerMembership = (input: {
+  readonly requestContext: ReturnType<typeof buildBootstrapRequestContext>;
+  readonly keycloakSubjectId: string;
+  readonly email: string;
+  readonly displayName: string;
+}) =>
+  runAdminOrganizationFromEnvironment(Bun.env, (adminOrganization) =>
+    adminOrganization
+      .seedInitialOwner({
+        requestContext: input.requestContext,
+        keycloakSubjectId: input.keycloakSubjectId,
+        email: input.email,
+        displayName: input.displayName,
+      })
+      .pipe(
+        Effect.catchTag("AdminInitialOwnerAlreadySeeded", () =>
+          Effect.gen(function* () {
+            console.log(
+              "Admin organization already seeded; ensuring the requested operator is an owner...",
+            );
+            const members = yield* adminOrganization.listMembers({
+              requestContext: input.requestContext,
+              filter: {
+                includeArchived: true,
+              },
+            });
+            const existingMember = members.find(
+              (member) =>
+                member.keycloakSubjectId === input.keycloakSubjectId ||
+                member.email === input.email,
+            );
+
+            if (existingMember === undefined) {
+              const inviterMember =
+                members.find(
+                  (member) =>
+                    member.status !== adminMemberStatus.archived &&
+                    member.role === adminMemberRole.adminOwner,
+                ) ??
+                members.find(
+                  (member) => member.status !== adminMemberStatus.archived,
+                );
+
+              if (inviterMember === undefined) {
+                return yield* Effect.fail(
+                  buildToolingScriptConfigurationError(
+                    "--email",
+                    "The admin organization is seeded but has no active member available to invite the requested operator. Restore an active owner or reseed the local admin organization before rerunning the provision command.",
+                  ),
+                );
+              }
+
+              console.log(
+                "Adding the requested operator to the seeded admin organization as an owner...",
+              );
+              const invitation = yield* adminOrganization.inviteMember({
+                requestContext: input.requestContext,
+                email: input.email,
+                invitedRole: adminMemberRole.adminOwner,
+                invitedBy: inviterMember.id,
+                invitedByDisplayName: inviterMember.displayName,
+              });
+
+              return yield* adminOrganization.redeemInvitation({
+                requestContext: input.requestContext,
+                invitationToken: invitation.invitationToken,
+                keycloakSubjectId: input.keycloakSubjectId,
+                displayName: input.displayName,
+              });
+            }
+
+            if (existingMember.status === adminMemberStatus.archived) {
+              return yield* Effect.fail(
+                buildToolingScriptConfigurationError(
+                  "--email",
+                  `Admin operator "${input.email}" already exists in the admin organization but is archived. Restore or replace that membership before rerunning the provision command.`,
+                ),
+              );
+            }
+
+            if (existingMember.role === adminMemberRole.adminOwner) {
+              return existingMember;
+            }
+
+            console.log("Promoting the requested operator to admin-owner...");
+            return yield* adminOrganization.changeMemberRole({
+              requestContext: input.requestContext,
+              memberId: existingMember.id,
+              newRole: adminMemberRole.adminOwner,
+            });
+          }),
+        ),
+      ),
+  );
+
 const main = Effect.gen(function* () {
   const argv = removeLeadingDoubleDash(Bun.argv.slice(2));
 
@@ -422,20 +531,17 @@ const main = Effect.gen(function* () {
   console.log("Normalizing legacy admin member roles...");
   yield* repairLegacyAdminMemberRoles(environment);
 
-  console.log("Ensuring the initial admin-app owner membership exists...");
-  const adminOwner = yield* runAdminOrganizationFromEnvironment(
-    Bun.env,
-    (adminOrganization) =>
-      adminOrganization.seedInitialOwner({
-        requestContext: buildBootstrapRequestContext({
-          actorId: user.id,
-          email: input.email,
-        }),
-        keycloakSubjectId: user.id,
-        email: input.email,
-        displayName: input.name,
-      }),
-  );
+  console.log("Ensuring the requested admin-app owner membership exists...");
+  const requestContext = buildBootstrapRequestContext({
+    actorId: user.id,
+    email: input.email,
+  });
+  const adminOwner = yield* ensureRequestedAdminOwnerMembership({
+    requestContext,
+    keycloakSubjectId: user.id,
+    email: input.email,
+    displayName: input.name,
+  });
 
   yield* requestEmpty({
     operation: "keycloak.updateAdminOperatorProfile",
