@@ -65,7 +65,7 @@ export const loadAdminShellRouteDataForCurrentRuntime = async (
     loadClientRouteData = (signal) =>
       getAdminShellData({
         data: undefined,
-        signal,
+        ...(signal !== undefined && { signal }),
       }) as Promise<AdminShellRouteData>,
     signal,
   } = options;
@@ -99,7 +99,10 @@ export const loadAdminShellLoaderData = async (
 
   const routeData = await (
     loadRouteData ??
-    (() => loadAdminShellRouteDataForCurrentRuntime({ signal }))
+    (() =>
+      loadAdminShellRouteDataForCurrentRuntime(
+        signal !== undefined ? { signal } : {},
+      ))
   )();
 
   return routeData;

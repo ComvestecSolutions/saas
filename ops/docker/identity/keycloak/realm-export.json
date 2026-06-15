@@ -42,7 +42,26 @@
       ],
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
       "standardFlowEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-saas-platform",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": false,
+      "serviceAccountClientId": "saas-platform",
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": ["offline_access", "uma_authorization"],
+      "clientRoles": {
+        "realm-management": ["realm-admin", "impersonation"],
+        "account": ["manage-account", "view-profile"]
+      },
+      "notBefore": 0,
+      "groups": []
     }
   ],
   "roles": {
