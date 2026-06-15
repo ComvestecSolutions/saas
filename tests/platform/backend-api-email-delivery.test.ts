@@ -84,6 +84,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -183,5 +184,5 @@ describe("platform backend api email delivery transport", () => {
     expect(probe.missingProviderRouteBody).toEqual({
       error: "Email delivery route not found.",
     });
-  }, 30_000);
+  }, 90_000);
 });

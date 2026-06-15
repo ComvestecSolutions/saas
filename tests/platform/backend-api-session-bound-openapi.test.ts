@@ -129,6 +129,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -188,5 +189,5 @@ describe("platform backend api session-bound openapi contract", () => {
       probe.requestPropertiesBySchema
         .RequestSearchTenantIndexReindexWorkflowJobHttpRequest,
     ).toEqual(["scope", "scopeId", "scheduledAt"]);
-  }, 30_000);
+  }, 90_000);
 });

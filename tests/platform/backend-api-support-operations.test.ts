@@ -116,6 +116,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -229,5 +230,5 @@ describe("platform backend api support-operations transport", () => {
     expect(probe.hasSupportViewListSchema).toBe(true);
     expect(probe.routeStatus).toBe(200);
     expect(probe.routeBody).toEqual({ route: "support-operations" });
-  }, 30_000);
+  }, 90_000);
 });

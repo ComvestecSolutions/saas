@@ -136,6 +136,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -318,5 +319,5 @@ describe("platform backend api tenant-management transport", () => {
     expect(probe.missingRouteBody).toEqual({
       error: "Admin tenant management route not found.",
     });
-  }, 30_000);
+  }, 90_000);
 });

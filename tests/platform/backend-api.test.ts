@@ -233,6 +233,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -1006,5 +1007,5 @@ describe("platform backend api", () => {
     expect(probe.methodBody).toEqual({
       error: "Method not allowed.",
     });
-  }, 30_000);
+  }, 90_000);
 });

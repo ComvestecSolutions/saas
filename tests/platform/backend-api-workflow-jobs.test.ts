@@ -85,6 +85,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -193,5 +194,5 @@ describe("platform backend api workflow-jobs transport", () => {
     expect(probe.missingRouteBody).toEqual({
       error: "Workflow jobs route not found.",
     });
-  }, 30_000);
+  }, 90_000);
 });

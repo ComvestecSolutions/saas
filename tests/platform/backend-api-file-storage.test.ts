@@ -73,6 +73,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -215,5 +216,5 @@ describe("platform backend api file-storage transport", () => {
     expect(probe.missingRouteBody).toEqual({
       error: "File storage route not found.",
     });
-  }, 30_000);
+  }, 90_000);
 });

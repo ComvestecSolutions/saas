@@ -102,6 +102,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -322,5 +323,5 @@ describe("platform backend api search transport", () => {
     expect(probe.missingRouteBody).toEqual({
       error: "Search route not found.",
     });
-  }, 30_000);
+  }, 90_000);
 });

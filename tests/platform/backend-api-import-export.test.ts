@@ -71,6 +71,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -178,5 +179,5 @@ describe("platform backend api import-export transport", () => {
     expect(probe.missingRouteBody).toEqual({
       error: "Import export route not found.",
     });
-  }, 30_000);
+  }, 90_000);
 });

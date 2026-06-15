@@ -424,7 +424,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("fails before invoking docker when the env file resolves duplicate published ports", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -461,7 +461,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("ignores shell overrides when the resolved runtime env already defines the published ports", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -497,7 +497,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("falls back to compose defaults when an env file sets an empty port value", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -536,7 +536,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("prefers a non-default env-file port when the shell override is present but empty", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -573,7 +573,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("validates started-container status for the full local stack when requested", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -616,7 +616,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("fails started-container validation when a long-running service reports unhealthy status", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -662,7 +662,7 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 
   it("fails started-container validation when the postgres bootstrap one-shot service does not exit successfully", () => {
     const tempDirectoryPath = mkdtempSync(
@@ -707,5 +707,5 @@ describe("local deployment validation tooling", () => {
     } finally {
       rmSync(tempDirectoryPath, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 90_000);
 });

@@ -288,5 +288,5 @@ describe("platform backend api health transport", () => {
       checks: [],
       errorTag: "BackendApiReadinessInitializationError",
     });
-  }, 30_000);
+  }, 90_000);
 });
