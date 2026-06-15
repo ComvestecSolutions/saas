@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
+import { actorType, adminOrgRole } from "@comvestec/contracts";
 import {
   loadAdminProfileRouteDataFromRequest,
   type AdminProfileDependencies,
@@ -31,10 +32,11 @@ const sampleProfile = {
     username: "owner",
     email: "owner@example.test",
     displayName: "Admin Owner",
-    actorType: "admin-owner" as const,
+    actorType: actorType.platformOperator,
     enabled: true,
   },
   sessionId: "sess-ok",
+  adminOrgRole: adminOrgRole.owner,
   capabilities: [],
 };
 

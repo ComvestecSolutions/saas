@@ -151,10 +151,12 @@ const notifyFocusMaskSelectors = [
 ] as const;
 const adminTokensRouteMaskSelectors = [
   ...shellVisualMaskSelectors,
+  "[data-testid='admin-tokens-focus-summary'] > .ops-inline-cluster:first-child",
   "[data-testid='admin-tokens-focus-summary'] .ops-cell-stack__title",
   "[data-testid='admin-tokens-focus-summary'] .ops-text-muted",
   "[data-testid='admin-tokens-focus-summary'] .ops-note",
   "[data-testid='admin-tokens-focus-summary'] .ops-detail-grid",
+  "[data-testid='admin-tokens-focus-actions']",
   "[data-testid='admin-tokens-review'] .ops-detail-grid",
   "[data-testid='admin-tokens-owner-note']",
   "[data-testid='admin-tokens-action-success']",
@@ -164,10 +166,12 @@ const adminTokensRouteMaskSelectors = [
 ] as const;
 const adminTokensFocusMaskSelectors = [
   ...shellVisualMaskSelectors,
+  "[data-testid='admin-tokens-focus-summary'] > .ops-inline-cluster:first-child",
   "[data-testid='admin-tokens-focus-summary'] .ops-cell-stack__title",
   "[data-testid='admin-tokens-focus-summary'] .ops-text-muted",
   "[data-testid='admin-tokens-focus-summary'] .ops-note",
   "[data-testid='admin-tokens-focus-summary'] .ops-detail-grid",
+  "[data-testid='admin-tokens-focus-actions']",
   "[data-testid='admin-tokens-review'] .ops-detail-grid",
   "[data-testid='admin-tokens-owner-note']",
   "[data-testid='admin-tokens-ready'] .ops-card-head__count",
@@ -183,17 +187,9 @@ const auditExplorerMaskSelectors = [
 ] as const;
 
 const deskMenuVisualMaskSelectors = [
-  ".ops-mission-signal-band",
-  ".ops-mission-digest-grid",
-  ".ops-mission-grid",
-  ".ops-mission-kpis",
-  ".ops-alert-list",
-  ".ops-activity-list",
-  ".ops-vendor-grid",
-  ".ops-card-head__count",
+  "[data-testid='mission-control-visual-shell']",
   "[aria-label='Posture status']",
   "[data-testid='desk-center-cache-pill']",
-  "[data-testid='desk-center-partial-failures']",
   "[data-testid='context-spine-actor-card']",
   "[data-testid='context-spine-route-card']",
   "[data-testid='context-spine-capability-posture-card']",
@@ -257,17 +253,9 @@ const resolveVisualMaskSelectors = (route: (typeof visualRoutes)[number]) => {
   if (route === "/desk") {
     return [
       ...shellVisualMaskSelectors,
-      ".ops-mission-signal-band",
-      ".ops-mission-digest-grid",
-      ".ops-mission-grid",
-      ".ops-mission-kpis",
-      ".ops-alert-list",
-      ".ops-activity-list",
-      ".ops-vendor-grid",
-      ".ops-card-head__count",
+      "[data-testid='mission-control-visual-shell']",
       "[aria-label='Posture status']",
       "[data-testid='desk-center-cache-pill']",
-      "[data-testid='desk-center-partial-failures']",
     ] as const;
   }
 

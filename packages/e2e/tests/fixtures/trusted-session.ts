@@ -8,6 +8,7 @@ const operatorUsernameInputSelector = 'input[name="username"]';
 const operatorPasswordInputSelector = 'input[name="password"]';
 const continueToSignInLinkName = /continue to sign in/i;
 const operatorSignInRetryCount = 3;
+const operatorDeskUrlPattern = /\/desk(?:\?.*)?$/;
 
 const waitForOperatorCredentialsForm = (page: Page, timeout: number) =>
   page.locator(operatorUsernameInputSelector).waitFor({
@@ -17,6 +18,10 @@ const waitForOperatorCredentialsForm = (page: Page, timeout: number) =>
 
 const resolveOperatorSignInRetryLink = (page: Page) =>
   page.getByRole("link", { name: continueToSignInLinkName });
+
+const isRestartSignInUrl = (url: URL): boolean =>
+  url.pathname === "/sign-in" &&
+  url.searchParams.get("reason") === "restart-sign-in";
 
 const waitForOperatorCredentialsFormWithRetries = async (page: Page) => {
   for (
@@ -46,6 +51,59 @@ const waitForOperatorCredentialsFormWithRetries = async (page: Page) => {
   await expect(page.locator(operatorUsernameInputSelector)).toBeVisible({
     timeout: 60_000,
   });
+};
+
+const signInOperatorWithRetries = async (
+  page: Page,
+  trustedSession: Extract<AdminTrustedSession, { authMode: "operator" }>,
+) => {
+  const authStartUrl = new URL(
+    "/auth/start?returnTo=%2Fdesk",
+    trustedSession.baseURL,
+  ).toString();
+
+  for (
+    let retryAttempt = 0;
+    retryAttempt < operatorSignInRetryCount;
+    retryAttempt += 1
+  ) {
+    await page.goto(authStartUrl, {
+      waitUntil: "domcontentloaded",
+    });
+    await waitForOperatorCredentialsFormWithRetries(page);
+    await page
+      .locator(operatorUsernameInputSelector)
+      .fill(trustedSession.operatorUsername);
+    await page
+      .locator(operatorPasswordInputSelector)
+      .fill(trustedSession.operatorPassword);
+    await Promise.all([
+      page.waitForURL(
+        (url) =>
+          operatorDeskUrlPattern.test(`${url.pathname}${url.search}`) ||
+          isRestartSignInUrl(url),
+        {
+          timeout: 60_000,
+        },
+      ),
+      page.getByRole("button", { name: /sign in/i }).click(),
+    ]);
+
+    const currentUrl = new URL(page.url());
+    if (
+      operatorDeskUrlPattern.test(`${currentUrl.pathname}${currentUrl.search}`)
+    ) {
+      return;
+    }
+
+    if (!isRestartSignInUrl(currentUrl)) {
+      break;
+    }
+  }
+
+  throw new Error(
+    "Operator sign-in did not reach /desk after the configured retry budget.",
+  );
 };
 
 /**
@@ -109,26 +167,7 @@ export const adminTest = base.extend<{
       return;
     }
 
-    await page.goto(
-      new URL(
-        "/auth/start?returnTo=%2Fdesk",
-        trustedSession.baseURL,
-      ).toString(),
-      {
-        waitUntil: "domcontentloaded",
-      },
-    );
-    await waitForOperatorCredentialsFormWithRetries(page);
-    await page
-      .locator(operatorUsernameInputSelector)
-      .fill(trustedSession.operatorUsername);
-    await page
-      .locator(operatorPasswordInputSelector)
-      .fill(trustedSession.operatorPassword);
-    await page.getByRole("button", { name: /sign in/i }).click();
-    await page.waitForURL(/\/desk(?:\?.*)?$/, {
-      timeout: 60_000,
-    });
+    await signInOperatorWithRetries(page, trustedSession);
     await expect(
       page.getByRole("application", { name: /operator desk/i }),
     ).toBeVisible({

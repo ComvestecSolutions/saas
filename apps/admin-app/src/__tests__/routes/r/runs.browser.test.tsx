@@ -7,6 +7,7 @@ import {
 import {
   changeInputValue,
   click,
+  followLink,
   getButtonByText,
   getInputByPlaceholder,
   renderAdminApp,
@@ -237,6 +238,46 @@ describe("/desk/runs Workflow Runs v4 list route", () => {
     );
   });
 
+  it("resets the workbench scroll when navigating from the list to run detail", async () => {
+    rendered = await renderAdminApp(createAdminBrowserFixtureState(), PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='workflow-runs-list-ready']",
+        ) !== null,
+      "Expected workflow runs ready surface to render before navigating.",
+    );
+
+    const workbench = rendered.container.querySelector<HTMLElement>(
+      "[data-pattern='workbench']",
+    );
+    if (workbench === null) {
+      throw new Error("Expected the desk workbench shell to render.");
+    }
+
+    const firstRunLink = rendered.container.querySelector<HTMLAnchorElement>(
+      "[data-testid='workflow-runs-list-entry-link']",
+    );
+    if (firstRunLink === null) {
+      throw new Error("Expected a workflow run entry link to render.");
+    }
+
+    workbench.scrollTop = 240;
+
+    await followLink(rendered.router, firstRunLink);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='workflow-run-detail-ready']",
+        ) !== null,
+      "Expected workflow run detail surface to render after navigation.",
+    );
+
+    expect(workbench.scrollTop).toBe(0);
+  });
+
   it("guides the operator when no workflow runs have succeeded yet", async () => {
     const noSuccessFixture = withFixtureTransform(
       createAdminBrowserFixtureState(),
@@ -276,6 +317,77 @@ describe("/desk/runs Workflow Runs v4 list route", () => {
       "bun run backend:subscriber-journey:ready:local",
     );
     expect(rendered.container.textContent).toContain("Review vendor posture");
+  });
+
+  it("keeps long workflow identifiers from overflowing the focus and review cards", async () => {
+    const longRunId =
+      "workflow-jobs:tenant-invitation-reminder:operator-requested:organization:org_smoke:invite_f109c65b-1fa6-4796-a3b7-c0d8af47ffc";
+    const longWorkflowKey =
+      "platform.notifications.operator-requested.organization.invitation-reminder";
+    const readyFixture = withFixtureTransform(
+      createAdminBrowserFixtureState(),
+      (fixture) => ({
+        ...fixture,
+        loadWorkflowRunsList: async (input) => ({
+          kind: "ready",
+          filters: input.filters,
+          result: {
+            runs: [
+              {
+                runId: longRunId,
+                moduleId: platformModuleId.workflowJobs,
+                workflowKey: longWorkflowKey,
+                status: workflowRunStatus.stale,
+                queuedAt: new Date(0).toISOString(),
+                startedAt: new Date(1000).toISOString(),
+                finishedAt: undefined,
+                durationMs: 1_000,
+                attempt: 1,
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    rendered = await renderAdminApp(readyFixture, PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='workflow-runs-list-focus-run-id']",
+        ) !== null &&
+        rendered?.container.querySelector(
+          "[data-testid='workflow-runs-list-slowest-run-id']",
+        ) !== null,
+      "Expected long workflow identifiers to render in the focus and review cards.",
+    );
+
+    const focusRunId = rendered.container.querySelector<HTMLElement>(
+      "[data-testid='workflow-runs-list-focus-run-id']",
+    );
+    const focusWorkflowKey = rendered.container.querySelector<HTMLElement>(
+      "[data-testid='workflow-runs-list-focus-workflow-key']",
+    );
+    const slowestRunId = rendered.container.querySelector<HTMLElement>(
+      "[data-testid='workflow-runs-list-slowest-run-id']",
+    );
+
+    if (
+      focusRunId === null ||
+      focusWorkflowKey === null ||
+      slowestRunId === null
+    ) {
+      throw new Error("Expected long workflow identifier fields to render.");
+    }
+
+    expect(focusRunId.scrollWidth).toBeLessThanOrEqual(focusRunId.clientWidth);
+    expect(focusWorkflowKey.scrollWidth).toBeLessThanOrEqual(
+      focusWorkflowKey.clientWidth,
+    );
+    expect(slowestRunId.scrollWidth).toBeLessThanOrEqual(
+      slowestRunId.clientWidth,
+    );
   });
 
   it("surfaces the stale-session affordance when the loader is stale", async () => {

@@ -30,6 +30,7 @@ export const DialogOverlay = forwardRef<
         inset: 0,
         background: "color-mix(in oklab, var(--canvas-950) 70%, transparent)",
         backdropFilter: "blur(4px)",
+        zIndex: 180,
         ...style,
       }}
       {...rest}
@@ -85,9 +86,11 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
             transform: "translate(-50%, -50%)",
             width: sizeWidths[size],
             maxWidth: "calc(100vw - 16px)",
-            maxHeight: "calc(100vh - 16px)",
+            maxHeight: "calc(100dvh - 16px)",
             display: "flex",
             flexDirection: "column",
+            overflow: "hidden",
+            zIndex: 181,
             ...style,
           }}
           {...rest}
@@ -96,9 +99,15 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
             style={{
               position: "sticky",
               top: 0,
+              zIndex: 1,
+              display: "grid",
+              gap: 4,
               padding: 10,
               borderBottom:
                 "1px solid color-mix(in oklab, white 6%, transparent)",
+              background:
+                "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-900) 88%, transparent)",
+              backdropFilter: "blur(12px)",
             }}
           >
             <DialogPrimitive.Title
@@ -131,12 +140,16 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
               style={{
                 position: "sticky",
                 bottom: 0,
+                zIndex: 1,
                 display: "flex",
                 gap: 8,
                 justifyContent: "flex-end",
                 padding: 10,
                 borderTop:
                   "1px solid color-mix(in oklab, white 6%, transparent)",
+                background:
+                  "linear-gradient(180deg, color-mix(in oklab, var(--canvas-900) 82%, transparent), color-mix(in oklab, var(--canvas-925) 92%, transparent))",
+                backdropFilter: "blur(12px)",
               }}
             >
               {actions}

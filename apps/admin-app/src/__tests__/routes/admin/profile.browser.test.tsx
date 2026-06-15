@@ -3,6 +3,7 @@ import {
   actorType,
   adminGovernanceActionPolicyId,
   adminOperatorCapability,
+  adminOrgRole,
   adminRoutePath,
 } from "@comvestec/contracts";
 import {
@@ -91,6 +92,7 @@ describe("/admin/profile admin operator profile route", () => {
               enabled: true,
             },
             sessionId: "sess_admin_profile_fixture",
+            adminOrgRole: adminOrgRole.owner,
             capabilities: [
               {
                 capability: adminOperatorCapability.operationsHome,

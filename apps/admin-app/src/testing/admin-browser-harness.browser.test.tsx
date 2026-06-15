@@ -6,7 +6,10 @@ import {
   waitFor,
   type RenderedAdminApp,
 } from "./admin-browser-harness";
-import { createAdminBrowserFixtureState } from "./admin-browser-fixtures";
+import {
+  createAdminBrowserFixtureState,
+  type AdminBrowserFixtureState,
+} from "./admin-browser-fixtures";
 
 type AdminBrowserHarnessGlobals = typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
@@ -119,5 +122,52 @@ describe("admin browser harness", () => {
         "[data-testid='router-devtools-sentinel']",
       ),
     ).toBeNull();
+  });
+
+  it("renders the admin not-found state for unknown top-level routes", async () => {
+    rendered = await renderAdminApp(
+      createAdminBrowserFixtureState(),
+      "/does-not-exist",
+    );
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Route not found") ?? false,
+      "Expected the admin root to render a custom not-found state.",
+    );
+
+    expect(
+      rendered.container.querySelector("[data-testid='admin-root-not-found']"),
+    ).not.toBeNull();
+    expect(rendered.container.textContent).toContain(
+      "No admin route matches /does-not-exist.",
+    );
+    expect(rendered.container.textContent).toContain(
+      "Return to operations home",
+    );
+  });
+
+  it("renders the admin root error boundary when the shell loader throws", async () => {
+    const fixture: AdminBrowserFixtureState = {
+      ...createAdminBrowserFixtureState(),
+      loadShell: async () => {
+        throw new Error("Shell loader exploded");
+      },
+    };
+
+    rendered = await renderAdminApp(fixture, adminRoutePath.operationsHome);
+
+    await waitFor(
+      () =>
+        rendered?.container.textContent?.includes("Admin route unavailable") ??
+        false,
+      "Expected the admin root error boundary to render when the shell loader throws.",
+    );
+
+    expect(
+      rendered.container.querySelector("[data-testid='admin-root-error']"),
+    ).not.toBeNull();
+    expect(rendered.container.textContent).toContain("Shell loader exploded");
+    expect(rendered.container.textContent).toContain("Retry route");
   });
 });

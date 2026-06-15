@@ -93,6 +93,56 @@ describe("/desk/run/$id Workflow Run Detail v2 route", () => {
     ).not.toBeNull();
   });
 
+  it("wraps long audit correlation identifiers without horizontal overflow", async () => {
+    const longAuditCorrelationId =
+      "subscriber-journey:workflow-jobs.repair:job_backend_e2e_admin_billing_replay_1779965527111";
+    const readyFixture = withFixtureTransform(
+      createAdminBrowserFixtureState(),
+      (fixture) => ({
+        ...fixture,
+        loadWorkflowRunDetail: async (input) => ({
+          kind: "ready",
+          run: {
+            runId: input.runId,
+            moduleId: platformModuleId.workflowJobs,
+            workflowKey: "platform.audit-log.sweep",
+            status: workflowRunStatus.failed,
+            queuedAt: new Date(0).toISOString(),
+            startedAt: new Date(1000).toISOString(),
+            finishedAt: new Date(2000).toISOString(),
+            durationMs: 1000,
+            attempt: 2,
+            lastError: "Upstream provider timed out.",
+            steps: [],
+            payloadProjection: '{ "sweep": "daily" }',
+            auditCorrelationId: longAuditCorrelationId,
+          },
+        }),
+      }),
+    );
+
+    rendered = await renderAdminApp(readyFixture, PATH);
+
+    await waitFor(
+      () =>
+        rendered?.container.querySelector(
+          "[data-testid='workflow-run-detail-audit-correlation']",
+        ) !== null,
+      "Expected the audit correlation identifier to render.",
+    );
+
+    const auditCorrelation = rendered.container.querySelector<HTMLElement>(
+      "[data-testid='workflow-run-detail-audit-correlation']",
+    );
+    if (auditCorrelation === null) {
+      throw new Error("Expected the audit correlation field to render.");
+    }
+
+    expect(auditCorrelation.scrollWidth).toBeLessThanOrEqual(
+      auditCorrelation.clientWidth,
+    );
+  });
+
   it("invokes the replay mutations-server flow through the high-risk guard", async () => {
     const readyFixture = withFixtureTransform(
       createAdminBrowserFixtureState(),

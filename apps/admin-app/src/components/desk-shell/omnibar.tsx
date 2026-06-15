@@ -262,18 +262,41 @@ export function DeskShellOmnibar({
   );
 
   const handleSubmit = useCallback(
-    (rawValue: string) => {
+    async (rawValue: string) => {
       const submitted = parseOmnibarInput(rawValue);
-      const currentTopEntry =
+      let resolvedTopEntry =
         state.kind === "ready" &&
         state.result.query === submitted.query &&
         state.result.entries.length > 0
           ? state.result.entries[0]
           : undefined;
+      if (
+        resolvedTopEntry === undefined &&
+        submitted.prefixFilter !== undefined &&
+        submitted.query.length > 0
+      ) {
+        try {
+          const next = await loadUniversalSearch({
+            query: submitted.query,
+            prefixFilter: submitted.prefixFilter,
+          });
+          setState(next);
+          if (next.kind === "ready" && next.result.entries.length > 0) {
+            resolvedTopEntry = next.result.entries[0];
+          }
+        } catch {
+          setState({
+            kind: "error",
+            title: "Search unavailable",
+            description:
+              "The federated search service did not respond. Retry shortly.",
+          });
+        }
+      }
       const permalink =
-        currentTopEntry === undefined
+        resolvedTopEntry === undefined
           ? resolveSubmittedPrefixPermalink(submitted)
-          : resolveUniversalSearchEntryPermalink(currentTopEntry);
+          : resolveUniversalSearchEntryPermalink(resolvedTopEntry);
 
       if (permalink !== undefined) {
         completeNavigation(permalink);

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { adminOrgRole } from "@comvestec/contracts";
 import { StateScreen, StatusChip, type StatusChipTone } from "@comvestec/ui";
 import { createAdminAppFileRoute } from "../../file-route";
 import {
@@ -14,6 +15,10 @@ import {
   useTableState,
 } from "../../components/ui";
 import type { AdminProfileRouteData } from "../../lib/admin-profile-route-data";
+import {
+  adminOrgRoleLabel,
+  adminOrgRoleSummary,
+} from "../../lib/admin-org-role-display";
 
 /**
  * `/admin/profile` — spec-canonical admin-organization operator
@@ -112,6 +117,15 @@ function AdminProfileRoute() {
   }
 
   const { profile } = data;
+  const adminRoleLabel = adminOrgRoleLabel[profile.adminOrgRole];
+  const adminRoleTone =
+    profile.adminOrgRole === adminOrgRole.owner
+      ? "accent"
+      : profile.adminOrgRole === adminOrgRole.admin
+        ? "good"
+        : profile.adminOrgRole === adminOrgRole.none
+          ? "warn"
+          : "neutral";
   const allowedCapabilities = profile.capabilities.filter((c) => c.allowed);
   const constrainedCapabilities = profile.capabilities.filter(
     (c) => !c.allowed,
@@ -169,7 +183,7 @@ function AdminProfileRoute() {
           { label: "Admin" },
           { label: "Profile", href: "/admin/profile" },
         ]}
-        subtitle="Current operator identity, effective session posture, and route-by-route capability access for the admin organization."
+        subtitle="Current operator identity, admin-organization role, and route-by-route capability access for the admin control plane."
       />
 
       <div
@@ -177,7 +191,12 @@ function AdminProfileRoute() {
         style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
       >
         <KpiCard
-          label="Role"
+          label="Admin role"
+          value={adminRoleLabel}
+          tone={adminRoleTone}
+        />
+        <KpiCard
+          label="Actor type"
           value={profile.identity.actorType}
           tone="neutral"
         />
@@ -227,6 +246,9 @@ function AdminProfileRoute() {
           <span className="ops-secondary-text">
             {profile.identity.username}
           </span>
+          <span className="ops-secondary-text">
+            {adminOrgRoleSummary[profile.adminOrgRole]}
+          </span>
         </section>
 
         <section
@@ -240,6 +262,18 @@ function AdminProfileRoute() {
               size="sm"
             >
               {profile.identity.enabled ? "Enabled" : "Disabled"}
+            </StatusChip>
+            <StatusChip
+              tone={
+                profile.adminOrgRole === adminOrgRole.owner
+                  ? "nominal"
+                  : profile.adminOrgRole === adminOrgRole.none
+                    ? "pending"
+                    : "success"
+              }
+              size="sm"
+            >
+              {adminRoleLabel}
             </StatusChip>
             <StatusChip tone="nominal" size="sm">
               {profile.identity.actorType}

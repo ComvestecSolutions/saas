@@ -42,6 +42,10 @@ test.describe("admin operator journey", () => {
       await page.waitForFunction(
         () => document.documentElement.dataset.adminShellHydrated === "true",
       );
+      await expect(
+        page.getByTestId("mission-control-visual-shell"),
+      ).toBeVisible({ timeout: 15_000 });
+      await page.waitForLoadState("networkidle");
     });
 
     await test.step("pin tenant via omnibar prefix grammar", async () => {
@@ -53,6 +57,10 @@ test.describe("admin operator journey", () => {
       await expect(page).toHaveURL(
         new RegExp(`/desk/tenant/${trustedSession.tenantId}`),
       );
+      await expect(page.getByTestId("tenant-workspace-v2-ready")).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.waitForLoadState("networkidle");
     });
 
     await test.step("open /desk/audit and reveal a regulated-sensitive field", async () => {
@@ -77,6 +85,7 @@ test.describe("admin operator journey", () => {
       await expect(
         page.getByTestId("reveal-field-value").first(),
       ).toBeVisible();
+      await page.waitForLoadState("networkidle");
     });
 
     await test.step("invite a member via /admin/members", async () => {
@@ -100,6 +109,10 @@ test.describe("admin operator journey", () => {
         page.getByTestId("admin-members-action-success"),
       ).toContainText(trustedSession.inviteEmail);
       await expect(page.getByTestId("reveal-field-value")).toBeVisible();
+      await expect(page.getByTestId("admin-members-table")).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.waitForLoadState("networkidle");
     });
 
     await test.step("issue then revoke an admin-operator-test-token", async () => {

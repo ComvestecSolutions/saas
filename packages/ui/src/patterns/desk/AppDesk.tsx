@@ -92,13 +92,16 @@ export function AppDesk({
     gridTemplateRows: template.rows,
     gridTemplateColumns: template.columns,
     gridTemplateAreas: template.areas,
-    width: "100vw",
-    height: "100vh",
+    width: "100%",
+    minWidth: 0,
+    minHeight: "100dvh",
+    height: "100dvh",
     background:
       "radial-gradient(980px 620px at 0% -12%, color-mix(in oklab, #6f6a2f 11%, transparent), transparent 60%), radial-gradient(1160px 720px at 100% 0%, color-mix(in oklab, #1f6d78 14%, transparent), transparent 62%), radial-gradient(640px 420px at 52% 120%, color-mix(in oklab, #143b66 18%, transparent), transparent 70%), linear-gradient(180deg, var(--canvas-900), var(--canvas-975))",
     color: "var(--fg-default)",
     position: "relative",
     overflow: "hidden",
+    isolation: "isolate",
   };
 
   return (
@@ -122,7 +125,16 @@ export function AppDesk({
       />
       <div style={{ gridArea: "pulse", minWidth: 0 }}>{pulseRibbon}</div>
       {isMobile ? null : (
-        <div style={{ gridArea: "rail", minHeight: 0 }}>{edgeRail}</div>
+        <div
+          style={{
+            gridArea: "rail",
+            minHeight: 0,
+            minWidth: 0,
+            display: "flex",
+          }}
+        >
+          {edgeRail}
+        </div>
       )}
       <div
         style={{
@@ -135,7 +147,16 @@ export function AppDesk({
         {workbench}
       </div>
       {isMobile ? null : (
-        <div style={{ gridArea: "spine", minHeight: 0 }}>{contextSpine}</div>
+        <div
+          style={{
+            gridArea: "spine",
+            minHeight: 0,
+            minWidth: 0,
+            display: "flex",
+          }}
+        >
+          {contextSpine}
+        </div>
       )}
       <div style={{ gridArea: "strip", minWidth: 0 }}>{commandStrip}</div>
     </div>

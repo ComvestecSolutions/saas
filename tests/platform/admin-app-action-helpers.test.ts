@@ -12,6 +12,7 @@ import {
 } from "@comvestec/platform";
 import {
   actorType,
+  adminOrgRole,
   adminQuerySortDirection,
   authorizationAuditAction,
   authorizationNamespace,
@@ -216,6 +217,7 @@ describe("admin app action helpers", () => {
         enabled: true,
       },
       sessionId: request.sessionId,
+      adminOrgRole: adminOrgRole.owner,
       capabilities: [],
     } as const;
     const getAdminOperatorProfile: NonNullable<
@@ -252,6 +254,7 @@ describe("admin app action helpers", () => {
           enabled: true,
         },
         sessionId: request.sessionId,
+        adminOrgRole: adminOrgRole.owner,
         capabilities: [],
       },
       operators: [

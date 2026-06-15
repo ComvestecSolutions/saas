@@ -4,6 +4,7 @@ import {
   AdminGovernanceActionPolicyMetadataListSchema,
   adminGovernanceActionPolicyId,
   adminGovernanceActionPolicySeverity,
+  adminOrgRole,
   adminQuerySortDirection,
   authorizationAuditAction,
   authorizationNamespace,
@@ -79,6 +80,7 @@ const operatorDirectory = {
       enabled: true,
     },
     sessionId: "sess_admin_access_control",
+    adminOrgRole: adminOrgRole.owner,
     capabilities: [],
   },
   operators: [

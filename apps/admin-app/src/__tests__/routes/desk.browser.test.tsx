@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { AdminOperatorProfile } from "@comvestec/contracts";
 import {
   actorType,
+  adminOrgRole,
   adminOperatorCapability,
   adminRoutePath,
   adminSavedViewResourceKind,
@@ -52,13 +53,14 @@ const buildProfile = (
   ],
 ): AdminOperatorProfile => ({
   sessionId: "session-fixture",
+  adminOrgRole: adminOrgRole.owner,
   identity: {
     actorId: "operator-fixture",
     username: "operator.fixture",
     enabled: true,
     email: "operator@example.test",
     displayName: "Operator Fixture",
-    actorType: "platform-operator",
+    actorType: actorType.platformOperator,
   },
   capabilities: [...capabilities],
 });
@@ -280,6 +282,14 @@ describe("Operator Desk shell route", () => {
     ).not.toBeNull();
     expect(document.body.textContent).toContain("Operator Fixture");
     expect(document.body.textContent).toContain("operator@example.test");
+    expect(
+      container.querySelector('[data-testid="context-spine-actor-role"]')
+        ?.textContent,
+    ).toContain("Owner");
+    expect(
+      container.querySelector('[data-testid="context-spine-actor-type"]')
+        ?.textContent,
+    ).toContain(actorType.platformOperator);
     expect(document.body.textContent).toContain("Daily driver");
     expect(document.body.textContent).toContain("Incident response");
     expect(document.body.textContent).toContain("Audit triage");
@@ -394,6 +404,47 @@ describe("Operator Desk shell route", () => {
       "Repair queues, billing gap inspection",
     );
     expect(document.body.textContent).toContain("Webhook delivery posture");
+  });
+
+  it("dismisses the surfaces menu when the operator clicks outside it", async () => {
+    await act(async () => {
+      root.render(
+        <DeskShell
+          profile={buildFullProfile()}
+          workspaces={buildWorkspaces()}
+          savedViews={buildSavedViews()}
+          runAsBanner={inactiveRunAsBanner}
+          currentPath={adminRoutePath.operationsHome}
+          deviceClass="desktop"
+        >
+          <span />
+        </DeskShell>,
+      );
+    });
+
+    const menuButton = await waitForSelector(
+      'button[aria-label="Open control surfaces"]',
+    );
+    expect(menuButton).not.toBeNull();
+
+    await act(async () => {
+      menuButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(
+      document.querySelector("[data-testid='desk-shell-navigation-menu']"),
+    ).not.toBeNull();
+
+    await act(async () => {
+      document.body.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true }),
+      );
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(
+      document.querySelector("[data-testid='desk-shell-navigation-menu']"),
+    ).toBeNull();
   });
 
   it("compresses command-strip utility actions on mobile shells", async () => {

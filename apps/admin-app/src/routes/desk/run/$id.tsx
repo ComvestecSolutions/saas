@@ -4,16 +4,19 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   HighRiskActionGuard,
   StateScreen,
+  StatusChip,
   type HighRiskReason,
+  type StatusChipTone,
 } from "@comvestec/ui";
 import { workflowRunStatus } from "@comvestec/contracts";
 import { createAdminAppFileRoute } from "../../../file-route";
-import { ScreenHeader } from "../../../components/ui";
+import { KpiCard, ScreenHeader } from "../../../components/ui";
 import type { AdminWorkflowRunDetailRouteData } from "../../../lib/workflow-run-detail-route-data";
 import {
   cancelAdminWorkflowRun,
   replayAdminWorkflowRun,
 } from "../../../lib/workflow-run-detail-mutations-server";
+import { formatAdminTimestamp } from "../../../lib/timestamp-format";
 
 /**
  * `/desk/run/$id` — spec-canonical Workflow Run Detail v2 surface
@@ -79,6 +82,38 @@ const cancelReasonCatalog: readonly HighRiskReason[] = [
     label: "Policy violation — cancel run",
   },
 ];
+
+const buildWorkflowStatusTone = (status: string): StatusChipTone => {
+  switch (status) {
+    case workflowRunStatus.succeeded:
+      return "success";
+    case workflowRunStatus.failed:
+    case workflowRunStatus.canceled:
+      return "error";
+    case workflowRunStatus.stale:
+      return "drift";
+    default:
+      return "pending";
+  }
+};
+
+const buildWorkflowStatusKpiTone = (
+  status: string,
+): "accent" | "good" | "warn" | "alert" => {
+  switch (buildWorkflowStatusTone(status)) {
+    case "success":
+      return "good";
+    case "error":
+      return "alert";
+    case "drift":
+      return "warn";
+    default:
+      return "accent";
+  }
+};
+
+const formatWorkflowTimestamp = (value: string | null | undefined) =>
+  value === undefined || value === null ? "—" : formatAdminTimestamp(value);
 
 export const Route = createAdminAppFileRoute("/desk/run/$id")({
   loader: async ({ params }) => {
@@ -210,11 +245,14 @@ function WorkflowRunDetailRoute() {
     }
   };
 
+  const stepErrorCount = run.steps.filter((step) => step.error !== null).length;
+  const statusTone = buildWorkflowStatusTone(run.status);
+
   return (
     <section
       data-testid="workflow-run-detail-ready"
       data-pattern="workflow-run-detail-v2"
-      style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}
+      className="ops-screen ops-screen--tight"
     >
       <ScreenHeader
         title={run.workflowKey}
@@ -223,19 +261,40 @@ function WorkflowRunDetailRoute() {
           { label: "Workflow runs", href: "/desk/runs" },
           { label: run.runId },
         ]}
-        subtitle={
-          <>
-            Status{" "}
-            <span
-              className="mono"
-              data-testid="workflow-run-detail-status-chip"
-              data-status={run.status}
-            >
-              {run.status}
-            </span>{" "}
-            · Module <span className="mono">{run.moduleId}</span> · Attempt{" "}
-            <span className="mono">{run.attempt}</span>
-          </>
+        subtitle={`${run.moduleId} · Run ${run.runId} · Attempt ${run.attempt}`}
+        actions={
+          replayable || cancelable ? (
+            <div className="ops-inline-actions">
+              {replayable ? (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--primary"
+                  data-testid="workflow-run-detail-replay-cta"
+                  onClick={() => {
+                    setActionError(null);
+                    setActionSuccess(null);
+                    setReplayArmed(true);
+                  }}
+                >
+                  Replay run
+                </button>
+              ) : null}
+              {cancelable ? (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--danger"
+                  data-testid="workflow-run-detail-cancel-cta"
+                  onClick={() => {
+                    setActionError(null);
+                    setActionSuccess(null);
+                    setCancelArmed(true);
+                  }}
+                >
+                  Cancel run
+                </button>
+              ) : null}
+            </div>
+          ) : undefined
         }
       />
 
@@ -243,13 +302,7 @@ function WorkflowRunDetailRoute() {
         <div
           data-testid="workflow-run-detail-action-success"
           role="status"
-          style={{
-            padding: 6,
-            color: "var(--status-success-fg)",
-            background: "var(--status-success-bg)",
-            border: "1px solid var(--status-success-border)",
-            borderRadius: 4,
-          }}
+          className="ops-feedback success"
         >
           {actionSuccess}
         </div>
@@ -258,199 +311,225 @@ function WorkflowRunDetailRoute() {
         <div
           data-testid="workflow-run-detail-action-error"
           role="alert"
-          style={{
-            padding: 6,
-            color: "var(--status-error-fg)",
-            background: "var(--status-error-bg)",
-            border: "1px solid var(--status-error-border)",
-            borderRadius: 4,
-          }}
+          className="ops-feedback error"
         >
           {actionError}
         </div>
       ) : null}
 
-      <section
-        data-testid="workflow-run-detail-summary"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          padding: 6,
-          border: "1px solid var(--bg-2)",
-          borderRadius: 4,
-        }}
-      >
-        <div>
-          <strong>Run id:</strong>{" "}
-          <span className="mono" data-testid="workflow-run-detail-run-id">
-            {run.runId}
-          </span>
-        </div>
-        <div>
-          <strong>Workflow:</strong>{" "}
-          <span className="mono">{run.workflowKey}</span>
-        </div>
-        <div>
-          <strong>Module:</strong> <span className="mono">{run.moduleId}</span>
-        </div>
-        <div>
-          <strong>Queued at:</strong>{" "}
-          <span className="mono">{run.queuedAt}</span>
-        </div>
-        <div>
-          <strong>Started at:</strong>{" "}
-          <span className="mono">{run.startedAt ?? "—"}</span>
-        </div>
-        <div>
-          <strong>Finished at:</strong>{" "}
-          <span className="mono">{run.finishedAt ?? "—"}</span>
-        </div>
-        <div>
-          <strong>Duration (ms):</strong>{" "}
-          <span className="mono">{run.durationMs ?? "—"}</span>
-        </div>
-        {run.lastError !== undefined ? (
-          <div data-testid="workflow-run-detail-last-error">
-            <strong>Last error:</strong>{" "}
-            <span className="mono">{run.lastError}</span>
+      <div className="ops-bento" data-testid="workflow-run-detail-kpis">
+        <KpiCard
+          label="Status"
+          value={run.status}
+          tone={buildWorkflowStatusKpiTone(run.status)}
+          hint={
+            replayable
+              ? "Replay available"
+              : cancelable
+                ? "Cancellation available"
+                : undefined
+          }
+        />
+        <KpiCard
+          label="Attempt"
+          value={run.attempt}
+          tone={run.attempt > 1 ? "warn" : "neutral"}
+          hint="Current execution attempt"
+        />
+        <KpiCard
+          label="Steps"
+          value={run.steps.length}
+          tone={run.steps.length > 0 ? "neutral" : "warn"}
+          hint="Recorded workflow stages"
+        />
+        <KpiCard
+          label="Step errors"
+          value={stepErrorCount}
+          tone={stepErrorCount > 0 ? "alert" : "good"}
+          hint="Stages carrying an error payload"
+        />
+        <KpiCard
+          label="Queued"
+          value={formatWorkflowTimestamp(run.queuedAt)}
+          tone="neutral"
+        />
+        <KpiCard
+          label="Finished"
+          value={formatWorkflowTimestamp(run.finishedAt)}
+          tone={
+            run.finishedAt === null
+              ? run.status === workflowRunStatus.running
+                ? "accent"
+                : "warn"
+              : "neutral"
+          }
+        />
+      </div>
+
+      <div className="ops-insight-grid">
+        <section
+          data-testid="workflow-run-detail-summary"
+          className="ops-insight-card"
+        >
+          <p className="ops-card-title">Run summary</p>
+          <div className="ops-inline-cluster">
+            <StatusChip
+              tone={statusTone}
+              size="sm"
+              data-testid="workflow-run-detail-status-chip"
+              data-status={run.status}
+            >
+              {run.status}
+            </StatusChip>
+            <span className="mono" data-testid="workflow-run-detail-run-id">
+              {run.runId}
+            </span>
           </div>
-        ) : null}
-      </section>
+          <div className="ops-detail-grid">
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Workflow</span>
+              <span className="mono">{run.workflowKey}</span>
+            </div>
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Module</span>
+              <span className="mono">{run.moduleId}</span>
+            </div>
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Queued at</span>
+              <span className="mono">
+                {formatWorkflowTimestamp(run.queuedAt)}
+              </span>
+            </div>
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Started at</span>
+              <span className="mono">
+                {formatWorkflowTimestamp(run.startedAt)}
+              </span>
+            </div>
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Finished at</span>
+              <span className="mono">
+                {formatWorkflowTimestamp(run.finishedAt)}
+              </span>
+            </div>
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Duration (ms)</span>
+              <span className="mono">{run.durationMs ?? "—"}</span>
+            </div>
+          </div>
+          {run.lastError !== undefined ? (
+            <div
+              data-testid="workflow-run-detail-last-error"
+              className="ops-feedback error"
+            >
+              <span className="mono">{run.lastError}</span>
+            </div>
+          ) : (
+            <span className="ops-secondary-text">
+              No terminal error is attached to this run.
+            </span>
+          )}
+        </section>
+
+        <section
+          data-testid="workflow-run-detail-payload"
+          className="ops-insight-card"
+        >
+          <p className="ops-card-title">Payload &amp; audit</p>
+          <div className="ops-detail-grid">
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">
+                Audit correlation id
+              </span>
+              <span
+                className="mono"
+                data-testid="workflow-run-detail-audit-correlation"
+              >
+                {run.auditCorrelationId}
+              </span>
+            </div>
+            <div className="ops-detail-card">
+              <span className="ops-detail-card__label">Operator posture</span>
+              <span>
+                {cancelable
+                  ? "Cancellation is currently available."
+                  : replayable
+                    ? "Replay is currently available."
+                    : "Run is closed for direct action."}
+              </span>
+            </div>
+          </div>
+          <div className="ops-json-frame">
+            <pre data-testid="workflow-run-detail-payload-projection">
+              {run.payloadProjection}
+            </pre>
+          </div>
+        </section>
+      </div>
 
       <section
         data-testid="workflow-run-detail-steps"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          padding: 6,
-          border: "1px solid var(--bg-2)",
-          borderRadius: 4,
-        }}
+        className="ops-insight-card"
       >
-        <h2 style={{ fontSize: "0.9375rem", padding: 4, margin: 0 }}>Steps</h2>
+        <p className="ops-card-title">Workflow steps</p>
+        <span className="ops-secondary-text">
+          Review step timing, terminal failures, and the stages that still need
+          operator intervention.
+        </span>
         {run.steps.length === 0 ? (
           <div
             data-testid="workflow-run-detail-steps-empty"
-            style={{ padding: 4 }}
+            className="ops-feedback error"
           >
             No steps reported for this run.
           </div>
         ) : (
-          <table
-            data-testid="workflow-run-detail-steps-table"
-            data-pattern="dense-data-table"
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "0.8125rem",
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: 4 }}>Step</th>
-                <th style={{ textAlign: "left", padding: 4 }}>Status</th>
-                <th style={{ textAlign: "left", padding: 4 }}>Started</th>
-                <th style={{ textAlign: "left", padding: 4 }}>Finished</th>
-                <th style={{ textAlign: "left", padding: 4 }}>Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {run.steps.map((step) => (
-                <tr
-                  key={step.stepKey}
-                  data-testid="workflow-run-detail-step-row"
-                  data-step-key={step.stepKey}
-                  data-status={step.status}
-                >
-                  <td style={{ padding: 4 }} className="mono">
-                    {step.stepKey}
-                  </td>
-                  <td style={{ padding: 4 }}>{step.status}</td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {step.startedAt ?? "—"}
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {step.finishedAt ?? "—"}
-                  </td>
-                  <td style={{ padding: 4 }} className="mono">
-                    {step.error ?? "—"}
-                  </td>
+          <div className="ops-table-wrapper">
+            <table
+              className="ops-table"
+              data-testid="workflow-run-detail-steps-table"
+              data-pattern="dense-data-table"
+            >
+              <thead>
+                <tr>
+                  <th scope="col">Step</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Started</th>
+                  <th scope="col">Finished</th>
+                  <th scope="col">Error</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {run.steps.map((step) => (
+                  <tr
+                    key={step.stepKey}
+                    data-testid="workflow-run-detail-step-row"
+                    data-step-key={step.stepKey}
+                    data-status={step.status}
+                  >
+                    <td className="mono">{step.stepKey}</td>
+                    <td>
+                      <StatusChip
+                        tone={buildWorkflowStatusTone(step.status)}
+                        size="sm"
+                      >
+                        {step.status}
+                      </StatusChip>
+                    </td>
+                    <td className="mono">
+                      {formatWorkflowTimestamp(step.startedAt)}
+                    </td>
+                    <td className="mono">
+                      {formatWorkflowTimestamp(step.finishedAt)}
+                    </td>
+                    <td className="mono">{step.error ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
-
-      <section
-        data-testid="workflow-run-detail-payload"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          padding: 6,
-          border: "1px solid var(--bg-2)",
-          borderRadius: 4,
-        }}
-      >
-        <h2 style={{ fontSize: "0.9375rem", padding: 4, margin: 0 }}>
-          Payload &amp; audit
-        </h2>
-        <div>
-          <strong>Audit correlation id:</strong>{" "}
-          <span
-            className="mono"
-            data-testid="workflow-run-detail-audit-correlation"
-          >
-            {run.auditCorrelationId}
-          </span>
-        </div>
-        <pre
-          data-testid="workflow-run-detail-payload-projection"
-          style={{
-            margin: 0,
-            padding: 4,
-            fontSize: "0.6875rem",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
-          }}
-        >
-          {run.payloadProjection}
-        </pre>
-      </section>
-
-      {replayable || cancelable ? (
-        <div style={{ display: "flex", gap: 6 }}>
-          {replayable ? (
-            <button
-              type="button"
-              data-testid="workflow-run-detail-replay-cta"
-              onClick={() => {
-                setActionError(null);
-                setActionSuccess(null);
-                setReplayArmed(true);
-              }}
-            >
-              Replay
-            </button>
-          ) : null}
-          {cancelable ? (
-            <button
-              type="button"
-              data-testid="workflow-run-detail-cancel-cta"
-              onClick={() => {
-                setActionError(null);
-                setActionSuccess(null);
-                setCancelArmed(true);
-              }}
-            >
-              Cancel
-            </button>
-          ) : null}
-        </div>
-      ) : null}
 
       {replayArmed ? (
         <HighRiskActionGuard

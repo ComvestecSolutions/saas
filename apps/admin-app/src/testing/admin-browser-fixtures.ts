@@ -480,6 +480,7 @@ const operatorProfile: ShellReadyData["profile"] = {
     enabled: true,
   },
   sessionId: capabilitySnapshot.sessionId ?? "sess_admin_browser",
+  adminOrgRole: adminOrgRole.owner,
   capabilities: capabilitySnapshot.capabilities,
 };
 
@@ -3253,6 +3254,7 @@ export const createAdminBrowserFixtureState = (): AdminBrowserFixtureState => {
           enabled: true,
         },
         sessionId: "sess_admin_profile_fixture",
+        adminOrgRole: adminOrgRole.owner,
         capabilities: operatorProfile.capabilities,
       },
     }),

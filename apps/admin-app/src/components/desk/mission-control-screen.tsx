@@ -394,374 +394,392 @@ function MissionControlReadyView({
         }
       />
 
-      <section
-        className="ops-mission-signal-band"
-        aria-label="Operations posture"
+      <div
+        className="ops-mission-visual-shell"
+        data-testid="mission-control-visual-shell"
       >
-        {signals.map((signal) => (
-          <article
-            key={signal.id}
-            className="ops-mission-signal"
-            data-tone={signal.tone}
-          >
-            <span className="ops-mission-signal__label">{signal.label}</span>
-            <strong className="ops-mission-signal__value">
-              {signal.value}
-            </strong>
-            <span className="ops-mission-signal__note">{signal.note}</span>
-          </article>
-        ))}
-      </section>
-
-      {partialFailures.length > 0 ? (
-        <div
-          className="ops-feedback error"
-          role="note"
-          data-testid="desk-center-partial-failures"
+        <section
+          className="ops-mission-signal-band"
+          aria-label="Operations posture"
         >
-          {partialFailures.length} snapshot section
-          {partialFailures.length === 1 ? "" : "s"} failed:{" "}
-          {partialFailures.map((failure) => failure.section).join(", ")}
-        </div>
-      ) : null}
+          {signals.map((signal) => (
+            <article
+              key={signal.id}
+              className="ops-mission-signal"
+              data-tone={signal.tone}
+            >
+              <span className="ops-mission-signal__label">{signal.label}</span>
+              <strong className="ops-mission-signal__value">
+                {signal.value}
+              </strong>
+              <span className="ops-mission-signal__note">{signal.note}</span>
+            </article>
+          ))}
+        </section>
 
-      <section className="ops-mission-digest-grid" aria-label="Mission digest">
-        {digestCards.map((card) => (
-          <article
-            key={card.id}
-            className="ops-mission-digest"
-            data-tone={card.tone}
+        {partialFailures.length > 0 ? (
+          <div
+            className="ops-feedback error"
+            role="note"
+            data-testid="desk-center-partial-failures"
           >
-            <span className="ops-mission-digest__label">{card.label}</span>
-            <strong className="ops-mission-digest__value">{card.value}</strong>
-            <span className="ops-mission-digest__note">{card.note}</span>
-            <span className="ops-mission-digest__meta">{card.meta}</span>
-          </article>
-        ))}
-      </section>
+            {partialFailures.length} snapshot section
+            {partialFailures.length === 1 ? "" : "s"} failed:{" "}
+            {partialFailures.map((failure) => failure.section).join(", ")}
+          </div>
+        ) : null}
 
-      <div className="ops-mission-grid">
-        <div className="ops-mission-grid__main">
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">Platform posture</p>
-            </div>
-            {snapshot.kpis.length === 0 ? (
-              <EmptyState
-                title="No KPIs available"
-                description="No KPI sources reported a value for this snapshot."
-              />
-            ) : (
-              <div className="ops-mission-kpis">
-                {snapshot.kpis.map((kpi) => (
-                  <KpiTileV2
-                    key={kpi.id}
-                    label={kpi.label}
-                    value={`${kpi.value} ${kpi.unit}`}
-                    tone={mapKpiTone(kpi)}
-                    onClick={() => {
-                      // Drill targets are routed through the omnibar-backed
-                      // workbench; keep the tile interactive so the affordance
-                      // stays stable as deeper routing lands.
-                    }}
-                    ariaLabel={`${kpi.label}: ${kpi.value} ${kpi.unit}`}
-                  />
-                ))}
+        <section
+          className="ops-mission-digest-grid"
+          aria-label="Mission digest"
+        >
+          {digestCards.map((card) => (
+            <article
+              key={card.id}
+              className="ops-mission-digest"
+              data-tone={card.tone}
+            >
+              <span className="ops-mission-digest__label">{card.label}</span>
+              <strong className="ops-mission-digest__value">
+                {card.value}
+              </strong>
+              <span className="ops-mission-digest__note">{card.note}</span>
+              <span className="ops-mission-digest__meta">{card.meta}</span>
+            </article>
+          ))}
+        </section>
+
+        <div className="ops-mission-grid">
+          <div className="ops-mission-grid__main">
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">Platform posture</p>
               </div>
-            )}
-          </section>
+              {snapshot.kpis.length === 0 ? (
+                <EmptyState
+                  title="No KPIs available"
+                  description="No KPI sources reported a value for this snapshot."
+                />
+              ) : (
+                <div className="ops-mission-kpis">
+                  {snapshot.kpis.map((kpi) => (
+                    <KpiTileV2
+                      key={kpi.id}
+                      label={kpi.label}
+                      value={`${kpi.value} ${kpi.unit}`}
+                      tone={mapKpiTone(kpi)}
+                      onClick={() => {
+                        // Drill targets are routed through the omnibar-backed
+                        // workbench; keep the tile interactive so the affordance
+                        // stays stable as deeper routing lands.
+                      }}
+                      ariaLabel={`${kpi.label}: ${kpi.value} ${kpi.unit}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
 
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">
-                Active alerts
-                <span className="ops-card-head__count">
-                  {snapshot.activeAlerts.length}
-                </span>
-              </p>
-            </div>
-            {snapshot.activeAlerts.length === 0 ? (
-              <EmptyState
-                title="No active alerts"
-                description="No vendor sources reported an active alert in this window."
-              />
-            ) : (
-              <div className="ops-alert-list">
-                {snapshot.activeAlerts.map((alert) => (
-                  <div key={alert.id} className={`ops-alert ${alert.severity}`}>
-                    <div className="ops-alert-body">
-                      <p className="ops-alert-title">
-                        <AlertIcon /> {alert.title}
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">
+                  Active alerts
+                  <span className="ops-card-head__count">
+                    {snapshot.activeAlerts.length}
+                  </span>
+                </p>
+              </div>
+              {snapshot.activeAlerts.length === 0 ? (
+                <EmptyState
+                  title="No active alerts"
+                  description="No vendor sources reported an active alert in this window."
+                />
+              ) : (
+                <div className="ops-alert-list">
+                  {snapshot.activeAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`ops-alert ${alert.severity}`}
+                    >
+                      <div className="ops-alert-body">
+                        <p className="ops-alert-title">
+                          <AlertIcon /> {alert.title}
+                          <StatusChip
+                            tone={mapAlertSeverityTone(alert)}
+                            size="sm"
+                          >
+                            {alert.severity}
+                          </StatusChip>
+                        </p>
+                        <p className="ops-alert-detail">
+                          {alert.summary} · {alert.sourceVendor} ·{" "}
+                          {formatMissionTimestamp(alert.openedAt)}
+                        </p>
+                        {alert.deepLink !== undefined ? (
+                          <p className="ops-alert-detail mono">
+                            {alert.deepLink}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <ClockIcon size={10} /> Recent activity
+                  </span>
+                  <span className="ops-card-head__count">
+                    {snapshot.recentAudit.length}
+                  </span>
+                </p>
+              </div>
+              {snapshot.recentAudit.length === 0 ? (
+                <EmptyState
+                  title="No recent activity"
+                  description="No recent audit events are available."
+                />
+              ) : (
+                <div className="ops-activity-list">
+                  {snapshot.recentAudit.map((event) => (
+                    <div key={event.id} className="ops-activity-item">
+                      <div>
+                        <span className="ops-activity-module">
+                          <span className="ops-dot ops-dot--active" />
+                          {event.actor}
+                        </span>
+                        <span className="ops-activity-action">
+                          {" · "}
+                          {event.action} · {event.target}
+                        </span>
+                        <div className="ops-alert-detail">
+                          Classification · {event.classification}
+                        </div>
+                      </div>
+                      <span className="ops-activity-time mono">
+                        {event.occurredAt.slice(0, 19).replace("T", " ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="ops-mission-grid__side">
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">
+                  Operator surface
+                  <span className="ops-card-head__count">
+                    {navigationCards.length}
+                  </span>
+                </p>
+              </div>
+              {navigationCards.length === 0 ? (
+                <EmptyState
+                  title="No capabilities enabled"
+                  description="This operator session does not have any admin capabilities."
+                />
+              ) : (
+                <>
+                  {directNavigationCards.length > 0 ? (
+                    <div className="ops-mission-nav-group">
+                      <p className="ops-card-title">Direct lanes</p>
+                      <div className="ops-mission-nav-grid">
+                        {directNavigationCards.map((card) => (
+                          <Link
+                            key={card.key}
+                            to={card.routePath}
+                            className="ops-card-row ops-card-row--mission-link"
+                            data-nav-key={card.key}
+                            data-requires-step-up={card.requiresStepUp}
+                            style={{ textDecoration: "none" }}
+                          >
+                            <span className="ops-mission-nav-grid__label">
+                              <ExternalIcon size={11} />
+                              {card.label}
+                            </span>
+                            <span className="mono ops-mission-nav-grid__meta">
+                              {card.routePath}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {stepUpNavigationCards.length > 0 ? (
+                    <div className="ops-mission-nav-group">
+                      <p className="ops-card-title">Step-up lanes</p>
+                      <div className="ops-mission-nav-grid">
+                        {stepUpNavigationCards.map((card) => (
+                          <Link
+                            key={card.key}
+                            to={card.routePath}
+                            className="ops-card-row ops-card-row--mission-link"
+                            data-nav-key={card.key}
+                            data-requires-step-up={card.requiresStepUp}
+                            style={{ textDecoration: "none" }}
+                          >
+                            <span className="ops-mission-nav-grid__label">
+                              <ExternalIcon size={11} />
+                              {card.label}
+                            </span>
+                            <span className="mono ops-mission-nav-grid__meta">
+                              {card.routePath}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">
+                  Pending approvals
+                  <span className="ops-card-head__count">
+                    {snapshot.pendingApprovals.length}
+                  </span>
+                </p>
+              </div>
+              {snapshot.pendingApprovals.length === 0 ? (
+                <EmptyState
+                  title="No approvals waiting"
+                  description="No high-risk approvals are pending operator review."
+                />
+              ) : (
+                <div className="ops-activity-list">
+                  {snapshot.pendingApprovals.map((approval) => (
+                    <div
+                      key={`${approval.kind}-${approval.target}`}
+                      className="ops-activity-item"
+                    >
+                      <div>
+                        <span className="ops-activity-module">
+                          <span className="ops-dot ops-dot--pending" />
+                          {approval.kind}
+                        </span>
+                        <span className="ops-activity-action">
+                          {" · "}
+                          {approval.target} · requested by{" "}
+                          {approval.requestedBy}
+                        </span>
+                        <div className="ops-alert-detail">
+                          {approval.reasonPreview} ·{" "}
+                          {formatApprovalTtl(approval)}
+                        </div>
+                      </div>
+                      <span className="ops-activity-time mono">
+                        {formatMissionTimestamp(approval.requestedAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">
+                  Vendor posture
+                  <span className="ops-card-head__count">
+                    {snapshot.vendorPosture.length}
+                  </span>
+                </p>
+              </div>
+              {snapshot.vendorPosture.length === 0 ? (
+                <EmptyState
+                  title="No vendor posture reported"
+                  description="No vendor adapter reported a posture entry for this window."
+                />
+              ) : (
+                <div className="ops-vendor-grid">
+                  {snapshot.vendorPosture.map((vendor) => (
+                    <article
+                      key={vendor.vendor}
+                      className="ops-vendor-grid__card"
+                    >
+                      <div className="ops-vendor-grid__head">
+                        <span className="ops-vendor-grid__label">
+                          {vendor.vendor}
+                        </span>
                         <StatusChip
-                          tone={mapAlertSeverityTone(alert)}
+                          tone={mapVendorPostureTone(vendor)}
                           size="sm"
                         >
-                          {alert.severity}
+                          {vendor.posture}
                         </StatusChip>
-                      </p>
-                      <p className="ops-alert-detail">
-                        {alert.summary} · {alert.sourceVendor} ·{" "}
-                        {formatMissionTimestamp(alert.openedAt)}
-                      </p>
-                      {alert.deepLink !== undefined ? (
-                        <p className="ops-alert-detail mono">
-                          {alert.deepLink}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <ClockIcon size={10} /> Recent activity
-                </span>
-                <span className="ops-card-head__count">
-                  {snapshot.recentAudit.length}
-                </span>
-              </p>
-            </div>
-            {snapshot.recentAudit.length === 0 ? (
-              <EmptyState
-                title="No recent activity"
-                description="No recent audit events are available."
-              />
-            ) : (
-              <div className="ops-activity-list">
-                {snapshot.recentAudit.map((event) => (
-                  <div key={event.id} className="ops-activity-item">
-                    <div>
-                      <span className="ops-activity-module">
-                        <span className="ops-dot ops-dot--active" />
-                        {event.actor}
-                      </span>
-                      <span className="ops-activity-action">
-                        {" · "}
-                        {event.action} · {event.target}
-                      </span>
-                      <div className="ops-alert-detail">
-                        Classification · {event.classification}
                       </div>
-                    </div>
-                    <span className="ops-activity-time mono">
-                      {event.occurredAt.slice(0, 19).replace("T", " ")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        <div className="ops-mission-grid__side">
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">
-                Operator surface
-                <span className="ops-card-head__count">
-                  {navigationCards.length}
-                </span>
-              </p>
-            </div>
-            {navigationCards.length === 0 ? (
-              <EmptyState
-                title="No capabilities enabled"
-                description="This operator session does not have any admin capabilities."
-              />
-            ) : (
-              <>
-                {directNavigationCards.length > 0 ? (
-                  <div className="ops-mission-nav-group">
-                    <p className="ops-card-title">Direct lanes</p>
-                    <div className="ops-mission-nav-grid">
-                      {directNavigationCards.map((card) => (
-                        <Link
-                          key={card.key}
-                          to={card.routePath}
-                          className="ops-card-row ops-card-row--mission-link"
-                          data-nav-key={card.key}
-                          data-requires-step-up={card.requiresStepUp}
-                          style={{ textDecoration: "none" }}
-                        >
-                          <span className="ops-mission-nav-grid__label">
-                            <ExternalIcon size={11} />
-                            {card.label}
-                          </span>
-                          <span className="mono ops-mission-nav-grid__meta">
-                            {card.routePath}
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {stepUpNavigationCards.length > 0 ? (
-                  <div className="ops-mission-nav-group">
-                    <p className="ops-card-title">Step-up lanes</p>
-                    <div className="ops-mission-nav-grid">
-                      {stepUpNavigationCards.map((card) => (
-                        <Link
-                          key={card.key}
-                          to={card.routePath}
-                          className="ops-card-row ops-card-row--mission-link"
-                          data-nav-key={card.key}
-                          data-requires-step-up={card.requiresStepUp}
-                          style={{ textDecoration: "none" }}
-                        >
-                          <span className="ops-mission-nav-grid__label">
-                            <ExternalIcon size={11} />
-                            {card.label}
-                          </span>
-                          <span className="mono ops-mission-nav-grid__meta">
-                            {card.routePath}
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </section>
-
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">
-                Pending approvals
-                <span className="ops-card-head__count">
-                  {snapshot.pendingApprovals.length}
-                </span>
-              </p>
-            </div>
-            {snapshot.pendingApprovals.length === 0 ? (
-              <EmptyState
-                title="No approvals waiting"
-                description="No high-risk approvals are pending operator review."
-              />
-            ) : (
-              <div className="ops-activity-list">
-                {snapshot.pendingApprovals.map((approval) => (
-                  <div
-                    key={`${approval.kind}-${approval.target}`}
-                    className="ops-activity-item"
-                  >
-                    <div>
-                      <span className="ops-activity-module">
-                        <span className="ops-dot ops-dot--pending" />
-                        {approval.kind}
-                      </span>
-                      <span className="ops-activity-action">
-                        {" · "}
-                        {approval.target} · requested by {approval.requestedBy}
-                      </span>
-                      <div className="ops-alert-detail">
-                        {approval.reasonPreview} · {formatApprovalTtl(approval)}
-                      </div>
-                    </div>
-                    <span className="ops-activity-time mono">
-                      {formatMissionTimestamp(approval.requestedAt)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">
-                Vendor posture
-                <span className="ops-card-head__count">
-                  {snapshot.vendorPosture.length}
-                </span>
-              </p>
-            </div>
-            {snapshot.vendorPosture.length === 0 ? (
-              <EmptyState
-                title="No vendor posture reported"
-                description="No vendor adapter reported a posture entry for this window."
-              />
-            ) : (
-              <div className="ops-vendor-grid">
-                {snapshot.vendorPosture.map((vendor) => (
-                  <article
-                    key={vendor.vendor}
-                    className="ops-vendor-grid__card"
-                  >
-                    <div className="ops-vendor-grid__head">
-                      <span className="ops-vendor-grid__label">
-                        {vendor.vendor}
-                      </span>
-                      <StatusChip tone={mapVendorPostureTone(vendor)} size="sm">
-                        {vendor.posture}
-                      </StatusChip>
-                    </div>
-                    <div className="ops-vendor-grid__meta">
-                      {vendor.version !== undefined
-                        ? vendor.version
-                        : "version n/a"}
-                      {vendor.lastIncidentAt !== undefined
-                        ? ` · incident ${formatMissionTimestamp(vendor.lastIncidentAt)}`
-                        : ""}
-                    </div>
-                    <div className="ops-vendor-grid__metric mono">
-                      {vendor.latencyP95Ms !== undefined
-                        ? `p95 ${vendor.latencyP95Ms}ms`
-                        : "latency n/a"}
-                    </div>
-                    {vendor.message !== undefined ? (
                       <div className="ops-vendor-grid__meta">
-                        {vendor.message}
+                        {vendor.version !== undefined
+                          ? vendor.version
+                          : "version n/a"}
+                        {vendor.lastIncidentAt !== undefined
+                          ? ` · incident ${formatMissionTimestamp(vendor.lastIncidentAt)}`
+                          : ""}
                       </div>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+                      <div className="ops-vendor-grid__metric mono">
+                        {vendor.latencyP95Ms !== undefined
+                          ? `p95 ${vendor.latencyP95Ms}ms`
+                          : "latency n/a"}
+                      </div>
+                      {vendor.message !== undefined ? (
+                        <div className="ops-vendor-grid__meta">
+                          {vendor.message}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
 
-          <section className="ops-card ops-card--flush">
-            <div className="ops-card-head">
-              <p className="ops-card-head__title">
-                High-risk affordances
-                <span className="ops-card-head__count">
-                  {capabilitySnapshot.highRiskAffordances.length}
-                </span>
-              </p>
-            </div>
-            {capabilitySnapshot.highRiskAffordances.length === 0 ? (
-              <EmptyState
-                title="No high-risk affordances"
-                description="This session has no guarded actions surfaced right now."
-              />
-            ) : (
-              <div className="ops-mission-chip-grid">
-                {capabilitySnapshot.highRiskAffordances.map((affordance) => (
-                  <span
-                    key={affordance.reasonId}
-                    className="ops-chip"
-                    data-affordance-step-up={affordance.requiresStepUp}
-                  >
-                    <ShieldIcon size={10} />
-                    <span className="mono">{affordance.reasonId}</span>
-                    {affordance.requiresStepUp ? " · step-up" : ""}
-                    {affordance.requiresAttachment ? " · attachment" : ""}
+            <section className="ops-card ops-card--flush">
+              <div className="ops-card-head">
+                <p className="ops-card-head__title">
+                  High-risk affordances
+                  <span className="ops-card-head__count">
+                    {capabilitySnapshot.highRiskAffordances.length}
                   </span>
-                ))}
+                </p>
               </div>
-            )}
-          </section>
+              {capabilitySnapshot.highRiskAffordances.length === 0 ? (
+                <EmptyState
+                  title="No high-risk affordances"
+                  description="This session has no guarded actions surfaced right now."
+                />
+              ) : (
+                <div className="ops-mission-chip-grid">
+                  {capabilitySnapshot.highRiskAffordances.map((affordance) => (
+                    <span
+                      key={affordance.reasonId}
+                      className="ops-chip"
+                      data-affordance-step-up={affordance.requiresStepUp}
+                    >
+                      <ShieldIcon size={10} />
+                      <span className="mono">{affordance.reasonId}</span>
+                      {affordance.requiresStepUp ? " · step-up" : ""}
+                      {affordance.requiresAttachment ? " · attachment" : ""}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       </div>
     </div>

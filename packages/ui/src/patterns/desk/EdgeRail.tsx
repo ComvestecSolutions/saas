@@ -62,6 +62,8 @@ export function EdgeRail({
         data-device-class={deviceClass}
         style={{
           width: railWidth,
+          height: "100%",
+          minHeight: 0,
           background:
             "linear-gradient(180deg, color-mix(in oklab, white 2%, transparent), transparent 20%), linear-gradient(180deg, color-mix(in oklab, var(--canvas-900) 86%, transparent), var(--canvas-975))",
           borderRight: "var(--signal-seam)",
@@ -72,6 +74,7 @@ export function EdgeRail({
           alignItems: "stretch",
           gap: 8,
           padding: deviceClass === "tablet" ? "8px 6px 10px" : "10px 8px 12px",
+          overflow: "hidden",
         }}
       >
         <div
@@ -89,11 +92,15 @@ export function EdgeRail({
           Desk
         </div>
         <div
+          data-testid="edge-rail-items"
           style={{
             display: "grid",
             gap: 6,
+            flex: 1,
+            minHeight: 0,
             overflowY: "auto",
             paddingRight: 2,
+            alignContent: "start",
           }}
         >
           {items.map((item) => (

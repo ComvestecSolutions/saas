@@ -7,6 +7,10 @@ import {
   DeviceProvider,
   EdgeRail,
   HighRiskActionGuard,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
   PulseRibbon,
   RunAsBanner,
   Workbench,
@@ -45,6 +49,7 @@ import {
 } from "../components/ui/icons";
 import { DeskShellOmnibar } from "../components/desk-shell/omnibar";
 import { navigateAdminPath } from "../lib/browser-navigation";
+import { adminOrgRoleLabel } from "../lib/admin-org-role-display";
 import { adminPathMatchesRoute } from "../lib/admin-route-aliases";
 
 /**
@@ -583,6 +588,7 @@ function DeskShellContent({
   );
   const navigationMenuId = "desk-shell-navigation-menu";
   const operator = profile.identity;
+  const operatorRoleLabel = adminOrgRoleLabel[profile.adminOrgRole];
   const currentPath = resolveCurrentPath(currentPathProp);
   const deviceClassProps = {
     deviceClass: resolvedDeviceClass,
@@ -720,7 +726,11 @@ function DeskShellContent({
             }}
           />
         }
-        workbench={<Workbench {...deviceClassProps}>{children}</Workbench>}
+        workbench={
+          <Workbench {...deviceClassProps} scrollResetKey={currentPath}>
+            {children}
+          </Workbench>
+        }
         contextSpine={
           <ContextSpine {...deviceClassProps}>
             <section
@@ -759,10 +769,17 @@ function DeskShellContent({
                 data-testid="context-spine-actor-role"
                 style={{
                   fontSize: "0.68rem",
-                  color: "var(--fg-muted)",
+                  color: "var(--fg-elevated)",
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                 }}
+              >
+                {operatorRoleLabel}
+              </span>
+              <span
+                data-testid="context-spine-actor-type"
+                className="mono"
+                style={{ fontSize: "0.7rem", color: "var(--fg-muted)" }}
               >
                 {operator.actorType}
               </span>
@@ -1069,94 +1086,59 @@ function DeskShellContent({
                     gap: compactCommandActions ? 4 : 6,
                   }}
                 >
-                  <button
-                    type="button"
-                    aria-label="Open control surfaces"
-                    aria-expanded={navigationOpen}
-                    aria-controls={navigationMenuId}
-                    onClick={() => setNavigationOpen((current) => !current)}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      height: 28,
-                      paddingInline: compactCommandActions ? 6 : 8,
-                      borderRadius: 8,
-                      border:
-                        "1px solid color-mix(in oklab, white 8%, transparent)",
-                      background:
-                        "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
-                      color: "var(--fg-secondary)",
-                      cursor: "pointer",
-                    }}
+                  <Popover
+                    open={navigationOpen}
+                    onOpenChange={setNavigationOpen}
                   >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginRight: compactCommandActions ? 4 : 6,
-                      }}
-                    >
-                      <MenuGridIcon size={14} />
-                    </span>
-                    {compactCommandActions ? "Menu" : "Surfaces"}
-                  </button>
-                  <a
-                    aria-label="Open operator profile"
-                    href={adminRoutePath.profile}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      navigateToPath(adminRoutePath.profile, onNavigate);
-                    }}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      height: 28,
-                      paddingInline: compactCommandActions ? 6 : 8,
-                      borderRadius: 8,
-                      border:
-                        "1px solid color-mix(in oklab, white 8%, transparent)",
-                      background:
-                        "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
-                      color: "var(--fg-secondary)",
-                      textDecoration: "none",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginRight: compactCommandActions ? 4 : 6,
-                      }}
-                    >
-                      <UserBadgeIcon size={14} />
-                    </span>
-                    {compactCommandActions ? "Profile" : "Operator profile"}
-                  </a>
-                  {navigationOpen ? (
-                    <div
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Open control surfaces"
+                        aria-expanded={navigationOpen}
+                        aria-controls={
+                          navigationOpen ? navigationMenuId : undefined
+                        }
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          height: 28,
+                          paddingInline: compactCommandActions ? 6 : 8,
+                          borderRadius: 8,
+                          border:
+                            "1px solid color-mix(in oklab, white 8%, transparent)",
+                          background:
+                            "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
+                          color: "var(--fg-secondary)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: compactCommandActions ? 4 : 6,
+                          }}
+                        >
+                          <MenuGridIcon size={14} />
+                        </span>
+                        {compactCommandActions ? "Menu" : "Surfaces"}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
                       id={navigationMenuId}
                       data-testid="desk-shell-navigation-menu"
+                      side="top"
+                      align="end"
+                      collisionPadding={12}
                       style={{
-                        position: "absolute",
-                        right: 0,
-                        bottom: "calc(100% + 6px)",
-                        width: 240,
-                        maxHeight: 280,
+                        width: 260,
+                        maxHeight: "min(24rem, calc(100dvh - 64px))",
                         overflow: "auto",
                         padding: 6,
-                        borderRadius: 10,
-                        border:
-                          "1px solid color-mix(in oklab, white 10%, transparent)",
-                        background:
-                          "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 94%, transparent)",
-                        boxShadow: "0 22px 48px -28px rgb(0 0 0 / 0.82)",
                         display: "grid",
                         gap: 4,
-                        zIndex: 20,
                       }}
                     >
                       {navigationLinks.map((capability) => (
@@ -1193,7 +1175,7 @@ function DeskShellContent({
                               height: 28,
                               alignItems: "center",
                               justifyContent: "center",
-                              borderRadius: 8,
+                              borderRadius: 9,
                               background:
                                 "color-mix(in oklab, white 4%, transparent)",
                               color: "var(--fg-secondary)",
@@ -1204,11 +1186,21 @@ function DeskShellContent({
                           <span
                             style={{ display: "grid", gap: 2, minWidth: 0 }}
                           >
-                            <span>{capability.label}</span>
+                            <span
+                              style={{
+                                fontFamily: "var(--font-condensed)",
+                                fontSize: "0.72rem",
+                                letterSpacing: "0.1em",
+                                textTransform: "uppercase",
+                                color: "var(--fg-elevated)",
+                              }}
+                            >
+                              {capability.label}
+                            </span>
                             <span
                               style={{
                                 fontSize: "0.72rem",
-                                lineHeight: 1.35,
+                                lineHeight: 1.45,
                                 color: "var(--fg-muted)",
                               }}
                             >
@@ -1219,8 +1211,55 @@ function DeskShellContent({
                           </span>
                         </a>
                       ))}
-                    </div>
-                  ) : null}
+                    </PopoverContent>
+                    <PopoverAnchor asChild>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute",
+                          right: 0,
+                          top: 0,
+                          width: 1,
+                          height: 1,
+                          pointerEvents: "none",
+                        }}
+                      />
+                    </PopoverAnchor>
+                  </Popover>
+                  <a
+                    aria-label="Open operator profile"
+                    href={adminRoutePath.profile}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToPath(adminRoutePath.profile, onNavigate);
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      height: 28,
+                      paddingInline: compactCommandActions ? 6 : 8,
+                      borderRadius: 8,
+                      border:
+                        "1px solid color-mix(in oklab, white 8%, transparent)",
+                      background:
+                        "linear-gradient(180deg, color-mix(in oklab, white 4%, transparent), transparent), color-mix(in oklab, var(--canvas-850) 72%, transparent)",
+                      color: "var(--fg-secondary)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: compactCommandActions ? 4 : 6,
+                      }}
+                    >
+                      <UserBadgeIcon size={14} />
+                    </span>
+                    {compactCommandActions ? "Profile" : "Operator profile"}
+                  </a>
                 </div>
               </div>
             }

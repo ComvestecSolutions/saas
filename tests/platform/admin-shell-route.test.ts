@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import {
   actorType,
+  adminOrgRole,
   adminOperatorCapability,
   adminRoutePath,
 } from "@comvestec/contracts";
@@ -41,6 +42,7 @@ const operatorProfile = {
     enabled: true,
   },
   sessionId: capabilitySnapshot.sessionId,
+  adminOrgRole: adminOrgRole.owner,
   capabilities: capabilitySnapshot.capabilities,
 } as const;
 

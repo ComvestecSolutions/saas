@@ -427,10 +427,20 @@ function WorkflowRunsListRoute() {
                 ) : null}
               </div>
               <div className="ops-cell-stack">
-                <span className="ops-cell-stack__title mono">
+                <span
+                  className="ops-cell-stack__title mono ops-ellipsis"
+                  data-testid="workflow-runs-list-focus-run-id"
+                  title={focusedRun.runId}
+                >
                   {focusedRun.runId}
                 </span>
-                <span className="ops-text-muted">{focusedRun.workflowKey}</span>
+                <span
+                  className="ops-text-muted ops-ellipsis"
+                  data-testid="workflow-runs-list-focus-workflow-key"
+                  title={focusedRun.workflowKey}
+                >
+                  {focusedRun.workflowKey}
+                </span>
               </div>
               <p className="ops-note">
                 {resolveFocusedRunNarrative(focusedRun, focusedRunPinned)}
@@ -506,13 +516,22 @@ function WorkflowRunsListRoute() {
               </div>
               <div className="ops-detail-card">
                 <span className="ops-detail-card__label">Slowest visible</span>
-                <span className="mono">
-                  {slowestRun === undefined
-                    ? "—"
-                    : `${slowestRun.runId} · ${formatRunDuration(
-                        slowestRun.durationMs,
-                      )}`}
-                </span>
+                {slowestRun === undefined ? (
+                  <span className="mono">—</span>
+                ) : (
+                  <div className="ops-stack-xs">
+                    <span
+                      className="mono ops-ellipsis"
+                      data-testid="workflow-runs-list-slowest-run-id"
+                      title={slowestRun.runId}
+                    >
+                      {slowestRun.runId}
+                    </span>
+                    <span className="ops-text-muted">
+                      {formatRunDuration(slowestRun.durationMs)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             {succeededCount === 0 ? (

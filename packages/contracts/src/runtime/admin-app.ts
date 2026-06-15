@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { AdminOperatorIdentitySchema } from "../access/admin-operators";
 import { ActorTypeSchema } from "../access/actor-types";
+import { AdminOrgRoleSchema } from "../access/capability-snapshot-v2";
 import { ProjectionProfileSchema } from "../data/projection-profiles";
 
 const AdminRoutePathConstantSchema = Schema.Struct({
@@ -289,6 +290,7 @@ export type AdminOperatorCapabilitySnapshot = Schema.Schema.Type<
 export const AdminOperatorProfileSchema = Schema.Struct({
   identity: AdminOperatorIdentitySchema,
   sessionId: Schema.NonEmptyString,
+  adminOrgRole: AdminOrgRoleSchema,
   capabilities: Schema.Array(AdminOperatorCapabilityEntrySchema),
 });
 

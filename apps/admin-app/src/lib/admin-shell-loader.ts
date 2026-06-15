@@ -38,7 +38,9 @@ type LoadAdminShellRouteDataFromCurrentRequest = (
 
 type GetCurrentServerRequest = () => Request | undefined;
 
-type LoadAdminShellClientRouteData = () => Promise<AdminShellRouteData>;
+type LoadAdminShellClientRouteData = (
+  signal?: AbortSignal,
+) => Promise<AdminShellRouteData>;
 
 export const loadAdminShellRouteDataForCurrentRuntime = async (
   options: {
@@ -46,6 +48,7 @@ export const loadAdminShellRouteDataForCurrentRuntime = async (
     readonly getCurrentServerRequest?: GetCurrentServerRequest;
     readonly loadServerRouteDataFromRequest?: LoadAdminShellRouteDataFromCurrentRequest;
     readonly loadClientRouteData?: LoadAdminShellClientRouteData;
+    readonly signal?: AbortSignal;
   } = {},
 ) => {
   const {
@@ -59,14 +62,16 @@ export const loadAdminShellRouteDataForCurrentRuntime = async (
         loadAdminShellRouteDataFromRequest(request, process.env),
       );
     },
-    loadClientRouteData = () =>
+    loadClientRouteData = (signal) =>
       getAdminShellData({
         data: undefined,
+        signal,
       }) as Promise<AdminShellRouteData>,
+    signal,
   } = options;
 
   if (isBrowserRuntime) {
-    return loadClientRouteData();
+    return loadClientRouteData(signal);
   }
 
   const currentServerRequest = getCurrentServerRequest();
@@ -85,14 +90,17 @@ export const loadAdminShellRouteDataForCurrentRuntime = async (
 
 export const loadAdminShellLoaderData = async (
   location: Readonly<AdminShellLoaderLocation>,
-  loadRouteData: () => Promise<AdminShellRouteData> = () =>
-    loadAdminShellRouteDataForCurrentRuntime(),
+  loadRouteData?: () => Promise<AdminShellRouteData>,
+  signal?: AbortSignal,
 ) => {
   if (isAdminAuthRoutePath(location.pathname)) {
     return anonymousAdminShellRouteData;
   }
 
-  const routeData = await loadRouteData();
+  const routeData = await (
+    loadRouteData ??
+    (() => loadAdminShellRouteDataForCurrentRuntime({ signal }))
+  )();
 
   return routeData;
 };

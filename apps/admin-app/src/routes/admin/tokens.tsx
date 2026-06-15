@@ -631,7 +631,10 @@ function AdminTokensRoute() {
                 </article>
               </div>
 
-              <div className="ops-inline-cluster">
+              <div
+                className="ops-inline-cluster"
+                data-testid="admin-tokens-focus-actions"
+              >
                 <Link className="ops-btn ops-btn--ghost" to="/admin/audit">
                   Review audit trail
                 </Link>

@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useDeviceClass, type DeviceClass } from "../../runtime/useDeviceClass";
 
 /**
@@ -17,7 +17,11 @@ export type WorkbenchProps = {
   readonly children: ReactNode;
   readonly ariaLabel?: string;
   readonly deviceClass?: DeviceClass;
+  readonly scrollResetKey?: string | number;
 };
+
+const useWorkbenchLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
  * Re-export the URL-encoding helpers so callers wiring loader-side
@@ -38,12 +42,20 @@ export function Workbench({
   children,
   ariaLabel = "Workbench",
   deviceClass: deviceClassProp,
+  scrollResetKey,
 }: WorkbenchProps) {
   const resolvedDeviceClass = useDeviceClass();
   const deviceClass = deviceClassProp ?? resolvedDeviceClass;
   const stackAsRows = deviceClass === "mobile";
+  const workbenchRef = useRef<HTMLElement | null>(null);
+
+  useWorkbenchLayoutEffect(() => {
+    workbenchRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [scrollResetKey]);
+
   return (
     <main
+      ref={workbenchRef}
       role="main"
       aria-label={ariaLabel}
       data-pattern="workbench"

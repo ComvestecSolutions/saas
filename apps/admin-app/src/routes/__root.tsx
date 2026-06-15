@@ -56,31 +56,24 @@ export const Route = createRootRoute({
     ],
   }),
   shouldReload: true,
-  loader: ({ location }) => loadAdminShellLoaderData(location),
+  loader: ({ abortController, location }) =>
+    loadAdminShellLoaderData(location, undefined, abortController.signal),
   component: RootComponent,
+  errorComponent: RootErrorComponent,
+  notFoundComponent: RootNotFoundComponent,
 });
 
 function RootComponent() {
-  const shellData = Route.useLoaderData() ?? ({ kind: "shell" } as const);
-  const routerState = useRouterState();
-  const router = useRouter();
-  const releaseRunAsGrant = useServerFn(releaseAdminRunAsGrant);
-  const handleRunAsGrantRelease = useCallback(
-    async (input: ReleaseAdminRunAsGrantInput) => {
-      await releaseRunAsGrant({ data: input });
-      await router.invalidate({ sync: true });
-    },
-    [releaseRunAsGrant, router],
-  );
-  const retryShellLoadBeforeRedirect = useCallback(
-    () => router.invalidate({ sync: true }),
-    [router],
-  );
-  const { pathname, searchStr } = resolveAdminShellCurrentLocation(
-    routerState.location,
-  );
-  const canonicalHref = buildCanonicalAdminLegacyHref({ pathname, searchStr });
-  const currentHref = `${pathname}${searchStr}`;
+  const {
+    currentHref,
+    canonicalHref,
+    handleRunAsGrantRelease,
+    pathname,
+    retryShellLoadBeforeRedirect,
+    router,
+    searchStr,
+    shellData,
+  } = useAdminRootPresentation();
 
   if (isAdminAuthRoutePath(pathname)) {
     return (
@@ -162,6 +155,198 @@ function RootComponent() {
     </RootDocument>
   );
 }
+
+function RootNotFoundComponent() {
+  const {
+    currentHref,
+    canonicalHref,
+    handleRunAsGrantRelease,
+    pathname,
+    retryShellLoadBeforeRedirect,
+    router,
+    searchStr,
+    shellData,
+  } = useAdminRootPresentation();
+  const requestedPath = `${pathname}${searchStr}`;
+
+  if (isAdminAuthRoutePath(pathname)) {
+    return (
+      <RootDocument>
+        <AdminRouteNotFoundState requestedPath={requestedPath} />
+      </RootDocument>
+    );
+  }
+
+  if (canonicalHref !== currentHref) {
+    return (
+      <RootDocument>
+        <AdminAuthRedirectState redirectPath={canonicalHref} />
+      </RootDocument>
+    );
+  }
+
+  if (shellData.kind === "shell" || shellData.kind === "stale-session") {
+    const redirectPath = buildAdminShellRedirectPath(
+      { pathname, searchStr },
+      shellData,
+    );
+    const shouldRetryShellLoad = shellData.kind === "shell";
+
+    return (
+      <RootDocument>
+        <AdminAuthRedirectState
+          redirectPath={redirectPath}
+          {...(shouldRetryShellLoad
+            ? {
+                invalidateBeforeRedirect: retryShellLoadBeforeRedirect,
+                htmlRedirectFallbackEnabled: false,
+              }
+            : {})}
+        />
+      </RootDocument>
+    );
+  }
+
+  if (shellData.kind === "denied") {
+    return (
+      <RootDocument>
+        <AdminShellBlockingState
+          variant="denied"
+          title="Access denied"
+          description={shellData.reason}
+        />
+      </RootDocument>
+    );
+  }
+
+  if (shellData.kind === "error") {
+    return (
+      <RootDocument>
+        <AdminShellBlockingState
+          variant="5xx"
+          title={shellData.title}
+          description={shellData.description}
+        />
+      </RootDocument>
+    );
+  }
+
+  return (
+    <RootDocument>
+      <DeskShell
+        profile={shellData.profile}
+        workspaces={shellData.workspaces}
+        savedViews={shellData.savedViews}
+        runAsBanner={shellData.runAsBanner}
+        currentPath={pathname}
+        onNavigate={(path) => {
+          void router.navigate({ href: path });
+        }}
+        onReleaseRunAsGrant={handleRunAsGrantRelease}
+      >
+        <AdminRouteNotFoundState requestedPath={requestedPath} />
+      </DeskShell>
+    </RootDocument>
+  );
+}
+
+function RootErrorComponent({
+  error,
+  reset,
+}: Readonly<{
+  error: unknown;
+  reset: () => void;
+}>) {
+  return (
+    <RootDocument>
+      <div data-testid="admin-root-error">
+        <AdminShellBlockingState
+          variant="5xx"
+          title="Admin route unavailable"
+          description={resolveAdminRouteErrorDescription(error)}
+        />
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            marginTop: 16,
+          }}
+        >
+          <button
+            className="ops-btn ops-btn--ghost"
+            onClick={() => reset()}
+            type="button"
+          >
+            Retry route
+          </button>
+        </div>
+      </div>
+    </RootDocument>
+  );
+}
+
+function useAdminRootPresentation() {
+  const shellData = Route.useLoaderData() ?? ({ kind: "shell" } as const);
+  const routerState = useRouterState();
+  const router = useRouter();
+  const releaseRunAsGrant = useServerFn(releaseAdminRunAsGrant);
+  const handleRunAsGrantRelease = useCallback(
+    async (input: ReleaseAdminRunAsGrantInput) => {
+      await releaseRunAsGrant({ data: input });
+      await router.invalidate({ sync: true });
+    },
+    [releaseRunAsGrant, router],
+  );
+  const retryShellLoadBeforeRedirect = useCallback(
+    () => router.invalidate({ sync: true }),
+    [router],
+  );
+  const { pathname, searchStr } = resolveAdminShellCurrentLocation(
+    routerState.location,
+  );
+  const canonicalHref = buildCanonicalAdminLegacyHref({ pathname, searchStr });
+  const currentHref = `${pathname}${searchStr}`;
+
+  return {
+    currentHref,
+    canonicalHref,
+    handleRunAsGrantRelease,
+    pathname,
+    retryShellLoadBeforeRedirect,
+    router,
+    searchStr,
+    shellData,
+  };
+}
+
+function AdminRouteNotFoundState({
+  requestedPath,
+}: Readonly<{
+  requestedPath: string;
+}>) {
+  return (
+    <div data-testid="admin-root-not-found">
+      <StateScreen
+        variant="404"
+        title="Route not found"
+        description={`No admin route matches ${requestedPath}. Return to the operations home surface to continue.`}
+        action={
+          <a className="ops-btn ops-btn--ghost" href="/desk">
+            Return to operations home
+          </a>
+        }
+      />
+    </div>
+  );
+}
+
+const resolveAdminRouteErrorDescription = (error: unknown) => {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return "The requested admin route could not be recovered. Retry the route or return to the operations home surface.";
+};
 
 function AdminShellBlockingState({
   variant,

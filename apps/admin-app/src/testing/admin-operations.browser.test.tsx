@@ -258,7 +258,7 @@ describe("admin operations browser flows", () => {
     await click(openNavigationButton);
     await followLink(
       rendered.router,
-      getLinkByText(rendered.container, "Operations Home"),
+      getLinkByText(rendered.container.ownerDocument, "Operations Home"),
     );
     await waitFor(
       () =>

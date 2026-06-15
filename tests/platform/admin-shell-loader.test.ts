@@ -1,5 +1,6 @@
 import {
   actorType,
+  adminOrgRole,
   adminOperatorCapability,
   adminRoutePath,
 } from "@comvestec/contracts";
@@ -44,6 +45,7 @@ const operatorProfile = {
     enabled: true,
   },
   sessionId: capabilitySnapshot.sessionId,
+  adminOrgRole: adminOrgRole.owner,
   capabilities: capabilitySnapshot.capabilities,
 } as const;
 
@@ -195,6 +197,7 @@ describe("admin shell loader", () => {
     );
     const loadServerRouteDataFromRequest = vi.fn(async () => readyShellData);
     const loadClientRouteData = vi.fn(async () => readyShellData);
+    const abortController = new AbortController();
 
     await expect(
       loadAdminShellRouteDataForCurrentRuntime({
@@ -202,9 +205,11 @@ describe("admin shell loader", () => {
         getCurrentServerRequest,
         loadServerRouteDataFromRequest,
         loadClientRouteData,
+        signal: abortController.signal,
       }),
     ).resolves.toEqual(readyShellData);
     expect(loadClientRouteData).toHaveBeenCalledTimes(1);
+    expect(loadClientRouteData).toHaveBeenCalledWith(abortController.signal);
     expect(getCurrentServerRequest).not.toHaveBeenCalled();
     expect(loadServerRouteDataFromRequest).not.toHaveBeenCalled();
   });
