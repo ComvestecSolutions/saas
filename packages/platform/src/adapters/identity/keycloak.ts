@@ -214,6 +214,7 @@ type KeycloakIdentityTokenHeader = Schema.Schema.Type<
 const KeycloakIdentityTokenClaimsSchema = Schema.Struct({
   iss: Schema.NonEmptyString,
   aud: Schema.Union(Schema.NonEmptyString, Schema.Array(Schema.NonEmptyString)),
+  azp: Schema.optional(Schema.NonEmptyString),
   sub: Schema.NonEmptyString,
   exp: Schema.Number,
   nbf: Schema.optional(Schema.Number),
@@ -956,10 +957,13 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
                 ? claims.aud
                 : [claims.aud];
               const currentTimestampSeconds = Math.floor(Date.now() / 1_000);
+              const clientMatchesAudience =
+                validAudiences.includes(options.clientId) ||
+                claims.azp === options.clientId;
 
               if (
                 claims.iss !== issuerUrl ||
-                !validAudiences.includes(options.clientId) ||
+                !clientMatchesAudience ||
                 claims.exp <= currentTimestampSeconds ||
                 (claims.nbf !== undefined &&
                   claims.nbf > currentTimestampSeconds)
@@ -1166,6 +1170,7 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
         decodeImpersonationInput(impersonationInput).pipe(
           Effect.flatMap((decodedInput) =>
             Effect.gen(function* () {
+              const subjectToken = yield* issueClientCredentialsAccessToken();
               const tokenExchangeResponseText =
                 yield* fetchKeycloakResponseText({
                   operation: "tokenExchange",
@@ -1181,6 +1186,9 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
                       client_secret: options.clientSecret,
                       grant_type:
                         "urn:ietf:params:oauth:grant-type:token-exchange",
+                      subject_token: subjectToken,
+                      subject_token_type:
+                        "urn:ietf:params:oauth:token-type:access_token",
                       requested_subject: decodedInput.impersonatedActorId,
                       audience: options.clientId,
                       scope: "openid",
@@ -1229,17 +1237,9 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
                   }),
                 ),
               );
+              const identityToken = response.id_token ?? response.access_token;
 
               return yield* Effect.gen(function* () {
-                if (response.id_token === undefined) {
-                  return yield* Effect.fail({
-                    _tag: "KeycloakImpersonationIdTokenMissingError",
-                    realm: options.realm,
-                    clientId: options.clientId,
-                    impersonatedActorId: decodedInput.impersonatedActorId,
-                  } satisfies KeycloakImpersonationIdTokenMissingError);
-                }
-
                 if (session.actorId !== decodedInput.impersonatedActorId) {
                   return yield* Effect.fail({
                     _tag: "KeycloakImpersonationActorMismatchError",
@@ -1251,7 +1251,7 @@ export const makeKeycloakAdapter = (input: KeycloakAdapterOptions) =>
 
                 return yield* decodeImpersonationSession({
                   session,
-                  idToken: response.id_token,
+                  idToken: identityToken,
                   expiresInSeconds: response.expires_in,
                 });
               }).pipe(

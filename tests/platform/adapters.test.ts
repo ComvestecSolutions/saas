@@ -144,6 +144,7 @@ const createSignedKeycloakIdentityToken = (input: {
   readonly issuer: string;
   readonly audience: string;
   readonly subject: string;
+  readonly authorizedParty?: string;
   readonly actorTypeValue?: string;
   readonly tenantHint?: string;
   readonly preferredUsername?: string;
@@ -165,6 +166,9 @@ const createSignedKeycloakIdentityToken = (input: {
     exp: nowSeconds + (input.expiresInSeconds ?? 3_600),
     iat: nowSeconds,
     sid: `sess_${input.subject}`,
+    ...(input.authorizedParty !== undefined
+      ? { azp: input.authorizedParty }
+      : {}),
     ...(input.actorTypeValue !== undefined
       ? { [identityClaimKey.actorType]: input.actorTypeValue }
       : {}),
@@ -589,6 +593,8 @@ describe("platform adapters", () => {
   it("surfaces cleanup-unavailable failures for malformed token-exchange payloads without session state", async () => {
     const baseOptions = createKeycloakTestOptions();
     const tokenEndpoint = `${baseOptions.baseUrl}/realms/${baseOptions.realm}/protocol/openid-connect/token`;
+    let capturedSubjectToken: string | null = null;
+    let capturedSubjectTokenType: string | null = null;
     const keycloak = await Effect.runPromise(
       makeKeycloakAdapter({
         ...baseOptions,
@@ -603,6 +609,8 @@ describe("platform adapters", () => {
                 "urn:ietf:params:oauth:grant-type:token-exchange" &&
               requestBody.get("requested_subject") === "usr_member_1"
             ) {
+              capturedSubjectToken = requestBody.get("subject_token");
+              capturedSubjectTokenType = requestBody.get("subject_token_type");
               return new Response(
                 JSON.stringify({
                   id_token: "id-token:usr_member_1",
@@ -641,6 +649,10 @@ describe("platform adapters", () => {
         },
       },
     });
+    expect(capturedSubjectToken).toBe("service-account-access-token");
+    expect(capturedSubjectTokenType).toBe(
+      "urn:ietf:params:oauth:token-type:access_token",
+    );
   });
 
   it("validates Keycloak identity tokens against the issuer signing keys", async () => {
@@ -650,6 +662,51 @@ describe("platform adapters", () => {
     const idToken = createSignedKeycloakIdentityToken({
       issuer,
       audience: baseOptions.clientId,
+      subject: "usr_platform_operator_1",
+      actorTypeValue: actorType.platformOperator,
+      tenantHint: "org_1",
+    });
+    const keycloak = await Effect.runPromise(
+      makeKeycloakAdapter({
+        ...baseOptions,
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input.toString();
+
+          if (url === certsEndpoint) {
+            return new Response(
+              JSON.stringify({ keys: [keycloakIdentityTokenTestPublicJwk] }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+          }
+
+          return baseOptions.fetch!(input, init);
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(keycloak.validateIdentityToken({ idToken })),
+    ).resolves.toEqual({
+      actorId: "usr_platform_operator_1",
+      actorType: actorType.platformOperator,
+      realm: baseOptions.realm,
+      tenantHint: "org_1",
+    });
+  });
+
+  it("accepts client-bound access-token claims when the authorized party matches the platform client", async () => {
+    const baseOptions = createKeycloakTestOptions();
+    const issuer = `${baseOptions.baseUrl}/realms/${baseOptions.realm}`;
+    const certsEndpoint = `${issuer}/protocol/openid-connect/certs`;
+    const idToken = createSignedKeycloakIdentityToken({
+      issuer,
+      audience: "account",
+      authorizedParty: baseOptions.clientId,
       subject: "usr_platform_operator_1",
       actorTypeValue: actorType.platformOperator,
       tenantHint: "org_1",
@@ -1178,9 +1235,10 @@ describe("platform adapters", () => {
     expect(revokedSessionIds).toEqual(["sess_impersonation_usr_member_1"]);
   });
 
-  it("surfaces compensation failures when id-token validation cannot clean up", async () => {
+  it("falls back to the exchanged access token when Keycloak omits id_token", async () => {
     const baseOptions = createKeycloakTestOptions();
     const tokenEndpoint = `${baseOptions.baseUrl}/realms/${baseOptions.realm}/protocol/openid-connect/token`;
+    const revokedSessionIds: string[] = [];
     const keycloak = await Effect.runPromise(
       makeKeycloakAdapter({
         ...baseOptions,
@@ -1216,6 +1274,7 @@ describe("platform adapters", () => {
               `${baseOptions.baseUrl}/admin/realms/${baseOptions.realm}/sessions/`,
             )
           ) {
+            revokedSessionIds.push(url.split("/").pop() ?? "");
             return new Response("Keycloak unavailable", {
               status: 503,
               statusText: "Service Unavailable",
@@ -1236,21 +1295,17 @@ describe("platform adapters", () => {
     );
 
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: {
-        _tag: "KeycloakImpersonationCompensationError",
-        sessionId: "sess_impersonation_usr_member_1",
-        issuanceFailure: {
-          _tag: "KeycloakImpersonationIdTokenMissingError",
-          impersonatedActorId: "usr_member_1",
-        },
-        revocationFailure: {
-          _tag: "KeycloakAdapterRequestError",
-          operation: "sessionRevocation",
-          status: 503,
+      _tag: "Right",
+      right: {
+        idToken: "access-token:usr_member_1",
+        expiresInSeconds: 1800,
+        session: {
+          actorId: "usr_member_1",
+          sessionId: "sess_impersonation_usr_member_1",
         },
       },
     });
+    expect(revokedSessionIds).toEqual([]);
   });
 
   it("surfaces cleanup-unavailable failures when no impersonation session identifier is available", async () => {

@@ -11,6 +11,8 @@ import type {
   AdminOperatorProvisionBySessionRequest,
   AdminOperatorSessionLookup,
 } from "../access/admin-operator-management";
+import { resolveTrustedRequestContextFromSessionId } from "../access/trusted-request-context";
+import { getCapabilitySnapshotV2FromEnvironment } from "./capability-snapshot-v2-actions";
 import { loadRuntimeModuleOrDie } from "./runtime-loader";
 import { getAdminOperatorCapabilitySnapshotFromSessionId } from "./admin-control-plane";
 
@@ -41,13 +43,24 @@ export const getAdminOperatorProfileFromEnvironment = (
       environment,
       input,
     ),
+    requestContext: resolveTrustedRequestContextFromSessionId(
+      environment,
+      input.sessionId,
+    ),
   }).pipe(
-    Effect.flatMap(({ identity, capabilities }) =>
-      decodeAdminOperatorProfile({
-        identity,
-        sessionId: input.sessionId,
-        capabilities: capabilities.capabilities,
-      }),
+    Effect.flatMap(({ identity, capabilities, requestContext }) =>
+      getCapabilitySnapshotV2FromEnvironment(environment, {
+        requestContext,
+      }).pipe(
+        Effect.flatMap(({ snapshot }) =>
+          decodeAdminOperatorProfile({
+            identity,
+            sessionId: input.sessionId,
+            adminOrgRole: snapshot.adminOrgRole,
+            capabilities: capabilities.capabilities,
+          }),
+        ),
+      ),
     ),
   );
 

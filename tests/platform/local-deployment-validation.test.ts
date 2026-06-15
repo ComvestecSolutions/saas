@@ -336,6 +336,38 @@ describe("local deployment validation tooling", () => {
     );
   });
 
+  it("keeps local Keycloak legacy token exchange enabled for platform impersonation flows", () => {
+    const composeConfig = readFileSync(
+      resolve(workspaceRootDirectory, "ops/docker/compose.yml"),
+      "utf8",
+    );
+    const realmExport = JSON.parse(
+      readFileSync(
+        resolve(
+          workspaceRootDirectory,
+          "ops/docker/identity/keycloak/realm-export.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      readonly users?: readonly {
+        readonly username?: string;
+        readonly serviceAccountClientId?: string;
+        readonly clientRoles?: Readonly<Record<string, readonly string[]>>;
+      }[];
+    };
+    const platformServiceAccount = realmExport.users?.find(
+      (user) =>
+        user.serviceAccountClientId === "saas-platform" &&
+        user.username === "service-account-saas-platform",
+    );
+
+    expect(composeConfig).toContain("--features=token-exchange");
+    expect(platformServiceAccount?.clientRoles?.["realm-management"]).toEqual(
+      expect.arrayContaining(["realm-admin", "impersonation"]),
+    );
+  });
+
   it("keeps the Kong db-less config pointed at the backend-owned API surface", () => {
     const kongConfig = readFileSync(
       resolve(workspaceRootDirectory, "ops/docker/security/kong.yml"),

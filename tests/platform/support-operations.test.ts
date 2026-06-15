@@ -2250,16 +2250,10 @@ describe("support-operations platform service", () => {
     });
   });
 
-  it("surfaces malformed Keycloak client-credentials responses as compensation failures", async () => {
+  it("surfaces malformed Keycloak client-credentials responses before persistence begins", async () => {
     const keycloakOptions = createKeycloakTestOptions();
 
     const { service, valkey } = await createSupportOperationsHarness({
-      persistStartedImpersonation: () =>
-        Effect.fail({
-          _tag: "AuditLogPostgresRepositoryPersistenceError",
-          operation: "insertAuditEvent",
-          cause: new Error("Simulated audit write failure."),
-        } as const),
       keycloakOptions: {
         fetch: async (input, init) => {
           const url = typeof input === "string" ? input : input.toString();
@@ -2306,16 +2300,8 @@ describe("support-operations platform service", () => {
     expect(result).toMatchObject({
       _tag: "Left",
       left: {
-        _tag: "SupportOperationsImpersonationCompensationError",
-        sessionId: "sess_impersonation_usr_member_1",
-        persistenceFailure: {
-          _tag: "AuditLogPostgresRepositoryPersistenceError",
-          operation: "insertAuditEvent",
-        },
-        revocationFailure: {
-          _tag: "KeycloakAdapterRequestError",
-          operation: "clientCredentialsGrant",
-        },
+        _tag: "KeycloakAdapterRequestError",
+        operation: "clientCredentialsGrant",
       },
     });
   });
