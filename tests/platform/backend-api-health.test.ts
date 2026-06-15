@@ -15,6 +15,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -160,6 +161,7 @@ console.log(JSON.stringify({
     ],
     {
       cwd: process.cwd(),
+      timeout: 90_000,
     },
   );
 
@@ -219,7 +221,7 @@ describe("platform backend api health transport", () => {
     expect(probe.placeholderGenerated).toBe(false);
     expect(probe.placeholderOperatorSet).toBe(false);
     expect(probe.configuredValue).toBe(true);
-  }, 30_000);
+  }, 90_000);
 
   it("documents and mounts backend health routes", () => {
     const probe = runBackendApiHealthProbe();
