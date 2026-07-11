@@ -45,7 +45,7 @@
     "prettier": "^3.8.2",
     "ts-jest": "^29.4.9",
     "turbo": "^2.9.6",
-    "typescript": "^6.0.2"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "@tanstack/start-server-core": "file:./vendor/tanstack-start-server-core",
